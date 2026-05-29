@@ -8,6 +8,8 @@ from typing import Optional
 
 import pandas as pd
 
+from shared.core.db_lock import DuckDBLock
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path("data/feature_store.duckdb")
@@ -87,10 +89,11 @@ class FeatureStore:
         record_list = [tuple(r) for r in records]
         if not record_list:
             return 0
-        self.conn.executemany(
-            "INSERT OR REPLACE INTO factor_values (date, symbol, factor_name, value) VALUES (?, ?, ?, ?)",
-            record_list,
-        )
+        with DuckDBLock(self.db_path):
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO factor_values (date, symbol, factor_name, value) VALUES (?, ?, ?, ?)",
+                record_list,
+            )
         count = len(records)
         logger.info("Saved %d factor values for %s", count, date)
         return count
@@ -169,10 +172,11 @@ class FeatureStore:
             Number of rows upserted.
         """
         records = [(date, factor_name, ic) for date, ic in ic_values.items()]
-        self.conn.executemany(
-            "INSERT OR REPLACE INTO ic_history (date, factor_name, ic_value) VALUES (?, ?, ?)",
-            records,
-        )
+        with DuckDBLock(self.db_path):
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO ic_history (date, factor_name, ic_value) VALUES (?, ?, ?)",
+                records,
+            )
         count = len(records)
         logger.info("Saved %d IC values for factor '%s'", count, factor_name)
         return count

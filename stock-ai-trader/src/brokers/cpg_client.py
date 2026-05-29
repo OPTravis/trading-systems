@@ -7,6 +7,7 @@ API docs: https://interactivebrokers.github.io/cpwebapi/
 """
 
 import logging
+import os
 import requests
 from typing import Dict, List, Optional, Any
 
@@ -114,11 +115,17 @@ class CPGClient:
             })
         return positions
 
-    def get_live_status(self, account_id: str = "U20089267") -> Optional[Dict]:
+    def get_live_status(self, account_id: Optional[str] = None) -> Optional[Dict]:
         """Convenience: get full status (summary + positions) for live account.
 
+        Account ID from CPG_ACCOUNT_ID env var or parameter.
         Returns dict with 'summary' and 'positions' keys, or None if session expired.
         """
+        if account_id is None:
+            account_id = os.environ.get("CPG_ACCOUNT_ID", "")
+        if not account_id:
+            logger.error("CPG_ACCOUNT_ID not set — cannot query live account")
+            return None
         summary = self.get_account_summary(account_id)
         if summary is None:
             return None

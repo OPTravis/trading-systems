@@ -9,6 +9,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from shared.core.db_lock import DuckDBLock
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path("data/feature_store.duckdb")
@@ -100,11 +102,12 @@ class HistoricalStore:
 
         # Upsert
         records = list(df.itertuples(index=False, name=None))
-        self.conn.executemany(
-            "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [tuple(r) for r in records],
-        )
+        with DuckDBLock(self.db_path):
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [tuple(r) for r in records],
+            )
         count = len(records)
         logger.info("Ingested %d rows for %s", count, symbol)
         return count
@@ -146,11 +149,12 @@ class HistoricalStore:
                         df[col] = df[col].astype(float)
 
                 records = list(df.itertuples(index=False, name=None))
-                self.conn.executemany(
-                    "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    [tuple(r) for r in records],
-                )
+                with DuckDBLock(self.db_path):
+                    self.conn.executemany(
+                        "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        [tuple(r) for r in records],
+                    )
                 results[sym] = len(records)
             except Exception as e:
                 logger.error("Failed %s: %s", sym, e)

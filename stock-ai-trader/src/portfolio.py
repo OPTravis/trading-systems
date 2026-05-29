@@ -21,8 +21,68 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# FX rate cache (module-level, shared across PortfolioManager instances)
+_FX_CACHE: Dict[str, float] = {}
+_FX_CACHE_TS: float = 0.0
+_FX_CACHE_TTL: float = 3600.0  # 1 hour
+
 
 # ─── Settlement rules per market ────────────────────────────────────────────
+
+
+def _get_fx_to_usd(currency: str) -> float:
+    """Get FX rate to convert `currency` to 1 USD. Cached for 1 hour.
+
+    Returns:
+        Multiplier: amount_in_usd = amount_in_foreign / rate.
+        For USD, returns 1.0. For HKD, returns ~7.8 (7.8 HKD = 1 USD).
+    """
+    global _FX_CACHE, _FX_CACHE_TS
+    if currency == "USD":
+        return 1.0
+
+    now = time.time()
+    if _FX_CACHE and (now - _FX_CACHE_TS) < _FX_CACHE_TTL:
+        return _FX_CACHE.get(currency, 1.0)
+
+    # Refresh cache from yfinance
+    try:
+        import yfinance as yf
+        pairs = {
+            "HKD": "USDHKD=X",
+            "CNY": "USDCNY=X",
+            "CNH": "USDCNH=X",
+            "JPY": "USDJPY=X",
+            "EUR": "EURUSD=X",   # 1 EUR = X USD (multiply)
+            "GBP": "GBPUSD=X",   # 1 GBP = X USD (multiply)
+            "AUD": "AUDUSD=X",   # 1 AUD = X USD (multiply)
+        }
+        symbols = list(set(pairs.values()))
+        tickers = yf.Tickers(" ".join(symbols))
+        new_cache: Dict[str, float] = {}
+        for cur, pair in pairs.items():
+            try:
+                info = tickers.tickers[pair].info
+                price = info.get("regularMarketPrice") or info.get("previousClose", 0)
+                if price and price > 0:
+                    # For USD-denominated pairs (USDCNY, USDHKD, USDJPY):
+                    #   rate = X means 1 USD = X foreign → divide by rate
+                    # For foreign-denominated pairs (EURUSD, GBPUSD, AUDUSD):
+                    #   rate = X means 1 foreign = X USD → multiply by rate
+                    if pair.startswith("USD"):
+                        new_cache[cur] = price  # divide later
+                    else:
+                        new_cache[cur] = 1.0 / price  # convert to "per USD" rate
+            except Exception:
+                pass
+        if new_cache:
+            _FX_CACHE = new_cache
+            _FX_CACHE_TS = now
+            logger.info("FX rates refreshed: %s", {k: round(v, 4) for k, v in new_cache.items()})
+    except Exception as e:
+        logger.warning("Failed to fetch FX rates: %s", e)
+
+    return _FX_CACHE.get(currency, 1.0)
 
 SETTLEMENT_DAYS = {
     "US": 1,   # T+1
@@ -403,8 +463,12 @@ class PortfolioManager:
         """Net Asset Value = cash + market value across all currencies (in USD-equivalent)."""
         nav = 0.0
         for cur, cash in self._cash.items():
-            nav += cash.total_cash  # TODO: convert to USD using FX rates
-        nav += self.get_market_value()
+            rate = _get_fx_to_usd(cur)
+            nav += cash.total_cash / rate if rate > 0 else cash.total_cash
+        # Market value — positions store market_value in their native currency
+        for pos in self._positions.values():
+            rate = _get_fx_to_usd(pos.currency)
+            nav += pos.market_value / rate if rate > 0 else pos.market_value
         return nav
 
     def get_cash_balance(self, currency: str = "USD") -> float:
