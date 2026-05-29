@@ -1,0 +1,105 @@
+# 風控限制配置
+
+# 全局風控
+global:
+  max_portfolio_leverage: 1.0   # SPOT ONLY，無杠杆
+  max_cash_usage: 0.95          # 最多使用 95% 資金
+  min_cash_reserve: 0.05        # 至少保留 5% 現金
+
+# 日虧損熔斷
+daily_loss:
+  tier_1:
+    threshold: -0.01            # -1% → 降低倉位 50%
+    action: "reduce_position"
+    scale: 0.5
+  tier_2:
+    threshold: -0.02            # -2% → 暫停交易 2 小時
+    action: "pause_trading"
+    pause_hours: 2
+  tier_3:
+    threshold: -0.03            # -3% → 當日停止交易
+    action: "stop_trading"
+
+# 回撤熔斷
+drawdown:
+  max_drawdown: -0.10           # 最大回撤 -10%
+  warning_level: -0.05          # -5% 預警
+  stepwise:
+    - drawdown: -0.05
+      action: "reduce_risk"
+      scale: 0.7
+    - drawdown: -0.07
+      action: "reduce_risk"
+      scale: 0.5
+    - drawdown: -0.10
+      action: "close_all"
+      cooldown_days: 5
+
+# 連虧保護
+consecutive_loss:
+  max_losses: 5                 # 連續虧損 5 次
+  pause_hours: 48               # 暫停 48 小時
+  position_scale: 0.5           # 恢復後倉位減半
+
+# 單只股票限制
+position_limits:
+  max_single_pct: 0.10          # 單只最多 10% 組合
+  max_sector_pct: 0.30          # 同板塊最多 30%
+  max_same_sector_count: 2      # 同板塊最多 2 只
+  min_liquidity: 1000000        # 日均成交量 > 100 萬股
+  min_market_cap: 2000000000    # 最小市值 $2B
+  max_price_gap: 0.10           # 價格 gap > 10% 暫停
+
+# VIX 倉位調整
+vix_scale:
+  low_threshold: 15             # VIX < 15 → 倉位 ×1.2
+  low_multiplier: 1.2
+  normal_low: 15
+  normal_high: 25               # 15-25 → 正常倉位
+  tier_1: 25                    # VIX > 25 → 倉位 ×0.7
+  tier_1_multiplier: 0.7
+  tier_2: 30                    # VIX > 30 → 倉位 ×0.5
+  tier_2_multiplier: 0.5
+  tier_3: 40                    # VIX > 40 → 凍結新開倉
+  tier_3_multiplier: 0.0
+
+# 波動率目標
+volatility_target:
+  target_annual_vol: 0.15       # 目標 15% 年化波動
+  lookback_days: 20
+  rebalance_trigger: 0.02      # 偏差 > 2% 觸發再平衡
+  max_position_scale: 2.0       # 最大倉位倍數
+
+# SPY 趨勢過濾
+spy_trend_filter:
+  enabled: true
+  ema_period: 200
+  below_ema_action: "defensive"  # SPY < 200 EMA → 只持有現金或防禦性 ETF
+  below_ema_max_cash_deploy: 0.3  # 最多使用 30% 資金
+
+# 財報期限制
+earnings_blackout:
+  pre_days: 2                   # 財報前 2 天
+  post_days: 0                  # 財報當天
+  action: "block_new_positions" # 阻止新開倉（已有持倉不受影響）
+
+# 結算保護
+settlement:
+  us: "T+1"                     # 美股 T+1
+  hk: "T+2"                     # 港股 T+2
+  cn: "T+1"                     # A 股 T+1
+
+# PDT 規則
+pdt_guard:
+  enabled: true
+  min_equity: 25000             # $25K
+  max_day_trades: 3             # 5 天內 ≤3 次
+  rolling_days: 5
+  action: "block_day_trade"     # 超限時阻止 day trade
+
+# Kelly 倉位計算（v2: HybridPositionSizer）
+position_sizing:
+  method: "hybrid"              # kelly | hybrid
+  kelly_fraction: 0.5           # Half-Kelly
+  cvar_confidence: 0.95         # 95% CVaR
+  cvar_budget: 0.02             # 2% 日 CVaR 預算

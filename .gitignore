@@ -1,0 +1,35 @@
+# Venvs
+venv/
+.venv/
+*.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (runtime, don't track)
+crypto-ai-trader/data/state.db
+crypto-ai-trader/data/events.db
+crypto-ai-trader/data/research/
+stock-ai-trader/data/
+
+# Secrets
+.env
+crypto-secrets.env
+*.key
+
+# Logs
+*.log

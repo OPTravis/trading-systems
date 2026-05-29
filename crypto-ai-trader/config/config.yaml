@@ -1,0 +1,31 @@
+# LLM Provider Configuration
+# DeepSeek is the primary provider. When it fails (timeout, rate limit, 5xx),
+# the system automatically falls back to the alternative provider.
+
+llm:
+  primary:
+    provider: deepseek
+    model: deepseek-v4-flash
+    base_url: https://api.deepseek.com/v1
+    timeout: 30          # seconds
+    # API key loaded from DEEPSEEK_API_KEY env var
+
+  fallback:
+    provider: openai
+    model: gpt-4o-mini
+    base_url: https://api.openai.com/v1
+    timeout: 30          # seconds
+    # API key loaded from OPENAI_API_KEY env var
+    enabled: true
+
+  # Retry configuration
+  retry:
+    max_retries: 1          # retries per provider before fallback
+    retry_delay: 1.0        # seconds between retries
+
+  # Fallback triggers — when to skip primary and use fallback
+  fallback_triggers:
+    timeout: true
+    rate_limit_429: true
+    server_error_5xx: true
+    connection_error: true

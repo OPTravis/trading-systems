@@ -1,0 +1,987 @@
+{
+  "_meta": {
+    "description": "Quantifiable signal thresholds extracted from crypto research report for integration into crypto-ai-trader scanner system",
+    "report": "/tmp/report_full.txt",
+    "framework": "6-dimension prediction model (macro liquidity 25%, on-chain 25%, institutional 20%, sentiment 15%, technical 10%, regulatory 5%)",
+    "resonance_rule": "4+ dimensions same-direction → 70%+ surge probability",
+    "generated": "2026-05-14"
+  },
+  "current_system": {
+    "scanner_factors": [
+      "technical (15%): RSI/MACD/BB/VWAP/MA from 1h klines",
+      "trend (15%): Multi-TF alignment score",
+      "volume (10%): 24h volume rank + 1.5x surge detection",
+      "sentiment (8%): Per-symbol funding rate + OI changes",
+      "price_action (8%): Volatility + momentum",
+      "obv_divergence (8%): Smart money accumulation",
+      "consolidation (8%): Long-range breakout with volume",
+      "bb_squeeze (4%): Volatility compression",
+      "rsi_divergence (4%): Momentum bottom detection",
+      "onchain (10%): DeFiLlama TVL changes (generic, not BTC-specific)",
+      "market_sentiment (5%): Fear & Greed contrarian",
+      "orderbook (5%): Buy/sell pressure + whale detection"
+    ],
+    "data_sources": [
+      "Binance API (price, klines, funding rate, OI)",
+      "Alternative.me (Fear & Greed Index)",
+      "DeFiLlama (TVL - generic chain health, not BTC on-chain metrics)"
+    ],
+    "gaps_identified": [
+      "No BTC-specific on-chain metrics (MVRV, NUPL, Hash Ribbon, Puell, exchange reserves)",
+      "No stablecoin supply tracking",
+      "No ETF flow tracking",
+      "No global M2 / DXY macro data",
+      "No BTC-SPX correlation monitoring",
+      "F&G index uses point-in-time value, not persistence tracking",
+      "No multi-dimension resonance scoring",
+      "No Put/Call or Long/Short ratio"
+    ]
+  },
+  "signals": [
+    {
+      "id": "SIG-001",
+      "name": "MVRV Z-Score (BTC On-Chain)",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "Market Value to Realized Value Z-Score. Marks all historical cycle bottoms with 100% accuracy.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Glassnode / CryptoQuant",
+        "endpoint": "Glassnode: /v1/indicators/mvrv_z_score or CryptoQuant MVRV Z-Score API",
+        "alternative": "Calculate from BTC Market Cap and Realized Cap (requires UTXO-level data)",
+        "auth": "API key required (Glassnode free tier available)",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "strong_buy": {
+          "condition": "mvrv_z_score < 0",
+          "signal_direction": "bullish",
+          "historical_accuracy": "100% (marked every cycle bottom: 2015, 2018, 2020, 2022)",
+          "expected_return": "14x-20x from bottom to next cycle top"
+        },
+        "buy": {
+          "condition": "mvrv_z_score < -1.0",
+          "signal_direction": "strongly_bullish",
+          "note": "Deep capitulation zone"
+        },
+        "overheat_warning": {
+          "condition": "mvrv_z_score > +3.0",
+          "signal_direction": "bearish",
+          "note": "2024 top was at ~2.97; top threshold has decayed from +8.8 (2017) to +7.1 (2021) to ~3.0 (2024)"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Requires new data feed module (e.g., data_feed_mvrv.py) using Glassnode or CryptoQuant API. Add as new scanner factor replacing generic DeFiLlama on-chain with BTC-specific on-chain.",
+      "new_scoring_factor": {
+        "name": "mvrv_zscore",
+        "weight_suggestion": "12% (absorbs part of current onchain 10% + gains from reduced generic TVL)",
+        "scoring_logic": {
+          "score_90_100": "z_score < -2.0 (extreme undervalue)",
+          "score_70_90": "z_score < 0 (undervalue)",
+          "score_50_70": "z_score 0 to 1.5 (neutral-healthy)",
+          "score_30_50": "z_score 1.5 to 3.0 (elevated)",
+          "score_0_30": "z_score > 3.0 (overheated)"
+        }
+      }
+    },
+    {
+      "id": "SIG-002",
+      "name": "NUPL (Net Unrealized Profit/Loss)",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "Net unrealized profit/loss across all BTC holders. Negative values mark capitulation zones ~every 4 years.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Glassnode / CryptoQuant / LookIntoBitcoin",
+        "endpoint": "Glassnode: /v1/indicators/nupl",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "capitulation_buy": {
+          "condition": "nupl < 0",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "Best long-term entry zone, historically ~4yr cycle",
+          "example_values": "-0.71 (2015), -0.44 (2018), -0.32 (2022)"
+        },
+        "euphoria_warning": {
+          "condition": "nupl > 0.75",
+          "signal_direction": "bearish",
+          "note": "Threshold decaying: 0.84 (2013) → 0.79 (2017) → 0.66 (2021) → 0.64 (2024)"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Pair with MVRV in same data feed. NUPL is a holding-behavior indicator that remains valid in ETF era.",
+      "new_scoring_factor": {
+        "name": "nupl",
+        "weight_suggestion": "Combined with MVRV into single 'on_chain_valuation' factor at 12%",
+        "scoring_logic": {
+          "score_90_100": "nupl < -0.3 (deep capitulation)",
+          "score_70_90": "nupl < 0 (capitulation)",
+          "score_50_70": "nupl 0 to 0.5 (healthy accumulation)",
+          "score_30_50": "nupl 0.5 to 0.65 (elevated - new era threshold)",
+          "score_0_30": "nupl > 0.65 (euphoria zone in institutional era)"
+        }
+      }
+    },
+    {
+      "id": "SIG-003",
+      "name": "Exchange Reserves (% of Supply)",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "BTC held on centralized exchanges as % of circulating supply. Structural decline = bullish supply squeeze.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "CryptoQuant / Glassnode",
+        "endpoint": "CryptoQuant: Exchange Reserve indicator",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "supply_squeeze": {
+          "condition": "exchange_reserve_pct < 6.0%",
+          "signal_direction": "bullish",
+          "current_value": "5.88% (7-year low as of 2026)",
+          "note": "Below 6% indicates extreme supply scarcity"
+        },
+        "trend_bearish": {
+          "condition": "exchange_reserve_trend_30d > 0 AND current > 7%",
+          "signal_direction": "bearish",
+          "note": "Rising reserves suggest distribution phase"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "Requires CryptoQuant API key. Track both absolute level and 30-day trend direction.",
+      "new_scoring_factor": {
+        "name": "exchange_reserves",
+        "weight_suggestion": "6% (part of enhanced on_chain factor)",
+        "scoring_logic": {
+          "score_80_100": "reserves < 5.5% of supply (extreme scarcity)",
+          "score_60_80": "reserves 5.5%-6.5% (tight)",
+          "score_40_60": "reserves 6.5%-8% (normal)",
+          "score_20_40": "reserves > 8% (abundant supply)"
+        }
+      }
+    },
+    {
+      "id": "SIG-004",
+      "name": "Hash Ribbon (Miner Capitulation)",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "30d vs 60d hashrate MA crossover. Buy signal when 30d MA crosses back above 60d MA with positive price momentum. Historically strongest single on-chain buy signal.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "LookIntoBitcoin / Glassnode / HashRibbons.com",
+        "endpoint": "Hash Ribbons API or compute from hashrate data",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "buy_signal": {
+          "condition": "hashrate_30d_ma > hashrate_60d_ma AND price_ma_10d > price_ma_20d",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "64% of signals profitable (9/14 since 2013), avg return >5000% to cycle top",
+          "avg_max_drawdown": "11% from buy signal"
+        },
+        "capitulation_warning": {
+          "condition": "hashrate_30d_ma < hashrate_60d_ma",
+          "signal_direction": "preliminary_bullish",
+          "note": "Capitulation phase typically lasts 4-12 weeks"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "Requires hashrate data (available from blockchain.com or Glassnode). This is a BTC-global signal, not per-symbol. Use as market-wide modifier.",
+      "new_scoring_factor": {
+        "name": "hash_ribbon",
+        "weight_suggestion": "Market-wide modifier (not per-symbol), adds +5 to all scores when buy signal active",
+        "scoring_logic": {
+          "bullish_signal": "Buy confirmed → market-wide +5 bonus",
+          "capitulation": "Miner capitulation → market-wide +3 bonus (early stage)",
+          "neutral": "No signal → 0 modifier"
+        }
+      }
+    },
+    {
+      "id": "SIG-005",
+      "name": "Puell Multiple",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "Ratio of daily miner revenue to 365-day average. Measures supply-side profitability.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "LookIntoBitcoin / Glassnode / Blockchain.com",
+        "endpoint": "Glassnode: /v1/indicators/puell_multiple or LookIntoBitcoin API",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "green_zone_buy": {
+          "condition": "puell_multiple < 0.5",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "Correctly identified all major bottoms since 2011"
+        },
+        "red_zone_caution": {
+          "condition": "puell_multiple > 2.5",
+          "signal_direction": "bearish",
+          "note": "Post-2024 halving, threshold decaying: was >8 (2013), >5 (2017), >3 (2021+). Conservative: reduce exposure above 2.0-2.5"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "BTC-global signal. Pair with Hash Ribbon for strongest combo: Hash Ribbon buy + Puell < 0.5 + MVRV Z < 0 = triple confirmation (92.1% accuracy).",
+      "new_scoring_factor": {
+        "name": "puell_multiple",
+        "weight_suggestion": "Part of on_chain_valuation composite",
+        "scoring_logic": {
+          "score_90_100": "puell < 0.3 (extreme miner distress)",
+          "score_70_90": "puell < 0.5 (green zone)",
+          "score_40_60": "puell 0.5-2.0 (neutral)",
+          "score_20_40": "puell 2.0-3.0 (elevated)",
+          "score_0_20": "puell > 3.0 (red zone)"
+        }
+      }
+    },
+    {
+      "id": "SIG-006",
+      "name": "Stablecoin Supply Growth",
+      "dimension": "liquidity",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "Total stablecoin market cap 30-day change. Leads BTC price 10-45 days via Granger causality (F-stat significant at 1-5%).",
+      "data_source": {
+        "type": "external_api",
+        "provider": "CoinGecko / DefiLlama / CryptoQuant",
+        "endpoint": "CoinGecko: /api/v3/coins/tether/market_chart or DefiLlama stablecoins API",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "bullish_accumulation": {
+          "condition": "stablecoin_supply_30d_change > 5%",
+          "signal_direction": "bullish",
+          "historical_accuracy": "80% probability of 20%+ BTC rally within 6 weeks"
+        },
+        "strong_institutional": {
+          "condition": "stablecoin_supply_30d_change > 10%",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "85%+ probability, high correlation with institutional capital deployment"
+        },
+        "contraction_warning": {
+          "condition": "stablecoin_supply_30d_change < -5%",
+          "signal_direction": "bearish",
+          "note": "Capital flight from crypto ecosystem"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Requires new data feed. CoinGecko free API can track USDT+USDC+DAI+FDUSD market cap over time. Cache daily snapshots, compute 30d rolling change.",
+      "new_scoring_factor": {
+        "name": "stablecoin_supply",
+        "weight_suggestion": "10% (new liquidity factor)",
+        "scoring_logic": {
+          "score_80_100": "30d growth > 10% (institutional deployment)",
+          "score_60_80": "30d growth 5-10% (healthy inflow)",
+          "score_40_60": "30d growth 0-5% (neutral)",
+          "score_20_40": "30d change -5% to 0% (mild outflow)",
+          "score_0_20": "30d change < -5% (capital flight)"
+        }
+      }
+    },
+    {
+      "id": "SIG-007",
+      "name": "SSR (Stablecoin Supply Ratio) Oscillator",
+      "dimension": "liquidity",
+      "report_weight": "25%",
+      "confidence": "MEDIUM",
+      "description": "BTC market cap / total stablecoin market cap. Oscillator measures deviation from mean. Low SSR = high stablecoin buying power (dry powder).",
+      "data_source": {
+        "type": "calculated",
+        "provider": "Self-calculated from BTC market cap + stablecoin supply data",
+        "inputs": ["BTC market cap", "total stablecoin market cap (USDT+USDC+DAI+BUSD+FDUSD)"],
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "strong_buy": {
+          "condition": "ssr_90d_oscillator < -0.40",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "~65%, avg 90d return +22.5%",
+          "note": "Only 8.2% of trading days"
+        },
+        "buy": {
+          "condition": "ssr_90d_oscillator < -0.25",
+          "signal_direction": "bullish",
+          "historical_accuracy": "58%, avg 90d return +17.7%, 473 triggers over 2919 days"
+        },
+        "triple_negative_resonance": {
+          "condition": "ssr_90d_osc < -0.20 AND ssr_200d_osc < -0.20 AND ssr_365d_osc < -0.20",
+          "signal_direction": "strongly_bullish",
+          "note": "Only 238 instances in 2919 days, marks major accumulation windows"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "Calculated from stablecoin supply + BTC market cap. Needs 90d/200d/365d oscillator computation. Combine with SIG-006.",
+      "new_scoring_factor": {
+        "name": "ssr_oscillator",
+        "weight_suggestion": "Combined with stablecoin supply into 'liquidity_purchasing_power' factor at 10%",
+        "scoring_logic": {
+          "score_80_100": "90d oscillator < -0.40",
+          "score_60_80": "90d oscillator < -0.25",
+          "score_40_60": "90d oscillator -0.25 to 0",
+          "score_20_40": "90d oscillator 0 to +0.25",
+          "score_0_20": "90d oscillator > +0.25"
+        }
+      }
+    },
+    {
+      "id": "SIG-008",
+      "name": "ETF Daily Net Flows (5-Day Persistence)",
+      "dimension": "institutional",
+      "report_weight": "20%",
+      "confidence": "HIGH",
+      "description": "Daily net inflows/outflows of US spot Bitcoin ETFs. 5+ consecutive days of >$200M daily inflow = strongest institutional signal.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "SoSoValue / Farside Investors / Bloomberg Intelligence",
+        "endpoint": "SoSoValue API: https://api.sosovalue.com/btc/etf-flows or Farside daily CSV",
+        "alternative": "Scrape Bloomberg terminal or use free aggregators",
+        "frequency": "Daily (intraday update available)"
+      },
+      "thresholds": {
+        "strong_bullish": {
+          "condition": "etf_net_inflow_5d_avg > 200_000_000 AND etf_consecutive_inflow_days >= 5",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "82% probability of 30d BTC rally",
+          "note": "Reflects structural institutional allocation, not short-term arbitrage"
+        },
+        "bullish": {
+          "condition": "etf_net_inflow_5d_avg > 100_000_000 AND etf_consecutive_inflow_days >= 3",
+          "signal_direction": "bullish"
+        },
+        "bearish_warning": {
+          "condition": "etf_consecutive_outflow_days >= 5 OR etf_net_outflow_5d_total > 1_000_000_000",
+          "signal_direction": "bearish",
+          "note": "2025 Nov-Jan: $6.18B outflow → BTC from $100k to $60k"
+        },
+        "massive_single_day": {
+          "condition": "etf_single_day_inflow > 500_000_000",
+          "signal_direction": "strongly_bullish",
+          "example": "$1.21B on 2025-10-06 pushed BTC to $126k ATH"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Requires new data feed. SoSoValue or Farside Investors provide daily data. This is BTC-global signal, modify all BTC-pair scores.",
+      "new_scoring_factor": {
+        "name": "etf_flows",
+        "weight_suggestion": "Market-wide modifier: +10 when 5d avg > $200M inflow, -10 when 5d avg > $200M outflow",
+        "scoring_logic": {
+          "strongly_bullish": "5d avg > $200M inflow + 5+ consecutive inflow days → +10 modifier",
+          "bullish": "5d avg > $100M inflow → +5 modifier",
+          "neutral": "Mixed signals → 0",
+          "bearish": "5d avg > $100M outflow → -5 modifier",
+          "strongly_bearish": "5+ consecutive outflow days → -10 modifier"
+        }
+      }
+    },
+    {
+      "id": "SIG-009",
+      "name": "CFGI Persistence (Fear Duration)",
+      "dimension": "sentiment",
+      "report_weight": "15%",
+      "confidence": "HIGH",
+      "description": "Crypto Fear & Greed Index duration at extreme fear levels. Single-day fear is noise; 10+ consecutive days below 25 = bottom signal.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Alternative.me (already implemented)",
+        "endpoint": "https://api.alternative.me/fng/",
+        "frequency": "Daily",
+        "existing_module": "src/data_feed_fng.py"
+      },
+      "thresholds": {
+        "bottom_signal": {
+          "condition": "cfgi <= 25 for 10+ consecutive days",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "83% at 90d, avg return +114.8%",
+          "note": "Institutional era adjustment: threshold raised from <20 to <25"
+        },
+        "moderate_bottom": {
+          "condition": "cfgi <= 20 for 14+ consecutive days",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "Same data, stricter filter"
+        },
+        "contrarian_buy_relaxed": {
+          "condition": "cfgi <= 25 AND greedy >= 70 (rebalanced strategy)",
+          "signal_direction": "bullish",
+          "note": "49.98% annualized, 8 trades in backtest"
+        },
+        "overheated_warning": {
+          "condition": "cfgi >= 75 for 7+ consecutive days",
+          "signal_direction": "bearish",
+          "note": "Extreme greed rarely persists > 2 weeks"
+        }
+      },
+      "implementation_status": "PARTIALLY_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Current system fetches F&G value but only uses point-in-time. NEED: Track history in SQLite, compute consecutive days below/above threshold. The fng_history table already stores 30 days of history. Modify MarketSentimentAgent to check persistence duration.",
+      "modification_needed": {
+        "file": "src/agents/market_sentiment_agent.py",
+        "change": "Accept fng_history list (30d), compute consecutive_days_below_25. If >= 10, score jumps to 90+.",
+        "file_2": "src/data_feed_fng.py",
+        "change": "Expose get_consecutive_days_below(threshold=25) method using existing fng_history table"
+      }
+    },
+    {
+      "id": "SIG-010",
+      "name": "Funding Rate Persistence (30d Average)",
+      "dimension": "sentiment",
+      "report_weight": "15%",
+      "confidence": "HIGH",
+      "description": "30-day average funding rate. Sustained negative funding = strongest contrarian buy signal (83-96% win rate 30-360d).",
+      "data_source": {
+        "type": "calculated",
+        "provider": "Binance Futures API (already partially implemented)",
+        "endpoint": "Binance: /fapi/v1/fundingRate",
+        "existing_module": "src/data_feed_funding.py",
+        "frequency": "8-hourly, aggregate to 30d average"
+      },
+      "thresholds": {
+        "strongest_bullish": {
+          "condition": "funding_30d_avg < -0.01%",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "83%-96% win rate at 30-360d holding",
+          "note": "Current data: 67 consecutive days negative (record since 2026)"
+        },
+        "bullish": {
+          "condition": "funding_8h_current < -0.05%",
+          "signal_direction": "bullish",
+          "note": "78% probability of major price surge (Octagon AI data)"
+        },
+        "overheated_warning": {
+          "condition": "funding_8h_current > +0.1% for 5+ consecutive periods",
+          "signal_direction": "bearish",
+          "note": "Classic overleveraged longs warning"
+        },
+        "extreme_overheated": {
+          "condition": "funding_8h_current > +0.5%",
+          "signal_direction": "strongly_bearish",
+          "example": "+0.51% in Jan 2026 = textbook overleveraged warning"
+        }
+      },
+      "implementation_status": "PARTIALLY_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "Current SentimentAgent uses point-in-time funding rate. NEED: Store 30-day funding rate history, compute rolling average. Funding rate data feed exists but only fetches last 24 entries.",
+      "modification_needed": {
+        "file": "src/data_feed_funding.py",
+        "change": "Add get_30d_average() method that computes rolling 30d average from cached history. Store daily snapshots in SQLite.",
+        "file_2": "src/agents/sentiment_agent.py",
+        "change": "Accept funding_30d_avg parameter. When < -0.01%, boost score to 85+. When > +0.1% sustained, penalize."
+      }
+    },
+    {
+      "id": "SIG-011",
+      "name": "Global M2 Money Supply Direction",
+      "dimension": "macro",
+      "report_weight": "20%",
+      "confidence": "HIGH",
+      "description": "Global M2 growth rate direction. M2 expansion leads BTC by 8-10 weeks with 0.78 correlation (0.94 at 180d rolling peak).",
+      "data_source": {
+        "type": "external_api",
+        "provider": "FRED (Federal Reserve Economic Data) / BIS",
+        "endpoint": "FRED: /api/v2/series/WM2NS (Global M2) or M2SL (US M2)",
+        "alternative": "Calculate from central bank balance sheet data",
+        "frequency": "Monthly (published with 2-3 week lag)",
+        "auth": "FRED API key (free registration)"
+      },
+      "thresholds": {
+        "bullish_macro": {
+          "condition": "global_m2_yoy_growth_turning_positive OR m2_3m_momentum_positive",
+          "signal_direction": "bullish",
+          "lead_time": "8-10 weeks before BTC price response",
+          "correlation": "0.78 (84d lag), peak 0.94"
+        },
+        "bearish_macro": {
+          "condition": "global_m2_yoy_growth_turning_negative",
+          "signal_direction": "bearish",
+          "note": "M2 contraction preceded every BTC bear market since 2014"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "Requires new data feed (data_feed_macro.py). FRED API provides monthly US M2 (M2SL) and global M2 (WM2NS). Monthly frequency means this is a regime-level modifier, not per-scan input.",
+      "new_scoring_factor": {
+        "name": "macro_m2",
+        "weight_suggestion": "Market-wide regime modifier: +8 when M2 growth turning positive, -8 when turning negative",
+        "scoring_logic": {
+          "expanding": "M2 YoY turning positive → market-wide +8",
+          "contracting": "M2 YoY turning negative → market-wide -8",
+          "stable": "No change in direction → 0"
+        }
+      }
+    },
+    {
+      "id": "SIG-012",
+      "name": "DXY (US Dollar Index) Trend",
+      "dimension": "macro",
+      "report_weight": "20%",
+      "confidence": "HIGH",
+      "description": "US Dollar Index level and trend. DXY < 97-98 historically coincides with strongest BTC rallies. BTC-DXY 90d correlation reaches -0.70.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "FRED (DXY/DTWEXBGS) / TradingView / Yahoo Finance",
+        "endpoint": "FRED: /api/v2/series/DTWEXBGS or Yahoo Finance DXY-USD",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "strong_bullish_for_btc": {
+          "condition": "dxy_90d_change < -5%",
+          "signal_direction": "bullish_for_btc",
+          "historical_return": "58%-300% BTC return in 6 months",
+          "correlation": "-0.70 at 90d rolling (2023 Sep low)"
+        },
+        "bullish_for_btc": {
+          "condition": "dxy_level < 97",
+          "signal_direction": "bullish_for_btc",
+          "note": "Strongest BTC rallies historically coincide with DXY below 97-98"
+        },
+        "bearish_for_btc": {
+          "condition": "dxy_90d_change > +5%",
+          "signal_direction": "bearish_for_btc"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "Daily data from free APIs. Combine with M2 into macro data feed. BTC-global signal.",
+      "new_scoring_factor": {
+        "name": "dxy_trend",
+        "weight_suggestion": "Part of macro modifier combined with M2",
+        "scoring_logic": {
+          "score_80_100": "DXY < 97 AND 90d change < -5%",
+          "score_60_80": "DXY < 100 OR 90d change < -3%",
+          "score_40_60": "DXY stable, no strong trend",
+          "score_20_40": "DXY > 103 OR 90d change > +3%",
+          "score_0_20": "DXY > 107 OR 90d change > +5%"
+        }
+      }
+    },
+    {
+      "id": "SIG-013",
+      "name": "BTC-SPX 90d Rolling Correlation",
+      "dimension": "cross_market",
+      "report_weight": "10%",
+      "confidence": "HIGH",
+      "description": "Bitcoin-S&P 500 correlation. Post-ETF structural break: from ~0 to 0.87-0.92. High correlation = BTC is a risk asset, not safe haven.",
+      "data_source": {
+        "type": "calculated",
+        "provider": "Calculate from BTC daily returns + SPX daily returns",
+        "inputs": ["BTC/USDT daily close (Binance)", "S&P 500 daily close (Yahoo Finance: ^GSPC)"],
+        "frequency": "Daily (compute 90d rolling)"
+      },
+      "thresholds": {
+        "risk_on_regime": {
+          "condition": "btc_spx_90d_corr > 0.85",
+          "signal_direction": "neutral_for_btc",
+          "note": "BTC trades as pure risk asset; monitor SPX for direction"
+        },
+        "divergence_opportunity": {
+          "condition": "btc_spx_90d_corr < 0.3",
+          "signal_direction": "variable",
+          "note": "BTC decoupling from equities = potential independent rally"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P2_MEDIUM",
+      "integration_notes": "Calculated signal. Need SPX data feed. Primarily used for regime detection, not direct trade signal.",
+      "new_scoring_factor": {
+        "name": "btc_spx_correlation",
+        "weight_suggestion": "Regime modifier: when corr > 0.85, apply SPX trend as additional filter",
+        "scoring_logic": {
+          "risk_on_aligned": "High corr + SPX trending up → neutral (follow market)",
+          "risk_on_diverge": "High corr + SPX trending down → bearish modifier",
+          "uncorrelated": "Low corr → BTC-independent regime"
+        }
+      }
+    },
+    {
+      "id": "SIG-014",
+      "name": "Put/Call Ratio (BTC Options)",
+      "dimension": "sentiment",
+      "report_weight": "15%",
+      "confidence": "MEDIUM",
+      "description": "BTC options put/call ratio. High P/C ratio = excess hedging = contrarian bullish.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Deribit / Laevitas / Coinglass",
+        "endpoint": "Deribit: /public/get_book_summary_by_currency or Laevitas API",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "contrarian_bullish": {
+          "condition": "put_call_ratio > 1.5",
+          "signal_direction": "bullish",
+          "historical_accuracy": "~72% win rate, ~48% avg return",
+          "note": "Needs confirmation with implied volatility term structure"
+        },
+        "contrarian_bearish": {
+          "condition": "put_call_ratio < 0.5",
+          "signal_direction": "bearish",
+          "note": "Excessive call buying = complacency"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P2_MEDIUM",
+      "integration_notes": "Requires Deribit or Laevitas API. BTC-specific options data. Good for sentiment confirmation.",
+      "new_scoring_factor": {
+        "name": "put_call_ratio",
+        "weight_suggestion": "3% (auxiliary sentiment signal)",
+        "scoring_logic": {
+          "score_80_100": "P/C > 1.5 (extreme hedging)",
+          "score_60_80": "P/C 1.0-1.5 (elevated hedging)",
+          "score_40_60": "P/C 0.7-1.0 (neutral)",
+          "score_20_40": "P/C 0.5-0.7 (mild optimism)",
+          "score_0_20": "P/C < 0.5 (extreme optimism)"
+        }
+      }
+    },
+    {
+      "id": "SIG-015",
+      "name": "Long/Short Ratio (Perpetual Futures)",
+      "dimension": "sentiment",
+      "report_weight": "15%",
+      "confidence": "MEDIUM",
+      "description": "Ratio of long to short positions in perpetual futures. Extreme short crowding = contrarian bullish.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Binance Futures / Coinglass / Sentiment",
+        "endpoint": "Binance: /futures/data/globalLongShortAccountRatio or Coinglass API",
+        "frequency": "Hourly/Daily"
+      },
+      "thresholds": {
+        "contrarian_bullish": {
+          "condition": "long_short_ratio < 0.5",
+          "signal_direction": "bullish",
+          "historical_accuracy": "~68% win rate, ~35% avg return",
+          "example": "July 2025: L/S < 0.5 preceded +20% rally"
+        },
+        "contrarian_bearish": {
+          "condition": "long_short_ratio > 2.0",
+          "signal_direction": "bearish",
+          "note": "Excessive long crowding"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P2_MEDIUM",
+      "integration_notes": "Binance public endpoint, no auth needed. Per-symbol ratio available.",
+      "new_scoring_factor": {
+        "name": "long_short_ratio",
+        "weight_suggestion": "4% (per-symbol sentiment modifier)",
+        "scoring_logic": {
+          "score_80_100": "L/S < 0.5 (extreme short crowding)",
+          "score_60_80": "L/S 0.5-0.8",
+          "score_40_60": "L/S 0.8-1.2 (neutral)",
+          "score_20_40": "L/S 1.2-2.0",
+          "score_0_20": "L/S > 2.0 (long crowding)"
+        }
+      }
+    },
+    {
+      "id": "SIG-016",
+      "name": "Multi-Dimension Resonance Score",
+      "dimension": "composite",
+      "report_weight": "Meta-factor",
+      "confidence": "HIGH",
+      "description": "Count of dimensions showing same-direction signal. 4+ bullish = 72% rally probability. 5+ = 85%. 6 = 92%.",
+      "data_source": {
+        "type": "calculated",
+        "description": "Aggregate from all individual dimension scores"
+      },
+      "thresholds": {
+        "extreme_bullish": {
+          "condition": "6 dimensions bullish",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "92%, avg 90d return +124.6%, max drawdown 3.8%"
+        },
+        "strong_bullish": {
+          "condition": "5 dimensions bullish",
+          "signal_direction": "strongly_bullish",
+          "historical_accuracy": "85%, avg 90d return +67.8%, max drawdown 5.1%"
+        },
+        "bullish": {
+          "condition": "4 dimensions bullish",
+          "signal_direction": "bullish",
+          "historical_accuracy": "72%, avg 90d return +41.3%, max drawdown 7.2%"
+        },
+        "neutral": {
+          "condition": "2-3 dimensions bullish",
+          "signal_direction": "neutral",
+          "note": "3 dimensions = 52%, 2 dimensions = 35% rally probability"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P0_CRITICAL",
+      "integration_notes": "This is the TOP-LEVEL aggregation of the entire framework. Requires all other signals to be implemented first. This is the ultimate scoring system described in Chapter 8 of the report.",
+      "scoring_design": {
+        "dimensions": {
+          "on_chain": {
+            "weight": 0.25,
+            "signals": ["SIG-001 MVRV", "SIG-002 NUPL", "SIG-003 Exchange Reserves", "SIG-004 Hash Ribbon", "SIG-005 Puell Multiple"],
+            "score_to_direction": {"score > 65": "bullish", "score 35-65": "neutral", "score < 35": "bearish"}
+          },
+          "liquidity": {
+            "weight": 0.25,
+            "signals": ["SIG-006 Stablecoin Supply", "SIG-007 SSR Oscillator", "SIG-008 ETF Flows"],
+            "score_to_direction": {"score > 65": "bullish", "score 35-65": "neutral", "score < 35": "bearish"}
+          },
+          "institutional": {
+            "weight": 0.20,
+            "signals": ["SIG-008 ETF Flows"],
+            "score_to_direction": {"etf_5d_avg > $200M": "bullish", "mixed": "neutral", "etf_5d_avg < -$200M": "bearish"}
+          },
+          "sentiment": {
+            "weight": 0.15,
+            "signals": ["SIG-009 CFGI Persistence", "SIG-010 Funding Rate", "SIG-014 Put/Call", "SIG-015 L/S Ratio"],
+            "score_to_direction": {"score > 65": "bullish (contrarian)", "score 35-65": "neutral", "score < 35": "bearish (overheated)"}
+          },
+          "technical": {
+            "weight": 0.10,
+            "signals": ["Current 12-factor scanner scores"],
+            "score_to_direction": {"composite > 65": "bullish", "35-65": "neutral", "< 35": "bearish"}
+          },
+          "regulatory": {
+            "weight": 0.05,
+            "signals": ["News-based regulatory event detection"],
+            "score_to_direction": {"major_positive_event": "bullish", "neutral": "neutral", "major_negative_event": "bearish"}
+          }
+        },
+        "composite_formula": "resonance_score = sum(1 for d in dimensions if d.direction == 'bullish')",
+        "action_thresholds": {
+          "resonance >= 4": "High conviction LONG opportunity",
+          "resonance >= 5": "Maximum conviction, increase position size",
+          "resonance <= 1": "Consider reducing exposure or hedging",
+          "resonance == 0": "Defensive posture"
+        }
+      }
+    },
+    {
+      "id": "SIG-017",
+      "name": "Regulatory Event Detection",
+      "dimension": "regulatory",
+      "report_weight": "5%",
+      "confidence": "MEDIUM",
+      "description": "Asymmetric impact of regulatory events: positive +1.52% avg, negative -3.12% avg. Bans can cause -24% median.",
+      "data_source": {
+        "type": "news_nlp",
+        "provider": "CryptoCompare News API (already implemented) + LLM classification",
+        "existing_module": "src/data_feed_news.py",
+        "enhancement": "Add NLP classification for regulatory keywords (SEC, CFTC, ban, approval, GENIUS, CLARITY, ETF decision)"
+      },
+      "thresholds": {
+        "negative_regulatory_shock": {
+          "condition": "major_negative_regulatory_event_detected",
+          "signal_direction": "strongly_bearish",
+          "impact": "-3.12% avg (24h), bans: -24% median, -70% extreme (China 2021)",
+          "persistence": "~1 month for enforcement actions"
+        },
+        "positive_regulatory_signal": {
+          "condition": "major_positive_regulatory_event_detected",
+          "signal_direction": "mildly_bullish",
+          "impact": "+1.52% avg (24h), fades within 3 days",
+          "note": "Structural positives (GENIUS Act, CLARITY Act) have longer-term impact"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P2_MEDIUM",
+      "integration_notes": "Enhance existing news feed with regulatory classification. Use keyword detection or LLM classification. Primarily risk management input.",
+      "new_scoring_factor": {
+        "name": "regulatory_sentiment",
+        "weight_suggestion": "Market-wide risk modifier: -10 when major negative event detected",
+        "scoring_logic": {
+          "major_negative": "Ban/major enforcement → -10 market-wide modifier",
+          "mild_negative": "SEC action, delisting → -3 modifier",
+          "neutral": "No regulatory news → 0",
+          "mild_positive": "Framework progress → +2 modifier",
+          "major_positive": "ETF approval, legislation signed → +5 modifier"
+        }
+      }
+    },
+    {
+      "id": "SIG-018",
+      "name": "BTC-Gold 90d Correlation",
+      "dimension": "cross_market",
+      "report_weight": "10%",
+      "confidence": "MEDIUM",
+      "description": "BTC-Gold correlation exceeded 92% in 2025 with ~40 day lag. Indicates BTC is being re-rated as digital gold.",
+      "data_source": {
+        "type": "calculated",
+        "provider": "Calculate from BTC + Gold (GLD or XAUUSD) daily returns",
+        "inputs": ["BTC/USDT daily close", "Gold daily close (Yahoo: GC=F or GLD)"],
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "digital_gold_narrative": {
+          "condition": "btc_gold_90d_corr > 0.85",
+          "signal_direction": "bullish_for_btc",
+          "note": "Institutional re-rating of BTC as macro asset"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P3_LOW",
+      "integration_notes": "Auxiliary macro signal. Primarily for regime understanding. Can share implementation with SIG-013.",
+      "new_scoring_factor": {
+        "name": "btc_gold_correlation",
+        "weight_suggestion": "Regime context only (no direct scoring weight)",
+        "scoring_logic": "Informational: high gold correlation = institutional macro asset regime"
+      }
+    },
+    {
+      "id": "SIG-019",
+      "name": "Whale Accumulation Signal",
+      "dimension": "on_chain",
+      "report_weight": "25%",
+      "confidence": "HIGH",
+      "description": "Large wallet (>100 BTC and >1000 BTC) accumulation patterns. 270k BTC accumulated in 30 days during March 2026 extreme fear.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "CryptoQuant / Glassnode / Whale Alert",
+        "endpoint": "CryptoQuant: Exchange Whale Ratio or Glassnode: Supply Distribution",
+        "frequency": "Daily"
+      },
+      "thresholds": {
+        "massive_accumulation": {
+          "condition": "whale_net_accumulation_30d > 200_000 BTC",
+          "signal_direction": "strongly_bullish",
+          "note": "13-year record monthly net buying in March 2026"
+        },
+        "accumulation": {
+          "condition": "wallets_with_100plus_btc_trend_up AND exchange_whale_ratio < 0.5",
+          "signal_direction": "bullish",
+          "note": "Wallets with >100 BTC exceeded 20,000 for first time"
+        },
+        "distribution_warning": {
+          "condition": "whale_exchange_deposits_spike > 2x_30d_avg",
+          "signal_direction": "bearish",
+          "note": "Large deposits to exchange = potential sell pressure"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P1_HIGH",
+      "integration_notes": "BTC-global signal. Requires CryptoQuant API. Pair with exchange reserves for supply-side picture.",
+      "new_scoring_factor": {
+        "name": "whale_accumulation",
+        "weight_suggestion": "Market-wide modifier: +5 when accumulation phase confirmed",
+        "scoring_logic": {
+          "strong_accumulation": "Whale net buying > 100k BTC/30d → +5 modifier",
+          "accumulation": "Whale balance trending up → +3 modifier",
+          "distribution": "Whale exchange deposits spiking → -5 modifier"
+        }
+      }
+    },
+    {
+      "id": "SIG-020",
+      "name": "Google Trends 'Crypto' Search Volume",
+      "dimension": "sentiment",
+      "report_weight": "15%",
+      "confidence": "LOW",
+      "description": "Google search interest for 'crypto'. Extremely low values (<25/100) indicate retail capitulation = contrarian signal.",
+      "data_source": {
+        "type": "external_api",
+        "provider": "Google Trends (pytrends library) / Google Trends API",
+        "frequency": "Weekly",
+        "note": "Not a leading indicator; synchronous or lagging. Only useful at extremes."
+      },
+      "thresholds": {
+        "retail_capitulation": {
+          "condition": "google_trends_crypto < 25",
+          "signal_direction": "bullish (contrarian)",
+          "note": "Retail interest near zero = 'last retail has left' = bottom conditions"
+        },
+        "retail_euphoria": {
+          "condition": "google_trends_spike > 80 AND rising",
+          "signal_direction": "bearish (contrarian)",
+          "note": "Retail FOMO typically follows price, marking late-cycle"
+        }
+      },
+      "implementation_status": "NOT_IMPLEMENTED",
+      "priority": "P3_LOW",
+      "integration_notes": "Low prediction value per report. Use only as auxiliary confirmation. Google Trends API has rate limits.",
+      "new_scoring_factor": {
+        "name": "google_trends",
+        "weight_suggestion": "1% (auxiliary confirmation only)",
+        "scoring_logic": {
+          "capitulation": "Trend < 25 → +2 modifier (mild contrarian)",
+          "normal": "25-75 → 0",
+          "euphoria": "Trend > 80 rising → -2 modifier"
+        }
+      }
+    }
+  ],
+  "integration_roadmap": {
+    "phase_1_critical": {
+      "description": "P0 signals that dramatically improve the scanner's predictive power",
+      "signals": ["SIG-001 (MVRV)", "SIG-002 (NUPL)", "SIG-006 (Stablecoin Supply)", "SIG-009 (CFGI Persistence)", "SIG-010 (Funding 30d)"],
+      "estimated_effort": "2-3 weeks",
+      "new_modules_needed": [
+        "src/data_feed_mvrv.py (MVRV + NUPL from Glassnode/CryptoQuant)",
+        "src/data_feed_stablecoin.py (Stablecoin supply + SSR)",
+        "src/data_feed_etf.py (ETF daily flows)",
+        "src/agents/onchain_valuation_agent.py (MVRV+NUPL+Puell+HashRibbon scoring)",
+        "Modify src/agents/market_sentiment_agent.py (add persistence tracking)",
+        "Modify src/agents/sentiment_agent.py (add 30d funding avg)"
+      ]
+    },
+    "phase_2_structural": {
+      "description": "P1 signals adding institutional and supply-side data",
+      "signals": ["SIG-003 (Exchange Reserves)", "SIG-004 (Hash Ribbon)", "SIG-005 (Puell Multiple)", "SIG-007 (SSR)", "SIG-008 (ETF Flows)", "SIG-012 (DXY)", "SIG-019 (Whale Accumulation)"],
+      "estimated_effort": "2-3 weeks",
+      "new_modules_needed": [
+        "src/data_feed_exchange_reserves.py",
+        "src/data_feed_hash_ribbon.py",
+        "src/data_feed_etf_flows.py",
+        "src/data_feed_dxy.py",
+        "src/data_feed_whale.py"
+      ]
+    },
+    "phase_3_macro_composite": {
+      "description": "P2 signals and the multi-dimension resonance framework",
+      "signals": ["SIG-011 (M2)", "SIG-013 (BTC-SPX corr)", "SIG-014 (Put/Call)", "SIG-015 (L/S Ratio)", "SIG-016 (Resonance)", "SIG-017 (Regulatory)", "SIG-018 (BTC-Gold)", "SIG-020 (Google Trends)"],
+      "estimated_effort": "3-4 weeks",
+      "new_modules_needed": [
+        "src/data_feed_macro.py (M2 + DXY)",
+        "src/data_feed_options.py (Put/Call + IV)",
+        "src/data_feed_correlation.py (BTC-SPX-Gold rolling corr)",
+        "src/dimension_scorer.py (6-dimension resonance engine)",
+        "Modify scan_orchestrator.py (integrate dimension scoring)"
+      ]
+    },
+    "scanner_weight_rebalance": {
+      "current_weights": {
+        "technical": 15, "trend": 15, "volume": 10, "sentiment": 8,
+        "price_action": 8, "obv_div": 8, "consolidation": 8,
+        "bb_squeeze": 4, "rsi_div": 4, "onchain": 10,
+        "market_sentiment": 5, "orderbook": 5
+      },
+      "proposed_weights_with_new_signals": {
+        "technical": 8,
+        "trend": 12,
+        "volume": 8,
+        "funding_sentiment": 10,
+        "price_action": 5,
+        "obv_div": 5,
+        "consolidation": 5,
+        "bb_squeeze": 3,
+        "rsi_div": 2,
+        "on_chain_valuation": 15,
+        "liquidity_stablecoin": 10,
+        "market_sentiment_cfgi": 5,
+        "orderbook": 4,
+        "macro_modifier": 8,
+        "institutional_etf": 7
+      },
+      "note": "The report recommends on_chain=25% + liquidity=25% + macro=20% + sentiment=15% + technical=10% + regulatory=5% at the macro framework level, but per-symbol scanning needs more granular factors."
+    }
+  }
+}

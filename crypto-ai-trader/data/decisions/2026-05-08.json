@@ -1,0 +1,25 @@
+{
+  "date": "2026-05-08",
+  "decisions": [
+    {
+      "timestamp": "2026-05-08T09:10:48.534813",
+      "type": "decision",
+      "symbol": "TEST",
+      "decision": "BUY",
+      "score": 80,
+      "bear_result": {
+        "bear_score": 65.0,
+        "veto": false,
+        "reasons": [
+          "RSI overbought",
+          "Funding crowded"
+        ],
+        "risk_factors": [
+          "high correlation"
+        ],
+        "confidence": "HIGH"
+      },
+      "research": "strong momentum"
+    }
+  ]
+}

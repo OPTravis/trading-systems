@@ -1,0 +1,21 @@
+{
+  "date": "2026-05-07",
+  "decisions": [
+    {
+      "timestamp": "2026-05-07T21:16:00.965587",
+      "type": "trade",
+      "symbol": "BTCUSDT",
+      "side": "BUY",
+      "price": 82000,
+      "qty": 0.001,
+      "score": 75.5,
+      "reasons": [
+        "RSI oversold"
+      ],
+      "signals": [
+        "RSI_25"
+      ],
+      "strategy": "trend"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+# Strategy Configurations - Optimized for extreme fear market
+# Grid and Trend disabled during extreme fear (F&G < 25)
+# Only DCA and RSI active for mean-reversion buying
+# SPOT ONLY — all strategies are spot trading, no futures/leverage
+
+strategies:
+  grid:
+    name: "Grid Trading"
+    enabled: false  # Disabled in extreme fear - causes cascading losses
+    params:
+      grid_levels: 8
+      price_range_pct: 8.0
+      order_size_pct: 8
+      stop_loss_pct: 5.0
+
+  dca:
+    name: "Dollar Cost Averaging"
+    enabled: true   # Best strategy for fear markets
+    params:
+      interval_hours: 12
+      order_size_pct: 8
+      dip_threshold_pct: -3.0   # More sensitive, buy smaller dips
+      max_dca_rounds: 8         # More rounds allowed
+
+  trend:
+    name: "Trend Following"
+    enabled: false  # Disabled - too many false signals in fear market
+    params:
+      fast_ma: 9
+      slow_ma: 21
+      volume_threshold: 1.5
+      stop_loss_pct: 5.0
+      take_profit_pct: 10.0
+
+  rsi_reversion:
+    name: "RSI Mean Reversion"
+    enabled: true   # Good for fear market - buy oversold bounces
+    params:
+      rsi_oversold: 35    # Slightly higher threshold to catch more signals
+      rsi_overbought: 65
+      stop_loss_pct: 5.0
+      take_profit_pct: 8.0
+
+  bollinger:
+    name: "Bollinger Band Reversion"  # Changed from Breakout to Reversion
+    enabled: true
+    params:
+      period: 20
+      std_dev: 2.0
+      volume_threshold: 1.5
+      stop_loss_pct: 5.0
+      take_profit_pct: 8.0
+
+  vwap:
+    name: "VWAP Distribution"
+    enabled: true
+    params:
+      vwap_threshold_pct: -2.0   # More sensitive entry
+      order_size_pct: 8
+      stop_loss_pct: 5.0
+      take_profit_pct: 8.0

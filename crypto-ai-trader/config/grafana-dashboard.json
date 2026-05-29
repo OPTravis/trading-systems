@@ -1,0 +1,92 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Crypto Trader Dashboard",
+    "tags": ["crypto", "trading"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "panels": [
+      {
+        "id": 1, "title": "Portfolio Value (USDT)", "type": "gauge",
+        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+        "targets": [{ "expr": "portfolio_total_value_usdt", "legendFormat": "Total" }],
+        "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+      },
+      {
+        "id": 2, "title": "Cash Balance", "type": "stat",
+        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+        "targets": [{ "expr": "portfolio_cash_usdt", "legendFormat": "Cash" }],
+        "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+      },
+      {
+        "id": 3, "title": "Open Positions", "type": "stat",
+        "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+        "targets": [{ "expr": "portfolio_positions_count", "legendFormat": "Count" }]
+      },
+      {
+        "id": 4, "title": "Position PnL %", "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+        "targets": [{ "expr": "position_pnl_pct", "legendFormat": "{{symbol}}" }],
+        "fieldConfig": { "defaults": { "unit": "percent" } }
+      },
+      {
+        "id": 5, "title": "Drawdown %", "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+        "targets": [{ "expr": "drawdown_pct", "legendFormat": "Drawdown" }],
+        "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [
+          { "color": "green", "value": null },
+          { "color": "yellow", "value": 3 },
+          { "color": "orange", "value": 5 },
+          { "color": "red", "value": 8 }
+        ] } } }
+      },
+      {
+        "id": 6, "title": "Daily Loss Tier", "type": "stat",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+        "targets": [{ "expr": "daily_loss_tier", "legendFormat": "Tier" }],
+        "fieldConfig": { "defaults": { "thresholds": { "steps": [
+          { "color": "green", "value": null },
+          { "color": "yellow", "value": 1 },
+          { "color": "orange", "value": 2 },
+          { "color": "red", "value": 3 }
+        ] } } }
+      },
+      {
+        "id": 7, "title": "HMM Regime", "type": "stat",
+        "gridPos": { "h": 6, "w": 8, "x": 0, "y": 22 },
+        "targets": [{ "expr": "hmm_regime", "legendFormat": "{{regime}}" }]
+      },
+      {
+        "id": 8, "title": "Circuit Breaker", "type": "stat",
+        "gridPos": { "h": 6, "w": 8, "x": 8, "y": 22 },
+        "targets": [{ "expr": "circuit_breaker_tripped", "legendFormat": "Tripped" }],
+        "fieldConfig": { "defaults": { "thresholds": { "steps": [
+          { "color": "green", "value": null },
+          { "color": "red", "value": 1 }
+        ] } } }
+      },
+      {
+        "id": 9, "title": "GARCH Volatility", "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+        "targets": [{ "expr": "garch_volatility", "legendFormat": "{{symbol}}" }]
+      },
+      {
+        "id": 10, "title": "Bandit Recommendation", "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+        "targets": [{ "expr": "bandit_recommendation", "legendFormat": "{{context}}" }]
+      },
+      {
+        "id": 11, "title": "Trades Total", "type": "stat",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 36 },
+        "targets": [{ "expr": "trades_total", "legendFormat": "{{side}}" }]
+      },
+      {
+        "id": 12, "title": "Trade Latency", "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 36 },
+        "targets": [{ "expr": "rate(trade_latency_seconds_bucket[5m])", "legendFormat": "{{le}}" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      }
+    ]
+  }
+}

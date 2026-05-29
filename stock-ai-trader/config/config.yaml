@@ -1,0 +1,98 @@
+# stock-ai-trader 主配置文件
+# 全球股票自動交易系統
+
+system:
+  name: "stock-ai-trader"
+  version: "0.1.0"
+  mode: "paper"  # paper | live
+  log_level: "INFO"
+
+# 數據源配置
+data_sources:
+  market_data:
+    primary: ibkr          # IBKR 實時行情（需要 market data 訂閱 ~$14.50/月）
+    fallback: alpaca       # Alpaca（免費 IEX 數據，延遲）
+    historical: yfinance   # 歷史數據用 Yahoo（免費）
+
+  fundamental:
+    primary: ibkr          # IBKR fundamental data
+    fallback: financialmodelingprep  # FMP API（免費層 250 calls/day）
+
+  news:
+    primary: jina          # Jina Reader
+    secondary: newsapi     # NewsAPI（免費 100 requests/day）
+    financial: sec_edgar   # SEC EDGAR（免費）
+
+  sentiment:
+    primary: finbert       # FinBERT（本地部署，免費）
+    secondary: deepseek    # DeepSeek LLM 分析
+    tertiary: xiaomi       # Xiaomi mimo-v2.5-pro
+
+  earnings:
+    primary: ibkr
+    fallback: alphavantage  # Alpha Vantage（免費 API key）
+
+  macro:
+    vix: yfinance
+    yield_curve: fred      # FRED API（免費）
+    credit_spread: yfinance
+
+# API Keys（從 .env 讀取）
+api_keys:
+  IBKR_USER: ${IBKR_USER}
+  IBKR_PASS: ${IBKR_PASS}
+  ALPHAVANTAGE_KEY: ${ALPHAVANTAGE_KEY}
+  NEWSAPI_KEY: ${NEWSAPI_KEY}
+  FMP_KEY: ${FMP_KEY}
+  FRED_KEY: ${FRED_KEY}
+  ALPACA_KEY: ${ALPACA_KEY}
+  ALPACA_SECRET: ${ALPACA_SECRET}
+
+# IBKR 連接配置
+ibkr:
+  host: "127.0.0.1"
+  gateway:
+    paper_port: 4001
+    live_port: 4002
+  client_id: 1
+  auto_reconnect: true
+  reconnect_backoff: [1, 2, 5, 10, 30, 60]  # 秒
+  max_reconnect_attempts: 10
+  request_rate_limit: 50  # 條/秒
+  active_streams_limit: 100
+
+# Alpaca 備用經紀商
+alpaca:
+  base_url: "https://paper-api.alpaca.markets"  # paper | live
+
+# LLM 配置
+llm:
+  primary:
+    provider: "deepseek"
+    model: "deepseek-chat"
+    temperature: 0.3
+    max_tokens: 4096
+  secondary:
+    provider: "xiaomi"
+    model: "mimo-v2.5-pro"
+    temperature: 0.3
+    max_tokens: 4096
+
+# 數據庫配置
+database:
+  state_db: "data/state.db"  # SQLite WAL mode
+  features_db: "data/features/"  # DuckDB for OHLCV analysis
+
+# 通知配置
+notifications:
+  feishu:
+    enabled: true
+    # webhook 從 .env 讀取
+  telegram:
+    enabled: false
+
+# 掃描配置
+scanner:
+  max_concurrent: 10
+  batch_size: 50
+  signal_threshold: 0.6  # 綜合評分閾值

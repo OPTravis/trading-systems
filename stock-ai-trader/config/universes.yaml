@@ -1,0 +1,513 @@
+# 股票池定義 — 全球市場
+
+universes:
+  # ──────────────────────────────────────────────
+  # 全球混合（默認池 — 跨市場掃描）
+  # ──────────────────────────────────────────────
+  global:
+    name: "全球股票"
+    description: "跨市場混合池：US + HK + JP + UK + EU + CN"
+    source: "static"
+    refresh_frequency: "monthly"
+    filters:
+      min_market_cap: 10000000000    # $10B
+      min_avg_volume: 500000
+      exclude_st: true
+    sectors:
+      technology:
+        - AAPL      # US
+        - MSFT
+        - GOOGL
+        - NVDA
+        - META
+        - TSM       # ADR (TSMC)
+        - 0700.HK   # HK (Tencent)
+        - 9988.HK   # HK (Alibaba)
+        - 9618.HK   # HK (JD)
+        - 7203.T    # Japan (Toyota)
+        - 6758.T    # Japan (Sony)
+        - SAP.DE    # EU (SAP)
+        - ASML.AS   # EU (ASML)
+      financials:
+        - JPM
+        - V
+        - MA
+        - BAC
+        - GS
+        - 0005.HK   # HSBC
+        - 1398.HK   # ICBC
+        - 3988.HK   # Bank of China
+        - 8306.T    # Nomura
+        - HSBA.L    # UK (HSBC)
+        - BNP.PA    # EU (BNP Paribas)
+      consumer:
+        - AMZN
+        - TSLA
+        - HD
+        - MCD
+        - NKE
+        - 9988.HK   # Alibaba
+        - 1810.HK   # Xiaomi
+        - 2382.HK   # Sunny Optical
+        - MC.PA     # EU (LVMH)
+      healthcare:
+        - UNH
+        - LLY
+        - JNJ
+        - ABBV
+        - MRK
+        - 2269.HK   # WuXi Bio
+        - 4502.T    # Takeda
+        - RO.SW     # EU (Roche)
+        - NOVN.SW   # EU (Novartis)
+        - AZN.L     # UK (AstraZeneca)
+      industrials:
+        - CAT
+        - GE
+        - HON
+        - BA
+        - DE
+        - 1928.HK   # Sands China
+        - 6301.T    # Komatsu
+        - SIE.DE    # EU (Siemens)
+        - AIR.PA    # EU (Airbus)
+        - RR.L      # UK (Rolls-Royce)
+      energy:
+        - XOM
+        - CVX
+        - COP
+        - 0883.HK   # CNOOC
+        - 0857.HK   # PetroChina HK
+        - SHEL.L    # UK (Shell)
+        - BP.L      # UK (BP)
+        - TTE.PA    # EU (TotalEnergies)
+      consumer_staples:
+        - PG
+        - KO
+        - PEP
+        - COST
+        - 0291.HK   # China Resources Beer
+        - 2319.HK   # Mengniu Dairy
+        - NESN.SW   # EU (Nestlé)
+        - DGE.L     # UK (Diageo)
+      materials_mining:
+        - LIN
+        - FCX
+        - 2600.HK   # Aluminum Corp of China
+        - 3323.HK   # CNBM
+        - RIO.L     # UK (Rio Tinto)
+        - BHP.AX    # Australia (BHP)
+        - GLEN.L    # UK (Glencore)
+
+  # ──────────────────────────────────────────────
+  # 美股
+  # ──────────────────────────────────────────────
+  sp500:
+    name: "S&P 500"
+    description: "標普 500 成分股"
+    source: "static"
+    refresh_frequency: "monthly"
+    filters:
+      min_market_cap: 10000000000
+      min_avg_volume: 1000000
+      exclude_st: true
+      exclude_adr: false
+    sectors:
+      technology:
+        - AAPL
+        - MSFT
+        - GOOGL
+        - AMZN
+        - NVDA
+        - META
+        - TSLA
+        - AVGO
+        - ORCL
+        - CRM
+        - AMD
+        - INTC
+        - CSCO
+        - ADBE
+        - QCOM
+      healthcare:
+        - UNH
+        - JNJ
+        - LLY
+        - PFE
+        - ABT
+        - MRK
+        - TMO
+        - ABBV
+        - DHR
+        - BMY
+      financials:
+        - BRK.B
+        - JPM
+        - V
+        - MA
+        - BAC
+        - WFC
+        - GS
+        - MS
+        - BLK
+        - SCHW
+      consumer_discretionary:
+        - AMZN
+        - TSLA
+        - HD
+        - MCD
+        - NKE
+        - SBUX
+        - LOW
+        - TJX
+        - BKNG
+        - CMG
+      industrials:
+        - GE
+        - CAT
+        - HON
+        - UNP
+        - RTX
+        - BA
+        - DE
+        - LMT
+        - MMM
+        - UPS
+      energy:
+        - XOM
+        - CVX
+        - COP
+        - SLB
+        - EOG
+        - MPC
+        - PSX
+        - VLO
+        - OXY
+        - HAL
+      consumer_staples:
+        - PG
+        - KO
+        - PEP
+        - COST
+        - WMT
+        - PM
+        - MO
+        - CL
+        - KHC
+        - GIS
+      utilities:
+        - NEE
+        - DUK
+        - SO
+        - D
+        - AEP
+        - SRE
+        - EXC
+        - XEL
+        - WEC
+        - ES
+      real_estate:
+        - AMT
+        - PLD
+        - CCI
+        - EQIX
+        - PSA
+        - O
+        - SPG
+        - WELL
+        - DLR
+        - AVB
+      communication:
+        - GOOG
+        - META
+        - NFLX
+        - DIS
+        - CMCSA
+        - T
+        - VZ
+        - TMUS
+        - CHTR
+        - EA
+      materials:
+        - LIN
+        - APD
+        - SHW
+        - ECL
+        - FCX
+        - NEM
+        - NUE
+        - VMC
+        - MLM
+        - DD
+
+  # ──────────────────────────────────────────────
+  # 港股
+  # ──────────────────────────────────────────────
+  hang_seng:
+    name: "恒生指數"
+    description: "港股主要成分股"
+    source: "static"
+    currency: "HKD"
+    market: "HK"
+    filters:
+      min_market_cap: 10000000000   # ~HKD 80B
+      min_avg_volume: 5000000
+    sectors:
+      technology:
+        - 0700.HK   # 騰訊
+        - 9988.HK   # 阿里巴巴
+        - 9618.HK   # 京東
+        - 3690.HK   # 美團
+        - 9888.HK   # 百度
+        - 1810.HK   # 小米
+        - 2382.HK   # 舜宇光學
+        - 0981.HK   # 中芯國際
+        - 0268.HK   # 金蝶國際
+        - 0285.HK   # 比亞迪電子
+      financials:
+        - 0005.HK   # 匯豐控股
+        - 1398.HK   # 工商銀行
+        - 3988.HK   # 中國銀行
+        - 0939.HK   # 建設銀行
+        - 1288.HK   # 農業銀行
+        - 3968.HK   # 招商銀行
+        - 2318.HK   # 中國平安
+        - 1299.HK   # 友邦保險
+        - 2628.HK   # 中國人壽
+        - 0388.HK   # 香港交易所
+      consumer:
+        - 9988.HK   # 阿里巴巴
+        - 3690.HK   # 美團
+        - 1810.HK   # 小米
+        - 2020.HK   # 安踏體育
+        - 6098.HK   # 碧桂園服務
+        - 0027.HK   # 銀河娛樂
+        - 1928.HK   # 金沙中國
+        - 0291.HK   # 華潤啤酒
+        - 2319.HK   # 蒙牛乳業
+        - 1044.HK   # 恒安國際
+      healthcare:
+        - 2269.HK   # 藥明生物
+        - 1177.HK   # 中國生物製藥
+        - 2196.HK   # 復星醫藥
+        - 6969.HK   # 思摩爾
+        - 0241.HK   # 阿里健康
+      energy_industrials:
+        - 0883.HK   # 中海油
+        - 0857.HK   # 中石油
+        - 0386.HK   # 中石化
+        - 2600.HK   # 中國鋁業
+        - 0669.HK   # 創科實業
+        - 0066.HK   # 港鐵公司
+        - 1038.HK   # 長江基建
+      telecom_utility:
+        - 0941.HK   # 中國移動
+        - 0728.HK   # 中國電信
+        - 0762.HK   # 中國聯通
+        - 0002.HK   # 中電控股
+        - 0003.HK   # 中華煤氣
+        - 0006.HK   # 電能實業
+      reit:
+        - 0016.HK   # 新鴻基地產
+        - 0001.HK   # 長和
+        - 0012.HK   # 恒基地產
+        - 0688.HK   # 中海外
+        - 2007.HK   # 碧桂園
+
+  # ──────────────────────────────────────────────
+  # A股
+  # ──────────────────────────────────────────────
+  csi300:
+    name: "滬深 300"
+    description: "A股主要成分股（滬深港通標的）"
+    source: "static"
+    currency: "CNY"
+    market: "CN"
+    filters:
+      min_market_cap: 30000000000   # ~CNY 200B
+      min_avg_volume: 10000000
+    sectors:
+      consumer:
+        - 600519.SS  # 貴州茅台
+        - 000858.SZ  # 五糧液
+        - 000568.SZ  # 瀘州老窖
+        - 600809.SS  # 山西汾酒
+        - 002304.SZ  # 洋河股份
+        - 603259.SS  # 藥明康德 (listed on SS)
+        - 300750.SZ  # 寧德時代
+        - 002594.SZ  # 比亞迪
+        - 601888.SS  # 中國中免
+        - 600887.SS  # 伊利股份
+      financials:
+        - 601318.SS  # 中國平安
+        - 600036.SS  # 招商銀行
+        - 601166.SS  # 興業銀行
+        - 600519.SS  # (duplicate removed)
+        - 601398.SS  # 工商銀行
+        - 601288.SS  # 農業銀行
+        - 601939.SS  # 建設銀行
+        - 600030.SS  # 中信證券
+        - 601688.SS  # 華泰證券
+      technology:
+        - 002475.SZ  # 立訊精密
+        - 300059.SZ  # 東方財富
+        - 002415.SZ  # 海康威視
+        - 600588.SS  # 用友網絡
+        - 002230.SZ  # 科大訊飛
+        - 688981.SS  # 中芯國際
+        - 002049.SZ  # 紫光國微
+      industrials_materials:
+        - 601012.SS  # 隆基綠能
+        - 600900.SS  # 長江電力
+        - 600031.SS  # 三一重工
+        - 000333.SZ  # 美的集團
+        - 000651.SZ  # 格力電器
+        - 601899.SS  # 紫金礦業
+        - 002466.SZ  # 天齊鋰業
+      healthcare:
+        - 300760.SZ  # 邁瑞醫療
+        - 600276.SS  # 恒瑞醫藥
+        - 000661.SZ  # 長春高新
+        - 300122.SZ  # 智飛生物
+      energy:
+        - 601857.SS  # 中國石油
+        - 600028.SS  # 中國石化
+        - 600886.SS  # 國投電力
+        - 601985.SS  # 中國核電
+      telecom:
+        - 600941.SS  # 中國移動
+        - 601728.SS  # 中國電信
+        - 600050.SS  # 中國聯通
+
+  # ──────────────────────────────────────────────
+  # 日股
+  # ──────────────────────────────────────────────
+  nikkei:
+    name: "日經 225"
+    description: "日本主要成分股"
+    source: "static"
+    currency: "JPY"
+    market: "JP"
+    filters:
+      min_market_cap: 500000000000   # ~¥500B
+    sectors:
+      technology:
+        - 6758.T    # Sony
+        - 6861.T    # Keyence
+        - 8035.T    # Tokyo Electron
+        - 6981.T    # Murata
+        - 6954.T    # Fanuc
+        - 6920.T    # Lasertec
+        - 9983.T    # Fast Retailing
+      automotive:
+        - 7203.T    # Toyota
+        - 7267.T    # Honda
+        - 7201.T    # Nissan
+        - 5020.T    # ENEOS
+      financials:
+        - 8306.T    # Nomura
+        - 8316.T    # Sumitomo Mitsui FG
+        - 8411.T    # Mizuho
+        - 8604.T    # Nomura Holdings
+      consumer:
+        - 9983.T    # Fast Retailing (Uniqlo)
+        - 2503.T    # Kirin
+        - 2502.T    # Asahi
+        - 4502.T    # Takeda
+        - 4503.T    # Astellas
+        - 4568.T    # Daiichi Sankyo
+      industrials:
+        - 8001.T    # ITOCHU
+        - 8031.T    # Mitsui
+        - 8058.T    # Mitsubishi
+        - 7011.T    # Mitsubishi Heavy
+        - 7012.T    # Kawasaki Heavy
+
+  # ──────────────────────────────────────────────
+  # 歐股
+  # ──────────────────────────────────────────────
+  europe:
+    name: "歐洲主要股票"
+    description: "歐洲跨國藍籌"
+    source: "static"
+    currency: "EUR/GBP/CHF"
+    market: "EU"
+    filters:
+      min_market_cap: 10000000000
+    sectors:
+      technology:
+        - SAP.DE     # SAP (德)
+        - ASML.AS    # ASML (荷)
+        - ADS.DE     # Adidas (德)
+        - DTE.DE     # Deutsche Telekom (德)
+      luxury_consumer:
+        - MC.PA      # LVMH (法)
+        - KER.PA     # Kering (法)
+        - OR.PA      # L'Oréal (法)
+        - NESN.SW    # Nestlé (瑞)
+        - DGE.L      # Diageo (英)
+      pharma_healthcare:
+        - RO.SW      # Roche (瑞)
+        - NOVN.SW    # Novartis (瑞)
+        - AZN.L      # AstraZeneca (英)
+        - SNY        # Sanofi (美 ADR, 也可 SAN.PA)
+        - NVO        # Novo Nordisk (美 ADR, 也可 NOVO-B.CO)
+      industrials:
+        - SIE.DE     # Siemens (德)
+        - AIR.PA     # Airbus (法)
+        - RR.L       # Rolls-Royce (英)
+        - ALV.DE     # Allianz (德)
+      energy:
+        - SHEL.L     # Shell (英)
+        - BP.L       # BP (英)
+        - TTE.PA     # TotalEnergies (法)
+      financials:
+        - HSBA.L     # HSBC (英)
+        - BNP.PA     # BNP Paribas (法)
+        - SAN.PA     # Santander (法掛牌)
+        - DBK.DE     # Deutsche Bank (德)
+      mining_materials:
+        - RIO.L      # Rio Tinto (英)
+        - GLEN.L     # Glencore (英)
+        - BHP.AX     # BHP (澳)
+
+  # ──────────────────────────────────────────────
+  # 板塊 ETF（用於板塊輪動策略）
+  # ──────────────────────────────────────────────
+  sector_etfs:
+    name: "板塊 ETF"
+    etfs:
+      # US
+      XLK: "Technology"
+      XLV: "Healthcare"
+      XLF: "Financials"
+      XLY: "Consumer Discretionary"
+      XLI: "Industrials"
+      XLE: "Energy"
+      XLP: "Consumer Staples"
+      XLU: "Utilities"
+      XLRE: "Real Estate"
+      XLC: "Communication Services"
+      XLB: "Materials"
+      # Global
+      EFA: "EAFE (ex-US)"
+      EEM: "Emerging Markets"
+      EWJ: "Japan"
+      FXI: "China Large-Cap"
+      EWU: "United Kingdom"
+      EWG: "Germany"
+      EWQ: "France"
+      EWZ: "Brazil"
+      INDA: "India"
+
+  # ──────────────────────────────────────────────
+  # 基準指數
+  # ──────────────────────────────────────────────
+  benchmarks:
+    spy: "S&P 500 ETF"
+    qqq: "NASDAQ 100 ETF"
+    iwm: "Russell 2000 ETF"
+    ewj: "Japan ETF"
+    fxi: "China ETF"
+    efa: "EAFE (ex-US) ETF"
+    eem: "Emerging Markets ETF"

@@ -1,0 +1,86 @@
+# 因子庫配置（v2 核心）
+
+# 因子權重（初始值，IC 動態調整後會自動更新）
+factors:
+  momentum:
+    enabled: true
+    weight: 0.30
+    params:
+      lookback: 252            # 12 個月
+      skip: 21                 # 跳過最近 1 個月（反轉效應）
+      method: "12_minus_1"     # 12-1 月動量
+    description: "12-1 月相對強度動量"
+
+  value:
+    enabled: true
+    weight: 0.20
+    params:
+      metrics:
+        - pe_ratio
+        - ev_ebitda
+        - pb_ratio
+      weights: [0.4, 0.35, 0.25]
+    description: "P/E, EV/EBITDA, P/B 綜合價值"
+
+  quality:
+    enabled: true
+    weight: 0.25
+    params:
+      metrics:
+        - roe
+        - debt_equity
+        - earnings_stability
+      weights: [0.4, 0.3, 0.3]
+      min_roe: 0.10            # ROE > 10%
+      max_debt_equity: 2.0     # 負債率 < 200%
+    description: "ROE、負債率、盈利穩定性"
+
+  low_volatility:
+    enabled: true
+    weight: 0.15
+    params:
+      lookback: 60             # 60 天波動率
+      method: "realized_vol"
+    description: "低波動異常收益"
+
+  sentiment:
+    enabled: true
+    weight: 0.10
+    params:
+      sources:
+        - sec_filings
+        - news
+        - earnings_calls
+      model: "finbert"
+      decay_hours: 48          # 情緒信號 48 小時衰減
+    description: "FinBERT + LLM 情緒分析"
+
+# IC 追蹤配置
+ic_tracker:
+  rolling_window: 60           # 60 個月滾動窗口
+  update_frequency: "monthly"  # 每月更新
+  min_observations: 30         # 最少 30 個觀測值
+  decay_halflife: 12           # IC 衰減半衰期 12 個月
+  zero_threshold: 0.0          # IC < 0 的因子降權為 0
+  fallback_to_default: true    # 觀測不足時使用默認權重
+
+# 因子正交化
+orthogonalization:
+  enabled: true
+  method: "gram_schmidt"       # Gram-Schmidt 正交化
+  order_by_ic: true            # 按 IC 降序排列
+  preserve_high_ic: true       # 高 IC 因子保留原始方向
+
+# 截面排名
+cross_sectional_ranking:
+  top_pct: 0.20                # 選 Top 20%
+  min_universe_size: 100       # 最少 100 只股票
+  ranking_method: "percentile" # 百分位排名
+  tie_breaker: "market_cap"    # 同分按市值排序
+
+# Alpha 衰減監控
+alpha_decay_monitor:
+  check_frequency: "weekly"
+  warning_threshold: 0.30      # IC 衰減 30% 預警
+  disable_threshold: 0.50      # IC 衰減 50% 禁用因子
+  retrain_trigger: 0.40        # IC 衰減 40% 觸發重訓練

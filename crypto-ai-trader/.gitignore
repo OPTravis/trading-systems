@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secret / credential files
+.env
+crypto-secrets.env
+secrets.env
+*.env
+!.env.example
+*.key
+*.pem
+*.secret
+*.token
+*credentials*
+
+*.log
+.DS_Store
+
+# Runtime data
+data/cache.db
+data/trailing_stops.json
+data/loss_guard.json
+data/*.json
+!data/.gitkeep
+data/backups/

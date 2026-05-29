@@ -1,0 +1,120 @@
+name: "Crypto Trader Audit"
+description: "Full system audit of crypto-ai-trader"
+
+agents_dir: "agency-agents"
+
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  max_tokens: 8192
+  timeout: 600000
+  retry: 2
+
+concurrency: 3
+
+inputs:
+  - name: core_code
+    description: "Core module source code (portfolio, binance_client, state_db, entry_price)"
+    required: true
+  - name: risk_code
+    description: "Risk module source code (risk_manager, drawdown_breaker, smart_order, strategy_guard)"
+    required: true
+  - name: strategy_code
+    description: "Strategy module source code (market_scanner, strategy_adaptor, data_feed)"
+    required: true
+
+steps:
+  - id: audit_core
+    role: "代码审查员"
+    name: "Core Module Auditor"
+    emoji: "🔍"
+    task: |
+      你是加密貨幣交易系統的核心代碼審計員。審計以下 Python 源碼，找出 BUG、邏輯錯誤、架構問題和優化建議。
+
+      ## 已知問題背景
+      - portfolio.py 的 sync_from_binance() 會覆蓋 DB 中的 entry_price（已部分修復但可能有遺漏）
+      - get_all_positions() 在不傳 binance_client 時 PnL 全顯示 0%（因為沒有實時價格）
+      - StateDB 是單例模式，多進程可能衝突
+
+      ## 審計代碼
+
+      {{core_code}}
+
+      ## 輸出格式
+      用繁體中文回答。按以下結構：
+      1. **Critical Bugs**（嚴重問題，直接影響交易安全）
+      2. **Logic Errors**（邏輯錯誤，數據不準確但不直接虧錢）
+      3. **Architecture Issues**（架構問題，影響可維護性/擴展性）
+      4. **Performance**（性能瓶頸）
+      5. **Code Quality**（代碼質量）
+      每項包含：文件名、行號、問題描述、影響、建議修復方案（偽代碼即可）
+    output: core_report
+
+  - id: audit_risk
+    role: "代码审查员"
+    name: "Risk Module Auditor"
+    emoji: "🛡️"
+    task: |
+      你是風控系統審計員。審計風控模組代碼，找出任何可能導致止損失效、回撤熔斷誤判、或風險暴露的問題。
+
+      ## 審計代碼
+
+      {{risk_code}}
+
+      ## 輸出格式
+      用繁體中文回答。按以下結構：
+      1. **Critical Bugs**（可能導致止損/風控失效的問題）
+      2. **Logic Errors**（計算錯誤或邊界條件）
+      3. **Architecture Issues**（狀態持久化、並發安全）
+      4. **Performance**
+      5. **Code Quality**
+      每項包含：文件名、行號、問題描述、影響、建議修復方案
+    output: risk_report
+
+  - id: audit_strategy
+    role: "代码审查员"
+    name: "Strategy Module Auditor"
+    emoji: "📊"
+    task: |
+      你是交易策略系統審計員。審計掃描器、策略適配器、數據源的代碼質量和邏輯正確性。
+
+      ## 審計代碼
+
+      {{strategy_code}}
+
+      ## 輸出格式
+      用繁體中文回答。按以下結構：
+      1. **Critical Bugs**（信號錯誤、API 調用問題）
+      2. **Logic Errors**（評分計算、策略切換邏輯）
+      3. **Architecture Issues**（模組耦合、配置管理）
+      4. **Performance**（API 調用頻率、數據處理效率）
+      5. **Code Quality**
+      每項包含：文件名、行號、問題描述、影響、建議修復方案
+    output: strategy_report
+
+  - id: synthesize
+    role: "软件架构师"
+    name: "Chief Auditor"
+    emoji: "📋"
+    task: |
+      你是首席架構師，綜合三份審計報告，產出最終優先級排序的行動計劃。
+
+      ## Core 審計報告
+      {{core_report}}
+
+      ## Risk 審計報告
+      {{risk_report}}
+
+      ## Strategy 審計報告
+      {{strategy_report}}
+
+      ## 輸出格式
+      用繁體中文回答。結構：
+      1. **執行摘要**（3-5 句話概括系統健康度）
+      2. **P0 — 必須立即修復**（影響資金安全）
+      3. **P1 — 本週修復**（影響數據準確性）
+      4. **P2 — 下個迭代**（性能/質量改善）
+      5. **P3 — 長期優化**（架構重構建議）
+      每項按 effort/impact 排序，附預估工時。
+    output: final_report
+    depends_on: [audit_core, audit_risk, audit_strategy]

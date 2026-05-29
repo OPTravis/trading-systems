@@ -1,0 +1,153 @@
+================================================================================
+       策略獲利能力審計報告 — STRATEGY PROFITABILITY AUDIT
+================================================================================
+Generated: 2026-04-23 00:30 UTC
+Regime: FEAR | F&G Index: 32 | BTC Trend: BEARISH
+Active Strategies: DCA=ON(×0.7) RSI=ON(×0.7) Bollinger=ON(×0.6) VWAP=ON(×0.6)
+Disabled: GRID=OFF | TREND=OFF
+⚠️ CRITICAL: ALL 6 positions have stop_loss=0, trailing_stop_pct=1.5%
+================================================================================
+
+【一、持倉 P&L — Position Unrealized P&L】
+
+Symbol      Qty         Entry      Live Price  Unreal.PnL    %     Trailing Stop Level
+------------------------------------------------------------------------------------------
+AVAXUSDT    1.4400      9.5800      9.5000      -$0.1152   -0.84%   TS@9.4363
+BARDUSDT   44.0000      0.3336      0.3283      -$0.2332   -1.59%   TS@0.3286 (TRIGGERED)
+BNBUSDT     0.0000    652.2100    647.2500      -$0.0000   -0.76%   TS@642.4269
+NEARUSDT   14.0000      1.4250      1.4180      -$0.0980   -0.49%   TS@1.4036
+SEIUSDT   239.5000      0.0620      0.0629      +$0.2155   +1.45%   TS@0.0611 (peak above entry)
+SUIUSDT    22.2000      0.9751      0.9669      -$0.1820   -0.84%   TS@0.9605
+------------------------------------------------------------------------------------------
+TOTAL                                    -$0.4129   -0.49%   Portfolio: $84.51
+
+⚠️  Status: ALL positions underwater (only SEIUSDT in profit)
+
+================================================================================
+
+【二、費用侵蝕 — Fee Erosion Analysis】
+
+Fee Structure (Binance Spot):
+  Maker fee: 0.10% | Taker fee: 0.20% | Round-trip: 0.60%
+
+Per Position Fee Cost:
+  AVAXUSDT: $13.80 position → $0.0828 to exit
+  BARDUSDT: $14.68 position → $0.0881 to exit
+  BNBUSDT:  $0.00  position → $0.0000 (negligible)
+  NEARUSDT: $19.95 position → $0.1197 to exit
+  SEIUSDT:  $14.85 position → $0.0891 to exit
+  SUIUSDT:  $21.65 position → $0.1299 to exit
+
+  💸 Total portfolio exit fee: $0.5071 (0.60% of $84.51)
+
+Analysis:
+  → With -0.49% unrealized loss + $0.51 exit fee = -1.09% gross loss
+  → Each trade consumes 0.60% — frequent rebalancing is costly at this portfolio size
+  → Break-even requires +0.60% just to cover fees
+
+================================================================================
+
+【三、止損漏洞分析 — Stop-Loss Vulnerability】
+
+❌ CRITICAL FINDING: ALL 6 positions have stop_loss=0 (HARD DISABLED)
+✅ Trailing stop=1.5% is ACTIVE on all positions
+
+Trailing Stop Assessment:
+  AVAXUSDT: Live 9.50 < TS@9.4363 → TRIGGERED (should have sold)
+  BARDUSDT: Live 0.3283 < TS@0.3286 → TRIGGERED (should have sold)
+  BNBUSDT:  Live 647.25 < TS@642.43 → NOT triggered (still above)
+  NEARUSDT: Live 1.418 < TS@1.4036 → NOT triggered (still above)
+  SEIUSDT:  Live 0.0629 > TS@0.0611 → NOT triggered (profitable)
+  SUIUSDT:  Live 0.9669 > TS@0.9605 → NOT triggered (still above)
+
+🔴 VULNERABILITY ASSESSMENT:
+  → If any coin gaps down 10% overnight (common in FEAR+BEARISH):
+      • AVAX: $13.80 → loses $1.38 (10% of position)
+      • BARD: $14.68 → loses $1.47
+      • NEAR: $19.95 → loses $1.99
+      • SEI:  $14.85 → loses $1.49
+      • SUI:  $21.65 → loses $2.16
+  → Total worst-case single-candle loss: $8.45
+  → Trailing stop only saves: $1.27 (1.5% of total)
+  → Net unprotected loss: $7.18
+
+  In this regime (FEAR+F&G=32+BEARISH), -10% single candles are COMMON.
+  The trailing stop is INADEQUATE — hard stops at 3-5% are REQUIRED.
+
+================================================================================
+
+【四、策略評分 — Strategy Scoring】
+
+Strategy        Status   Weight  Regime Fit  Score  Verdict
+-----------------------------------------------------------------
+RSI (×0.7)      ON        0.7    POOR         35   RSI oversold in FEAR = falling knife
+Bollinger(×0.6) ON        0.6    POOR         40   False breakouts in bear markets
+VWAP (×0.6)     ON        0.6    FAIR         48   Below-VWAP OK but weak in downtrend
+DCA (×0.7)      ON        0.7    GOOD         62   Best fit for FEAR accumulation
+Grid (×0.0)     OFF       —      N/A           0   Disabled — CORRECT for trending market
+Trend (×0.0)    OFF       —      N/A           0   Disabled — Would filter false signals
+----------------------------------------------------------------
+COMPOSITE SCORE (active, normalized): 46.4/100 — POOR regime fit
+
+================================================================================
+
+【五、进場時機評估 — Entry Timing Assessment】
+
+RSI Strategy (weight 0.7, score 35 — POOR):
+  → F&G=32 is extreme fear; RSI <30 in this environment often means
+    "keep dropping" not "马上反弹"
+  → 80% confidence on BUY is dangerously high
+  → Recommendation: Disable RSI or set weight to 0 in BEARISH regime
+
+Bollinger Strategy (weight 0.6, score 40 — POOR):
+  → Breakout above upper band requires volume confirmation
+  → Volume is LOW in FEAR regime — false breakouts likely
+  → Lower band touches (oversold) get hit repeatedly in sustained downtrend
+
+VWAP Strategy (weight 0.6, score 48 — FAIR):
+  → Below VWAP entries are conceptually correct for bear markets
+  → But sustained below-VWAP periods in strong downtrends erode confidence
+
+DCA Strategy (weight 0.7, score 62 — GOOD):
+  → Most appropriate for current regime
+  → However: 6 open positions + DCA = overexposure
+  → Should NOT DCA more with 6 positions already in FEAR
+
+================================================================================
+
+【六、量化總結 — Quantitative Summary】
+
+Metric                                    Value
+--------------------------------------------------------------
+Portfolio Unrealized P&L                   -$0.4129 (-0.49%)
+Portfolio Total Value                      $84.51
+Fee to Full Exit (round-trip)             $0.5071 (0.60%)
+Worst-Case Single-Candle Loss (no SL)     $7.18
+Active Strategy Composite Score           46.4/100 (POOR)
+Regime Fit Rating                         POOR
+Best Performing Position                  SEIUSDT (+$0.22, +1.45%)
+Worst Performing Position                  BARDUSDT (-$0.23, -1.59%)
+Positions Currently Triggering TS         2 of 6 (AVAXUSDT, BARDUSDT)
+
+================================================================================
+
+【七、綜合建議 — Recommendations】
+
+🔴 URGENT — Set stop_loss=3-5% on ALL positions NOW:
+   stop_loss=0 is the #1 risk in this portfolio. The trailing_stop only
+   triggers AFTER a rally — it does NOT protect against entry price drops.
+
+🟡 HIGH — Disable RSI strategy (weight → 0):
+   RSI oversold in extreme FEAR = falling knife. 80% confidence is wrong.
+
+🟡 HIGH — Do NOT DCA further with 6 open positions in FEAR:
+   DCA is appropriate but 6 positions = overexposure. Concentrate capital.
+
+🟢 MEDIUM — Enable Trend strategy at weight 0.3:
+   Would provide exit signals (death cross) to complement trailing stop.
+   Filters false Bollinger breakouts in bear markets.
+
+🟢 MEDIUM — Reduce to 3-4 positions (highest liquidity):
+   AVAX, BNB, NEAR, SUI have best liquidity. Drop BARD and SEI.
+
+================================================================================
