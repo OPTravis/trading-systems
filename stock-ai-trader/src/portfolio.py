@@ -127,6 +127,7 @@ class Position:
     highest_price: float = 0.0
     opened_at: str = ""
     updated_at: str = ""
+    unrealized_pnl: float = 0.0
 
     @property
     def market_value(self) -> float:
@@ -135,10 +136,6 @@ class Position:
     @property
     def cost_basis(self) -> float:
         return self.quantity * self.entry_price
-
-    @property
-    def unrealized_pnl(self) -> float:
-        return (self.current_price - self.entry_price) * self.quantity
 
     @property
     def unrealized_pnl_pct(self) -> float:

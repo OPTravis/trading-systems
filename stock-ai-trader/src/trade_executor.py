@@ -416,9 +416,12 @@ class TradeExecutor:
     ) -> Optional[ExecutionResult]:
         """Poll for order fill confirmation."""
         deadline = time.time() + self.FILL_TIMEOUT_SEC
+        consecutive_errors = 0
+        max_consecutive_errors = 3
         while time.time() < deadline:
             try:
                 open_orders = self.broker.get_open_orders()
+                consecutive_errors = 0  # Reset on success
                 for o in open_orders:
                     if o.order_id == order_id:
                         if o.status == "FILLED":
@@ -441,8 +444,13 @@ class TradeExecutor:
                                 retry_count=attempt,
                                 timestamp=datetime.now().isoformat(),
                             )
-            except Exception:
-                pass
+            except Exception as e:
+                consecutive_errors += 1
+                logger.warning("Fill poll error (attempt %d/%d): %s",
+                               consecutive_errors, max_consecutive_errors, e)
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Too many consecutive errors polling order %s — aborting", order_id)
+                    return None
             time.sleep(1)
 
         logger.warning("Fill timeout for order %s (symbol=%s)", order_id, symbol)

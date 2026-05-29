@@ -117,9 +117,7 @@ class HistoricalStore:
         import yfinance as yf
 
         results = {}
-        # Batch download (faster than individual)
         logger.info("Batch downloading %d symbols (%s period)", len(symbols), period)
-        tickers = yf.Tickers(" ".join(symbols))
 
         for sym in symbols:
             try:

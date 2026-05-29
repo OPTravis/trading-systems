@@ -40,7 +40,7 @@ class TradeSignal:
     strategy: str = "momentum"
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
-    risk_approved: bool = True
+    risk_approved: bool = False
     research_summary: str = ""
     risk_warnings: List[str] = field(default_factory=list)
     factor_scores: Dict[str, float] = field(default_factory=dict)
@@ -241,6 +241,14 @@ class ScanOrchestrator:
 
         logger.info("SCAN PIPELINE COMPLETE in %.1fs — %d signals, %d blocked",
                      duration, len(approved_signals), len(blocked))
+
+        # Cleanup: close DuckDB connections to prevent leaks
+        if self.feature_store:
+            try:
+                self.feature_store.close()
+            except Exception:
+                pass
+
         return result
 
     # ── Phase 1 ────────────────────────────────────────────────────────
@@ -398,8 +406,14 @@ class ScanOrchestrator:
                     except Exception as e:
                         logger.warning("Research failed for %s: %s", sym, e)
             except TimeoutError:
-                logger.warning("Research timed out — %d / %d completed",
-                               len(results), len(candidates))
+                # Cancel pending futures to prevent thread leaks
+                cancelled = 0
+                for fut in futures:
+                    if not fut.done():
+                        fut.cancel()
+                        cancelled += 1
+                logger.warning("Research timed out — %d / %d completed, %d pending futures cancelled",
+                               len(results), len(candidates), cancelled)
 
         logger.info("Research completed for %d / %d candidates", len(results), len(candidates))
         return results
@@ -493,9 +507,14 @@ class ScanOrchestrator:
                 except Exception as e:
                     logger.warning("Position sizing failed for %s: %s", sym, e)
 
-            # Calculate stop/take-profit
-            stop_loss = price * 0.95  # 5% stop
-            take_profit = price * 1.10  # 10% target
+            # Calculate stop/take-profit (ATR-based dynamic, fallback to 5%/10%)
+            atr_pct = factors.get("atr_pct", 0.02)
+            if atr_pct and atr_pct > 0:
+                stop_loss = price * (1 - max(atr_pct * 2, 0.03))
+                take_profit = price * (1 + max(atr_pct * 3, 0.05))
+            else:
+                stop_loss = price * 0.95  # fallback 5% stop
+                take_profit = price * 1.10  # fallback 10% target
 
             signal = TradeSignal(
                 symbol=sym,
@@ -537,11 +556,17 @@ class ScanOrchestrator:
                 if quantity <= 0:
                     continue
 
+                # Apply 0.2% slippage tolerance for LMT orders
+                if signal.side.upper() == "BUY":
+                    limit_price = signal.price * 1.002
+                else:
+                    limit_price = signal.price * 0.998
+
                 result = self.executor.execute(
                     symbol=signal.symbol,
                     side=signal.side,
                     quantity=quantity,
-                    price=signal.price,
+                    price=limit_price,
                     order_type="LMT",
                     stop_loss=signal.stop_loss,
                     take_profit=signal.take_profit,

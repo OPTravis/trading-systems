@@ -73,7 +73,8 @@ class StockDataFeed:
     # -- public API ----------------------------------------------------------
 
     # Alias for compatibility with stock_researcher which calls get_history
-    get_history = property(lambda self: self.get_historical)
+    def get_history(self, *args, **kwargs):
+        return self.get_historical(*args, **kwargs)
 
     def get_historical(
         self,

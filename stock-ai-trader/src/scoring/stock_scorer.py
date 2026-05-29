@@ -19,8 +19,8 @@ class StockScore:
     fundamental: float = 0.0
     momentum: float = 0.0
     sentiment: float = 0.0
-    quality: float = 0.0
-    value: float = 0.0
+    quality: Optional[float] = None
+    value: Optional[float] = None
     weights: Dict[str, float] = None
 
     def __post_init__(self):
@@ -115,14 +115,38 @@ class StockScorer:
         quality = fs_scores.get("quality", self._score_quality(symbol))
         value = fs_scores.get("value_score", self._score_value(symbol))
 
+        # Collect factor scores; None means "no data — skip this factor"
+        scores = {
+            'technical': technical,
+            'fundamental': fundamental,
+            'momentum': momentum,
+            'sentiment': sentiment,
+            'quality': quality,
+            'value': value,
+        }
+
         weights = self._get_weights(symbol=symbol)
-        composite = (
-            technical * weights.get('technical', 0) +
-            fundamental * weights.get('fundamental', 0) +
-            momentum * weights.get('momentum', 0) +
-            sentiment * weights.get('sentiment', 0) +
-            quality * weights.get('quality', 0) +
-            value * weights.get('value', 0)
+
+        # Build a set of factors that have real scores (not None)
+        active_factors = {k for k, v in scores.items() if v is not None}
+        skipped_factors = {k for k in scores if k not in active_factors}
+
+        # Redistribute weight from skipped factors proportionally among active ones
+        if skipped_factors and active_factors:
+            skipped_weight = sum(weights.get(k, 0) for k in skipped_factors)
+            active_weight = sum(weights.get(k, 0) for k in active_factors)
+            if active_weight > 0:
+                weights = {
+                    k: (weights.get(k, 0) + skipped_weight * weights.get(k, 0) / active_weight)
+                    if k in active_factors else 0.0
+                    for k in weights
+                }
+
+        # Compute composite using only active (non-None) factors
+        composite = sum(
+            (scores[k] or 0.0) * weights.get(k, 0)
+            for k in scores
+            if k in active_factors
         )
 
         return StockScore(
@@ -132,8 +156,8 @@ class StockScorer:
             fundamental=fundamental,
             momentum=momentum,
             sentiment=sentiment,
-            quality=quality,
-            value=value,
+            quality=quality if quality is not None else 0.0,
+            value=value if value is not None else 0.0,
             weights=weights,
         )
 
@@ -190,10 +214,18 @@ class StockScorer:
             return self.sentiment_scorer.score(symbol)
         return 50.0
 
-    def _score_quality(self, symbol: str) -> float:
-        """Score based on quality metrics (ROE, margins, stability)."""
-        return 50.0  # Placeholder - populated by fundamental data
+    def _score_quality(self, symbol: str) -> Optional[float]:
+        """Score based on quality metrics (ROE, margins, stability).
 
-    def _score_value(self, symbol: str) -> float:
-        """Score based on valuation metrics."""
-        return 50.0  # Placeholder - populated by fundamental data
+        Returns None when no real data is available so the composite
+        scorer can skip this factor and redistribute its weight.
+        """
+        return None  # No data available — signal caller to skip this factor
+
+    def _score_value(self, symbol: str) -> Optional[float]:
+        """Score based on valuation metrics.
+
+        Returns None when no real data is available so the composite
+        scorer can skip this factor and redistribute its weight.
+        """
+        return None  # No data available — signal caller to skip this factor

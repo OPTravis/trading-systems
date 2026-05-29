@@ -13,10 +13,6 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-# Disable SSL warnings for self-signed cert
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 
 class CPGClient:
     """REST API client for IBKR Client Portal Gateway."""
@@ -24,7 +20,9 @@ class CPGClient:
     def __init__(self, base_url: str = "https://localhost:5000"):
         self._base = base_url.rstrip("/")
         self._session = requests.Session()
-        self._session.verify = False
+        # CPG uses self-signed cert — disable verification for localhost only
+        if "localhost" in base_url or "127.0.0.1" in base_url:
+            self._session.verify = False
         self._session.headers.update({"Accept": "application/json"})
 
     def _get(self, path: str) -> Optional[Any]:

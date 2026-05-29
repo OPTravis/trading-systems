@@ -244,7 +244,7 @@ class WalkForwardValidator:
         for combo in product(*values):
             params = dict(zip(keys, combo))
             try:
-                trades, equity = strategy_fn(train_data, train_data, params)
+                trades, equity = strategy_fn(train_data, test_data, params)
                 if not trades:
                     continue
                 returns = [t["pnl"] for t in trades if "pnl" in t]
