@@ -279,7 +279,7 @@ class WalkForwardValidator:
         total_return = sum(pnls) / 10000 if pnls else 0  # Normalize
         sharpe = self._compute_sharpe(pnls) if pnls else 0
         sortino = self._compute_sortino(pnls) if pnls else 0
-        max_dd = self._compute_max_drawdown(equity_curve) if equity_curve else 0
+        max_dd = self._compute_max_drawdown(equity_curve) if equity_curve is not None and hasattr(equity_curve, "empty") and not equity_curve.empty else 0
         win_rate = sum(1 for p in pnls if p > 0) / len(pnls) if pnls else 0
         profit_factor = self._compute_profit_factor(pnls)
 
@@ -326,9 +326,9 @@ class WalkForwardValidator:
             return 10.0
         return (excess / downside_std) * np.sqrt(self.TRADING_DAYS_PER_YEAR)
 
-    def _compute_max_drawdown(self, equity_curve: List[float]) -> float:
+    def _compute_max_drawdown(self, equity_curve) -> float:
         """Maximum drawdown from equity curve."""
-        if not equity_curve or len(equity_curve) < 2:
+        if equity_curve is None or (hasattr(equity_curve, 'empty') and equity_curve.empty) or len(equity_curve) < 2:
             return 0.0
         arr = np.array(equity_curve)
         peak = np.maximum.accumulate(arr)

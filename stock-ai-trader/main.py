@@ -112,7 +112,7 @@ def build_orchestrator(config: dict, broker=None):
 
     portfolio = PortfolioManager()
     data_feed = StockDataFeed(ibkr_client=broker)
-    scorer = StockScorer()
+    scorer = StockScorer(feature_store=FeatureStore())
     ranker = CompositeRanker()
     risk_mgr = StockRiskManager()
     regime_detector = RegimeDetector()
@@ -318,6 +318,36 @@ def cmd_status(args):
             print(f"  Regime detection failed: {e}")
 
     ib.disconnect()
+
+    # Live account via CPG (if --live)
+    if getattr(args, 'live', False):
+        print(f"\n{'='*60}")
+        print(f"  LIVE ACCOUNT (CPG)")
+        print(f"{'='*60}")
+        from src.brokers.cpg_client import CPGClient
+        cpg = CPGClient()
+        live = cpg.get_live_status()
+        if live is None:
+            print("  [!] CPG session expired or not running.")
+            print("  [*] Login at https://localhost:5000 in browser first.")
+        else:
+            s = live["summary"]
+            print(f"  Account:     {s.get('account_id', '?')}")
+            print(f"  Total Cash:  {s.get('total_cash', 0):,.2f} {s.get('currency', '')}")
+            print(f"  Net Liq:     {s.get('net_liquidation', 0):,.2f} {s.get('currency', '')}")
+            print(f"  Available:   {s.get('available_funds', 0):,.2f} {s.get('currency', '')}")
+            print(f"  Buying Power:{s.get('buying_power', 0):,.2f} {s.get('currency', '')}")
+            positions = live["positions"]
+            if positions:
+                print(f"\n  Positions ({len(positions)}):")
+                for p in positions:
+                    pnl = p.get("unrealized_pnl", 0)
+                    marker = "+" if pnl >= 0 else ""
+                    print(f"    {p['symbol']}: {p['quantity']:.0f} @ {p['avg_cost']:.2f} | "
+                          f"P&L: {marker}{pnl:,.2f} {p.get('currency', '')}")
+            else:
+                print("  No open positions.")
+
     print(f"\n[*] Done.")
 
 
@@ -520,6 +550,7 @@ Examples:
     # status
     p_status = subparsers.add_parser("status", help="顯示持倉、P&L、風控狀態")
     p_status.add_argument("--detailed", action="store_true", help="Show detailed info")
+    p_status.add_argument("--live", action="store_true", help="Show live account via CPG (localhost:5000)")
 
     # analyze
     p_analyze = subparsers.add_parser("analyze", help="深度分析指定股票")

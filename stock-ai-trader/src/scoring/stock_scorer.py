@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 import logging
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,10 +31,11 @@ class StockScore:
 class StockScorer:
     """Multi-dimensional stock scoring with IC-based dynamic factor weights."""
 
-    def __init__(self, ic_tracker=None, fundamental_scorer=None, sentiment_scorer=None):
+    def __init__(self, ic_tracker=None, fundamental_scorer=None, sentiment_scorer=None, feature_store=None):
         self.ic_tracker = ic_tracker
         self.fundamental_scorer = fundamental_scorer
         self.sentiment_scorer = sentiment_scorer
+        self.feature_store = feature_store
         # Default equal weights
         self._default_weights = {
             'technical': 0.20,
@@ -42,30 +45,77 @@ class StockScorer:
             'quality': 0.15,
             'value': 0.15,
         }
+        # Load per-symbol strategy allocation
+        self._strategy_allocation = self._load_strategy_allocation()
 
-    def _get_weights(self) -> Dict[str, float]:
-        """Get factor weights, preferring IC-tracker weights if available."""
-        if self.ic_tracker:
-            weights = self.ic_tracker.get_weights()
+    @staticmethod
+    def _load_strategy_allocation() -> dict:
+        """Load per-symbol strategy weights from config/strategy_allocation.yaml."""
+        from pathlib import Path
+        config_path = Path(__file__).resolve().parent.parent.parent / "config" / "strategy_allocation.yaml"
+        if not config_path.exists():
+            return {}
+        try:
+            with open(config_path) as f:
+                data = yaml.safe_load(f)
+            return data.get("symbols", {})
+        except Exception:
+            return {}
+
+    def _get_weights(self, symbol: str = None) -> Dict[str, float]:
+        """Get factor weights: per-symbol strategy allocation > IC-tracker > defaults."""
+        # 1. Per-symbol strategy allocation (highest priority)
+        if symbol and symbol in self._strategy_allocation:
+            alloc = self._strategy_allocation[symbol]
+            weights = alloc.get("weights", {})
             if weights:
-                # Normalize to sum to 1
                 total = sum(weights.values())
                 if total > 0:
                     return {k: v / total for k, v in weights.items()}
+
+        # 2. IC-tracker weights
+        if self.ic_tracker:
+            weights = self.ic_tracker.get_weights()
+            if weights:
+                total = sum(weights.values())
+                if total > 0:
+                    return {k: v / total for k, v in weights.items()}
+
+        # 3. Default equal weights
         return self._default_weights.copy()
+
+    def _get_feature_store_scores(self, symbol: str) -> dict:
+        """Get latest factor scores from FeatureStore for a symbol."""
+        if not self.feature_store:
+            return {}
+        try:
+            df = self.feature_store.get_factor_values(
+                date=None,  # latest
+                symbols=[symbol],
+            )
+            if df.empty:
+                return {}
+            # Pivot to factor_name → value
+            latest = df.groupby("factor_name")["value"].last()
+            return latest.to_dict()
+        except Exception:
+            return {}
 
     def score_stock(self, symbol: str, market_data: dict = None) -> StockScore:
         """Score a stock across all dimensions (0-100 scale)."""
         market_data = market_data or {}
 
-        technical = self._score_technical(symbol, market_data)
-        fundamental = self._score_fundamental(symbol)
-        momentum = self._score_momentum(symbol, market_data)
-        sentiment = self._score_sentiment(symbol)
-        quality = self._score_quality(symbol)
-        value = self._score_value(symbol)
+        # Try feature store first (real computed factors)
+        fs_scores = self._get_feature_store_scores(symbol)
 
-        weights = self._get_weights()
+        technical = fs_scores.get("technical", self._score_technical(symbol, market_data))
+        fundamental = self._score_fundamental(symbol)
+        momentum = fs_scores.get("momentum", self._score_momentum(symbol, market_data))
+        sentiment = self._score_sentiment(symbol)
+        quality = fs_scores.get("quality", self._score_quality(symbol))
+        value = fs_scores.get("value_score", self._score_value(symbol))
+
+        weights = self._get_weights(symbol=symbol)
         composite = (
             technical * weights.get('technical', 0) +
             fundamental * weights.get('fundamental', 0) +

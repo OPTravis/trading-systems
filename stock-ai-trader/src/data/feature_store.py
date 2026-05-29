@@ -83,10 +83,13 @@ class FeatureStore:
         melted = melted.dropna(subset=["value"])
 
         # Upsert using INSERT OR REPLACE
-        records = melted[["date", "symbol", "factor_name", "value"]].to_records(index=False)
+        records = melted[["date", "symbol", "factor_name", "value"]].dropna(subset=["value"]).to_records(index=False)
+        record_list = [tuple(r) for r in records]
+        if not record_list:
+            return 0
         self.conn.executemany(
             "INSERT OR REPLACE INTO factor_values (date, symbol, factor_name, value) VALUES (?, ?, ?, ?)",
-            [tuple(r) for r in records],
+            record_list,
         )
         count = len(records)
         logger.info("Saved %d factor values for %s", count, date)
@@ -94,7 +97,7 @@ class FeatureStore:
 
     def get_factor_values(
         self,
-        date: str,
+        date: Optional[str] = None,
         symbols: Optional[list[str]] = None,
         factor_names: Optional[list[str]] = None,
     ) -> pd.DataFrame:
@@ -102,13 +105,19 @@ class FeatureStore:
         Retrieve factor values for a given date.
 
         Args:
-            date: Date string (YYYY-MM-DD).
+            date: Date string (YYYY-MM-DD). None = latest available date.
             symbols: Optional list of symbols to filter.
             factor_names: Optional list of factor names to filter.
 
         Returns:
             DataFrame with columns: date, symbol, factor_name, value.
         """
+        if date is None:
+            # Get latest date
+            latest = self.conn.execute("SELECT MAX(date) FROM factor_values").fetchone()
+            if not latest or not latest[0]:
+                return pd.DataFrame()
+            date = str(latest[0])
         query = "SELECT * FROM factor_values WHERE date = ?"
         params: list = [date]
 
