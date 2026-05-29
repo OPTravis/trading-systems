@@ -18,7 +18,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import AsyncIterator, Optional
 
-from ib_async import IB, Contract as IBContract, Order as IBOrder, Trade
+from ib_async import IB, Contract as IBContract, Order as IBOrder, OrderState
 from ib_async import MarketOrder, LimitOrder, StopOrder, StopLimitOrder
 from ib_async import Stock, Forex, Future, Option
 from ib_async.util import dataclassAsDict
@@ -253,7 +253,7 @@ class IBKRClient(BrokerProtocol):
             if ticker.last or ticker.bid or ticker.ask:
                 break
 
-        return Tick(
+        tick = Tick(
             timestamp=datetime.now(),
             last_price=ticker.last or 0.0,
             bid=ticker.bid or 0.0,
@@ -267,6 +267,11 @@ class IBKRClient(BrokerProtocol):
             close=ticker.close or 0.0,
             open=ticker.open or 0.0,
         )
+
+        # Cancel market data subscription after collecting snapshot
+        self._ib.cancelMktData(ib_contract)
+
+        return tick
 
     async def get_historical_bars(
         self,
@@ -346,7 +351,10 @@ class IBKRClient(BrokerProtocol):
             "BuyingPower", "GrossPositionValue", "UnrealizedPnL",
             "RealizedPnL", "MaintMarginReq", "ExcessLiquidity",
         ]
-        account = self._account_id or self._ib.managedAccounts()[0].split(",")[0]
+        accounts = self._ib.managedAccounts()
+        if not accounts:
+            raise ConnectionError("No managed accounts found — TWS/Gateway may not be logged in")
+        account = self._account_id or accounts[0].split(",")[0]
 
         summary = self._ib.reqAccountSummary(account, tags)
         values = {s.tag: float(s.value) for s in summary}
@@ -369,12 +377,14 @@ class IBKRClient(BrokerProtocol):
         await self._rate_limiter.acquire()
         positions = self._ib.positions()
 
+        # TODO: avgCost is the average cost basis, not the current market price.
+        # market_value should ideally use real-time mark price, not avgCost * quantity.
         return [
             Position(
                 contract=self._from_ib_contract(p.contract),
                 quantity=p.position,
                 avg_cost=p.avgCost,
-                market_value=p.position * p.avgCost,  # Approximate
+                market_value=p.position * p.avgCost,  # Approximate — not market price
             )
             for p in positions
         ]
@@ -388,11 +398,12 @@ class IBKRClient(BrokerProtocol):
         result = []
         for p in positions:
             contract = self._from_ib_contract(p.contract)
+            # TODO: avgCost is not market price — need real-time mark for accurate P&L
             result.append(Position(
                 contract=contract,
                 quantity=p.position,
                 avg_cost=p.avgCost,
-                market_value=p.position * p.avgCost,
+                market_value=p.position * p.avgCost,  # Approximate — not market price
             ))
         return result
 
@@ -443,10 +454,10 @@ class IBKRClient(BrokerProtocol):
     async def cancel_order(self, order_id: int) -> None:
         """Cancel an order by ID."""
         await self._rate_limiter.acquire()
-        # Find the trade by order ID
-        for trade in self._ib.openOrders():
-            if trade.order.orderId == order_id:
-                self._ib.cancelOrder(trade.order)
+        # openOrders() returns Order objects, not Trade objects
+        for ib_order in self._ib.openOrders():
+            if ib_order.orderId == order_id:
+                self._ib.cancelOrder(ib_order)
                 logger.info(f"Order {order_id} cancelled")
                 return
         logger.warning(f"Order {order_id} not found in open orders")
@@ -458,47 +469,108 @@ class IBKRClient(BrokerProtocol):
         """Modify an existing order."""
         await self._rate_limiter.acquire()
 
-        for trade in self._ib.openOrders():
-            if trade.order.orderId == order_id:
-                if quantity is not None:
-                    trade.order.totalQuantity = quantity
-                if limit_price is not None:
-                    trade.order.lmtPrice = limit_price
-                if stop_price is not None:
-                    trade.order.auxPrice = stop_price
+        # openOrders() returns Order objects — find matching one and use trades() for contract
+        ib_order = None
+        for o in self._ib.openOrders():
+            if o.orderId == order_id:
+                ib_order = o
+                break
 
-                self._ib.placeOrder(trade.contract, trade.order)
+        if ib_order is None:
+            raise ValueError(f"Order {order_id} not found")
 
-                return Order(
-                    contract=self._from_ib_contract(trade.contract),
-                    side=OrderSide.BUY if trade.order.action == "BUY" else OrderSide.SELL,
-                    order_type=OrderType(trade.order.orderType),
-                    quantity=trade.order.totalQuantity,
-                    limit_price=getattr(trade.order, "lmtPrice", None),
-                    stop_price=getattr(trade.order, "auxPrice", None),
-                    order_id=order_id,
-                    status=OrderStatus.SUBMITTED,
-                )
+        if quantity is not None:
+            ib_order.totalQuantity = quantity
+        if limit_price is not None:
+            ib_order.lmtPrice = limit_price
+        if stop_price is not None:
+            ib_order.auxPrice = stop_price
 
-        raise ValueError(f"Order {order_id} not found")
+        # Find the associated trade to get the contract
+        trade = None
+        for t in self._ib.trades():
+            if t.order.orderId == order_id:
+                trade = t
+                break
+
+        if trade:
+            self._ib.placeOrder(trade.contract, ib_order)
+            contract = self._from_ib_contract(trade.contract)
+        else:
+            # Fallback: place without contract context (shouldn't happen)
+            self._ib.placeOrder(IBContract(), ib_order)
+            contract = Contract(symbol="")
+
+        return Order(
+            contract=contract,
+            side=OrderSide.BUY if ib_order.action == "BUY" else OrderSide.SELL,
+            order_type=OrderType(ib_order.orderType),
+            quantity=ib_order.totalQuantity,
+            limit_price=getattr(ib_order, "lmtPrice", None),
+            stop_price=getattr(ib_order, "auxPrice", None),
+            order_id=order_id,
+            status=OrderStatus.SUBMITTED,
+        )
 
     async def get_open_orders(self) -> list[Order]:
         """Get all open orders."""
         await self._rate_limiter.acquire()
         orders = []
+        # openOrders() returns Order objects, not Trade objects
+        # Build a lookup from trades() for contract and status info
+        trade_lookup = {}
+        for t in self._ib.trades():
+            trade_lookup[t.order.orderId] = t
 
-        for trade in self._ib.openOrders():
+        for ib_order in self._ib.openOrders():
+            trade = trade_lookup.get(ib_order.orderId)
+            if trade:
+                contract = self._from_ib_contract(trade.contract)
+                status = self._map_order_status(trade.orderStatus.status)
+            else:
+                contract = Contract(symbol="")
+                status = OrderStatus.SUBMITTED
+
             orders.append(Order(
-                contract=self._from_ib_contract(trade.contract),
-                side=OrderSide.BUY if trade.order.action == "BUY" else OrderSide.SELL,
-                order_type=OrderType(trade.order.orderType),
-                quantity=trade.order.totalQuantity,
-                limit_price=getattr(trade.order, "lmtPrice", None),
-                stop_price=getattr(trade.order, "auxPrice", None),
-                order_id=trade.order.orderId,
-                status=self._map_order_status(trade.orderStatus.status),
+                contract=contract,
+                side=OrderSide.BUY if ib_order.action == "BUY" else OrderSide.SELL,
+                order_type=OrderType(ib_order.orderType),
+                quantity=ib_order.totalQuantity,
+                limit_price=getattr(ib_order, "lmtPrice", None),
+                stop_price=getattr(ib_order, "auxPrice", None),
+                order_id=ib_order.orderId,
+                status=status,
             ))
         return orders
+
+    async def get_order(self, order_id: int) -> Optional[Order]:
+        """Get a specific order by ID."""
+        await self._rate_limiter.acquire()
+        trade_lookup = {}
+        for t in self._ib.trades():
+            trade_lookup[t.order.orderId] = t
+
+        for ib_order in self._ib.openOrders():
+            if ib_order.orderId == order_id:
+                trade = trade_lookup.get(order_id)
+                if trade:
+                    contract = self._from_ib_contract(trade.contract)
+                    status = self._map_order_status(trade.orderStatus.status)
+                else:
+                    contract = Contract(symbol="")
+                    status = OrderStatus.SUBMITTED
+
+                return Order(
+                    contract=contract,
+                    side=OrderSide.BUY if ib_order.action == "BUY" else OrderSide.SELL,
+                    order_type=OrderType(ib_order.orderType),
+                    quantity=ib_order.totalQuantity,
+                    limit_price=getattr(ib_order, "lmtPrice", None),
+                    stop_price=getattr(ib_order, "auxPrice", None),
+                    order_id=ib_order.orderId,
+                    status=status,
+                )
+        return None
 
     def _map_order_status(self, ib_status: str) -> OrderStatus:
         """Map IBKR order status to our enum."""

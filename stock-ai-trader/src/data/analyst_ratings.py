@@ -66,31 +66,27 @@ class AnalystRatings:
             return self._cache[cache_key]
 
         logger.info("Fetching price targets for %s", symbol)
-        data = self._get(f"analyst-estimates/{symbol}", {"limit": 1})
-        if not data:
-            return {}
 
-        latest = data[0] if isinstance(data, list) else data
         result = {
-            "target_high": float(latest.get("estimatedRevenueHigh", 0) or 0),
-            "target_low": float(latest.get("estimatedRevenueLow", 0) or 0),
-            "target_mean": float(latest.get("estimatedRevenueAvg", 0) or 0),
-            "target_median": float(latest.get("estimatedRevenueMedian", 0) or 0),
-            "number_of_analysts": int(latest.get("numberAnalystEstimatedRevenue", 0) or 0),
+            "target_high": 0.0,
+            "target_low": 0.0,
+            "target_mean": 0.0,
+            "target_median": 0.0,
+            "number_of_analysts": 0,
         }
 
-        # Also try the dedicated price-target endpoint
+        # Use the dedicated price-target endpoint
         try:
             pt_data = self._get(f"price-target/{symbol}")
-            if pt_data and isinstance(pt_data, list):
+            if pt_data and isinstance(pt_data, list) and len(pt_data) > 0:
                 latest_pt = pt_data[0]
-                result.update({
-                    "target_high": float(latest_pt.get("targetHigh", result["target_high"]) or result["target_high"]),
-                    "target_low": float(latest_pt.get("targetLow", result["target_low"]) or result["target_low"]),
-                    "target_mean": float(latest_pt.get("targetMean", result["target_mean"]) or result["target_mean"]),
-                    "target_median": float(latest_pt.get("targetMedian", result["target_median"]) or result["target_median"]),
-                    "number_of_analysts": int(latest_pt.get("numberOfAnalysts", result["number_of_analysts"]) or result["number_of_analysts"]),
-                })
+                result = {
+                    "target_high": float(latest_pt.get("targetHigh", 0) or 0),
+                    "target_low": float(latest_pt.get("targetLow", 0) or 0),
+                    "target_mean": float(latest_pt.get("targetMean", 0) or 0),
+                    "target_median": float(latest_pt.get("targetMedian", 0) or 0),
+                    "number_of_analysts": int(latest_pt.get("numberOfAnalysts", 0) or 0),
+                }
         except Exception:
             pass  # price-target endpoint may not be on free tier
 

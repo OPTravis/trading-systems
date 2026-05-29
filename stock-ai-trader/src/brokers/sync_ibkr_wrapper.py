@@ -136,7 +136,7 @@ class SyncIBKRWrapper:
                     symbol=p.contract.symbol,
                     exchange=p.contract.exchange or "SMART",
                     currency=p.contract.currency or "USD",
-                    con_id=p.contract.conId,
+                    contract_id=p.contract.conId,
                 ),
                 quantity=p.position,
                 avg_cost=p.avgCost,

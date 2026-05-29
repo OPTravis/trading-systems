@@ -12,7 +12,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -108,27 +108,36 @@ Respond ONLY with valid JSON."""
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _call_llm(api_url: str, model: str, api_key: str, prompt: str, temperature: float = 0.3) -> Optional[str]:
-    """Call an LLM API and return the response text, or None on failure."""
-    try:
-        resp = requests.post(
-            api_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-                "max_tokens": 2048,
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error("LLM call failed (%s/%s): %s", api_url, model, e)
-        return None
+    """Call an LLM API and return the response text, or None on failure. Retries up to 3 times."""
+    import time as _time
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(
+                api_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": temperature,
+                    "max_tokens": 2048,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except requests.exceptions.RequestException as e:
+            logger.warning("LLM call attempt %d/%d failed (%s/%s): %s", attempt + 1, max_retries, api_url, model, e)
+            if attempt < max_retries - 1:
+                _time.sleep(2 ** attempt)  # exponential backoff: 1s, 2s
+        except Exception as e:
+            logger.error("LLM call failed (%s/%s): %s", api_url, model, e)
+            return None
+    logger.error("LLM call failed after %d retries (%s/%s)", max_retries, api_url, model)
+    return None
 
 
 def _parse_json(text: str) -> Optional[dict]:
@@ -211,7 +220,7 @@ class StockResearcher:
         7. Merge into ResearchReport
         """
         logger.info("Starting research on %s", symbol)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # 1 — Technical data
         technical_data = self._gather_technicals(symbol)
@@ -313,8 +322,8 @@ class StockResearcher:
             sma_50 = df["close"].tail(50).mean()
             rsi = self._compute_rsi(df["close"], 14)
             avg_vol = df["volume"].tail(20).mean()
-            pct_change_1w = (df["close"].iloc[-1] / df["close"].iloc[-5] - 1) * 100 if len(df) >= 5 else 0
-            pct_change_1m = (df["close"].iloc[-1] / df["close"].iloc[-20] - 1) * 100 if len(df) >= 20 else 0
+            pct_change_1w = (df["close"].iloc[-1] / df["close"].iloc[-5] - 1) * 100 if len(df) >= 5 else 0.0
+            pct_change_1m = (df["close"].iloc[-1] / df["close"].iloc[-20] - 1) * 100 if len(df) >= 20 else 0.0
 
             return (
                 f"Price: ${last['close']:.2f}  |  SMA20: ${sma_20:.2f}  |  SMA50: ${sma_50:.2f}\n"

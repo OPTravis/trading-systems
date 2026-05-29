@@ -88,6 +88,10 @@ settlement:
   us: "T+1"                     # 美股 T+1
   hk: "T+2"                     # 港股 T+2
   cn: "T+1"                     # A 股 T+1
+  jp: "T+2"                     # 日股 T+2
+  uk: "T+2"                     # 英國股票 T+2
+  eu: "T+2"                     # 歐洲股票 T+2
+  au: "T+2"                     # 澳洲股票 T+2
 
 # PDT 規則
 pdt_guard:

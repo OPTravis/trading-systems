@@ -61,7 +61,7 @@ markets:
         start: "16:00"
         end: "16:10"
     settlement: "T+2"
-    lot_size: "dynamic"  # 每隻股票不同，需動態查詢
+    lot_size: null  # dynamic — 每隻股票不同，需動態查詢 IBKR
     price_limits: false  # 無漲跌停，有 VCM（市場波動調節機制）
     holidays_2026:
       - "2026-01-01"  # New Year's Day

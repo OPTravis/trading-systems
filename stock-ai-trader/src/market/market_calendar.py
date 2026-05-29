@@ -81,7 +81,11 @@ class MarketCalendar:
 
     def __init__(self, year: int = 2026) -> None:
         self._year = year
-        self._holidays = _HOLIDAYS
+        self._holidays: dict[Market, list[date]] = {
+            Market.US: [h for h in US_HOLIDAYS_2026 if h.year == year],
+            Market.HK: [h for h in HK_HOLIDAYS_2026 if h.year == year],
+            Market.CN: [h for h in CN_HOLIDAYS_2026 if h.year == year],
+        }
         # Allow adding custom holidays per market
         self._extra_holidays: dict[Market, set[date]] = {
             m: set() for m in Market
@@ -138,9 +142,11 @@ class MarketCalendar:
         """Get the next trading day after the given date."""
         market = Market(market) if isinstance(market, str) else market
         next_day = d + timedelta(days=1)
-        while not self.is_trading_day(next_day, market):
+        for _ in range(30):
+            if self.is_trading_day(next_day, market):
+                return next_day
             next_day += timedelta(days=1)
-        return next_day
+        return next_day  # best effort after 30 iterations
 
     def previous_trading_day(
         self, d: date, market: str | Market = Market.US
@@ -148,9 +154,11 @@ class MarketCalendar:
         """Get the previous trading day before the given date."""
         market = Market(market) if isinstance(market, str) else market
         prev_day = d - timedelta(days=1)
-        while not self.is_trading_day(prev_day, market):
+        for _ in range(30):
+            if self.is_trading_day(prev_day, market):
+                return prev_day
             prev_day -= timedelta(days=1)
-        return prev_day
+        return prev_day  # best effort after 30 iterations
 
     def trading_days_between(
         self,

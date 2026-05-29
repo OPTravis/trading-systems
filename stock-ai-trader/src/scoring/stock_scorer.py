@@ -136,11 +136,23 @@ class StockScorer:
             skipped_weight = sum(weights.get(k, 0) for k in skipped_factors)
             active_weight = sum(weights.get(k, 0) for k in active_factors)
             if active_weight > 0:
+                logger.info(
+                    "Redistributing weight %.4f from skipped factors %s to active factors %s",
+                    skipped_weight, skipped_factors, active_factors,
+                )
                 weights = {
                     k: (weights.get(k, 0) + skipped_weight * weights.get(k, 0) / active_weight)
                     if k in active_factors else 0.0
                     for k in weights
                 }
+            else:
+                logger.warning(
+                    "No active weight to redistribute — skipped factors %s have all the weight; "
+                    "falling back to equal weights for active factors",
+                    skipped_factors,
+                )
+                n_active = len(active_factors)
+                weights = {k: (1.0 / n_active if k in active_factors else 0.0) for k in weights}
 
         # Compute composite using only active (non-None) factors
         composite = sum(

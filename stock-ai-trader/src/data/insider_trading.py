@@ -3,6 +3,7 @@ Insider trading data from SEC Form 4 filings via FMP API.
 """
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -47,8 +48,7 @@ class InsiderTrading:
         logger.info("Fetching insider trades for %s (last %d days)", symbol, days)
         data = self._get(f"insider-trading/{symbol}", {"limit": 100})
 
-        from datetime import datetime, timedelta
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         trades = []
         for item in data:
@@ -91,8 +91,11 @@ class InsiderTrading:
         """
         trades = self.get_insider_trades(symbol, days)
 
-        buys = [t for t in trades if "P" in t.get("transaction_type", "").upper() or "purchase" in t.get("transaction_type", "").lower()]
-        sells = [t for t in trades if "S" in t.get("transaction_type", "").upper() or "sale" in t.get("transaction_type", "").lower()]
+        BUY_TYPES = {"P-PURCHASE", "PURCHASE", "P"}
+        SELL_TYPES = {"S-SALE", "SALE", "S"}
+
+        buys = [t for t in trades if t.get("transaction_type", "").upper() in BUY_TYPES]
+        sells = [t for t in trades if t.get("transaction_type", "").upper() in SELL_TYPES]
 
         total_buy_shares = sum(t["shares"] for t in buys)
         total_sell_shares = sum(t["shares"] for t in sells)

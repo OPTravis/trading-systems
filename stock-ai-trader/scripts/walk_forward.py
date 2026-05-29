@@ -145,7 +145,7 @@ def _simulate_trades(test_data, close, signal, rsi, vol_ratio, sma_ref,
     entry_price = 0
     trades = []
     equity = [capital]
-    min_bars = max(20, 30)  # Skip warmup
+    min_bars = 30  # Skip warmup
 
     for i in range(min_bars, len(test_data)):
         price = close.iloc[i]
@@ -195,7 +195,7 @@ def _simulate_trades(test_data, close, signal, rsi, vol_ratio, sma_ref,
         trades.append({"pnl": proceeds - position * entry_price, "pnl_pct": pnl_pct})
         capital += proceeds
 
-    equity_series = pd.Series(equity, index=test_data.index[:len(equity)])
+    equity_series = pd.Series(equity, index=test_data.index[min_bars - 1:min_bars - 1 + len(equity)])
     return trades, equity_series
 
 
@@ -327,6 +327,9 @@ def main():
     if args.strategy == "all":
         strats = STRATEGIES
     else:
+        if args.strategy not in STRATEGIES:
+            logger.error("Unknown strategy '%s'. Available: %s", args.strategy, ", ".join(STRATEGIES.keys()))
+            sys.exit(1)
         strats = {args.strategy: STRATEGIES[args.strategy]}
 
     # Run all strategies

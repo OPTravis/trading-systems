@@ -120,24 +120,42 @@ class EarningsCalendar:
             True if the symbol reports earnings on target_date.
         """
         target = target_date or date.today()
+        target_str = target.strftime("%Y-%m-%d")
+        symbol_upper = symbol.upper()
+
+        # Check historical earnings for this specific symbol first (cheaper)
         history = self.get_earnings_history(symbol)
         for item in history:
             try:
-                report_date = datetime.strptime(item["report_date"], "%Y-%m-%d").date()
-                if report_date == target:
+                if item["report_date"][:10] == target_str:
                     return True
-            except (ValueError, KeyError):
+            except (KeyError, TypeError):
                 continue
 
-        # Also check upcoming
-        upcoming = self.get_upcoming_earnings(days_ahead=90)
-        for item in upcoming:
-            if item.get("symbol", "").upper() == symbol.upper():
+        # Check upcoming earnings filtered to this symbol
+        cache_key = f"upcoming_symbol|{symbol}|{target_str}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        try:
+            data = self._query("EARNINGS_CALENDAR", {"symbol": symbol})
+            if isinstance(data, dict):
+                items = data.get("data", data.get("earnings", []))
+            else:
+                items = data
+
+            found = False
+            for item in items:
                 try:
-                    report_date = datetime.strptime(item["report_date"], "%Y-%m-%d").date()
-                    if report_date == target:
-                        return True
-                except (ValueError, KeyError):
+                    report_str = item.get("reportDate", item.get("report_date", ""))[:10]
+                    if report_str == target_str:
+                        found = True
+                        break
+                except (TypeError, AttributeError):
                     continue
 
-        return False
+            self._cache[cache_key] = found
+            return found
+        except Exception as exc:
+            logger.debug("Symbol-filtered earnings lookup failed for %s: %s", symbol, exc)
+            return False

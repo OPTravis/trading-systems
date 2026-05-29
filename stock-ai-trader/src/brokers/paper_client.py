@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from datetime import datetime
 from typing import AsyncIterator, Optional
 from uuid import uuid4
@@ -110,7 +111,6 @@ class PaperClient(BrokerProtocol):
             BarSize.THIRTY_MIN: 30, BarSize.ONE_HOUR: 60, BarSize.ONE_DAY: 1440,
         }.get(bar_size, 1)
 
-        import random
         for i in range(min(num_bars, 500)):
             ts = now
             noise = random.uniform(-0.02, 0.02)
@@ -128,7 +128,6 @@ class PaperClient(BrokerProtocol):
 
     async def stream_market_data(self, contract: Contract) -> AsyncIterator[Tick]:
         """Yield simulated ticks at ~4Hz."""
-        import random
         price = self._market_prices.get(contract.symbol, 100.0)
 
         while self._connected:
@@ -150,18 +149,21 @@ class PaperClient(BrokerProtocol):
     # ── Account & Positions ──────────────────────────────────────────────
 
     async def get_account(self) -> AccountSummary:
-        total_position_value = sum(
-            abs(p.quantity) * p.avg_cost for p in self._positions.values()
+        # NAV = cash balance + total market value of positions (not avg_cost * qty)
+        # Using market_value avoids double-counting unrealized P&L
+        positions = list(self._positions.values())
+        net_liquidation = self._balance + sum(
+            position.market_value for position in positions
         )
-        unrealized = sum(p.unrealized_pnl for p in self._positions.values())
+        unrealized = sum(p.unrealized_pnl for p in positions)
 
         return AccountSummary(
             account_id="PAPER-001",
-            net_liquidation=self._balance + total_position_value + unrealized,
+            net_liquidation=net_liquidation,
             total_cash=self._balance,
             available_funds=self._balance,
             buying_power=self._balance * 2,  # 2x margin
-            gross_position_value=total_position_value,
+            gross_position_value=sum(abs(p.market_value) for p in positions),
             unrealized_pnl=unrealized,
         )
 
@@ -178,6 +180,20 @@ class PaperClient(BrokerProtocol):
         order_id = self._next_order_id
         self._next_order_id += 1
         order.order_id = order_id
+
+        # Reject SELL orders when there is no position to sell
+        if order.side == OrderSide.SELL:
+            symbol = order.contract.symbol
+            pos = self._positions.get(symbol)
+            if pos is None or pos.quantity < order.quantity:
+                order.status = OrderStatus.REJECTED
+                self._orders[order_id] = order
+                logger.warning(
+                    "Paper order rejected: SELL %s x%.0f but position is %s",
+                    symbol, order.quantity,
+                    f"{pos.quantity}" if pos else "none",
+                )
+                return order
 
         price = self._market_prices.get(order.contract.symbol, 100.0)
 
@@ -268,6 +284,10 @@ class PaperClient(BrokerProtocol):
 
     async def get_open_orders(self) -> list[Order]:
         return [o for o in self._orders.values() if o.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED)]
+
+    async def get_order(self, order_id: int) -> Optional[Order]:
+        """Get a specific order by ID."""
+        return self._orders.get(order_id)
 
     # ── Contract Utilities ───────────────────────────────────────────────
 

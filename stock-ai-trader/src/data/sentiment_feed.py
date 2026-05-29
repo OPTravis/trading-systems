@@ -76,8 +76,9 @@ class SentimentFeed:
         self._load_pipeline()
 
         try:
-            # FinBERT handles up to 512 tokens; truncate if needed
-            truncated = text[:512]
+            # FinBERT handles up to 512 tokens; truncate to ~2000 chars
+            # (~450 words, safely under 512 token limit)
+            truncated = text[:2000]
             results = self._pipeline(truncated)
 
             # results is [[{label, score}, ...]] with top_k=None
@@ -112,7 +113,7 @@ class SentimentFeed:
         self._load_pipeline()
 
         try:
-            truncated = [t[:512] for t in texts]
+            truncated = [t[:2000] for t in texts]
             results = self._pipeline(truncated, batch_size=16)
 
             scores = []

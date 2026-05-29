@@ -276,7 +276,7 @@ def main():
     for fn in all_factor_names[:6]:
         stats = feat_store.get_factor_stats(fn, "2024-01-01", "2026-12-31")
         logger.info("  %s: mean=%.1f, std=%.1f, count=%d, IC=%.3f",
-                     fn, stats["mean"], stats["std"], stats["count"], stats["ic_mean"])
+                     fn, stats["mean"], stats["std"], stats["count"], stats.get("ic_mean", 0))
 
     hist_store.close()
     feat_store.close()
@@ -291,11 +291,15 @@ def compute_and_store_ic(all_factors: dict, feat_store: FeatureStore) -> int:
     ic_data = {}
 
     for sym, fdf in all_factors.items():
-        if fdf.empty or "momentum_20d" not in fdf.columns:
+        if fdf.empty or len(fdf) < 40:
             continue
 
-        # Forward 20d return as the "target"
-        close_proxy = fdf["momentum_20d"].shift(-20)  # Approximate
+        # Compute forward 20d return from a close price proxy
+        # Use reverse momentum as approximation: current momentum_20d reflects
+        # past 20d return, so we need forward return which requires close prices
+        # Since we don't have raw close here, reconstruct from available factors
+        # Best available approach: use the momentum_20d shifted by -20
+        forward_return = fdf["momentum_20d"].shift(-20)
 
         for col in fdf.columns:
             if col.startswith("momentum_20d"):
@@ -305,8 +309,8 @@ def compute_and_store_ic(all_factors: dict, feat_store: FeatureStore) -> int:
 
             valid = fdf[[col]].dropna()
             if len(valid) > 30:
-                # Rank correlation
-                corr = fdf[col].corr(fdf["momentum_20d"].shift(-20), method="spearman")
+                # Rank correlation with forward 20d return
+                corr = fdf[col].corr(forward_return, method="spearman")
                 if not np.isnan(corr):
                     ic_data[col].append((str(fdf.index[-1]), corr))
 

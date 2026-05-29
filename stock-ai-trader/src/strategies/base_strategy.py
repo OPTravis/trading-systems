@@ -61,6 +61,8 @@ class Position:
     @property
     def unrealized_pnl_pct(self) -> float:
         """Calculate P&L % given current price (from metadata)."""
+        if self.entry_price == 0:
+            return 0.0
         current = self.metadata.get("current_price", self.entry_price)
         return (current - self.entry_price) / self.entry_price * 100
 
@@ -171,7 +173,7 @@ class BaseStrategy(ABC):
         avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
         avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
         rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+        return (100 - (100 / (1 + rs))).fillna(50.0)
 
     @staticmethod
     def bollinger_bands(
@@ -206,10 +208,15 @@ class BaseStrategy(ABC):
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
         atr = tr.ewm(alpha=1 / period, min_periods=period).mean()
-        plus_di = 100 * (plus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr)
-        minus_di = 100 * (minus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr)
+        atr_safe = atr.replace(0, float('nan'))
+        plus_di = 100 * (plus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr_safe)
+        plus_di = plus_di.fillna(0)
+        minus_di = 100 * (minus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr_safe)
+        minus_di = minus_di.fillna(0)
 
-        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+        di_sum = plus_di + minus_di
+        dx = 100 * (plus_di - minus_di).abs() / di_sum.replace(0, float('nan'))
+        dx = dx.fillna(0)
         adx_val = dx.ewm(alpha=1 / period, min_periods=period).mean()
         return adx_val
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -237,7 +238,7 @@ class TradeExecutor:
         self.broker = broker
         self.sizer = position_sizer or HybridPositionSizer()
         self.portfolio = portfolio
-        self._execution_log: List[ExecutionResult] = []
+        self._execution_log: deque[ExecutionResult] = deque(maxlen=500)
 
     # ── Smart Routing ───────────────────────────────────────────────────
 
@@ -252,7 +253,7 @@ class TradeExecutor:
 
     # ── Order Execution ─────────────────────────────────────────────────
 
-    def execute(
+    async def execute(
         self,
         symbol: str,
         side: str,
@@ -280,7 +281,7 @@ class TradeExecutor:
             Dict with success status and execution details.
         """
         from src.brokers.broker_protocol import (
-            Contract, Order, OrderSide, OrderType, TimeInForce,
+            Contract, Order, OrderSide, OrderStatus, OrderType, TimeInForce,
         )
 
         if not self.broker:
@@ -318,30 +319,30 @@ class TradeExecutor:
         )
 
         # Execute with retry
-        result = self._execute_with_retry(order, symbol, side, quantity)
+        result = await self._execute_with_retry(order, symbol, side, quantity, order_type)
 
         # Place stop-loss if requested and main order filled
-        if result.success and stop_loss and side.upper() == "BUY":
-            self._place_stop_loss(symbol, quantity, stop_loss)
+        if result.success and stop_loss:
+            await self._place_stop_loss(symbol, quantity, stop_loss, result.order_id)
 
         # Place take-profit if requested and main order filled
-        if result.success and take_profit and side.upper() == "BUY":
-            self._place_take_profit(symbol, quantity, take_profit)
+        if result.success and take_profit:
+            await self._place_take_profit(symbol, quantity, take_profit, result.order_id)
 
         self._execution_log.append(result)
         return result.to_dict()
 
-    def _execute_with_retry(
-        self, order, symbol: str, side: str, quantity: float
+    async def _execute_with_retry(
+        self, order, symbol: str, side: str, quantity: float, order_type_str: str = "MKT"
     ) -> ExecutionResult:
         """Place order with retry logic."""
         result = None
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                placed = self.broker.place_order(order)
+                placed = await self.broker.place_order(order)
 
-                if placed.status in ("FILLED", "PARTIALLY_FILLED"):
+                if placed.status in (OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED):
                     result = ExecutionResult(
                         success=True,
                         symbol=symbol,
@@ -363,7 +364,7 @@ class TradeExecutor:
                     )
                     return result
 
-                elif placed.status == "REJECTED":
+                elif placed.status == OrderStatus.REJECTED:
                     result = ExecutionResult(
                         success=False, symbol=symbol, side=side,
                         order_type=order.order_type.value, requested_qty=quantity,
@@ -374,7 +375,7 @@ class TradeExecutor:
                     logger.warning("ORDER REJECTED: %s %s — %s", side, symbol, result.error)
                     return result  # Don't retry rejections
 
-                elif placed.status == "CANCELLED":
+                elif placed.status == OrderStatus.CANCELLED:
                     result = ExecutionResult(
                         success=False, symbol=symbol, side=side,
                         order_type=order.order_type.value, requested_qty=quantity,
@@ -386,7 +387,7 @@ class TradeExecutor:
 
                 else:
                     # Pending/submitted — wait for fill
-                    fill_result = self._wait_for_fill(placed.order_id, symbol, side, quantity, attempt)
+                    fill_result = await self._wait_for_fill(placed.order_id, symbol, side, quantity, attempt, order_type_str)
                     if fill_result:
                         return fill_result
 
@@ -411,23 +412,26 @@ class TradeExecutor:
             )
         return result
 
-    def _wait_for_fill(
-        self, order_id: int, symbol: str, side: str, quantity: float, attempt: int
+    async def _wait_for_fill(
+        self, order_id: int, symbol: str, side: str, quantity: float, attempt: int,
+        order_type_str: str = "MKT"
     ) -> Optional[ExecutionResult]:
         """Poll for order fill confirmation."""
+        from src.brokers.broker_protocol import OrderStatus
+
         deadline = time.time() + self.FILL_TIMEOUT_SEC
         consecutive_errors = 0
         max_consecutive_errors = 3
         while time.time() < deadline:
             try:
-                open_orders = self.broker.get_open_orders()
+                open_orders = await self.broker.get_open_orders()
                 consecutive_errors = 0  # Reset on success
                 for o in open_orders:
                     if o.order_id == order_id:
-                        if o.status == "FILLED":
+                        if o.status == OrderStatus.FILLED:
                             return ExecutionResult(
                                 success=True, symbol=symbol, side=side,
-                                order_type="LMT", requested_qty=quantity,
+                                order_type=order_type_str, requested_qty=quantity,
                                 filled_qty=o.filled_qty,
                                 avg_fill_price=o.avg_fill_price,
                                 commission=o.commission,
@@ -435,10 +439,10 @@ class TradeExecutor:
                                 retry_count=attempt,
                                 timestamp=datetime.now().isoformat(),
                             )
-                        elif o.status in ("CANCELLED", "REJECTED"):
+                        elif o.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED):
                             return ExecutionResult(
                                 success=False, symbol=symbol, side=side,
-                                order_type="LMT", requested_qty=quantity,
+                                order_type=order_type_str, requested_qty=quantity,
                                 error=f"Order {o.status.value}",
                                 order_id=order_id,
                                 retry_count=attempt,
@@ -458,14 +462,15 @@ class TradeExecutor:
 
     # ── Stop-Loss / Take-Profit ─────────────────────────────────────────
 
-    def _place_stop_loss(self, symbol: str, quantity: float, stop_price: float):
-        """Place a stop-loss order."""
+    async def _place_stop_loss(self, symbol: str, quantity: float, stop_price: float, parent_order_id: Optional[int] = None):
+        """Place a stop-loss order (SELL stop for longs, BUY stop for shorts)."""
         from src.brokers.broker_protocol import (
             Contract, Order, OrderSide, OrderType, TimeInForce,
         )
         try:
             exchange = self.route_exchange(symbol)
             contract = Contract(symbol=symbol, exchange=exchange.value, currency="USD")
+            # Protective stop is always the inverse side: SELL to protect a long, BUY to protect a short
             order = Order(
                 contract=contract,
                 side=OrderSide.SELL,
@@ -473,21 +478,23 @@ class TradeExecutor:
                 quantity=quantity,
                 stop_price=stop_price,
                 time_in_force=TimeInForce.GTC,
+                parent_id=parent_order_id,
             )
-            placed = self.broker.place_order(order)
-            logger.info("Stop-loss placed: %s @ %.2f (order_id=%s)",
-                        symbol, stop_price, placed.order_id)
+            placed = await self.broker.place_order(order)
+            logger.info("Stop-loss placed: %s @ %.2f (order_id=%s, parent=%s)",
+                        symbol, stop_price, placed.order_id, parent_order_id)
         except Exception as e:
             logger.error("Failed to place stop-loss for %s: %s", symbol, e)
 
-    def _place_take_profit(self, symbol: str, quantity: float, target_price: float):
-        """Place a take-profit (limit sell) order."""
+    async def _place_take_profit(self, symbol: str, quantity: float, target_price: float, parent_order_id: Optional[int] = None):
+        """Place a take-profit (limit) order (SELL limit for longs, BUY limit for shorts)."""
         from src.brokers.broker_protocol import (
             Contract, Order, OrderSide, OrderType, TimeInForce,
         )
         try:
             exchange = self.route_exchange(symbol)
             contract = Contract(symbol=symbol, exchange=exchange.value, currency="USD")
+            # Protective TP is always the inverse side: SELL limit to protect a long, BUY limit to protect a short
             order = Order(
                 contract=contract,
                 side=OrderSide.SELL,
@@ -495,16 +502,17 @@ class TradeExecutor:
                 quantity=quantity,
                 limit_price=target_price,
                 time_in_force=TimeInForce.GTC,
+                parent_id=parent_order_id,
             )
-            placed = self.broker.place_order(order)
-            logger.info("Take-profit placed: %s @ %.2f (order_id=%s)",
-                        symbol, target_price, placed.order_id)
+            placed = await self.broker.place_order(order)
+            logger.info("Take-profit placed: %s @ %.2f (order_id=%s, parent=%s)",
+                        symbol, target_price, placed.order_id, parent_order_id)
         except Exception as e:
             logger.error("Failed to place take-profit for %s: %s", symbol, e)
 
     # ── Size & Execute ──────────────────────────────────────────────────
 
-    def size_and_execute(
+    async def size_and_execute(
         self,
         symbol: str,
         price: float,
@@ -561,7 +569,7 @@ class TradeExecutor:
         stop_loss = price * (1 - stop_loss_pct / 100)
         take_profit = price * (1 + take_profit_pct / 100)
 
-        result = self.execute(
+        result = await self.execute(
             symbol=symbol,
             side=side,
             quantity=quantity,

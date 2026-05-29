@@ -3,7 +3,7 @@ Financial news feed via Jina Reader and NewsAPI.
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -37,7 +37,7 @@ class NewsFeed:
             List of dicts with keys: title, description, url, source,
             published_at, sentiment_hint.
         """
-        from_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+        from_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         logger.info("Fetching news for %s (last %d days)", symbol, days)
 
         articles = []
@@ -85,7 +85,7 @@ class NewsFeed:
                         "description": text[:500],
                         "url": f"https://finance.yahoo.com/quote/{symbol}/news",
                         "source": "Yahoo Finance (via Jina)",
-                        "published_at": datetime.utcnow().isoformat(),
+                        "published_at": datetime.now(timezone.utc).isoformat(),
                         "content": text,
                     })
             except Exception as exc:

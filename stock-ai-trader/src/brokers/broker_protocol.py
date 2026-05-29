@@ -303,6 +303,11 @@ class BrokerProtocol(ABC):
         """Get all currently open orders."""
         ...
 
+    @abstractmethod
+    async def get_order(self, order_id: int) -> Optional[Order]:
+        """Get a specific order by ID."""
+        ...
+
     # ── Contract Utilities ───────────────────────────────────────────────
 
     @abstractmethod

@@ -3,6 +3,7 @@ Feature store for factor values and IC history using DuckDB.
 Provides efficient columnar storage for quantitative factor data.
 """
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +31,7 @@ class FeatureStore:
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = None
+        self._write_lock = threading.Lock()
         self._init_tables()
 
     @property
@@ -85,11 +87,11 @@ class FeatureStore:
         melted = melted.dropna(subset=["value"])
 
         # Upsert using INSERT OR REPLACE
-        records = melted[["date", "symbol", "factor_name", "value"]].dropna(subset=["value"]).to_records(index=False)
+        records = melted[["date", "symbol", "factor_name", "value"]].to_records(index=False)
         record_list = [tuple(r) for r in records]
         if not record_list:
             return 0
-        with DuckDBLock(self.db_path):
+        with self._write_lock, DuckDBLock(self.db_path):
             self.conn.executemany(
                 "INSERT OR REPLACE INTO factor_values (date, symbol, factor_name, value) VALUES (?, ?, ?, ?)",
                 record_list,
@@ -172,7 +174,7 @@ class FeatureStore:
             Number of rows upserted.
         """
         records = [(date, factor_name, ic) for date, ic in ic_values.items()]
-        with DuckDBLock(self.db_path):
+        with self._write_lock, DuckDBLock(self.db_path):
             self.conn.executemany(
                 "INSERT OR REPLACE INTO ic_history (date, factor_name, ic_value) VALUES (?, ?, ?)",
                 records,

@@ -60,7 +60,7 @@ symbols:
       quality: 0.1
       value: 0.15
   AAPL:
-    strategy: momentum_rsi
+    strategy: momentum
     validated_sharpe: 2.95
     validated_win_rate: 0.586
     weights:
@@ -82,7 +82,7 @@ symbols:
       quality: 0.1
       value: 0.15
   ASML.AS:
-    strategy: momentum_rsi
+    strategy: momentum
     validated_sharpe: 4.13
     validated_win_rate: 0.451
     weights:
@@ -159,7 +159,7 @@ symbols:
       quality: 0.1
       value: 0.15
   KO:
-    strategy: momentum_rsi
+    strategy: momentum
     validated_sharpe: 7.82
     validated_win_rate: 0.667
     weights:
@@ -170,7 +170,7 @@ symbols:
       quality: 0.15
       value: 0.15
   MCD:
-    strategy: momentum_rsi
+    strategy: momentum
     validated_sharpe: 1.51
     validated_win_rate: 0.584
     weights:
@@ -203,7 +203,7 @@ symbols:
       quality: 0.2
       value: 0.25
   SHEL.L:
-    strategy: momentum_rsi
+    strategy: momentum
     validated_sharpe: 8.82
     validated_win_rate: 0.56
     weights:

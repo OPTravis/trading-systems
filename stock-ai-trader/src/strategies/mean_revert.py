@@ -99,7 +99,7 @@ class MeanRevertStrategy(BaseStrategy):
 
         # Check if price is near lower Bollinger Band
         bb_width = current_upper - current_lower
-        if bb_width <= 0:
+        if pd.isna(bb_width) or bb_width <= 0:
             return None
         distance_to_lower = (current_price - current_lower) / bb_width
 
@@ -108,6 +108,9 @@ class MeanRevertStrategy(BaseStrategy):
         near_lower_band = distance_to_lower <= p["bb_lower_entry_pct"]
 
         if is_oversold and near_lower_band:
+            # Guard NaN ATR
+            if pd.isna(current_atr) or current_atr <= 0:
+                return None
             # Strength: deeper into oversold = stronger signal
             rsi_strength = max(0, (p["rsi_oversold"] - current_rsi) / p["rsi_oversold"])
             bb_strength = max(0, 1 - distance_to_lower / p["bb_lower_entry_pct"])

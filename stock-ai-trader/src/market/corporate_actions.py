@@ -227,7 +227,8 @@ class CorporateActions:
 
         price_cols = [c for c in ["open", "high", "low", "close"] if c in result.columns]
 
-        for div in divs:
+        # Iterate dividends sorted by ex_date DESCENDING (most recent first) for backward adjustment
+        for div in sorted(divs, key=lambda d: d.ex_date, reverse=True):
             ex_date = pd.Timestamp(div.ex_date)
             mask = result.index < ex_date
             if mask.any() and "close" in result.columns:

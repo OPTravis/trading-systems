@@ -150,6 +150,12 @@ class WalkForwardValidator:
             logger.warning("Insufficient data for walk-forward: %d rows", len(data))
             return WalkForwardReport(strategy=strategy_name, symbol=symbol, total_windows=0)
 
+        # NaN protection: warn if data contains NaN values
+        nan_count = int(data.isna().sum().sum()) if hasattr(data, 'isna') else 0
+        if nan_count > 0:
+            logger.warning("Data contains %d NaN values — forward-filling before validation", nan_count)
+            data = data.ffill().bfill()
+
         # Generate windows
         windows = self._generate_windows(data)
         logger.info("Walk-forward: %d windows (%d train, %d test, %d step)",
@@ -233,7 +239,7 @@ class WalkForwardValidator:
         test_data: pd.DataFrame,
         param_grid: Dict[str, list],
     ) -> Dict:
-        """Grid search for optimal parameters on training data."""
+        """Grid search for optimal parameters on training data only (no look-ahead)."""
         from itertools import product
 
         keys = list(param_grid.keys())
@@ -244,7 +250,9 @@ class WalkForwardValidator:
         for combo in product(*values):
             params = dict(zip(keys, combo))
             try:
-                trades, equity = strategy_fn(train_data, test_data, params)
+                # Use train_data for BOTH arguments during optimization
+                # to avoid look-ahead bias
+                trades, equity = strategy_fn(train_data, train_data, params)
                 if not trades:
                     continue
                 returns = [t["pnl"] for t in trades if "pnl" in t]
@@ -276,10 +284,12 @@ class WalkForwardValidator:
         pnls = [t.get("pnl", 0) for t in trades]
         returns = [t.get("return_pct", 0) / 100 for t in trades]
 
-        total_return = sum(pnls) / 10000 if pnls else 0  # Normalize
+        # total_return: sum of PnLs divided by initial capital
+        initial_capital = 100000.0
+        total_return = sum(pnls) / initial_capital if pnls else 0
         sharpe = self._compute_sharpe(pnls) if pnls else 0
         sortino = self._compute_sortino(pnls) if pnls else 0
-        max_dd = self._compute_max_drawdown(equity_curve) if equity_curve is not None and hasattr(equity_curve, "empty") and not equity_curve.empty else 0
+        max_dd = self._compute_max_drawdown(equity_curve) if equity_curve is not None and len(equity_curve) >= 2 else 0
         win_rate = sum(1 for p in pnls if p > 0) / len(pnls) if pnls else 0
         profit_factor = self._compute_profit_factor(pnls)
 
@@ -328,7 +338,7 @@ class WalkForwardValidator:
 
     def _compute_max_drawdown(self, equity_curve) -> float:
         """Maximum drawdown from equity curve."""
-        if equity_curve is None or (hasattr(equity_curve, 'empty') and equity_curve.empty) or len(equity_curve) < 2:
+        if equity_curve is None or len(equity_curve) < 2:
             return 0.0
         arr = np.array(equity_curve)
         peak = np.maximum.accumulate(arr)

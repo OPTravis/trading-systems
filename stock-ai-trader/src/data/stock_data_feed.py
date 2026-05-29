@@ -49,10 +49,20 @@ class StockDataFeed:
         entry = self._cache.get(key)
         if entry and entry.is_valid():
             return entry.data
+        # Evict expired entry
+        if entry is not None:
+            del self._cache[key]
         return None
 
     def _set_cached(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
         self._cache[key] = CacheEntry(data, ttl or self.default_cache_ttl)
+
+    def _evict_expired(self) -> None:
+        """Remove all expired entries from the in-memory cache."""
+        now = time.time()
+        expired = [k for k, v in self._cache.items() if now >= v.expiry]
+        for k in expired:
+            del self._cache[k]
 
     def clear_cache(self) -> None:
         self._cache.clear()
@@ -138,15 +148,15 @@ class StockDataFeed:
         info = ticker.fast_info
         quote = {
             "symbol": symbol,
-            "price": float(info.get("lastPrice", info.get("last_price", 0)) or 0),
-            "change": float(info.get("regularMarketChange", 0) or 0),
-            "change_pct": float(info.get("regularMarketChangePercent", 0) or 0),
-            "volume": int(info.get("lastVolume", 0) or 0),
-            "bid": float(info.get("bid", 0) or 0),
-            "ask": float(info.get("ask", 0) or 0),
-            "day_high": float(info.get("dayHigh", 0) or 0),
-            "day_low": float(info.get("dayLow", 0) or 0),
-            "market_cap": float(info.get("marketCap", 0) or 0),
+            "price": float(getattr(info, "last_price", 0) or 0),
+            "change": float(getattr(info, "regular_market_change", 0) or 0),
+            "change_pct": float(getattr(info, "regular_market_change_percent", 0) or 0),
+            "volume": int(getattr(info, "last_volume", 0) or 0),
+            "bid": float(getattr(info, "bid", 0) or 0),
+            "ask": float(getattr(info, "ask", 0) or 0),
+            "day_high": float(getattr(info, "day_high", 0) or 0),
+            "day_low": float(getattr(info, "day_low", 0) or 0),
+            "market_cap": float(getattr(info, "market_cap", 0) or 0),
             "timestamp": pd.Timestamp.now().isoformat(),
         }
         self._set_cached(cache_key, quote, ttl=15)
@@ -183,11 +193,11 @@ class StockDataFeed:
                 info = tickers.tickers[sym].fast_info
                 quote = {
                     "symbol": sym,
-                    "price": float(info.get("lastPrice", info.get("last_price", 0)) or 0),
-                    "change": float(info.get("regularMarketChange", 0) or 0),
-                    "change_pct": float(info.get("regularMarketChangePercent", 0) or 0),
-                    "volume": int(info.get("lastVolume", 0) or 0),
-                    "market_cap": float(info.get("marketCap", 0) or 0),
+                    "price": float(getattr(info, "last_price", 0) or 0),
+                    "change": float(getattr(info, "regular_market_change", 0) or 0),
+                    "change_pct": float(getattr(info, "regular_market_change_percent", 0) or 0),
+                    "volume": int(getattr(info, "last_volume", 0) or 0),
+                    "market_cap": float(getattr(info, "market_cap", 0) or 0),
                     "timestamp": pd.Timestamp.now().isoformat(),
                 }
                 self._set_cached(self._cache_key("quote", sym), quote, ttl=15)

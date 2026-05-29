@@ -181,6 +181,7 @@ def run_backtest(
         signal = sig["signal"].iloc[i]
 
         # Check stop loss / take profit if in position
+        stopped_out = False
         if position > 0:
             pnl_pct = (price - entry_price) / entry_price
             if pnl_pct <= -stop_loss_pct or pnl_pct >= take_profit_pct:
@@ -197,9 +198,10 @@ def run_backtest(
                 })
                 capital += proceeds
                 position = 0
+                stopped_out = True
 
-        # Process signals
-        if signal > 0 and position == 0:
+        # Process signals (skip re-entry on same bar as stop-out)
+        if not stopped_out and signal > 0 and position == 0:
             # Buy
             invest = capital * position_size_pct
             shares = invest / (price * (1 + commission_pct))

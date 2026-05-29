@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -72,6 +72,34 @@ def _fred_latest(series_id: str, api_key: str) -> Optional[float]:
     return None
 
 
+def _fred_cpi_12m_ago(api_key: str) -> Optional[float]:
+    """Fetch the CPI value from approximately 12 months ago."""
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+        cutoff_str = cutoff.strftime("%Y-%m-%d")
+        resp = requests.get(
+            FRED_BASE_URL,
+            params={
+                "series_id": "CPIAUCSL",
+                "api_key": api_key,
+                "file_type": "json",
+                "sort_order": "desc",
+                "limit": 1,
+                "observation_end": cutoff_str,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        obs = resp.json().get("observations", [])
+        if obs:
+            val = obs[0].get("value", ".")
+            return float(val) if val != "." else None
+    except Exception as e:
+        logger.error("FRED CPI 12m-ago fetch failed: %s", e)
+    return None
+
+
 # ─── MacroAnalyzer ───────────────────────────────────────────────────────────
 
 class MacroAnalyzer:
@@ -97,7 +125,7 @@ class MacroAnalyzer:
         - Contraction: negative GDP, inverted curve, high VIX, widening credit
         - Trough: bottoming indicators, VIX declining from highs, credit stabilizing
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if not self.fred_key:
             return MacroState(
@@ -113,7 +141,6 @@ class MacroAnalyzer:
         t10y = _fred_latest("DGS10", self.fred_key)
         gdp = _fred_latest("A191RL1Q225SBEA", self.fred_key)  # real GDP growth QoQ annualized
         unrate = _fred_latest("UNRATE", self.fred_key)
-        cpi = _fred_latest("CPIAUCSL", self.fred_key)
 
         # VIX via yfinance (FRED has VIX as VIXCLS)
         vix = _fred_latest("VIXCLS", self.fred_key)
@@ -126,13 +153,17 @@ class MacroAnalyzer:
         # Credit spread proxy (HYG/LQD ratio — lower = wider spreads)
         credit_spread = self._get_credit_spread()
 
-        # CPI YoY approximation
-        cpi_prev = _fred_latest("CPIAUCSL", self.fred_key)  # need 12-month lag ideally
+        # CPI YoY: fetch current and 12-month-ago CPI values to compute YoY
         cpi_yoy = None
-        # FRED doesn't easily give YoY in one call; use CPILFESL if available
         cpi_yoy_val = _fred_latest("FPCPITOTLZGUSA", self.fred_key)  # annual CPI inflation
         if cpi_yoy_val is not None:
             cpi_yoy = cpi_yoy_val
+        else:
+            # Compute YoY from CPIAUCSL series
+            cpi_now = _fred_latest("CPIAUCSL", self.fred_key)
+            cpi_prev = _fred_cpi_12m_ago(self.fred_key)
+            if cpi_now is not None and cpi_prev is not None and cpi_prev != 0:
+                cpi_yoy = round(((cpi_now / cpi_prev) - 1) * 100, 2)
 
         # ── Classify phase ───────────────────────────────────────────────
         scores = {"expansion": 0, "peak": 0, "contraction": 0, "trough": 0}

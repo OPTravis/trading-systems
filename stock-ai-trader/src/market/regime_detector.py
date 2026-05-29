@@ -8,6 +8,7 @@ to guide position sizing and strategy selection.
 from __future__ import annotations
 
 import logging
+from datetime import date as date_type
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -54,6 +55,7 @@ class RegimeDetector:
         self._use_hmm = use_hmm
         self._hmm_states = hmm_states
         self._hmm_model = None
+        self._last_hmm_fit_date: Optional[str] = None
         self._last_regime: Optional[str] = None
         self._last_update: Optional[datetime] = None
 
@@ -198,13 +200,34 @@ class RegimeDetector:
         - State with highest volatility → -1 (defensive)
         - State with lowest volatility → +1 (aggressive)
         - Other → 0 (neutral)
+
+        Caches the HMM model and only refits once per day.
         """
         if not self._use_hmm or spy_returns is None:
             return 0
 
-        states = self._fit_hmm(spy_returns)
+        today_str = date_type.today().isoformat()
+        model = self._hmm_model
+        states = None
+
+        if model is not None and self._last_hmm_fit_date == today_str:
+            # Reuse cached model: predict states with existing model
+            try:
+                from hmmlearn.hmm import GaussianHMM  # noqa: F401 — type check only
+            except ImportError:
+                return 0
+            returns = spy_returns.dropna().values.reshape(-1, 1)
+            try:
+                states = model.predict(returns)
+            except Exception as e:
+                logger.warning("HMM predict with cached model failed: %s", e)
+                states = None
+
         if states is None:
-            return 0
+            states = self._fit_hmm(spy_returns)
+            if states is None:
+                return 0
+            self._last_hmm_fit_date = today_str
 
         current_state = states[-1]
 

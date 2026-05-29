@@ -2,6 +2,7 @@
 VIX Position Scale - VIX-based position size scaling.
 """
 import logging
+import math
 from typing import Tuple
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,9 @@ class VIXPositionScale:
 
     def get_multiplier(self, vix: float) -> float:
         """Get position size multiplier for current VIX level."""
+        if vix is None or (isinstance(vix, float) and math.isnan(vix)) or vix < 0:
+            logger.warning(f"VIX value invalid ({vix}): returning 0.0 (frozen/conservative)")
+            return 0.0
         for threshold, multiplier, regime in self.THRESHOLDS:
             if vix >= threshold:
                 if multiplier == 0.0:
@@ -39,7 +43,7 @@ class VIXPositionScale:
 
     def is_trading_allowed(self, vix: float) -> bool:
         """Check if trading is allowed at current VIX level."""
-        return vix < 40.0
+        return self.get_multiplier(vix) > 0.0
 
     def get_threshold_info(self) -> list:
         """Get all VIX thresholds and their effects."""

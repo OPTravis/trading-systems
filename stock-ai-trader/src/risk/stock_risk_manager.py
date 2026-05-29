@@ -43,6 +43,7 @@ class StockRiskManager:
         account_value: float = 50000.0,
         max_sector_concentration: float = 0.30,
         min_liquidity_volume: int = 100000,
+        initial_cash: float = 0.0,
     ):
         self.account_value = account_value
         self.max_sector_concentration = max_sector_concentration
@@ -55,8 +56,13 @@ class StockRiskManager:
 
         self.sector_exposure: dict = {}  # sector -> total_value
 
+        self.settlement_guard.set_cash(initial_cash)
+
     def pre_trade_check(self, signal: TradeSignal, vix: float = 20.0) -> RiskDecision:
         """Run all risk checks on a trade signal."""
+        if self.account_value <= 0:
+            return RiskDecision(approved=False, reason="Invalid account value")
+
         warnings = []
         multiplier = 1.0
 
@@ -114,3 +120,12 @@ class StockRiskManager:
     def update_account_value(self, value: float):
         """Update account value."""
         self.account_value = value
+
+    def update_sector_exposure(self, sector: str, value: float):
+        """Update sector exposure after a trade."""
+        self.sector_exposure[sector] = self.sector_exposure.get(sector, 0.0) + value
+        logger.info(f"Sector exposure updated: {sector} = ${self.sector_exposure[sector]:,.2f}")
+
+    def record_settled_sale(self, symbol: str, amount: float, settle_days: int = None, market: str = 'US'):
+        """Record a sale that needs to settle, delegating to SettlementGuard."""
+        self.settlement_guard.record_sale(amount=amount, market=market)

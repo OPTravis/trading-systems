@@ -3,6 +3,7 @@ Historical OHLCV data store in DuckDB.
 Ingests from yfinance, stores for backtesting and factor computation.
 """
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +27,7 @@ class HistoricalStore:
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = None
+        self._write_lock = threading.Lock()
         self._init_tables()
 
     @property
@@ -102,7 +104,7 @@ class HistoricalStore:
 
         # Upsert
         records = list(df.itertuples(index=False, name=None))
-        with DuckDBLock(self.db_path):
+        with self._write_lock, DuckDBLock(self.db_path):
             self.conn.executemany(
                 "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -147,7 +149,7 @@ class HistoricalStore:
                         df[col] = df[col].astype(float)
 
                 records = list(df.itertuples(index=False, name=None))
-                with DuckDBLock(self.db_path):
+                with self._write_lock, DuckDBLock(self.db_path):
                     self.conn.executemany(
                         "INSERT OR REPLACE INTO ohlcv_daily (date, symbol, open, high, low, close, volume, adj_close) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

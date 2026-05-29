@@ -33,7 +33,7 @@ class PDTGuard:
 
     def _count_day_trades(self) -> int:
         """Count day trades in rolling 5-business-day window."""
-        cutoff = datetime.now() - timedelta(days=ROLLING_WINDOW_DAYS + 2)  # +2 for weekends
+        cutoff = datetime.now() - timedelta(days=ROLLING_WINDOW_DAYS * 2)  # safe upper bound covering weekends + holidays
         self.day_trades = [t for t in self.day_trades if t > cutoff]
         return len(self.day_trades)
 

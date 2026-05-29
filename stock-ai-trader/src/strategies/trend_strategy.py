@@ -95,11 +95,18 @@ class TrendStrategy(BaseStrategy):
         current_atr = atr_val.iloc[-1]
         current_price = close.iloc[-1]
 
+        # NaN guard on indicator values
+        if pd.isna(current_fast) or pd.isna(current_slow) or pd.isna(current_adx) or pd.isna(current_atr):
+            return None
+
         # BUY: Fast MA crosses above Slow MA + ADX > threshold
         crossover_up = prev_fast <= prev_slow and current_fast > current_slow
         strong_trend = current_adx >= p["adx_threshold"]
 
         if crossover_up and strong_trend:
+            # Guard NaN or zero ATR
+            if pd.isna(current_atr) or current_atr <= 0:
+                return None
             # Signal strength based on ADX level
             strength = min(1.0, current_adx / 50.0)
             stop_loss = current_price - (current_atr * p["atr_stop_multiplier"])

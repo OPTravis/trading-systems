@@ -25,6 +25,7 @@ import asyncio
 import nest_asyncio  # noqa: E402
 nest_asyncio.apply()
 import json
+import math
 import sys
 import os
 import logging
@@ -155,7 +156,6 @@ def cmd_scan(args):
     print(f"[*] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     config = load_config("config")
-    strategies = load_config("strategies")
 
     # Build orchestrator and connect broker
     broker = create_broker(config, sync=True)
@@ -166,11 +166,14 @@ def cmd_scan(args):
 
     # Run scan pipeline
     auto_execute = os.environ.get("AUTO_EXECUTE", "").lower() == "true"
+    # signal_threshold in config is 0-1 range; convert to 0-100 scale
+    raw_threshold = config.get("scanner", {}).get("signal_threshold", 0.6)
+    min_score = raw_threshold * 100 if raw_threshold <= 1.0 else raw_threshold
     result = orchestrator.run(
         universe_name=args.universe,
         auto_execute=auto_execute,
         top_n_research=5,
-        min_score=config.get("scanner", {}).get("signal_threshold", 0.6) * 100,
+        min_score=min_score,
     )
 
     # Display results
@@ -265,7 +268,7 @@ def cmd_status(args):
                 ib.qualifyContracts(p.contract)
                 [ticker] = ib.reqTickers(p.contract)
                 current = ticker.marketPrice()
-                if current != current:  # NaN check
+                if not isinstance(current, (int, float)) or math.isnan(current):
                     current = avg_cost
             except Exception:
                 current = avg_cost
@@ -306,13 +309,14 @@ def cmd_status(args):
                 def __init__(self, ib_ref):
                     self._ib = ib_ref
             detector = RegimeDetector(data_feed=StockDataFeed(broker=_DummyBroker(ib)))
-            vix_contract = __import__('ib_insync').Stock('^VIX', 'CBOE', 'USD')
+            from ib_insync import Stock as IBStock
+            vix_contract = IBStock('^VIX', 'CBOE', 'USD')
             ib.qualifyContracts(vix_contract)
             [vix_ticker] = ib.reqTickers(vix_contract)
             vix = vix_ticker.marketPrice()
-            regime = detector.detect_regime(vix=vix if vix == vix else None)
+            regime = detector.detect_regime(vix=vix if isinstance(vix, (int, float)) and not math.isnan(vix) else None)
             print(f"  Regime: {regime}")
-            if vix == vix:  # not NaN
+            if isinstance(vix, (int, float)) and not math.isnan(vix):
                 print(f"  VIX: {vix:.2f}")
         except Exception as e:
             print(f"  Regime detection failed: {e}")
@@ -454,11 +458,13 @@ def cmd_trade(args):
 
     # Run scan to get signals
     print("[*] Running scan to generate signals...")
+    raw_threshold = config.get("scanner", {}).get("signal_threshold", 0.6)
+    min_score = raw_threshold * 100 if raw_threshold <= 1.0 else raw_threshold
     result = orchestrator.run(
         universe_name=getattr(args, 'universe', 'global'),
         auto_execute=False,
         top_n_research=3,
-        min_score=config.get("scanner", {}).get("signal_threshold", 0.6) * 100,
+        min_score=min_score,
     )
 
     if not result.signals:
@@ -495,32 +501,95 @@ def cmd_backtest(args):
     strategies = load_config("strategies")
     risk_limits = load_config("risk_limits")
 
-    from src.walk_forward import WalkForwardEngine
+    from src.walk_forward import WalkForwardValidator
+    from src.data.historical_store import HistoricalStore
 
-    engine = WalkForwardEngine(
-        strategies_config=strategies,
-        risk_config=risk_limits,
-    )
+    # Use scripts/walk_forward strategy definitions
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from walk_forward import STRATEGIES
 
-    result = engine.run(
-        strategy_name=args.strategy if args.strategy != "all" else None,
-        start_date=args.from_date,
-        end_date=args.to_date,
-        universe=args.universe,
-    )
+    store = HistoricalStore()
+    symbols = store.get_all_symbols()
+
+    if args.universe and args.universe != "global":
+        from src.scan_orchestrator import load_universe
+        symbols = load_universe(args.universe)
+
+    if not symbols:
+        print("[!] No symbols found. Run backtest data ingestion first.")
+        return
+
+    # Select strategies
+    if args.strategy == "all":
+        strat_names = list(STRATEGIES.keys())
+    else:
+        strat_names = [args.strategy]
+
+    # Run walk-forward validation
+    all_metrics = []
+    for strat_name in strat_names:
+        if strat_name not in STRATEGIES:
+            print(f"[!] Unknown strategy: {strat_name}")
+            continue
+        strat_cfg = STRATEGIES[strat_name]
+        validator = WalkForwardValidator(train_days=252, test_days=63, step_days=63)
+
+        for sym in symbols[:20]:  # Limit to top 20
+            df = store.get_ohlcv(sym)
+            if df.empty or len(df) < 315:
+                continue
+            import pandas as pd
+            df_wf = df.copy()
+            df_wf["date"] = pd.to_datetime(df_wf["date"])
+            df_wf = df_wf.set_index("date").sort_index()
+            try:
+                report = validator.validate(
+                    strategy_fn=strat_cfg["fn"],
+                    data=df_wf,
+                    symbol=sym,
+                    strategy_name=strat_name,
+                    param_grid=strat_cfg.get("param_grid"),
+                )
+                if report.total_windows > 0:
+                    all_metrics.append({
+                        "strategy": strat_name,
+                        "symbol": sym,
+                        "total_return": report.total_return,
+                        "sharpe": report.avg_sharpe,
+                        "sortino": report.avg_sortino,
+                        "max_drawdown": report.avg_max_drawdown,
+                        "win_rate": report.avg_win_rate,
+                        "profit_factor": report.avg_profit_factor,
+                        "total_trades": sum(w.total_trades for w in report.windows),
+                    })
+            except Exception as e:
+                logger.debug("Backtest failed for %s/%s: %s", strat_name, sym, e)
+
+    store.close()
 
     # Display results
     print(f"\n{'='*60}")
     print(f"  BACKTEST RESULTS")
     print(f"{'='*60}")
-    metrics = result.get("metrics", {})
-    print(f"  Total Return:    {metrics.get('total_return', 0):.2%}")
-    print(f"  Sharpe Ratio:    {metrics.get('sharpe', 0):.2f}")
-    print(f"  Sortino Ratio:   {metrics.get('sortino', 0):.2f}")
-    print(f"  Max Drawdown:    {metrics.get('max_drawdown', 0):.2%}")
-    print(f"  Win Rate:        {metrics.get('win_rate', 0):.1%}")
-    print(f"  Profit Factor:   {metrics.get('profit_factor', 0):.2f}")
-    print(f"  Total Trades:    {metrics.get('total_trades', 0)}")
+    if all_metrics:
+        avg_return = sum(m["total_return"] for m in all_metrics) / len(all_metrics)
+        avg_sharpe = sum(m["sharpe"] for m in all_metrics) / len(all_metrics)
+        avg_sortino = sum(m["sortino"] for m in all_metrics) / len(all_metrics)
+        avg_dd = sum(m["max_drawdown"] for m in all_metrics) / len(all_metrics)
+        avg_wr = sum(m["win_rate"] for m in all_metrics) / len(all_metrics)
+        avg_pf = sum(m["profit_factor"] for m in all_metrics) / len(all_metrics)
+        total_trades = sum(m["total_trades"] for m in all_metrics)
+        print(f"  Strategies:      {len(strat_names)}")
+        print(f"  Results:         {len(all_metrics)}")
+        print(f"  Total Return:    {avg_return:.2%}")
+        print(f"  Sharpe Ratio:    {avg_sharpe:.2f}")
+        print(f"  Sortino Ratio:   {avg_sortino:.2f}")
+        print(f"  Max Drawdown:    {avg_dd:.2%}")
+        print(f"  Win Rate:        {avg_wr:.1%}")
+        print(f"  Profit Factor:   {avg_pf:.2f}")
+        print(f"  Total Trades:    {total_trades}")
+    else:
+        print("  No valid backtest results produced.")
 
 
 # ============================================================

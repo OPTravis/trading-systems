@@ -2,6 +2,7 @@
 SEC EDGAR filing retrieval and parsing (10-K, 10-Q, 8-K).
 """
 import logging
+import os
 import re
 from typing import Optional
 
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 EDGAR_BASE = "https://efts.sec.gov/LATEST/search-index"
 EDGAR_FULL_TEXT = "https://efts.sec.gov/LATEST/search-index"
 EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions"
-EDGAR_USER_AGENT = "stock-ai-trader research@example.com"
+EDGAR_USER_AGENT = os.environ.get("SEC_USER_AGENT", "stock-ai-trader research@example.com")
 
 
 class SECFilings:
@@ -91,6 +92,8 @@ class SECFilings:
 
             for i, form in enumerate(forms):
                 if form == filing_type or (filing_type == "10-K" and form == "10-K/A"):
+                    if i >= len(accessions) or i >= len(primary_docs):
+                        continue
                     acc_no = accessions[i].replace("-", "")
                     doc_url = (
                         f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
@@ -178,6 +181,8 @@ class SECFilings:
             filings = []
             for i, form in enumerate(forms):
                 if form == filing_type:
+                    if i >= len(accessions) or i >= len(primary_docs):
+                        continue
                     acc_no = accessions[i].replace("-", "")
                     doc_url = (
                         f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"

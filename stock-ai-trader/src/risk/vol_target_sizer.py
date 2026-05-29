@@ -75,4 +75,10 @@ class VolTargetSizer:
             vol = vols.get(symbol, DEFAULT_VOL)
             var_sum += (weight * vol) ** 2
 
-        return math.sqrt(var_sum)
+        portfolio_vol = math.sqrt(var_sum)
+        if portfolio_vol < 0.05:
+            logger.warning(
+                f"Portfolio vol estimate suspiciously low ({portfolio_vol:.2%}). "
+                "Note: calculation assumes zero correlation between positions."
+            )
+        return portfolio_vol

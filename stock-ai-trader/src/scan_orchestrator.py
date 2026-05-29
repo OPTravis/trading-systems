@@ -334,8 +334,11 @@ class ScanOrchestrator:
 
         # Rank using CompositeRanker
         if self.ranker and factor_scores:
-            ranked_df = self.ranker.rank_universe(list(factor_scores.keys()), factor_scores)
-            ranked_symbols = ranked_df["symbol"].tolist()
+            try:
+                ranked_df = self.ranker.rank_universe(list(factor_scores.keys()), factor_scores)
+                ranked_symbols = ranked_df["symbol"].tolist()
+            except Exception as e:
+                logger.warning("CompositeRanker failed, falling back to composite sort: %s", e)
         else:
             # Fallback: sort by composite score
             ranked_symbols = sorted(
@@ -435,11 +438,17 @@ class ScanOrchestrator:
         approved = []
         blocked = []
 
+        # Build sector lookup from universe config
+        sector_map = self._build_sector_map()
+
         for res in research_results:
             sym = res["symbol"]
             factors = factor_scores.get(sym, {})
             base_score = factors.get("composite", 50.0)
             adj_score = base_score + res.get("score_adjustment", 0.0)
+
+            # Resolve sector: prefer factor_scores, then universe config, then empty
+            resolved_sector = factors.get("sector", "") or sector_map.get(sym, "")
 
             # Minimum score filter
             if adj_score < min_score:
@@ -476,7 +485,7 @@ class ScanOrchestrator:
                     quantity=0,  # TBD by sizer
                     price=price,
                     market="US",
-                    sector=factors.get("sector", ""),
+                    sector=resolved_sector,
                 )
                 try:
                     decision = self.risk_mgr.pre_trade_check(risk_signal)
@@ -521,7 +530,7 @@ class ScanOrchestrator:
                 side="BUY",
                 price=price,
                 score=adj_score,
-                sector=factors.get("sector", ""),
+                sector=resolved_sector,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 risk_approved=risk_approved,
@@ -539,6 +548,26 @@ class ScanOrchestrator:
         return approved, blocked
 
     # ── Phase 5 ────────────────────────────────────────────────────────
+
+    def _build_sector_map(self) -> Dict[str, str]:
+        """Build a symbol -> sector lookup from the universe config."""
+        sector_map: Dict[str, str] = {}
+        config_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "config"
+        )
+        path = os.path.join(config_dir, "universes.yaml")
+        if not os.path.exists(path):
+            return sector_map
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            for _uname, ucfg in (data.get("universes") or {}).items():
+                for sector, tickers in (ucfg.get("sectors") or {}).items():
+                    for t in tickers:
+                        sector_map[t] = sector
+        except Exception as e:
+            logger.debug("Sector map build failed: %s", e)
+        return sector_map
 
     def _phase5_execute(self, signals: List[TradeSignal]):
         """Execute approved trade signals."""

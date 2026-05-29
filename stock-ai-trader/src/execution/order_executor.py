@@ -61,7 +61,7 @@ class OrderExecutor:
         self.broker = broker
         self.risk_manager = risk_manager
 
-    def place_order(
+    async def place_order(
         self,
         symbol: str,
         side: str,
@@ -137,7 +137,7 @@ class OrderExecutor:
                     "Placing %s %s %s x%.0f (attempt %d/%d)",
                     side, symbol, order_type, quantity, attempt, MAX_RETRIES,
                 )
-                result = self.broker.place_order(order)
+                result = await self.broker.place_order(order)
 
                 if result and result.status in (OrderStatus.FILLED, OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
                     logger.info("Order placed: %s %s — status=%s", side, symbol, result.status)
@@ -189,21 +189,24 @@ class OrderExecutor:
             retry_count=MAX_RETRIES,
         )
 
-    def cancel_order(self, order_id: int) -> bool:
+    async def cancel_order(self, order_id: int) -> bool:
         """Cancel an open order by ID."""
         try:
-            self.broker.cancel_order(order_id)
+            await self.broker.cancel_order(order_id)
             logger.info("Cancelled order %d", order_id)
             return True
         except Exception as e:
             logger.error("Cancel failed for order %d: %s", order_id, e)
             return False
 
-    def get_order_status(self, order_id: int) -> Optional[str]:
-        """Query the current status of an order."""
+    async def get_order_status(self, order_id: int) -> Optional[str]:
+        """Query the current status of an order by searching open orders."""
         try:
-            order = self.broker.get_order(order_id)
-            return order.status.value if order else None
+            open_orders = await self.broker.get_open_orders()
+            for o in open_orders:
+                if o.order_id == order_id:
+                    return o.status.value if isinstance(o.status, OrderStatus) else str(o.status)
+            return None
         except Exception as e:
             logger.error("Status query failed for order %d: %s", order_id, e)
             return None

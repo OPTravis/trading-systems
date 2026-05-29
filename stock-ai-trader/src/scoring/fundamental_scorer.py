@@ -55,6 +55,9 @@ class FundamentalScorer:
 
         # Inverted metrics (lower is better)
         if metric in ('pe_ratio', 'pb_ratio', 'debt_equity'):
+            # Negative values for these metrics are bad — return low score
+            if value < 0:
+                return 10.0
             if value <= ideal_low:
                 return 90.0
             elif value <= ideal_high:

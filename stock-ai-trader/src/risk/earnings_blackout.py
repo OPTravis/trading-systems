@@ -45,10 +45,22 @@ class EarningsBlackout:
         return [s for s in self.earnings_dates if self.is_blackout(s, today)]
 
     def days_until_earnings(self, symbol: str, today: date = None) -> Optional[int]:
-        """Get days until next earnings for symbol."""
+        """Get days until next earnings for symbol. Returns None for past earnings dates."""
         today = today or date.today()
+        self._auto_prune(today)
         earnings_date = self.get_next_earnings(symbol)
         if earnings_date is None:
             return None
         delta = (earnings_date - today).days
-        return max(0, delta)
+        if delta < 0:
+            return None
+        return delta
+
+    def _auto_prune(self, today: date = None):
+        """Remove earnings entries older than 5 days past the earnings date."""
+        today = today or date.today()
+        cutoff = today - timedelta(days=5)
+        stale = [s for s, d in self.earnings_dates.items() if d < cutoff]
+        for symbol in stale:
+            del self.earnings_dates[symbol]
+            logger.info(f"Pruned stale earnings entry for {symbol}")

@@ -6,6 +6,9 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List
 from dataclasses import dataclass, field
 
+import pandas as pd
+from pandas.tseries.offsets import BDay
+
 logger = logging.getLogger(__name__)
 
 SETTLEMENT_DAYS = {
@@ -35,13 +38,15 @@ class SettlementGuard:
         today = today or date.today()
         self._settle_past_sales(today)
         unsettled_total = sum(s.amount for s in self.unsettled)
+        if self.total_cash < 0:
+            logger.warning(f"total_cash is negative: ${self.total_cash:.2f}")
         return max(0.0, self.total_cash - unsettled_total)
 
     def record_sale(self, amount: float, market: str = 'US', sale_date: date = None):
         """Record a sale that needs to settle."""
         sale_date = sale_date or date.today()
         settle_days = SETTLEMENT_DAYS.get(market.upper(), SETTLEMENT_DAYS['DEFAULT'])
-        settle_date = sale_date + timedelta(days=settle_days)
+        settle_date = (pd.Timestamp(sale_date) + BDay(settle_days)).date()
 
         sale = UnsettledSale(
             amount=amount,

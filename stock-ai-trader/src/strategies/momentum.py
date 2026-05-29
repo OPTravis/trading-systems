@@ -49,7 +49,7 @@ class MomentumStrategy(BaseStrategy):
     def __init__(self, params: Optional[dict] = None) -> None:
         merged = {**DEFAULT_PARAMS, **(params or {})}
         super().__init__(name="Momentum", params=merged)
-        self._rs_rankings: dict[str, float] = {}  # symbol -> RS percentile
+        self._rs_scores: dict[str, float] = {}  # symbol -> RS percentile
 
     def generate_signals(
         self,
@@ -84,8 +84,8 @@ class MomentumStrategy(BaseStrategy):
         top_symbols = {s for s, _ in sorted_rs[:top_n]}
         median_rs = sorted_rs[median_idx][1] if median_idx < len(sorted_rs) else 0
 
-        # Store rankings for exit logic
-        self._rs_rankings = dict(sorted_rs)
+        # Store scores for exit logic
+        self._rs_scores = dict(sorted_rs)
 
         # Step 3: Generate buy signals for top stocks with breakout
         for symbol in top_symbols:
@@ -101,8 +101,8 @@ class MomentumStrategy(BaseStrategy):
 
         # Step 4: Generate sell signals for positions dropping below median
         for symbol, position in self._positions.items():
-            if symbol in self._rs_rankings:
-                if self._rs_rankings[symbol] < median_rs:
+            if symbol in self._rs_scores:
+                if self._rs_scores[symbol] < median_rs:
                     current_price = position.metadata.get("current_price", position.entry_price)
                     signals.append(Signal(
                         symbol=symbol,
@@ -113,7 +113,7 @@ class MomentumStrategy(BaseStrategy):
                         price=current_price,
                         metadata={
                             "reason": "rs_below_median",
-                            "rs_rank": self._rs_rankings[symbol],
+                            "rs_rank": self._rs_scores[symbol],
                             "median_rs": median_rs,
                         },
                     ))
@@ -195,7 +195,7 @@ class MomentumStrategy(BaseStrategy):
 
         # Signal strength based on RS percentile and breakout magnitude
         breakout_pct = (current_price - high_n) / high_n * 100
-        strength = min(1.0, 0.5 + breakout_pct / 5 + rs_score / 200)
+        strength = max(0.0, min(1.0, 0.5 + breakout_pct / 5 + rs_score / 200))
 
         return Signal(
             symbol=symbol,
@@ -236,6 +236,9 @@ class MomentumStrategy(BaseStrategy):
         - Max holding period exceeded
         - Trailing stop hit
         - Relative strength below median (checked in generate_signals)
+
+        NOTE: This method does NOT mutate position. Call update_trailing_stop()
+        separately before checking should_exit().
         """
         p = self._params
 
@@ -245,16 +248,9 @@ class MomentumStrategy(BaseStrategy):
         if days_held >= p["max_holding_days"]:
             return True
 
-        # Trailing stop update (ratchet up, never down)
+        # Trailing stop check (read-only)
         current_price = position.metadata.get("current_price")
         if current_price and position.stop_loss:
-            # Update trailing stop (only move up)
-            new_stop = current_price - (
-                position.metadata.get("atr", 0) * p["trailing_stop_atr_mult"]
-            )
-            if new_stop > position.stop_loss:
-                position.stop_loss = new_stop
-
             if current_price <= position.stop_loss:
                 return True
 
@@ -264,3 +260,24 @@ class MomentumStrategy(BaseStrategy):
 
         # RS below median is checked via generate_signals
         return False
+
+    def update_trailing_stop(self, position: Position, current_price: float, params: dict | None = None) -> None:
+        """
+        Update trailing stop (ratchet up, never down).
+        Call this before should_exit() to keep the stop-loss current.
+
+        Args:
+            position: The open position to update.
+            current_price: Current market price.
+            params: Optional params override (uses self._params if None).
+        """
+        p = params or self._params
+        atr = position.metadata.get("atr")
+
+        # Guard: ATR missing or zero — skip update
+        if atr is None or atr == 0:
+            return
+
+        new_stop = current_price - (atr * p["trailing_stop_atr_mult"])
+        if position.stop_loss is None or new_stop > position.stop_loss:
+            position.stop_loss = new_stop

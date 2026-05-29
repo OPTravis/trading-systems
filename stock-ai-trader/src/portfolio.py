@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -82,7 +83,13 @@ def _get_fx_to_usd(currency: str) -> float:
     except Exception as e:
         logger.warning("Failed to fetch FX rates: %s", e)
 
-    return _FX_CACHE.get(currency, 1.0)
+    rate = _FX_CACHE.get(currency, 1.0)
+    if currency != "USD" and rate == 1.0:
+        logger.warning(
+            "FX rate for %s not available, using fallback rate 1.0 — "
+            "NAV calculations may be inaccurate", currency
+        )
+    return rate
 
 SETTLEMENT_DAYS = {
     "US": 1,   # T+1
@@ -144,22 +151,27 @@ class Position:
         return (self.current_price / self.entry_price - 1) * 100
 
     def to_dict(self) -> dict:
+        def _safe(v):
+            """Replace NaN/inf with None for JSON serialization safety."""
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            return v
         return {
             "symbol": self.symbol,
             "quantity": self.quantity,
-            "entry_price": self.entry_price,
-            "current_price": self.current_price,
+            "entry_price": _safe(self.entry_price),
+            "current_price": _safe(self.current_price),
             "currency": self.currency,
             "market": self.market,
             "sector": self.sector,
             "strategy": self.strategy,
-            "stop_loss": self.stop_loss,
-            "take_profit": self.take_profit,
-            "highest_price": self.highest_price,
-            "market_value": self.market_value,
-            "cost_basis": self.cost_basis,
-            "unrealized_pnl": self.unrealized_pnl,
-            "unrealized_pnl_pct": self.unrealized_pnl_pct,
+            "stop_loss": _safe(self.stop_loss),
+            "take_profit": _safe(self.take_profit),
+            "highest_price": _safe(self.highest_price),
+            "market_value": _safe(self.market_value),
+            "cost_basis": _safe(self.cost_basis),
+            "unrealized_pnl": _safe(self.unrealized_pnl),
+            "unrealized_pnl_pct": _safe(self.unrealized_pnl_pct),
             "opened_at": self.opened_at,
             "updated_at": self.updated_at,
         }
@@ -348,15 +360,21 @@ class PortfolioManager:
         now = datetime.now().isoformat()
         pnl = (price - pos.entry_price) * quantity
         proceeds = quantity * price
+        entry_price = pos.entry_price
+        pos_currency = pos.currency
+        pos_market = pos.market
 
         # Credit cash
-        cash = self._get_cash(pos.currency)
-        cash.record_sell(proceeds, market=pos.market)
+        cash = self._get_cash(pos_currency)
+        cash.record_sell(proceeds, market=pos_market)
 
         # Reduce quantity
         pos.quantity -= quantity
         pos.current_price = price
         pos.updated_at = now
+
+        # Capture remaining quantity before potential deletion
+        remaining_qty = pos.quantity
 
         # Remove position if fully closed
         if pos.quantity <= 0:
@@ -365,7 +383,7 @@ class PortfolioManager:
         # Record realized trade
         trade = RealizedTrade(
             symbol=symbol, side="SELL", quantity=quantity, price=price,
-            pnl=pnl, currency=pos.currency, market=pos.market, timestamp=now,
+            pnl=pnl, currency=pos_currency, market=pos_market, timestamp=now,
         )
         self._realized_trades.append(trade)
 
@@ -378,8 +396,8 @@ class PortfolioManager:
             "price": price,
             "proceeds": proceeds,
             "pnl": pnl,
-            "pnl_pct": (price / pos.entry_price - 1) * 100 if pos.entry_price > 0 else 0,
-            "remaining_qty": pos.quantity,
+            "pnl_pct": (price / entry_price - 1) * 100 if entry_price > 0 else 0,
+            "remaining_qty": remaining_qty,
         }
 
     def close_position(self, symbol: str, price: float) -> dict:

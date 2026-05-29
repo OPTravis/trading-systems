@@ -10,6 +10,10 @@ import logging
 import os
 import requests
 from typing import Dict, List, Optional, Any
+from urllib3.exceptions import InsecureRequestWarning
+
+# Suppress InsecureRequestWarning when SSL verify is disabled for localhost CPG
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 

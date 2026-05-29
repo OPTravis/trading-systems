@@ -78,6 +78,10 @@ class VWAPExecutor:
     def __init__(self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None):
         self.order_executor = OrderExecutor(broker, risk_manager)
 
+    # NOTE: This method uses blocking time.sleep() and synchronous broker calls.
+    # In the future, this should be refactored to an async method (async def)
+    # and called from an async context, using asyncio.sleep() and await on
+    # broker calls. The parent caller is now async.
     def execute_vwap(
         self,
         symbol: str,

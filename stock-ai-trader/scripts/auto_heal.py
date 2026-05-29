@@ -44,6 +44,7 @@ class AutoHealer:
         self._heal_circuit_breakers()
         self._heal_broker_connection()
         self._heal_stale_cache()
+        self._heal_stale_locks()
         return self.actions_taken
 
     def _log_action(self, action: str):

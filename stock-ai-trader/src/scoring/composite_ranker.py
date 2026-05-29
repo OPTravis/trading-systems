@@ -87,6 +87,13 @@ class CompositeRanker:
             norm = np.linalg.norm(orthogonal[:, i])
             if norm > 0:
                 orthogonal[:, i] /= norm
+            else:
+                logger.warning(
+                    "Gram-Schmidt produced zero-norm column at index %d — "
+                    "collinear factors detected, factor '%s' is redundant",
+                    i,
+                    self.FACTOR_PRIORITY[i] if i < len(self.FACTOR_PRIORITY) else f"col_{i}",
+                )
 
         return orthogonal
 

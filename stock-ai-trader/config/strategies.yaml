@@ -94,7 +94,7 @@ factor_strategy:
     top_pct: 0.20           # 排名前 20% 做多
     rebalance_weekly: true
     min_market_cap: 2e9     # 最小市值 $2B
-    min_avg_volume: 500000  # 最小日均成交量 50 萬股
+    min_avg_volume: 1000000  # 最小日均成交量 (must match risk_limits position_limits.min_liquidity)
     max_pe_ratio: 100       # 排除異常高 PE
   holding_period: [5, 30]
   market_regime: ["bull", "neutral"]
