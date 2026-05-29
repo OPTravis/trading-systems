@@ -1,18 +1,54 @@
 """
-Feishu Notifier - Send trade notifications via Feishu Webhook
+Feishu Notifier - Send trade notifications via Feishu API
 
 Stock-AI-Trader notification module for sending alerts, trade signals,
-daily reports, and earnings notifications to Feishu.
+daily reports, and earnings notifications to the Stock Feishu group.
+
+Uses Feishu IM API (tenant_access_token + chat_id) instead of webhooks.
 """
 
 import os
 import logging
 import requests
+import time
 from typing import Dict, List, Optional
 from datetime import datetime
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+# Token cache
+_token_cache = {"token": "", "expires_at": 0.0}
+
+
+def _get_tenant_token() -> str:
+    """Get Feishu tenant access token (cached, auto-refresh)."""
+    now = time.time()
+    if _token_cache["token"] and now < _token_cache["expires_at"]:
+        return _token_cache["token"]
+
+    app_id = os.environ.get("FEISHU_APP_ID", "")
+    app_secret = os.environ.get("FEISHU_APP_SECRET", "")
+    if not app_id or not app_secret:
+        logger.error("FEISHU_APP_ID / FEISHU_APP_SECRET not set")
+        return ""
+
+    try:
+        resp = requests.post(
+            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+            json={"app_id": app_id, "app_secret": app_secret},
+            timeout=10,
+        )
+        data = resp.json()
+        token = data.get("tenant_access_token", "")
+        expire = data.get("expire", 7200)
+        if token:
+            _token_cache["token"] = token
+            _token_cache["expires_at"] = now + expire - 300  # refresh 5min early
+        return token
+    except Exception as e:
+        logger.error("Failed to get Feishu token: %s", e)
+        return ""
 
 
 class AlertLevel(str, Enum):
@@ -34,7 +70,10 @@ _LEVEL_EMOJI = {
 
 class FeishuNotifier:
     """
-    Send notifications to Feishu via Webhook.
+    Send notifications to Feishu group via IM API.
+
+    Uses FEISHU_APP_ID + FEISHU_APP_SECRET for auth,
+    FEISHU_CHAT_ID for target group (default: Stock group).
 
     Usage:
         notifier = FeishuNotifier()
@@ -44,38 +83,46 @@ class FeishuNotifier:
         notifier.send_earnings_alert("AAPL", "2026-07-30")
     """
 
-    def __init__(self, webhook_url: Optional[str] = None):
-        self.webhook_url = (
-            webhook_url
-            or os.environ.get("FEISHU_WEBHOOK_URL", "")
+    def __init__(self, chat_id: Optional[str] = None):
+        self.chat_id = (
+            chat_id
+            or os.environ.get("FEISHU_CHAT_ID", "")
         )
-        self._enabled = bool(self.webhook_url)
+        self._enabled = bool(self.chat_id)
         if not self._enabled:
             logger.warning(
-                "FeishuNotifier: No FEISHU_WEBHOOK_URL configured. "
+                "FeishuNotifier: No FEISHU_CHAT_ID configured. "
                 "Notifications will be logged but not sent."
             )
 
     def _send(self, text: str) -> bool:
-        """Send raw text message to Feishu webhook."""
+        """Send text message to Feishu group via IM API."""
         if not self._enabled:
             logger.info("[Feishu DISABLED] %s", text[:200])
             return False
 
+        token = _get_tenant_token()
+        if not token:
+            logger.error("No Feishu token — cannot send message")
+            return False
+
         try:
+            import json as _json
             payload = {
+                "receive_id": self.chat_id,
                 "msg_type": "text",
-                "content": {"text": text},
+                "content": _json.dumps({"text": text}),
             }
             resp = requests.post(
-                self.webhook_url, json=payload, timeout=10
+                "https://open.feishu.cn/open-apis/im/v1/messages",
+                params={"receive_id_type": "chat_id"},
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload,
+                timeout=10,
             )
-            if resp.status_code != 200:
-                logger.error(
-                    "Feishu webhook error: %s %s",
-                    resp.status_code,
-                    resp.text[:200],
-                )
+            data = resp.json()
+            if data.get("code") != 0:
+                logger.error("Feishu API error: %s", data.get("msg", resp.text[:200]))
                 return False
             return True
         except Exception as e:
@@ -83,34 +130,39 @@ class FeishuNotifier:
             return False
 
     def _send_card(self, title: str, elements: List[Dict]) -> bool:
-        """Send interactive card message to Feishu."""
+        """Send interactive card message to Feishu group."""
         if not self._enabled:
             logger.info("[Feishu DISABLED] Card: %s", title)
             return False
 
+        token = _get_tenant_token()
+        if not token:
+            return False
+
         try:
-            payload = {
-                "msg_type": "interactive",
-                "card": {
-                    "header": {
-                        "title": {
-                            "tag": "plain_text",
-                            "content": title,
-                        },
-                        "template": "blue",
-                    },
-                    "elements": elements,
+            import json as _json
+            card = {
+                "header": {
+                    "title": {"tag": "plain_text", "content": title},
+                    "template": "blue",
                 },
+                "elements": elements,
+            }
+            payload = {
+                "receive_id": self.chat_id,
+                "msg_type": "interactive",
+                "content": _json.dumps(card),
             }
             resp = requests.post(
-                self.webhook_url, json=payload, timeout=10
+                "https://open.feishu.cn/open-apis/im/v1/messages",
+                params={"receive_id_type": "chat_id"},
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload,
+                timeout=10,
             )
-            if resp.status_code != 200:
-                logger.error(
-                    "Feishu card error: %s %s",
-                    resp.status_code,
-                    resp.text[:200],
-                )
+            data = resp.json()
+            if data.get("code") != 0:
+                logger.error("Feishu card error: %s", data.get("msg", resp.text[:200]))
                 return False
             return True
         except Exception as e:
@@ -125,17 +177,7 @@ class FeishuNotifier:
         message: str,
         level: AlertLevel = AlertLevel.INFO,
     ) -> bool:
-        """
-        Send a general alert notification.
-
-        Args:
-            title: Alert title.
-            message: Alert body text.
-            level: Severity level (info/warning/critical/trade).
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send a general alert notification."""
         emoji = _LEVEL_EMOJI.get(level, "ℹ️")
         text = (
             f"{emoji} [{level.value.upper()}] {title}\n"
@@ -147,22 +189,7 @@ class FeishuNotifier:
     # ── Trade Signal ──────────────────────────────────────────────────
 
     def send_trade_signal(self, signal: Dict) -> bool:
-        """
-        Send a trade signal notification.
-
-        Args:
-            signal: Dict with keys:
-                - symbol: Stock ticker
-                - action: BUY/SELL
-                - price: Entry/exit price
-                - strategy: Strategy name
-                - strength: Signal strength 0-1
-                - stop_loss: Stop-loss price (optional)
-                - metadata: Extra info dict (optional)
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send a trade signal notification."""
         symbol = signal.get("symbol", "???")
         action = signal.get("action", "HOLD")
         price = signal.get("price", 0)
@@ -201,23 +228,7 @@ class FeishuNotifier:
     # ── Daily Report ──────────────────────────────────────────────────
 
     def send_daily_report(self, report: Dict) -> bool:
-        """
-        Send a daily portfolio report.
-
-        Args:
-            report: Dict with keys:
-                - date: Report date
-                - total_return_pct: Total return %
-                - daily_pnl: Daily P&L $
-                - total_trades: Number of trades
-                - win_rate: Win rate %
-                - positions: List of position dicts
-                - top_gainers: List of top gaining symbols
-                - risk_status: Risk manager status dict
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send a daily portfolio report."""
         date = report.get("date", datetime.now().strftime("%Y-%m-%d"))
         total_return = report.get("total_return_pct", 0)
         daily_pnl = report.get("daily_pnl", 0)
@@ -275,20 +286,8 @@ class FeishuNotifier:
         estimated_eps: Optional[float] = None,
         actual_eps: Optional[float] = None,
     ) -> bool:
-        """
-        Send an earnings event alert.
-
-        Args:
-            symbol: Stock ticker.
-            earnings_date: Date of earnings release.
-            estimated_eps: Estimated EPS (optional).
-            actual_eps: Actual EPS, if reported (optional).
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send an earnings event alert."""
         if actual_eps is not None and estimated_eps is not None:
-            # Earnings reported
             surprise_pct = (
                 ((actual_eps - estimated_eps) / abs(estimated_eps) * 100)
                 if estimated_eps != 0
@@ -305,7 +304,6 @@ class FeishuNotifier:
                 f"驚喜: {surprise_pct:+.1f}% ({beat_miss})",
             ]
         else:
-            # Upcoming earnings
             lines = [
                 f"📅 財報提醒 - {symbol}",
                 "",
@@ -364,16 +362,7 @@ class FeishuNotifier:
         alert_type: str,
         details: Dict,
     ) -> bool:
-        """
-        Send a risk management alert.
-
-        Args:
-            alert_type: Type of risk alert (e.g., "drawdown", "pdt", "earnings_blackout").
-            details: Dict with alert-specific details.
-
-        Returns:
-            True if sent successfully.
-        """
+        """Send a risk management alert."""
         lines = [
             f"🛡 風控警報 - {alert_type.upper()}",
             "",
