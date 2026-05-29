@@ -1,5 +1,5 @@
 """Synchronous wrapper around ib_insync IB for use with StockDataFeed and other sync code."""
-from ib_insync import IB, Stock, Forex, util
+from ib_async import IB, Stock, Forex, util
 from typing import Optional, Dict, Any, List
 import logging
 

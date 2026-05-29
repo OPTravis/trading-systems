@@ -220,7 +220,7 @@ def cmd_scan(args):
 # ============================================================
 def cmd_status(args):
     """顯示持倉、P&L、風控狀態"""
-    from ib_insync import IB
+    from ib_async import IB
     print(f"[*] Portfolio Status")
     print(f"[*] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -309,7 +309,7 @@ def cmd_status(args):
                 def __init__(self, ib_ref):
                     self._ib = ib_ref
             detector = RegimeDetector(data_feed=StockDataFeed(broker=_DummyBroker(ib)))
-            from ib_insync import Stock as IBStock
+            from ib_async import Stock as IBStock
             vix_contract = IBStock('^VIX', 'CBOE', 'USD')
             ib.qualifyContracts(vix_contract)
             [vix_ticker] = ib.reqTickers(vix_contract)
