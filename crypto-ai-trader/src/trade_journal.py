@@ -11,7 +11,6 @@ Storage:
 
 import json
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -27,7 +26,7 @@ class TradeJournal:
     - state.db decisions table: Structured, queryable records
     """
 
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: Optional[str] = None):
         """Initialize TradeJournal.
 
         Args:
@@ -47,6 +46,7 @@ class TradeJournal:
     def _get_db(self):
         """Get StateDB singleton."""
         from src.state_db import get_state_db
+
         return get_state_db()
 
     def record_trade(
@@ -150,8 +150,12 @@ class TradeJournal:
                 bear_info = f" | bear_score={bear_result.get('bear_score', 0):.0f}"
 
         # Ensure research is a string (may be MagicMock in tests)
-        research_str = research if isinstance(research, str) else str(research) if research else ""
-        entry = f"\n## {timestamp} | {symbol} | {decision} | score={score:.1f}{bear_info}\n"
+        research_str = (
+            research if isinstance(research, str) else str(research) if research else ""
+        )
+        entry = (
+            f"\n## {timestamp} | {symbol} | {decision} | score={score:.1f}{bear_info}\n"
+        )
         if research_str:
             entry += f"- Research: {research_str[:200]}\n"
 
@@ -178,7 +182,7 @@ class TradeJournal:
 
         return msg
 
-    def get_lessons(self, symbol: str = None, limit: int = 5) -> List[str]:
+    def get_lessons(self, symbol: Optional[str] = None, limit: int = 5) -> List[str]:
         """Get lessons from closed trades with significant PnL.
 
         Scans state.db for trades with |pnl| > 3%.
@@ -201,7 +205,9 @@ class TradeJournal:
             logger.warning(f"Failed to get lessons from state.db: {e}")
         return lessons
 
-    def get_trade_history(self, symbol: str = None, limit: int = 10) -> List[Dict]:
+    def get_trade_history(
+        self, symbol: Optional[str] = None, limit: int = 10
+    ) -> List[Dict]:
         """Get recent trade history from SQLite.
 
         Args:
@@ -239,14 +245,18 @@ class TradeJournal:
             Reflection string with analysis of the trade
         """
         reflection = f"Trade Reflection for {symbol}:\n"
-        reflection += f"- PnL: {pnl_pct:+.2f}% (${entry_price:,.2f} -> ${exit_price:,.2f})\n"
+        reflection += (
+            f"- PnL: {pnl_pct:+.2f}% (${entry_price:,.2f} -> ${exit_price:,.2f})\n"
+        )
         reflection += f"- Hold Duration: {hold_duration:.1f} hours\n"
 
         if pnl_pct > 0:
-            reflection += f"- Outcome: PROFITABLE TRADE\n"
-            reflection += f"- Takeaway: Good entry timing, captured {pnl_pct:.1f}% gain\n"
+            reflection += "- Outcome: PROFITABLE TRADE\n"
+            reflection += (
+                f"- Takeaway: Good entry timing, captured {pnl_pct:.1f}% gain\n"
+            )
         else:
-            reflection += f"- Outcome: LOSING TRADE\n"
+            reflection += "- Outcome: LOSING TRADE\n"
             reflection += f"- Takeaway: Lost {abs(pnl_pct):.1f}%, review entry conditions and stop-loss\n"
 
         if hold_duration < 1:
@@ -283,13 +293,17 @@ class TradeJournal:
             try:
                 signals = json.loads(signals)
             except json.JSONDecodeError:
-                logger.error("Failed to parse signals JSON from trade journal", exc_info=True)
+                logger.error(
+                    "Failed to parse signals JSON from trade journal", exc_info=True
+                )
                 signals = []
         if isinstance(reasons, str):
             try:
                 reasons = json.loads(reasons)
             except json.JSONDecodeError:
-                logger.error("Failed to parse reasons JSON from trade journal", exc_info=True)
+                logger.error(
+                    "Failed to parse reasons JSON from trade journal", exc_info=True
+                )
                 reasons = []
 
         lesson = f"Trade Review - {symbol} {side} (Strategy: {strategy}):\n"
@@ -299,10 +313,10 @@ class TradeJournal:
         if pnl_pct > 0:
             lesson += f"- WIN: Signals [{', '.join(signals[:3])}]\n"
             lesson += f"- What worked: {', '.join(reasons[:2])}\n"
-            lesson += f"- Consider: This pattern worked, watch for similar setups\n"
+            lesson += "- Consider: This pattern worked, watch for similar setups\n"
         else:
             lesson += f"- LOSS: Signals [{', '.join(signals[:3])}]\n"
             lesson += f"- What failed: {', '.join(reasons[:2])}\n"
-            lesson += f"- Improvement: Review entry timing and risk management\n"
+            lesson += "- Improvement: Review entry timing and risk management\n"
 
         return lesson

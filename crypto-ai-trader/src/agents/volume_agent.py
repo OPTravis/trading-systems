@@ -36,7 +36,9 @@ class VolumeAgent:
         """
         # Early return for empty/missing data
         if not coin_data:
-            return SpecialistResult(score=50.0, signals=["⚠️ No data"], data={}, confidence="none")
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -64,13 +66,15 @@ class VolumeAgent:
             signals.append("🌊 1h Volume Surge (1.5x avg)")
 
         # --- data ------------------------------------------------------------
-        data['rank'] = rank
-        data['price_change_24h'] = price_change
-        data['volume_surge'] = bool(volume_surge or coin_data.get("volume_surge"))
+        data["rank"] = rank
+        data["price_change_24h"] = price_change
+        data["volume_surge"] = bool(volume_surge or coin_data.get("volume_surge"))
 
-        confidence = 'high' if score >= 60 or score <= 25 else 'medium'
+        confidence = "high" if score >= 60 or score <= 25 else "medium"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Factor 3: Volume / Momentum

@@ -15,15 +15,15 @@ Phase 3 (multi-strategy) → Phase 4 (data expansion) → Phase 5 (evolve)
 import json
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
 # Performance thresholds
-DISABLE_WIN_RATE = 40.0    # Disable if WR < 40% after MIN_TRADES
-RECOVER_WIN_RATE = 55.0    # Re-enable if WR > 55% after being disabled
+DISABLE_WIN_RATE = 40.0  # Disable if WR < 40% after MIN_TRADES
+RECOVER_WIN_RATE = 55.0  # Re-enable if WR > 55% after being disabled
 MIN_TRADES_TO_EVALUATE = 10  # Need at least 10 trades to evaluate
-MIN_TRADES_TO_RECOVER = 5   # Need 5 more trades after disable to consider recovery
+MIN_TRADES_TO_RECOVER = 5  # Need 5 more trades after disable to consider recovery
 
 # All known strategies
 ALL_STRATEGIES = ["rsi", "bollinger", "vwap", "trend", "dca", "grid"]
@@ -35,6 +35,7 @@ class StrategyEvolver:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
 
@@ -52,7 +53,9 @@ class StrategyEvolver:
             try:
                 return json.loads(row["value"])
             except (json.JSONDecodeError, TypeError):
-                logger.warning("Failed to parse evolved_disabled JSON from StateDB", exc_info=True)
+                logger.warning(
+                    "Failed to parse evolved_disabled JSON from StateDB", exc_info=True
+                )
         return {}
 
     def _set_disabled(self, disabled: Dict[str, Dict]):
@@ -83,14 +86,12 @@ class StrategyEvolver:
         conn = self._db._get_conn()
 
         # Get per-strategy performance
-        rows = conn.execute(
-            """SELECT strategy, COUNT(*) as trades,
+        rows = conn.execute("""SELECT strategy, COUNT(*) as trades,
                       SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as wins,
                       AVG(net_pnl_pct) as avg_pnl
             FROM trade_outcomes
             WHERE status = 'closed' AND strategy IS NOT NULL
-            GROUP BY strategy"""
-        ).fetchall()
+            GROUP BY strategy""").fetchall()
 
         if not rows:
             return []
@@ -120,32 +121,35 @@ class StrategyEvolver:
                         "avg_pnl": round(avg_pnl, 2),
                         "trades": trades,
                     }
-                    changes.append({
-                        "action": "DISABLED",
-                        "strategy": strategy,
-                        "reason": f"WR={win_rate:.1f}% ({wins}/{trades}), avg PnL={avg_pnl:+.2f}%",
-                    })
+                    changes.append(
+                        {
+                            "action": "DISABLED",
+                            "strategy": strategy,
+                            "reason": f"WR={win_rate:.1f}% ({wins}/{trades}), avg PnL={avg_pnl:+.2f}%",
+                        }
+                    )
                     self._log_audit(
                         "strategy_disabled",
-                        f"{strategy}: WR={win_rate:.1f}% after {trades} trades"
+                        f"{strategy}: WR={win_rate:.1f}% after {trades} trades",
                     )
 
             # Check for re-enable
             elif is_disabled:
                 # Only consider recovery if enough new trades since disable
-                disable_info = disabled[strategy]
-                trades_since = trades  # Total trades (simplified)
+                disabled[strategy]
 
                 if trades >= MIN_TRADES_TO_EVALUATE and win_rate > RECOVER_WIN_RATE:
                     del disabled[strategy]
-                    changes.append({
-                        "action": "RECOVERED",
-                        "strategy": strategy,
-                        "reason": f"WR={win_rate:.1f}% > {RECOVER_WIN_RATE}%",
-                    })
+                    changes.append(
+                        {
+                            "action": "RECOVERED",
+                            "strategy": strategy,
+                            "reason": f"WR={win_rate:.1f}% > {RECOVER_WIN_RATE}%",
+                        }
+                    )
                     self._log_audit(
                         "strategy_recovered",
-                        f"{strategy}: WR={win_rate:.1f}% after {trades} trades"
+                        f"{strategy}: WR={win_rate:.1f}% after {trades} trades",
                     )
 
         self._set_disabled(disabled)
@@ -156,14 +160,12 @@ class StrategyEvolver:
         conn = self._db._get_conn()
 
         # Get per-strategy stats
-        rows = conn.execute(
-            """SELECT strategy, COUNT(*) as trades,
+        rows = conn.execute("""SELECT strategy, COUNT(*) as trades,
                       SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as wins,
                       AVG(net_pnl_pct) as avg_pnl
             FROM trade_outcomes
             WHERE status = 'closed' AND strategy IS NOT NULL
-            GROUP BY strategy"""
-        ).fetchall()
+            GROUP BY strategy""").fetchall()
 
         disabled = self.get_disabled_strategies()
         lines = ["## 策略進化報告", ""]
@@ -187,10 +189,14 @@ class StrategyEvolver:
 
             if is_disabled:
                 reason = disabled[strategy].get("reason", "")
-                lines.append(f"- **{strategy}**: {status} | WR={win_rate:.1f}% ({wins}/{trades}) | avg={avg_pnl:+.2f}% | {reason}")
+                lines.append(
+                    f"- **{strategy}**: {status} | WR={win_rate:.1f}% ({wins}/{trades}) | avg={avg_pnl:+.2f}% | {reason}"
+                )
             else:
                 indicator = "🟢" if win_rate > 55 else "🔴" if win_rate < 40 else "⚪"
-                lines.append(f"- {indicator} **{strategy}**: {status} | WR={win_rate:.1f}% ({wins}/{trades}) | avg={avg_pnl:+.2f}%")
+                lines.append(
+                    f"- {indicator} **{strategy}**: {status} | WR={win_rate:.1f}% ({wins}/{trades}) | avg={avg_pnl:+.2f}%"
+                )
 
         # Show disabled strategies not in trade data
         for s in disabled:

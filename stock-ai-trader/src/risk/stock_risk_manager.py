@@ -1,13 +1,13 @@
 """
 Stock Risk Manager - Orchestrates all stock-specific risk checks.
 """
-import logging
-from datetime import date, datetime
-from typing import Optional
-from dataclasses import dataclass, field
 
-from .pdt_guard import PDTGuard
+import logging
+from dataclasses import dataclass, field
+from typing import Optional
+
 from .earnings_blackout import EarningsBlackout
+from .pdt_guard import PDTGuard
 from .settlement_guard import SettlementGuard
 from .vix_position_scale import VIXPositionScale
 
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RiskDecision:
     """Result of a pre-trade risk check."""
+
     approved: bool
     reason: str = ""
     position_multiplier: float = 1.0
@@ -26,13 +27,14 @@ class RiskDecision:
 @dataclass
 class TradeSignal:
     """Incoming trade signal for risk evaluation."""
+
     symbol: str
     side: str  # 'buy' or 'sell'
     quantity: float
     price: float
-    market: str = 'US'
+    market: str = "US"
     is_day_trade: bool = False
-    sector: str = ''
+    sector: str = ""
 
 
 class StockRiskManager:
@@ -71,24 +73,24 @@ class StockRiskManager:
             if not self.pdt_guard.can_day_trade(self.account_value):
                 return RiskDecision(
                     approved=False,
-                    reason="PDT rule: max 3 day trades per 5 business days for accounts < $25K"
+                    reason="PDT rule: max 3 day trades per 5 business days for accounts < $25K",
                 )
 
         # Earnings blackout
         if self.earnings_blackout.is_blackout(signal.symbol):
             return RiskDecision(
                 approved=False,
-                reason=f"Earnings blackout: {signal.symbol} has upcoming earnings"
+                reason=f"Earnings blackout: {signal.symbol} has upcoming earnings",
             )
 
         # Settlement check for buys
-        if signal.side == 'buy':
+        if signal.side == "buy":
             available = self.settlement_guard.get_available_cash()
             trade_cost = signal.quantity * signal.price
             if trade_cost > available:
                 return RiskDecision(
                     approved=False,
-                    reason=f"Insufficient settled funds: need ${trade_cost:.2f}, have ${available:.2f}"
+                    reason=f"Insufficient settled funds: need ${trade_cost:.2f}, have ${available:.2f}",
                 )
 
         # VIX scaling
@@ -105,7 +107,7 @@ class StockRiskManager:
             if new_concentration > self.max_sector_concentration:
                 return RiskDecision(
                     approved=False,
-                    reason=f"Sector concentration: {signal.sector} would be {new_concentration:.1%} (max {self.max_sector_concentration:.0%})"
+                    reason=f"Sector concentration: {signal.sector} would be {new_concentration:.1%} (max {self.max_sector_concentration:.0%})",
                 )
 
         # Liquidity check (placeholder - would need real volume data)
@@ -124,8 +126,16 @@ class StockRiskManager:
     def update_sector_exposure(self, sector: str, value: float):
         """Update sector exposure after a trade."""
         self.sector_exposure[sector] = self.sector_exposure.get(sector, 0.0) + value
-        logger.info(f"Sector exposure updated: {sector} = ${self.sector_exposure[sector]:,.2f}")
+        logger.info(
+            f"Sector exposure updated: {sector} = ${self.sector_exposure[sector]:,.2f}"
+        )
 
-    def record_settled_sale(self, symbol: str, amount: float, settle_days: int = None, market: str = 'US'):
+    def record_settled_sale(
+        self,
+        symbol: str,
+        amount: float,
+        settle_days: Optional[int] = None,
+        market: str = "US",
+    ):
         """Record a sale that needs to settle, delegating to SettlementGuard."""
         self.settlement_guard.record_sale(amount=amount, market=market)

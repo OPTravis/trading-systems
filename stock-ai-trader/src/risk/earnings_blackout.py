@@ -1,10 +1,11 @@
 """
 Earnings Blackout - Blocks new positions around earnings dates.
 """
+
 import logging
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Dict, Optional
-from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,11 @@ BLACKOUT_DAYS_AFTER = 0  # Block on earnings day (day of)
 @dataclass
 class EarningsBlackout:
     """Earnings blackout period enforcement."""
+
     earnings_dates: Dict[str, date] = field(default_factory=dict)
     _cache_timestamp: Optional[datetime] = field(default=None, repr=False)
 
-    def is_blackout(self, symbol: str, today: date = None) -> bool:
+    def is_blackout(self, symbol: str, today: Optional[date] = None) -> bool:
         """Check if symbol is in earnings blackout period."""
         today = today or date.today()
         earnings_date = self.get_next_earnings(symbol)
@@ -39,12 +41,14 @@ class EarningsBlackout:
         self.earnings_dates[symbol.upper()] = earnings_date
         logger.info(f"Set earnings date for {symbol}: {earnings_date}")
 
-    def get_blackout_symbols(self, today: date = None) -> list:
+    def get_blackout_symbols(self, today: Optional[date] = None) -> list:
         """Get all symbols currently in blackout."""
         today = today or date.today()
         return [s for s in self.earnings_dates if self.is_blackout(s, today)]
 
-    def days_until_earnings(self, symbol: str, today: date = None) -> Optional[int]:
+    def days_until_earnings(
+        self, symbol: str, today: Optional[date] = None
+    ) -> Optional[int]:
         """Get days until next earnings for symbol. Returns None for past earnings dates."""
         today = today or date.today()
         self._auto_prune(today)
@@ -56,7 +60,7 @@ class EarningsBlackout:
             return None
         return delta
 
-    def _auto_prune(self, today: date = None):
+    def _auto_prune(self, today: Optional[date] = None):
         """Remove earnings entries older than 5 days past the earnings date."""
         today = today or date.today()
         cutoff = today - timedelta(days=5)

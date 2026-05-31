@@ -1,7 +1,8 @@
 """Stock scoring modules."""
-from .stock_scorer import StockScorer
+
+from .composite_ranker import CompositeRanker
 from .fundamental_scorer import FundamentalScorer
 from .sentiment_scorer import SentimentScorer
-from .composite_ranker import CompositeRanker
+from .stock_scorer import StockScorer
 
-__all__ = ['StockScorer', 'FundamentalScorer', 'SentimentScorer', 'CompositeRanker']
+__all__ = ["StockScorer", "FundamentalScorer", "SentimentScorer", "CompositeRanker"]

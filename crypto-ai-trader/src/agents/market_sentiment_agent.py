@@ -31,7 +31,9 @@ class MarketSentimentAgent:
         """
         # Early return for missing data
         if fng_value is None:
-            return SpecialistResult(score=50.0, signals=["⚠️ No data"], data={}, confidence="none")
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -55,12 +57,14 @@ class MarketSentimentAgent:
             signals.append(f"🔥 Extreme Greed ({fng_value}) — contrarian bearish")
 
         # --- data ------------------------------------------------------------
-        data['fng_value'] = fng_value
-        data['contrarian_score'] = round(score, 2)
+        data["fng_value"] = fng_value
+        data["contrarian_score"] = round(score, 2)
 
-        confidence = 'high' if abs(fng_value - 50) > 30 else 'medium'
+        confidence = "high" if abs(fng_value - 50) > 30 else "medium"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Contrarian F&G mapping — mirrors the inline logic in

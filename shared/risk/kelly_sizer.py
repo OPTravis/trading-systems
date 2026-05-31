@@ -34,7 +34,7 @@ class KellyPositionSizer:
         self._cache_ts: float = 0
         self._cache_ttl = 300  # 5 minutes
 
-    def _get_trade_history(self, symbol: str = None, min_trades: int = 5) -> List[Dict]:
+    def _get_trade_history(self, symbol: Optional[str] = None, min_trades: int = 5) -> List[Dict]:
         """Fetch recent trade history for win rate calculation."""
         if self.db:
             try:

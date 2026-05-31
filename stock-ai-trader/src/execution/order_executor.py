@@ -13,15 +13,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from shared.core.state_db import get_state_db
 from shared.risk.risk_manager import RiskManager
 from src.brokers.broker_protocol import (
     BrokerProtocol,
     Contract,
     Order,
     OrderSide,
-    OrderType,
     OrderStatus,
+    OrderType,
     TimeInForce,
 )
 
@@ -34,6 +33,7 @@ RETRY_DELAY_BASE = 2  # seconds, exponential backoff
 @dataclass
 class OrderResult:
     """Result of a single order placement attempt."""
+
     success: bool
     order_id: Optional[int] = None
     symbol: str = ""
@@ -57,7 +57,9 @@ class OrderExecutor:
     for transient network/API errors.
     """
 
-    def __init__(self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None):
+    def __init__(
+        self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None
+    ):
         self.broker = broker
         self.risk_manager = risk_manager
 
@@ -88,7 +90,9 @@ class OrderExecutor:
         """
         # Pre-trade risk check
         if self.risk_manager:
-            allowed, reason = self.risk_manager.check_order_allowed(symbol, side, quantity)
+            allowed, reason = self.risk_manager.check_order_allowed(
+                symbol, side, quantity
+            )
             if not allowed:
                 logger.warning("Risk manager blocked order: %s — %s", symbol, reason)
                 return OrderResult(
@@ -135,12 +139,23 @@ class OrderExecutor:
             try:
                 logger.info(
                     "Placing %s %s %s x%.0f (attempt %d/%d)",
-                    side, symbol, order_type, quantity, attempt, MAX_RETRIES,
+                    side,
+                    symbol,
+                    order_type,
+                    quantity,
+                    attempt,
+                    MAX_RETRIES,
                 )
                 result = await self.broker.place_order(order)
 
-                if result and result.status in (OrderStatus.FILLED, OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
-                    logger.info("Order placed: %s %s — status=%s", side, symbol, result.status)
+                if result and result.status in (
+                    OrderStatus.FILLED,
+                    OrderStatus.SUBMITTED,
+                    OrderStatus.PARTIALLY_FILLED,
+                ):
+                    logger.info(
+                        "Order placed: %s %s — status=%s", side, symbol, result.status
+                    )
                     return OrderResult(
                         success=True,
                         order_id=result.order_id,
@@ -151,7 +166,11 @@ class OrderExecutor:
                         filled_qty=result.filled_qty,
                         avg_fill_price=result.avg_fill_price,
                         commission=result.commission,
-                        status=result.status.value if isinstance(result.status, OrderStatus) else str(result.status),
+                        status=(
+                            result.status.value
+                            if isinstance(result.status, OrderStatus)
+                            else str(result.status)
+                        ),
                         retry_count=attempt,
                     )
                 elif result and result.status == OrderStatus.REJECTED:
@@ -159,7 +178,9 @@ class OrderExecutor:
                     logger.error("Order rejected: %s", last_error)
                     break  # Don't retry rejections
                 else:
-                    last_error = f"Unexpected status: {getattr(result, 'status', 'unknown')}"
+                    last_error = (
+                        f"Unexpected status: {getattr(result, 'status', 'unknown')}"
+                    )
                     logger.warning(last_error)
 
             except ConnectionError as e:
@@ -175,7 +196,7 @@ class OrderExecutor:
 
             # Exponential backoff
             if attempt < MAX_RETRIES:
-                delay = RETRY_DELAY_BASE ** attempt
+                delay = RETRY_DELAY_BASE**attempt
                 logger.info("Retrying in %ds...", delay)
                 time.sleep(delay)
 
@@ -205,7 +226,11 @@ class OrderExecutor:
             open_orders = await self.broker.get_open_orders()
             for o in open_orders:
                 if o.order_id == order_id:
-                    return o.status.value if isinstance(o.status, OrderStatus) else str(o.status)
+                    return (
+                        o.status.value
+                        if isinstance(o.status, OrderStatus)
+                        else str(o.status)
+                    )
             return None
         except Exception as e:
             logger.error("Status query failed for order %d: %s", order_id, e)

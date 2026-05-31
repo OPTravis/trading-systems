@@ -59,9 +59,9 @@ class StateDB:
                     self._local.conn.close()
                 except Exception:
                     logger.error("Failed to close stale DB connection", exc_info=True)
-                self._local.conn = None
+                self._local.conn = None  # type: ignore[assignment]
                 self._local.conn_created = 0
-        
+
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self._local.conn.row_factory = sqlite3.Row
@@ -104,7 +104,7 @@ class StateDB:
                 self._local.conn.close()
             except Exception:
                 logger.error("Failed to close DB connection on shutdown", exc_info=True)
-            self._local.conn = None
+            self._local.conn = None  # type: ignore[assignment]
             self._local.conn_created = 0
 
     def _init_db(self):
@@ -488,7 +488,7 @@ class StateDB:
         )
         self._get_conn().commit()
 
-    def trade_get_recent(self, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def trade_get_recent(self, symbol: Optional[str] = None, limit: int = 50) -> List[Dict]:
         if symbol:
             rows = self._get_conn().execute(
                 "SELECT * FROM trades WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
@@ -651,7 +651,7 @@ class StateDB:
 
     # ==================== KV Store ====================
 
-    def kv_get(self, key: str, default: Any = None) -> Any:
+    def kv_get(self, key: str, default: Optional[Any] = None) -> Any:
         row = self._get_conn().execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
         if row:
             try:
@@ -702,9 +702,9 @@ class StateDB:
         qty: float = 0,
         side: str = "",
         strategy: str = "",
-        reasons: list = None,
-        signals: list = None,
-        bear_result: Any = None,
+        reasons: Optional[list] = None,
+        signals: Optional[list] = None,
+        bear_result: Optional[Any] = None,
         research: str = "",
         exit_price: float = 0,
         pnl_pct: float = 0,
@@ -746,14 +746,14 @@ class StateDB:
             ),
         ).lastrowid
         self._get_conn().commit()
-        return rowid
+        return rowid or 0
 
     def decisions_get_history(
-        self, symbol: str = None, type: str = None, limit: int = 10
+        self, symbol: Optional[str] = None, type: Optional[str] = None, limit: int = 10
     ) -> List[Dict]:
         """Get recent decisions, optionally filtered by symbol and/or type."""
-        conditions = []
-        params = []
+        conditions: list[str] = []
+        params: list[Any] = []
         if symbol:
             conditions.append("symbol = ?")
             params.append(symbol)
@@ -768,10 +768,10 @@ class StateDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def decisions_get_lessons(self, symbol: str = None, limit: int = 5) -> List[Dict]:
+    def decisions_get_lessons(self, symbol: Optional[str] = None, limit: int = 5) -> List[Dict]:
         """Get recent decisions with exit data and |pnl| > 3% (for lessons)."""
-        conditions = ["pnl_pct != 0", "exit_price != 0", "ABS(pnl_pct) > 3.0"]
-        params = []
+        conditions: list[str] = ["pnl_pct != 0", "exit_price != 0", "ABS(pnl_pct) > 3.0"]
+        params: list[Any] = []
         if symbol:
             conditions.append("symbol = ?")
             params.append(symbol)
@@ -783,7 +783,7 @@ class StateDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def decisions_count(self, date: str = None) -> int:
+    def decisions_count(self, date: Optional[str] = None) -> int:
         """Count decisions, optionally by date."""
         if date:
             row = self._get_conn().execute(

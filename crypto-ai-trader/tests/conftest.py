@@ -2,13 +2,12 @@
 Shared fixtures for crypto-ai-trader test suite.
 Provides mock objects and temporary data directories.
 """
-import os
+
 import sys
-import json
-import pytest
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -20,11 +19,13 @@ def _reset_daily_loss_breaker(monkeypatch, tmp_path):
     """Reset DailyLossBreaker singleton state between tests to prevent cross-test contamination."""
     try:
         import src.daily_loss_breaker as dlb_mod
+
         dlb_mod._dlb_instance = None
         yield
         dlb_mod._dlb_instance = None
     except (ImportError, AttributeError):
         yield
+
 
 @pytest.fixture(autouse=True)
 def _set_env(monkeypatch, tmp_path):
@@ -37,9 +38,9 @@ def _set_env(monkeypatch, tmp_path):
 
     # Redirect data dir to tmp_path for risk_manager persistence
     import src.risk_manager as rm
+
     monkeypatch.setattr(rm, "_DATA_DIR", tmp_path / "data")
     (tmp_path / "data").mkdir(parents=True, exist_ok=True)
-
 
 
 @pytest.fixture(autouse=True)
@@ -49,9 +50,11 @@ def _isolate_statedb(monkeypatch, tmp_path):
     monkeypatch.setenv("STATE_DB_PATH", test_db_path)
     # Reset singleton so it picks up the new path
     import src.state_db as sd_mod
+
     sd_mod._state_db_instance = None
     yield
     sd_mod._state_db_instance = None
+
 
 @pytest.fixture
 def mock_binance_spot():
@@ -72,8 +75,17 @@ def mock_binance_spot():
                 "baseAsset": "BTC",
                 "quoteAsset": "USDT",
                 "filters": [
-                    {"filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001"},
-                    {"filterType": "PRICE_FILTER", "minPrice": "0.01", "tickSize": "0.01"},
+                    {
+                        "filterType": "LOT_SIZE",
+                        "minQty": "0.001",
+                        "maxQty": "1000",
+                        "stepSize": "0.001",
+                    },
+                    {
+                        "filterType": "PRICE_FILTER",
+                        "minPrice": "0.01",
+                        "tickSize": "0.01",
+                    },
                     {"filterType": "MIN_NOTIONAL", "minNotional": "5"},
                 ],
             },
@@ -83,8 +95,17 @@ def mock_binance_spot():
                 "baseAsset": "ETH",
                 "quoteAsset": "USDT",
                 "filters": [
-                    {"filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "10000", "stepSize": "0.001"},
-                    {"filterType": "PRICE_FILTER", "minPrice": "0.01", "tickSize": "0.01"},
+                    {
+                        "filterType": "LOT_SIZE",
+                        "minQty": "0.001",
+                        "maxQty": "10000",
+                        "stepSize": "0.001",
+                    },
+                    {
+                        "filterType": "PRICE_FILTER",
+                        "minPrice": "0.01",
+                        "tickSize": "0.01",
+                    },
                     {"filterType": "MIN_NOTIONAL", "minNotional": "5"},
                 ],
             },
@@ -94,8 +115,17 @@ def mock_binance_spot():
                 "baseAsset": "SOL",
                 "quoteAsset": "USDT",
                 "filters": [
-                    {"filterType": "LOT_SIZE", "minQty": "0.01", "maxQty": "50000", "stepSize": "0.01"},
-                    {"filterType": "PRICE_FILTER", "minPrice": "0.001", "tickSize": "0.001"},
+                    {
+                        "filterType": "LOT_SIZE",
+                        "minQty": "0.01",
+                        "maxQty": "50000",
+                        "stepSize": "0.01",
+                    },
+                    {
+                        "filterType": "PRICE_FILTER",
+                        "minPrice": "0.001",
+                        "tickSize": "0.001",
+                    },
                     {"filterType": "NOTIONAL", "minNotional": "5"},
                 ],
             },
@@ -118,7 +148,11 @@ def mock_binance_spot():
         "status": "NEW",
         "fills": [{"price": "34500.00", "qty": "0.01", "commission": "0.01"}],
     }
-    spot.cancel_order.return_value = {"symbol": "BTCUSDT", "orderId": 12345, "status": "CANCELED"}
+    spot.cancel_order.return_value = {
+        "symbol": "BTCUSDT",
+        "orderId": 12345,
+        "status": "CANCELED",
+    }
     spot.cancel_open_orders.return_value = []
     spot.time.return_value = {"serverTime": 1700000000000}
     return spot
@@ -148,10 +182,14 @@ def make_binance_client(mock_binance_spot):
                 ]
             }
             bc.exchange.create_order.return_value = {
-                "symbol": "BTCUSDT", "orderId": 42, "status": "FILLED"
+                "symbol": "BTCUSDT",
+                "orderId": 42,
+                "status": "FILLED",
             }
             bc.exchange.cancel_order.return_value = {
-                "symbol": "BTCUSDT", "orderId": 99, "status": "CANCELED"
+                "symbol": "BTCUSDT",
+                "orderId": 99,
+                "status": "CANCELED",
             }
             bc.exchange.fetch_ohlcv.return_value = [
                 [1000, 200.0, 210.0, 190.0, 200.0, 1000.0]
@@ -173,8 +211,9 @@ def make_binance_client(mock_binance_spot):
 @pytest.fixture
 def mock_notifier():
     """Mock FeishuNotifier that doesn't send real messages."""
-    with patch("main.FeishuNotifier") as MockCls, \
-         patch("src.notifier.FeishuNotifier") as MockCls2:
+    with patch("main.FeishuNotifier") as MockCls, patch(
+        "src.notifier.FeishuNotifier"
+    ) as MockCls2:
         instance = MagicMock()
         instance.send_text.return_value = True
         instance.get_strategy_config.return_value = {

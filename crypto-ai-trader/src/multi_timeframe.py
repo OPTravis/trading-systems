@@ -5,13 +5,11 @@ Multi-Timeframe Analysis - Trend confirmation across 4h/1h/15m
 import logging
 import threading
 import time
-from typing import Dict, List, Optional, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .exchange_client import ExchangeClient
-from .binance_client import BinanceClient  # runtime fallback
 from .indicators import Indicators
 
 logger = logging.getLogger(__name__)
@@ -19,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class _RateLimiter:
     """Simple rate limiter: track timestamps, sleep if too fast."""
+
     def __init__(self, max_per_second: float = 25):
         self._max_per_second = max_per_second
         self._timestamps: List[float] = []
@@ -40,7 +39,7 @@ class _RateLimiter:
 class MultiTimeframeAnalyzer:
     """Orchestrate trend confirmation across 4h, 1h, and 15m timeframes."""
 
-    def __init__(self, binance_client: 'ExchangeClient'):
+    def __init__(self, binance_client: "ExchangeClient"):
         self.client = binance_client
         self.indicators = Indicators()
         self._rate_limiter = _RateLimiter(max_per_second=25)
@@ -52,7 +51,9 @@ class MultiTimeframeAnalyzer:
         entry signal, composite trend score, and 15m ATR.
         """
         try:
-            analysis_4h, analysis_1h, analysis_15m, atr_15m = self._fetch_and_analyze(symbol)
+            analysis_4h, analysis_1h, analysis_15m, atr_15m = self._fetch_and_analyze(
+                symbol
+            )
         except Exception as e:
             logger.error(f"Multi-TF analysis failed for {symbol}: {e}")
             return self._empty_result(symbol)
@@ -60,9 +61,15 @@ class MultiTimeframeAnalyzer:
         if not analysis_4h and not analysis_1h and not analysis_15m:
             return self._empty_result(symbol)
 
-        trend_alignment = self._determine_trend_alignment(analysis_4h, analysis_1h, analysis_15m)
-        entry_signal = self._determine_entry_signal(analysis_4h, analysis_1h, analysis_15m)
-        trend_score = self._calculate_trend_score(analysis_4h, analysis_1h, analysis_15m)
+        trend_alignment = self._determine_trend_alignment(
+            analysis_4h, analysis_1h, analysis_15m
+        )
+        entry_signal = self._determine_entry_signal(
+            analysis_4h, analysis_1h, analysis_15m
+        )
+        trend_score = self._calculate_trend_score(
+            analysis_4h, analysis_1h, analysis_15m
+        )
 
         return {
             "symbol": symbol,
@@ -100,17 +107,23 @@ class MultiTimeframeAnalyzer:
         # 4h – 100 bars
         self._rate_limiter.wait()
         klines_4h = self.client.get_klines(symbol, "4h", limit=100)
-        analysis_4h = self.indicators.analyze_symbol(klines_4h) if len(klines_4h) >= 50 else {}
+        analysis_4h = (
+            self.indicators.analyze_symbol(klines_4h) if len(klines_4h) >= 50 else {}
+        )
 
         # 1h – 100 bars
         self._rate_limiter.wait()
         klines_1h = self.client.get_klines(symbol, "1h", limit=100)
-        analysis_1h = self.indicators.analyze_symbol(klines_1h) if len(klines_1h) >= 50 else {}
+        analysis_1h = (
+            self.indicators.analyze_symbol(klines_1h) if len(klines_1h) >= 50 else {}
+        )
 
         # 15m – 200 bars
         self._rate_limiter.wait()
         klines_15m = self.client.get_klines(symbol, "15m", limit=200)
-        analysis_15m = self.indicators.analyze_symbol(klines_15m) if len(klines_15m) >= 50 else {}
+        analysis_15m = (
+            self.indicators.analyze_symbol(klines_15m) if len(klines_15m) >= 50 else {}
+        )
 
         # 15m ATR for entry precision
         atr_15m = self.indicators.atr(klines_15m) if len(klines_15m) >= 15 else 0.0
@@ -118,9 +131,7 @@ class MultiTimeframeAnalyzer:
         return analysis_4h, analysis_1h, analysis_15m, atr_15m
 
     @staticmethod
-    def _determine_trend_alignment(
-        a_4h: Dict, a_1h: Dict, a_15m: Dict
-    ) -> str:
+    def _determine_trend_alignment(a_4h: Dict, a_1h: Dict, a_15m: Dict) -> str:
         """Classify overall trend alignment as bullish / bearish / mixed / neutral.
 
         Symmetrical logic: bullish and bearish use mirrored criteria in opposite
@@ -164,11 +175,19 @@ class MultiTimeframeAnalyzer:
 
         # --- Classification (symmetrical) ---
         # BULLISH: 4h bullish AND 1h RSI < 60 AND 15m bullish setup
-        if is_4h_bullish and rsi_1h < 60 and (is_15m_bull_pullback or is_15m_bull_breakout):
+        if (
+            is_4h_bullish
+            and rsi_1h < 60
+            and (is_15m_bull_pullback or is_15m_bull_breakout)
+        ):
             return "bullish"
 
         # BEARISH: 4h bearish AND 1h RSI > 40 AND 15m bearish setup
-        if is_4h_bearish and rsi_1h > 40 and (is_15m_bear_pullback or is_15m_bear_breakout):
+        if (
+            is_4h_bearish
+            and rsi_1h > 40
+            and (is_15m_bear_pullback or is_15m_bear_breakout)
+        ):
             return "bearish"
 
         # MIXED: conflicting signals between timeframes
@@ -179,9 +198,7 @@ class MultiTimeframeAnalyzer:
         return "neutral"
 
     @staticmethod
-    def _determine_entry_signal(
-        a_4h: Dict, a_1h: Dict, a_15m: Dict
-    ) -> Optional[str]:
+    def _determine_entry_signal(a_4h: Dict, a_1h: Dict, a_15m: Dict) -> Optional[str]:
         """Entry signal logic gated by trend direction.
 
         Returns:

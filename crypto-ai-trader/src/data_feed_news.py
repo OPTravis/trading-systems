@@ -6,16 +6,15 @@ Fetches and classifies crypto news from CryptoCompare API.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
 
-from src.data_feed_base import _get_conn, NEWS_TTL, NEWS_URL, P1_KEYWORDS
 from src.app_secrets import CRYPTO_SECRETS, load_secret_file
+from src.data_feed_base import NEWS_TTL, NEWS_URL, P1_KEYWORDS, _get_conn
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +61,15 @@ class NewsFeed:
         # Return cached if fresh
         cached = self._read_cache(limit=limit)
         if cached and self._is_cache_fresh():
-            return self._filter_articles(
-                cached, categories, exclude_categories
-            )[:limit]
+            return self._filter_articles(cached, categories, exclude_categories)[:limit]
 
         # Fetch from API
-        articles = self._fetch_from_api(categories=categories, exclude_categories=exclude_categories, ts_sym=ts_sym, limit=limit)
+        articles = self._fetch_from_api(
+            categories=categories,
+            exclude_categories=exclude_categories,
+            ts_sym=ts_sym,
+            limit=limit,
+        )
         if articles:
             self._write_cache(articles)
 
@@ -78,7 +80,9 @@ class NewsFeed:
         return articles[:limit]
 
     # ------------------------------------------------------------------
-    def classify_news(self, articles: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def classify_news(
+        self, articles: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """Classify articles into priority tiers.
 
         P1: high-impact (regulation, hacks, ETFs, etc.)
@@ -231,13 +235,15 @@ class NewsFeed:
         if categories:
             cats_lower = [c.lower() for c in categories]
             result = [
-                a for a in result
+                a
+                for a in result
                 if any(c in (a.get("categories") or "").lower() for c in cats_lower)
             ]
         if exclude_categories:
             exc_lower = [c.lower() for c in exclude_categories]
             result = [
-                a for a in result
+                a
+                for a in result
                 if not any(c in (a.get("categories") or "").lower() for c in exc_lower)
             ]
         return result

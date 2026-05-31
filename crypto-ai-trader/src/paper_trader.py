@@ -12,12 +12,12 @@ All market-data methods (klines, ticker, exchange_info, etc.) are delegated to t
 real BinanceClient so the scanner/researcher/strategy pipeline sees live prices.
 """
 
-import os
-import time
 import json
 import logging
+import os
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import ccxt
 from dotenv import load_dotenv
@@ -33,10 +33,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PAPER_SLIPPAGE_PCT = float(os.environ.get("PAPER_SLIPPAGE_PCT", "0.05"))   # 0.05%
-PAPER_FEE_RATE     = float(os.environ.get("PAPER_FEE_RATE", "0.001"))      # 0.1% (Binance standard)
-PAPER_MIN_ORDER_USDT = float(os.environ.get("PAPER_MIN_ORDER_USDT", "10")) # $10 USDT minimum
-PAPER_INITIAL_BALANCE = float(os.environ.get("PAPER_INITIAL_BALANCE", "10000"))  # $10,000 USDT starting
+PAPER_SLIPPAGE_PCT = float(os.environ.get("PAPER_SLIPPAGE_PCT", "0.05"))  # 0.05%
+PAPER_FEE_RATE = float(
+    os.environ.get("PAPER_FEE_RATE", "0.001")
+)  # 0.1% (Binance standard)
+PAPER_MIN_ORDER_USDT = float(
+    os.environ.get("PAPER_MIN_ORDER_USDT", "10")
+)  # $10 USDT minimum
+PAPER_INITIAL_BALANCE = float(
+    os.environ.get("PAPER_INITIAL_BALANCE", "10000")
+)  # $10,000 USDT starting
 
 
 def is_paper_mode() -> bool:
@@ -95,10 +101,12 @@ class PaperTrader:
 
     def __init__(self):
         # ── Read-only ccxt instance for price data (no API keys needed) ──
-        self._price_exchange = ccxt.binance({
-            "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
-        })
+        self._price_exchange = ccxt.binance(
+            {
+                "enableRateLimit": True,
+                "options": {"defaultType": "spot"},
+            }
+        )
         try:
             self._price_exchange.load_markets()
         except Exception as e:
@@ -117,7 +125,10 @@ class PaperTrader:
 
         logger.info(
             "PaperTrader initialised — slippage=%.3f%% fee=%.3f%% min_order=$%.0f initial=$%.0f",
-            PAPER_SLIPPAGE_PCT, PAPER_FEE_RATE * 100, PAPER_MIN_ORDER_USDT, PAPER_INITIAL_BALANCE,
+            PAPER_SLIPPAGE_PCT,
+            PAPER_FEE_RATE * 100,
+            PAPER_MIN_ORDER_USDT,
+            PAPER_INITIAL_BALANCE,
         )
 
     # ------------------------------------------------------------------ helpers
@@ -126,6 +137,7 @@ class PaperTrader:
         """Lazy StateDB import & singleton."""
         if self._db is None:
             from src.state_db import get_state_db
+
             self._db = get_state_db()
             self._ensure_paper_tables()
         return self._db
@@ -180,9 +192,11 @@ class PaperTrader:
 
     def _get_sim_value(self, key: str, default: str = "0") -> str:
         db = self._get_db()  # ensure DB is initialized
-        row = db._get_conn().execute(
-            "SELECT value FROM paper_portfolio WHERE key = ?", (key,)
-        ).fetchone()
+        row = (
+            db._get_conn()
+            .execute("SELECT value FROM paper_portfolio WHERE key = ?", (key,))
+            .fetchone()
+        )
         return row["value"] if row else default
 
     def _set_sim_value(self, key: str, value: str):
@@ -239,6 +253,7 @@ class PaperTrader:
         if self._live_client is None:
             try:
                 from src.binance_client import BinanceClient
+
                 self._live_client = BinanceClient(testnet=False)
             except Exception as e:
                 logger.error("PaperTrader: failed to init live BinanceClient: %s", e)
@@ -261,7 +276,7 @@ class PaperTrader:
             return client.get_klines(symbol, interval, limit, **kwargs)
         return []
 
-    def get_24hr_stats(self, symbol: str = None, **kwargs):
+    def get_24hr_stats(self, symbol: Optional[str] = None, **kwargs):
         client = self._get_live_client()
         if client:
             return client.get_24hr_stats(symbol, **kwargs)
@@ -352,14 +367,16 @@ class PaperTrader:
         balances = [{"asset": "USDT", "free": str(usdt_bal), "locked": "0.0"}]
         for asset, pos in positions.items():
             qty = pos.get("qty", 0.0)
-            balances.append({
-                "asset": asset,
-                "free": str(qty),
-                "locked": "0.0",
-            })
+            balances.append(
+                {
+                    "asset": asset,
+                    "free": str(qty),
+                    "locked": "0.0",
+                }
+            )
         return {"balances": balances}
 
-    def get_open_orders(self, symbol: str = None) -> List[Dict]:
+    def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """Return simulated pending orders (limit orders awaiting fill)."""
         conn = self._conn()
         if symbol:
@@ -380,9 +397,9 @@ class PaperTrader:
         symbol: str,
         side: str,
         order_type: str,
-        quantity: float = None,
-        price: float = None,
-        stop_price: float = None,
+        quantity: Optional[float] = None,
+        price: Optional[float] = None,
+        stop_price: Optional[float] = None,
         time_in_force: str = "GTC",
         retry: int = 3,
     ) -> Optional[Dict]:
@@ -406,21 +423,25 @@ class PaperTrader:
         type_upper = order_type.upper()
 
         # ── MARKET orders: instant fill at current price + slippage ──
-        if type_upper == "MARKET":
+        if type_upper == "MARKET" and quantity is not None:
             return self._fill_market(symbol, side_upper, quantity, current_price)
 
         # ── LIMIT orders: place as pending, fill later if price reaches ──
-        if type_upper == "LIMIT" and price is not None:
+        if type_upper == "LIMIT" and price is not None and quantity is not None:
             return self._place_limit(symbol, side_upper, quantity, price, stop_price)
 
         # ── STOP_LOSS_LIMIT: treat as limit that triggers at stop_price ──
-        if type_upper in ("STOP_LOSS", "STOP_LOSS_LIMIT"):
+        if type_upper in ("STOP_LOSS", "STOP_LOSS_LIMIT") and quantity is not None:
             # For paper mode, simulate as limit at the stop_price (slippage-adjusted)
             limit_price = price if price is not None else stop_price
             if limit_price is None:
-                logger.error("PaperTrader: STOP_LOSS_LIMIT requires price or stop_price")
+                logger.error(
+                    "PaperTrader: STOP_LOSS_LIMIT requires price or stop_price"
+                )
                 return None
-            return self._place_limit(symbol, side_upper, quantity, limit_price, stop_price)
+            return self._place_limit(
+                symbol, side_upper, quantity, limit_price, stop_price
+            )
 
         logger.error("PaperTrader: unsupported order type %s", order_type)
         return None
@@ -431,44 +452,74 @@ class PaperTrader:
     def place_market_sell(self, symbol: str, quantity: float) -> Optional[Dict]:
         return self.place_order(symbol, "SELL", "MARKET", quantity=quantity)
 
-    def place_limit_buy(self, symbol: str, quantity: float, price: float) -> Optional[Dict]:
+    def place_limit_buy(
+        self, symbol: str, quantity: float, price: float
+    ) -> Optional[Dict]:
         return self.place_order(symbol, "BUY", "LIMIT", quantity=quantity, price=price)
 
-    def place_limit_sell(self, symbol: str, quantity: float, price: float) -> Optional[Dict]:
+    def place_limit_sell(
+        self, symbol: str, quantity: float, price: float
+    ) -> Optional[Dict]:
         return self.place_order(symbol, "SELL", "LIMIT", quantity=quantity, price=price)
 
-    def place_stop_loss_market(self, symbol: str, quantity: float, stop_price: float,
-                               limit_price: float = None) -> Optional[Dict]:
+    def place_stop_loss_market(
+        self,
+        symbol: str,
+        quantity: float,
+        stop_price: float,
+        limit_price: Optional[float] = None,
+    ) -> Optional[Dict]:
         if limit_price is None:
             limit_price = round(stop_price * 0.995, 8)
         return self.place_order(
-            symbol, "SELL", "STOP_LOSS_LIMIT",
-            quantity=quantity, price=limit_price, stop_price=stop_price,
+            symbol,
+            "SELL",
+            "STOP_LOSS_LIMIT",
+            quantity=quantity,
+            price=limit_price,
+            stop_price=stop_price,
         )
 
-    def place_stop_loss_limit(self, symbol: str, quantity: float,
-                              price: float, stop_price: float) -> Optional[Dict]:
+    def place_stop_loss_limit(
+        self, symbol: str, quantity: float, price: float, stop_price: float
+    ) -> Optional[Dict]:
         return self.place_order(
-            symbol, "SELL", "STOP_LOSS_LIMIT",
-            quantity=quantity, price=price, stop_price=stop_price,
+            symbol,
+            "SELL",
+            "STOP_LOSS_LIMIT",
+            quantity=quantity,
+            price=price,
+            stop_price=stop_price,
         )
 
-    def place_oco(self, symbol: str, quantity: float,
-                  tp_price: float, sl_price: float, sl_limit_price: float = None) -> Optional[Dict]:
+    def place_oco(
+        self,
+        symbol: str,
+        quantity: float,
+        tp_price: float,
+        sl_price: float,
+        sl_limit_price: Optional[float] = None,
+    ) -> Optional[Dict]:
         """Simulate OCO: place a limit SELL at tp_price and a stop-loss at sl_price."""
         # In paper mode, place the TP limit; the SL will be monitored separately
         if sl_limit_price is None:
             sl_limit_price = round(sl_price * 0.995, 8)
 
         # Place TP as limit sell
-        tp_result = self.place_order(symbol, "SELL", "LIMIT", quantity=quantity, price=tp_price)
+        tp_result = self.place_order(
+            symbol, "SELL", "LIMIT", quantity=quantity, price=tp_price
+        )
         if tp_result is None:
             return None
 
         # Place SL as stop_loss_limit
         sl_result = self.place_order(
-            symbol, "SELL", "STOP_LOSS_LIMIT",
-            quantity=quantity, price=sl_limit_price, stop_price=sl_price,
+            symbol,
+            "SELL",
+            "STOP_LOSS_LIMIT",
+            quantity=quantity,
+            price=sl_limit_price,
+            stop_price=sl_price,
         )
 
         return {
@@ -486,7 +537,9 @@ class PaperTrader:
 
     # ---- Internal fill logic ----
 
-    def _fill_market(self, symbol: str, side: str, quantity: float, current_price: float) -> Optional[Dict]:
+    def _fill_market(
+        self, symbol: str, side: str, quantity: float, current_price: float
+    ) -> Optional[Dict]:
         """Simulate a market order fill with slippage and fees."""
         if quantity is None or quantity <= 0:
             logger.error("PaperTrader: invalid quantity %s for %s", quantity, symbol)
@@ -504,7 +557,9 @@ class PaperTrader:
         # Validate minimum order
         if notional < PAPER_MIN_ORDER_USDT:
             logger.warning(
-                "PaperTrader: order too small $%.2f < $%.0f minimum", notional, PAPER_MIN_ORDER_USDT
+                "PaperTrader: order too small $%.2f < $%.0f minimum",
+                notional,
+                PAPER_MIN_ORDER_USDT,
             )
             return None
 
@@ -515,7 +570,8 @@ class PaperTrader:
             if total_cost > bal:
                 logger.error(
                     "PaperTrader: insufficient balance $%.2f (need $%.2f with fee)",
-                    bal, total_cost,
+                    bal,
+                    total_cost,
                 )
                 return None
             # Deduct USDT
@@ -530,7 +586,9 @@ class PaperTrader:
             if quantity > held + 1e-10:  # small float tolerance
                 logger.error(
                     "PaperTrader: insufficient %s qty %.8f (have %.8f)",
-                    base, quantity, held,
+                    base,
+                    quantity,
+                    held,
                 )
                 return None
             # Add USDT (net of fee)
@@ -561,7 +619,11 @@ class PaperTrader:
                     pnl = (fill_price - entry) * quantity - fee
                     self._set_sim_pnl(self._get_sim_pnl() + pnl)
             except Exception:
-                logger.error("Failed to calculate simulated PnL for SELL trade on %s", symbol, exc_info=True)
+                logger.error(
+                    "Failed to calculate simulated PnL for SELL trade on %s",
+                    symbol,
+                    exc_info=True,
+                )
 
         # Record trade
         order_id = self._increment_order_counter()
@@ -574,20 +636,37 @@ class PaperTrader:
                (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
                 fee_usdt, notional_usdt, status, timestamp, details)
                VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
-            (trade_id, symbol, side, quantity, fill_price, slippage_pct,
-             fee, notional, now, json.dumps({
-                 "current_price": current_price,
-                 "slippage_pct": slippage_pct,
-                 "fee_rate": PAPER_FEE_RATE,
-             })),
+            (
+                trade_id,
+                symbol,
+                side,
+                quantity,
+                fill_price,
+                slippage_pct,
+                fee,
+                notional,
+                now,
+                json.dumps(
+                    {
+                        "current_price": current_price,
+                        "slippage_pct": slippage_pct,
+                        "fee_rate": PAPER_FEE_RATE,
+                    }
+                ),
+            ),
         )
         conn.commit()
 
         # Also record in standard trades table for backward compat
         try:
-            self._db.trade_add(symbol, side, quantity, fill_price, pnl)
+            self._get_db().trade_add(symbol, side, quantity, fill_price, pnl)
         except Exception:
-            logger.error("Failed to record trade in trades table for %s %s", side, symbol, exc_info=True)
+            logger.error(
+                "Failed to record trade in trades table for %s %s",
+                side,
+                symbol,
+                exc_info=True,
+            )
 
         fills_qty = quantity
         fills_price = fill_price
@@ -603,12 +682,14 @@ class PaperTrader:
             "origQty": str(quantity),
             "executedQty": str(fills_qty),
             "cummulativeQuoteQty": str(notional),
-            "fills": [{
-                "price": str(fills_price),
-                "qty": str(fills_qty),
-                "commission": str(fee),
-                "commissionAsset": "USDT",
-            }],
+            "fills": [
+                {
+                    "price": str(fills_price),
+                    "qty": str(fills_qty),
+                    "commission": str(fee),
+                    "commissionAsset": "USDT",
+                }
+            ],
             "_paper": {
                 "slippage_pct": slippage_pct,
                 "fee_usdt": fee,
@@ -618,13 +699,25 @@ class PaperTrader:
 
         logger.info(
             "📝 PAPER TRADE: %s %s %.8f @ $%.6f (slip=%.4f%% fee=$%.4f) bal=$%.2f",
-            side, symbol, quantity, fill_price, slippage_pct, fee, self._get_sim_balance(),
+            side,
+            symbol,
+            quantity,
+            fill_price,
+            slippage_pct,
+            fee,
+            self._get_sim_balance(),
         )
 
         return result
 
-    def _place_limit(self, symbol: str, side: str, quantity: float, price: float,
-                     stop_price: float = None) -> Optional[Dict]:
+    def _place_limit(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: float,
+        stop_price: Optional[float] = None,
+    ) -> Optional[Dict]:
         """Place a simulated limit / stop-loss-limit order (pending until price fills)."""
         order_id = self._increment_order_counter()
         now = time.time()
@@ -634,17 +727,31 @@ class PaperTrader:
             """INSERT INTO paper_pending_orders
                (id, symbol, side, order_type, quantity, price, stop_price, status, created_at, details)
                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
-            (str(order_id), symbol, side,
-             "STOP_LOSS_LIMIT" if stop_price else "LIMIT",
-             quantity, price, stop_price, now, json.dumps({
-                 "stop_price": stop_price,
-             })),
+            (
+                str(order_id),
+                symbol,
+                side,
+                "STOP_LOSS_LIMIT" if stop_price else "LIMIT",
+                quantity,
+                price,
+                stop_price,
+                now,
+                json.dumps(
+                    {
+                        "stop_price": stop_price,
+                    }
+                ),
+            ),
         )
         conn.commit()
 
         logger.info(
             "📝 PAPER LIMIT ORDER: %s %s %.8f @ $%.6f (id=%s)",
-            side, symbol, quantity, price, order_id,
+            side,
+            symbol,
+            quantity,
+            price,
+            order_id,
         )
 
         # Check if limit is already fillable
@@ -685,7 +792,7 @@ class PaperTrader:
         side = order["side"]
         quantity = order["quantity"]
         limit_price = order["price"]
-        order_type = order.get("order_type", "LIMIT")
+        order.get("order_type", "LIMIT")
 
         # Fill at the limit price (with slippage)
         return self._fill_market(symbol, side, quantity, limit_price)
@@ -701,7 +808,11 @@ class PaperTrader:
             old_qty = old.get("qty", 0.0)
             old_entry = old.get("entry_price", 0.0)
             new_qty = old_qty + qty
-            new_entry = (old_entry * old_qty + entry_price * qty) / new_qty if new_qty > 0 else entry_price
+            new_entry = (
+                (old_entry * old_qty + entry_price * qty) / new_qty
+                if new_qty > 0
+                else entry_price
+            )
             positions[base] = {
                 "qty": new_qty,
                 "entry_price": new_entry,
@@ -751,19 +862,21 @@ class PaperTrader:
             qty = pos.get("qty", 0)
             unrealized = (current - entry) * qty if current > 0 else 0
             unrealized_pnl += unrealized
-            position_details.append({
-                "symbol": symbol,
-                "qty": qty,
-                "entry_price": entry,
-                "current_price": current,
-                "unrealized_pnl": unrealized,
-                "pnl_pct": ((current / entry - 1) * 100) if entry > 0 else 0,
-            })
+            position_details.append(
+                {
+                    "symbol": symbol,
+                    "qty": qty,
+                    "entry_price": entry,
+                    "current_price": current,
+                    "unrealized_pnl": unrealized,
+                    "pnl_pct": ((current / entry - 1) * 100) if entry > 0 else 0,
+                }
+            )
 
         # Calculate total portfolio value
         total_value = balance
         for pos in positions.values():
-            sym = pos.get("symbol", f"{pos.get('entry_price', 0)}")
+            pos.get("symbol", f"{pos.get('entry_price', 0)}")
             # Use qty * entry as conservative estimate
             total_value += pos.get("qty", 0) * pos.get("entry_price", 0)
 
@@ -777,7 +890,9 @@ class PaperTrader:
             "portfolio_value": total_value,
         }
 
-    def get_trade_history(self, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_trade_history(
+        self, symbol: Optional[str] = None, limit: int = 50
+    ) -> List[Dict]:
         """Get paper trade history."""
         conn = self._conn()
         if symbol:
@@ -800,8 +915,11 @@ class PaperTrader:
             symbol = pos.get("symbol", f"{base}USDT")
             pos["current_price"] = self.get_current_price(symbol)
             if pos.get("entry_price", 0) > 0:
-                pos["pnl_pct"] = ((pos["current_price"] / pos["entry_price"] - 1) * 100
-                                  if pos["current_price"] > 0 else 0)
+                pos["pnl_pct"] = (
+                    (pos["current_price"] / pos["entry_price"] - 1) * 100
+                    if pos["current_price"] > 0
+                    else 0
+                )
             else:
                 pos["pnl_pct"] = 0
         return positions
@@ -834,7 +952,11 @@ class PaperTrader:
             if should_fill:
                 logger.info(
                     "📝 PAPER LIMIT FILLED: %s %s %.8f @ $%.6f (triggered at $%.6f)",
-                    side, symbol, order["quantity"], price, current,
+                    side,
+                    symbol,
+                    order["quantity"],
+                    price,
+                    current,
                 )
                 self._fill_limit_order(str(order["id"]), current)
 
@@ -873,4 +995,5 @@ def get_trading_client():
         return get_paper_trader()
     else:
         from src.binance_client import BinanceClient
+
         return BinanceClient(testnet=False)

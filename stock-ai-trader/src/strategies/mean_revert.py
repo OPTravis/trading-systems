@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from .base_strategy import BaseStrategy, Position, Signal, SignalAction
@@ -22,12 +21,12 @@ from .base_strategy import BaseStrategy, Position, Signal, SignalAction
 logger = logging.getLogger(__name__)
 
 DEFAULT_PARAMS = {
-    "rsi_period": 14,          # RSI calculation period
-    "rsi_oversold": 30,        # RSI buy threshold
-    "rsi_overbought": 70,      # RSI sell threshold
-    "bb_period": 20,           # Bollinger Band period
-    "bb_std": 2.0,             # Bollinger Band standard deviations
-    "bb_lower_entry_pct": 0.1, # Price must be within 10% of lower band
+    "rsi_period": 14,  # RSI calculation period
+    "rsi_oversold": 30,  # RSI buy threshold
+    "rsi_overbought": 70,  # RSI sell threshold
+    "bb_period": 20,  # Bollinger Band period
+    "bb_std": 2.0,  # Bollinger Band standard deviations
+    "bb_lower_entry_pct": 0.1,  # Price must be within 10% of lower band
     "min_holding_days": 3,
     "max_holding_days": 10,
     "atr_period": 14,

@@ -34,10 +34,10 @@ class TechnicalAgent:
 
     # Relative weights for blending sub-factors (must sum to 1.0)
     _SUB_WEIGHTS = {
-        'technical':  0.36,   # maps to overall 15%
-        'price_act':  0.20,   # maps to overall 8%
-        'bb_squeeze': 0.10,   # maps to overall 4%
-        'rsi_div':    0.10,   # maps to overall 4%
+        "technical": 0.36,  # maps to overall 15%
+        "price_act": 0.20,  # maps to overall 8%
+        "bb_squeeze": 0.10,  # maps to overall 4%
+        "rsi_div": 0.10,  # maps to overall 4%
         # remaining 0.24 is padding so we can normalise to the agent's
         # contribution if needed; but we'll just weight-sum directly.
     }
@@ -75,13 +75,21 @@ class TechnicalAgent:
             return SpecialistResult(
                 score=50.0,
                 signals=["⚠️ No data available"],
-                data={'f_technical': 50.0, 'f_price_action': 50.0, 'f_bb_squeeze': 50.0, 'f_rsi_divergence': 50.0, 'rsi': 50, 'macd_histogram': 0},
-                confidence='none'
+                data={
+                    "f_technical": 50.0,
+                    "f_price_action": 50.0,
+                    "f_bb_squeeze": 50.0,
+                    "f_rsi_divergence": 50.0,
+                    "rsi": 50,
+                    "macd_histogram": 0,
+                },
+                confidence="none",
             )
 
         # --- obtain tf_1h ---------------------------------------------------
         if tf_1h is None and klines_1h is not None and len(klines_1h) >= 50:
             from ..indicators import Indicators
+
             tf_1h = Indicators.analyze_symbol(klines_1h)
             # Also compute BB squeeze & RSI div from klines if not provided
             if bb_squeeze_data is None and len(klines_1h) >= 35:
@@ -104,11 +112,15 @@ class TechnicalAgent:
         # Sum = 31% of total. We normalise so this agent's score is 0-100.
         total_weight = 0.15 + 0.08 + 0.04 + 0.04
         score = (
-            0.15 * f_technical
-            + 0.08 * f_price_act
-            + 0.04 * f_bb_sq
-            + 0.04 * f_rsi_div
-        ) / total_weight * 100
+            (
+                0.15 * f_technical
+                + 0.08 * f_price_act
+                + 0.04 * f_bb_sq
+                + 0.04 * f_rsi_div
+            )
+            / total_weight
+            * 100
+        )
         score = max(0.0, min(100.0, score))
 
         # --- signals ---------------------------------------------------------
@@ -124,16 +136,18 @@ class TechnicalAgent:
             )
 
         # --- data ------------------------------------------------------------
-        data['f_technical'] = round(f_technical, 2)
-        data['f_price_action'] = round(f_price_act, 2)
-        data['f_bb_squeeze'] = round(f_bb_sq, 2)
-        data['f_rsi_divergence'] = round(f_rsi_div, 2)
-        data['rsi'] = tf_1h.get('rsi', 50)
-        data['macd_histogram'] = tf_1h.get('macd_histogram', 0)
+        data["f_technical"] = round(f_technical, 2)
+        data["f_price_action"] = round(f_price_act, 2)
+        data["f_bb_squeeze"] = round(f_bb_sq, 2)
+        data["f_rsi_divergence"] = round(f_rsi_div, 2)
+        data["rsi"] = tf_1h.get("rsi", 50)
+        data["macd_histogram"] = tf_1h.get("macd_histogram", 0)
 
-        confidence = 'high' if f_technical >= 60 or f_technical <= 25 else 'medium'
+        confidence = "high" if f_technical >= 60 or f_technical <= 25 else "medium"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Factor 1: Technical (RSI, MACD, BB, VWAP, MA alignment)

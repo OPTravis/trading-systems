@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from .base_strategy import BaseStrategy, Position, Signal, SignalAction
@@ -22,13 +21,13 @@ from .base_strategy import BaseStrategy, Position, Signal, SignalAction
 logger = logging.getLogger(__name__)
 
 DEFAULT_PARAMS = {
-    "rs_lookback_long": 252,   # 12 months for relative strength
-    "rs_lookback_short": 21,   # 1 month (subtract recent for 12-1 month RS)
-    "rs_top_pct": 0.20,        # Top 20% for entry
-    "rs_median_pct": 0.50,     # Below median for exit
-    "breakout_period": 20,     # 20-day high for breakout
+    "rs_lookback_long": 252,  # 12 months for relative strength
+    "rs_lookback_short": 21,  # 1 month (subtract recent for 12-1 month RS)
+    "rs_top_pct": 0.20,  # Top 20% for entry
+    "rs_median_pct": 0.50,  # Below median for exit
+    "breakout_period": 20,  # 20-day high for breakout
     "volume_surge_mult": 1.5,  # Volume must be 1.5x average on breakout
-    "volume_avg_period": 20,   # Volume moving average period
+    "volume_avg_period": 20,  # Volume moving average period
     "atr_period": 14,
     "trailing_stop_atr_mult": 2.5,  # Trailing stop in ATR units
     "min_holding_days": 10,
@@ -63,7 +62,7 @@ class MomentumStrategy(BaseStrategy):
         2. Rank and select top 20%
         3. Check for 20-day breakout with volume confirmation
         """
-        signals = []
+        signals: list[Signal] = []
         p = self._params
         now = datetime.now()
 
@@ -103,20 +102,24 @@ class MomentumStrategy(BaseStrategy):
         for symbol, position in self._positions.items():
             if symbol in self._rs_scores:
                 if self._rs_scores[symbol] < median_rs:
-                    current_price = position.metadata.get("current_price", position.entry_price)
-                    signals.append(Signal(
-                        symbol=symbol,
-                        action=SignalAction.SELL,
-                        strategy=self.name,
-                        timestamp=now,
-                        strength=0.7,
-                        price=current_price,
-                        metadata={
-                            "reason": "rs_below_median",
-                            "rs_rank": self._rs_scores[symbol],
-                            "median_rs": median_rs,
-                        },
-                    ))
+                    current_price = position.metadata.get(
+                        "current_price", position.entry_price
+                    )
+                    signals.append(
+                        Signal(
+                            symbol=symbol,
+                            action=SignalAction.SELL,
+                            strategy=self.name,
+                            timestamp=now,
+                            strength=0.7,
+                            price=current_price,
+                            metadata={
+                                "reason": "rs_below_median",
+                                "rs_rank": self._rs_scores[symbol],
+                                "median_rs": median_rs,
+                            },
+                        )
+                    )
 
         signals.sort(key=lambda s: s.strength, reverse=True)
         return signals
@@ -173,17 +176,17 @@ class MomentumStrategy(BaseStrategy):
         volume = df["volume"]
 
         current_price = close.iloc[-1]
-        current_high = high.iloc[-1]
+        high.iloc[-1]
 
         # 20-day high (excluding today)
-        high_n = high.iloc[-(p["breakout_period"] + 1):-1].max()
+        high_n = high.iloc[-(p["breakout_period"] + 1) : -1].max()
 
         # Breakout: today's close above the N-day high
         if current_price <= high_n:
             return None
 
         # Volume confirmation
-        avg_volume = volume.iloc[-p["volume_avg_period"]:].mean()
+        avg_volume = volume.iloc[-p["volume_avg_period"] :].mean()
         current_volume = volume.iloc[-1]
         if avg_volume <= 0 or current_volume < avg_volume * p["volume_surge_mult"]:
             return None
@@ -261,7 +264,9 @@ class MomentumStrategy(BaseStrategy):
         # RS below median is checked via generate_signals
         return False
 
-    def update_trailing_stop(self, position: Position, current_price: float, params: dict | None = None) -> None:
+    def update_trailing_stop(
+        self, position: Position, current_price: float, params: dict | None = None
+    ) -> None:
         """
         Update trailing stop (ratchet up, never down).
         Call this before should_exit() to keep the stop-loss current.

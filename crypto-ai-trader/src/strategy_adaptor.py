@@ -4,11 +4,9 @@ Strategy Adaptor - Dynamic strategy selection based on market regime.
 Determines trading strategy based on Fear & Greed Index, BTC trend, and volatility.
 """
 
-import json
 import logging
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +133,8 @@ class StrategyAdaptor:
         hmm_regime = None
         hmm_adjustments = {}
         try:
-            from src.hmm_regime import HMMRegimeDetector, REGIME_STRATEGY_MAP
+            from src.hmm_regime import HMMRegimeDetector
+
             detector = HMMRegimeDetector()
             cached = detector.get_cached_prediction()
             if cached and cached.get("confidence", 0) > 0.4:
@@ -149,6 +148,7 @@ class StrategyAdaptor:
         cvar_risk_level = None
         try:
             from src.cvar_risk import CVaRRiskManager
+
             cvar_mgr = CVaRRiskManager()
             # Compute from trade outcomes
             conn = cvar_mgr._db._get_conn()
@@ -157,12 +157,15 @@ class StrategyAdaptor:
             ).fetchall()
             if rows and len(rows) >= 10:
                 returns = [r["net_pnl_pct"] for r in rows]
-                cvar_95 = cvar_mgr.compute_cvar(returns, 0.05)
+                cvar_mgr.compute_cvar(returns, 0.05)
                 risk = cvar_mgr.compute_portfolio_risk([])
                 cvar_scale = risk.get("position_scale", 1.0)
                 cvar_risk_level = risk.get("risk_level")
         except Exception:
-            logger.error("CVaR risk overlay calculation failed, defaulting to scale=1.0", exc_info=True)
+            logger.error(
+                "CVaR risk overlay calculation failed, defaulting to scale=1.0",
+                exc_info=True,
+            )
 
         logger.info(
             f"StrategyAdaptor: regime={regime} btc_trend={btc_trend} "
@@ -173,6 +176,7 @@ class StrategyAdaptor:
         # Base settings — read from optimized params if available
         try:
             from src.param_optimizer import ParamOptimizer
+
             _opt = ParamOptimizer()
             _opt_params = _opt.get_current_params()
             base = {
@@ -182,7 +186,10 @@ class StrategyAdaptor:
                 "cash_reserve_pct": 30,
             }
         except Exception:
-            logger.error("ParamOptimizer load failed, using default strategy params", exc_info=True)
+            logger.error(
+                "ParamOptimizer load failed, using default strategy params",
+                exc_info=True,
+            )
             base = {
                 "score_threshold": 75,
                 "max_position_pct": 15,
@@ -228,22 +235,32 @@ class StrategyAdaptor:
         effective_btc_score = btc_score if btc_score is not None else 50
         if effective_btc_score < 35:
             # BEARISH: risk-off
-            changes.append(f"BTC trend BEARISH (score={effective_btc_score:.0f}) — risk-off adjustments")
+            changes.append(
+                f"BTC trend BEARISH (score={effective_btc_score:.0f}) — risk-off adjustments"
+            )
             if regime in ("EXTREME_FEAR", "FEAR"):
                 settings["score_threshold"] = max(settings["score_threshold"] + 5, 75)
                 settings["max_position_pct"] = max(settings["max_position_pct"] - 3, 5)
-                settings["cash_reserve_pct"] = min(settings["cash_reserve_pct"] + 10, 60)
+                settings["cash_reserve_pct"] = min(
+                    settings["cash_reserve_pct"] + 10, 60
+                )
             else:
                 settings["score_threshold"] = max(settings["score_threshold"] + 10, 80)
                 settings["max_position_pct"] = max(settings["max_position_pct"] - 5, 5)
-                settings["cash_reserve_pct"] = min(settings["cash_reserve_pct"] + 15, 70)
+                settings["cash_reserve_pct"] = min(
+                    settings["cash_reserve_pct"] + 15, 70
+                )
         elif effective_btc_score > 65:
             # BULLISH: can be more aggressive
-            changes.append(f"BTC trend BULLISH (score={effective_btc_score:.0f}) — aggressive adjustments")
+            changes.append(
+                f"BTC trend BULLISH (score={effective_btc_score:.0f}) — aggressive adjustments"
+            )
             if regime in ("GREED", "EXTREME_GREED"):
                 settings["score_threshold"] = max(settings["score_threshold"] - 5, 60)
                 settings["max_position_pct"] = min(settings["max_position_pct"] + 3, 20)
-                settings["cash_reserve_pct"] = max(settings["cash_reserve_pct"] - 10, 20)
+                settings["cash_reserve_pct"] = max(
+                    settings["cash_reserve_pct"] - 10, 20
+                )
             else:
                 settings["score_threshold"] = max(settings["score_threshold"] - 3, 55)
                 settings["max_position_pct"] = min(settings["max_position_pct"] + 2, 18)
@@ -251,12 +268,16 @@ class StrategyAdaptor:
 
         # Volatility overlay
         if vol_regime == "EXTREME":
-            changes.append(f"Volatility EXTREME ({btc_price_change_24h:+.1f}% BTC) — threshold +10, size −5, hold 24h")
+            changes.append(
+                f"Volatility EXTREME ({btc_price_change_24h:+.1f}% BTC) — threshold +10, size −5, hold 24h"
+            )
             settings["score_threshold"] = min(settings["score_threshold"] + 10, 90)
             settings["max_position_pct"] = max(settings["max_position_pct"] - 5, 5)
             settings["max_hold_hours"] = 24
         elif vol_regime == "HIGH":
-            changes.append(f"Volatility HIGH ({btc_price_change_24h:+.1f}% BTC) — threshold +5, size −2, hold 48h")
+            changes.append(
+                f"Volatility HIGH ({btc_price_change_24h:+.1f}% BTC) — threshold +5, size −2, hold 48h"
+            )
             settings["score_threshold"] = min(settings["score_threshold"] + 5, 85)
             settings["max_position_pct"] = max(settings["max_position_pct"] - 2, 8)
             settings["max_hold_hours"] = 48
@@ -266,16 +287,20 @@ class StrategyAdaptor:
         # Funding rate overlay (funding_rate is in percent, e.g. 0.01 = 0.01%)
         if funding_rate is not None:
             if funding_rate > 0.05:  # > 0.05% per 8h
-                changes.append(f"Funding {funding_rate:+.3f}% — crowded long (risk-off: threshold +3)")
+                changes.append(
+                    f"Funding {funding_rate:+.3f}% — crowded long (risk-off: threshold +3)"
+                )
                 settings["score_threshold"] = min(settings["score_threshold"] + 3, 90)
                 settings["cash_reserve_pct"] = min(settings["cash_reserve_pct"] + 5, 60)
             elif funding_rate < -0.05:
-                changes.append(f"Funding {funding_rate:+.3f}% — crowded short (opportunity: threshold −3)")
+                changes.append(
+                    f"Funding {funding_rate:+.3f}% — crowded short (opportunity: threshold −3)"
+                )
                 settings["score_threshold"] = max(settings["score_threshold"] - 3, 50)
                 settings["cash_reserve_pct"] = max(settings["cash_reserve_pct"] - 5, 20)
 
         # Strategy enablement
-        strategies = {}
+        strategies: Dict[str, Dict[str, Any]] = {}
 
         for name, config in self.STRATEGIES.items():
             enabled = config["enabled_by_default"]
@@ -294,7 +319,9 @@ class StrategyAdaptor:
                 elif name == "dca":
                     size_mult = 1.1
                     reason = "enhanced DCA in fear (buy dips cautiously)"
-                    changes.append(f"{name}: size ×1.1 — fear regime DCA (P1: reduced from 1.5)")
+                    changes.append(
+                        f"{name}: size ×1.1 — fear regime DCA (P1: reduced from 1.5)"
+                    )
                 elif name == "rsi_reversion":
                     size_mult = 1.3
                     reason = "enhanced RSI in fear (oversold bounces)"
@@ -349,17 +376,22 @@ class StrategyAdaptor:
         # FIX-9: Use 30-day historical returns instead of single 24h data point
         try:
             from src.garch_vol import forecast_volatility, get_dynamic_sl_tp
+
             # Fetch last 31 daily klines for 30 returns (cached for 5 minutes)
             daily_returns = []
             try:
                 _now_ts = time.time()
-                if StrategyAdaptor._btc_klines_cache is not None and (_now_ts - StrategyAdaptor._btc_klines_ts) < 300:
+                if (
+                    StrategyAdaptor._btc_klines_cache is not None
+                    and (_now_ts - StrategyAdaptor._btc_klines_ts) < 300
+                ):
                     kl_data = StrategyAdaptor._btc_klines_cache
                 else:
                     import requests as _req
+
                     kl_resp = _req.get(
                         "https://api.binance.com/api/v3/klines",
-                        params={"symbol": "BTCUSDT", "interval": "1d", "limit": 31},
+                        params={"symbol": "BTCUSDT", "interval": "1d", "limit": 31},  # type: ignore[arg-type]
                         timeout=5,
                     )
                     kl_data = kl_resp.json()
@@ -367,12 +399,21 @@ class StrategyAdaptor:
                     StrategyAdaptor._btc_klines_ts = _now_ts
                 if len(kl_data) >= 2:
                     closes = [float(k[4]) for k in kl_data]
-                    daily_returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
+                    daily_returns = [
+                        (closes[i] - closes[i - 1]) / closes[i - 1]
+                        for i in range(1, len(closes))
+                    ]
             except Exception:
-                logger.warning("GARCH: failed to fetch historical klines, falling back to 24h estimate")
-                daily_returns = [btc_price_change_24h / 100] if btc_price_change_24h else [0.02]
+                logger.warning(
+                    "GARCH: failed to fetch historical klines, falling back to 24h estimate"
+                )
+                daily_returns = (
+                    [btc_price_change_24h / 100] if btc_price_change_24h else [0.02]
+                )
             if not daily_returns:
-                daily_returns = [btc_price_change_24h / 100] if btc_price_change_24h else [0.02]
+                daily_returns = (
+                    [btc_price_change_24h / 100] if btc_price_change_24h else [0.02]
+                )
             vol_result = forecast_volatility(daily_returns)
             if vol_result:
                 dynamic = get_dynamic_sl_tp("BTC", 100.0, vol_result["forecast_vol"])
@@ -385,11 +426,13 @@ class StrategyAdaptor:
                         cfg["tp_levels"][1]["pct"] = round(base_tp * 1.5, 2)
                     if len(cfg["tp_levels"]) > 2:
                         cfg["tp_levels"][2]["pct"] = round(base_tp * 2.0, 2)
-                changes.append(f"GARCH {vol_result['vol_regime']}({len(daily_returns)}d): SL={abs(dynamic['sl_pct'])*100:.1f}%, TP={dynamic['tp_pct']*100:.1f}%")
+                changes.append(
+                    f"GARCH {vol_result['vol_regime']}({len(daily_returns)}d): SL={abs(dynamic['sl_pct'])*100:.1f}%, TP={dynamic['tp_pct']*100:.1f}%"
+                )
         except Exception as e:
             logger.debug(f"GARCH adjustment unavailable: {e}")
 
-        result = {
+        result: Dict[str, Any] = {
             "regime": regime,
             "hmm_regime": hmm_regime,
             "strategies": strategies,
@@ -405,9 +448,13 @@ class StrategyAdaptor:
         # Apply HMM adjustments if available and confident
         if hmm_regime and hmm_adjustments:
             # Adjust score threshold
-            result["global"]["score_threshold"] += hmm_adjustments.get("score_threshold_adj", 0)
+            result["global"]["score_threshold"] += hmm_adjustments.get(
+                "score_threshold_adj", 0
+            )
             if hmm_adjustments.get("score_threshold_adj", 0) != 0:
-                changes.append(f"HMM {hmm_regime}: threshold {hmm_adjustments['score_threshold_adj']:+d}")
+                changes.append(
+                    f"HMM {hmm_regime}: threshold {hmm_adjustments['score_threshold_adj']:+d}"
+                )
 
             # Adjust strategy enablement based on HMM preferred/avoid
             for name, cfg in strategies.items():
@@ -417,9 +464,13 @@ class StrategyAdaptor:
                     changes.append(f"{name}: disabled — HMM {hmm_regime}")
                 elif name in hmm_adjustments.get("preferred_strategies", []):
                     cfg["size_multiplier"] = round(
-                        cfg["size_multiplier"] * hmm_adjustments.get("position_scale", 1.0), 2
+                        cfg["size_multiplier"]
+                        * hmm_adjustments.get("position_scale", 1.0),
+                        2,
                     )
-                    changes.append(f"{name}: HMM preferred, size ×{hmm_adjustments['position_scale']}")
+                    changes.append(
+                        f"{name}: HMM preferred, size ×{hmm_adjustments['position_scale']}"
+                    )
 
         # Apply CVaR risk scaling (Phase 8)
         if cvar_scale != 1.0 and cvar_risk_level:
@@ -430,20 +481,29 @@ class StrategyAdaptor:
         # Apply Contextual Bandit sizing (Phase 9 — replaces PPO/SAC)
         try:
             from src.contextual_bandit import get_contextual_bandit
+
             bandit = get_contextual_bandit()
             # Build context for bandit
             portfolio_heat = "cold"
             try:
                 from src.state_db import get_state_db
+
                 ps = get_state_db()
                 positions = ps.portfolio_get_all()
-                total_val = sum(p.get("quantity", 0) * p.get("entry_price", 0) for p in positions.values())
+                total_val = sum(
+                    p.get("quantity", 0) * p.get("entry_price", 0)
+                    for p in positions.values()
+                )
                 usdt = ps.portfolio_get_cash_balance()
                 if total_val + usdt > 0:
                     ratio = total_val / (total_val + usdt)
-                    portfolio_heat = "hot" if ratio > 0.7 else ("warm" if ratio > 0.4 else "cold")
+                    portfolio_heat = (
+                        "hot" if ratio > 0.7 else ("warm" if ratio > 0.4 else "cold")
+                    )
             except Exception:
-                logger.error("Failed to compute portfolio heat for bandit context", exc_info=True)
+                logger.error(
+                    "Failed to compute portfolio heat for bandit context", exc_info=True
+                )
             bandit_ctx = {
                 "hmm_regime": hmm_regime or "sideways",
                 "fear_greed": fear_greed,
@@ -453,7 +513,9 @@ class StrategyAdaptor:
             bandit_mult = bandit.recommend_size(bandit_ctx)
             if bandit_mult != 0.8:  # only log if not default
                 for name, cfg in strategies.items():
-                    cfg["size_multiplier"] = round(cfg["size_multiplier"] * bandit_mult, 2)
+                    cfg["size_multiplier"] = round(
+                        cfg["size_multiplier"] * bandit_mult, 2
+                    )
                 changes.append(f"Bandit: all sizes ×{bandit_mult}")
         except Exception as e:
             logger.debug(f"Contextual bandit unavailable: {e}")
@@ -463,19 +525,29 @@ class StrategyAdaptor:
             size_mult = cfg["size_multiplier"]
             if size_mult < 0.20:
                 cfg["size_multiplier"] = 0.20
-                changes.append(f"{name}: size floor applied (was {size_mult:.2f}, now 0.20)")
+                changes.append(
+                    f"{name}: size floor applied (was {size_mult:.2f}, now 0.20)"
+                )
 
         self._cache = result
         self._cache_ts = now
         return result
 
-    def get_enabled_strategies(self, fear_greed: int, btc_trend: str, btc_price_change_24h: float) -> List[str]:
+    def get_enabled_strategies(
+        self, fear_greed: int, btc_trend: str, btc_price_change_24h: float
+    ) -> List[str]:
         """Get list of enabled strategy names for current conditions."""
         adapted = self.adapt(fear_greed, btc_trend, btc_price_change_24h)
-        return [name for name, config in adapted["strategies"].items() if config["enabled"]]
+        return [
+            name for name, config in adapted["strategies"].items() if config["enabled"]
+        ]
 
-    def should_trade(self, fear_greed: int, btc_trend: str, btc_price_change_24h: float) -> bool:
+    def should_trade(
+        self, fear_greed: int, btc_trend: str, btc_price_change_24h: float
+    ) -> bool:
         """Check if trading should be enabled for current conditions."""
-        adapted = self.adapt(fear_greed, btc_trend, btc_price_change_24h)
-        enabled = self.get_enabled_strategies(fear_greed, btc_trend, btc_price_change_24h)
+        self.adapt(fear_greed, btc_trend, btc_price_change_24h)
+        enabled = self.get_enabled_strategies(
+            fear_greed, btc_trend, btc_price_change_24h
+        )
         return len(enabled) > 0

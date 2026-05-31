@@ -12,7 +12,6 @@ import logging
 import random
 from datetime import datetime
 from typing import AsyncIterator, Optional
-from uuid import uuid4
 
 from .broker_protocol import (
     AccountSummary,
@@ -27,7 +26,6 @@ from .broker_protocol import (
     OrderType,
     Position,
     Tick,
-    TimeInForce,
 )
 
 logger = logging.getLogger(__name__)
@@ -106,23 +104,29 @@ class PaperClient(BrokerProtocol):
         bars = []
 
         num_bars = {"1 D": 390, "1 W": 1950, "1 M": 7800}.get(duration, 390)
-        bar_minutes = {
-            BarSize.ONE_MIN: 1, BarSize.FIVE_MIN: 5, BarSize.FIFTEEN_MIN: 15,
-            BarSize.THIRTY_MIN: 30, BarSize.ONE_HOUR: 60, BarSize.ONE_DAY: 1440,
+        _bar_minutes = {
+            BarSize.ONE_MIN: 1,
+            BarSize.FIVE_MIN: 5,
+            BarSize.FIFTEEN_MIN: 15,
+            BarSize.THIRTY_MIN: 30,
+            BarSize.ONE_HOUR: 60,
+            BarSize.ONE_DAY: 1440,
         }.get(bar_size, 1)
 
         for i in range(min(num_bars, 500)):
             ts = now
             noise = random.uniform(-0.02, 0.02)
             price = base_price * (1 + noise)
-            bars.append(Bar(
-                timestamp=ts,
-                open=price * 0.999,
-                high=price * 1.005,
-                low=price * 0.995,
-                close=price,
-                volume=random.randint(1000, 100000),
-            ))
+            bars.append(
+                Bar(
+                    timestamp=ts,
+                    open=price * 0.999,
+                    high=price * 1.005,
+                    low=price * 0.995,
+                    close=price,
+                    volume=random.randint(1000, 100000),
+                )
+            )
 
         return bars
 
@@ -131,7 +135,7 @@ class PaperClient(BrokerProtocol):
         price = self._market_prices.get(contract.symbol, 100.0)
 
         while self._connected:
-            price *= (1 + random.uniform(-0.0005, 0.0005))
+            price *= 1 + random.uniform(-0.0005, 0.0005)
             self._market_prices[contract.symbol] = price
             spread = price * 0.001
 
@@ -190,7 +194,8 @@ class PaperClient(BrokerProtocol):
                 self._orders[order_id] = order
                 logger.warning(
                     "Paper order rejected: SELL %s x%.0f but position is %s",
-                    symbol, order.quantity,
+                    symbol,
+                    order.quantity,
                     f"{pos.quantity}" if pos else "none",
                 )
                 return order
@@ -265,8 +270,11 @@ class PaperClient(BrokerProtocol):
             logger.warning(f"Paper order {order_id} not found")
 
     async def modify_order(
-        self, order_id: int, quantity: Optional[float] = None,
-        limit_price: Optional[float] = None, stop_price: Optional[float] = None
+        self,
+        order_id: int,
+        quantity: Optional[float] = None,
+        limit_price: Optional[float] = None,
+        stop_price: Optional[float] = None,
     ) -> Order:
         if order_id not in self._orders:
             raise ValueError(f"Order {order_id} not found")
@@ -283,7 +291,11 @@ class PaperClient(BrokerProtocol):
         return order
 
     async def get_open_orders(self) -> list[Order]:
-        return [o for o in self._orders.values() if o.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED)]
+        return [
+            o
+            for o in self._orders.values()
+            if o.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED)
+        ]
 
     async def get_order(self, order_id: int) -> Optional[Order]:
         """Get a specific order by ID."""

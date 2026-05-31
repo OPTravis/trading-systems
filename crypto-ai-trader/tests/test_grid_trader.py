@@ -1,19 +1,24 @@
 """
 E2E Tests for Grid Trading Bot
 """
-import json, os, sys, tempfile, unittest
-from datetime import datetime, timezone, timedelta
+
+import os
+import random as _r
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import random as _r
-if not hasattr(_r, 'randbits'):
+if not hasattr(_r, "randbits"):
     _r.randbits = _r.getrandbits
 
 _tmp = tempfile.mkdtemp()
 _STATE_FILE = Path(_tmp) / "grid_state.json"
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import src.grid_trader as gt
+
 gt.STATE_FILE = _STATE_FILE
 gt.DATA_DIR = Path(_tmp)
 
@@ -22,26 +27,43 @@ def _mock_client(price=83.0, free_usdt=409.62, free_sol=0.0):
     c = MagicMock()
     c.validate_symbol.return_value = True
     c.get_24hr_stats.return_value = {
-        "symbol": "SOLUSDT", "last_price": price, "price_change_pct": -1.0,
-        "high": price + 2, "low": price - 2, "volume": 1000, "quote_volume": 83000,
+        "symbol": "SOLUSDT",
+        "last_price": price,
+        "price_change_pct": -1.0,
+        "high": price + 2,
+        "low": price - 2,
+        "volume": 1000,
+        "quote_volume": 83000,
     }
     c.get_free_balance.return_value = free_usdt
     c.get_open_orders.return_value = []
-    c.get_position.return_value = {"asset": "SOL", "free": free_sol, "locked": 0, "total": free_sol}
+    c.get_position.return_value = {
+        "asset": "SOL",
+        "free": free_sol,
+        "locked": 0,
+        "total": free_sol,
+    }
     c.cancel_all_orders.return_value = True
     # Unique IDs for each order
     _order_id_counter = [100000]
+
     def _next_order_id(*args, **kwargs):
         _order_id_counter[0] += 1
         return {"orderId": _order_id_counter[0]}
+
     c.place_limit_buy.side_effect = _next_order_id
     c.place_limit_sell.side_effect = _next_order_id
     c.place_market_sell.side_effect = _next_order_id
     c.get_exchange_info.return_value = {
-        "symbols": [{"symbol": "SOLUSDT", "filters": [
-            {"filterType": "PRICE_FILTER", "tickSize": "0.01"},
-            {"filterType": "LOT_SIZE", "stepSize": "0.001"},
-        ]}]
+        "symbols": [
+            {
+                "symbol": "SOLUSDT",
+                "filters": [
+                    {"filterType": "PRICE_FILTER", "tickSize": "0.01"},
+                    {"filterType": "LOT_SIZE", "stepSize": "0.001"},
+                ],
+            }
+        ]
     }
     return c
 
@@ -73,12 +95,22 @@ def _klines_mean_reverting(start=83.0, hours=168, vol=0.02):
         o, c = price, price * (1 + change * 0.5)
         h = max(o, c) + abs(rng.gauss(0, vol * 0.3))
         l = min(o, c) - abs(rng.gauss(0, vol * 0.3))
-        klines.append({"open": o, "high": h, "low": l, "close": c, "volume": 1000, "quote_volume": 83000})
+        klines.append(
+            {
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": 1000,
+                "quote_volume": 83000,
+            }
+        )
         price = c
     return klines
 
 
 # ═══════════════ INIT (1-4) ═══════════════
+
 
 class TestInit(unittest.TestCase):
     def test_01_normal(self):
@@ -103,6 +135,7 @@ class TestInit(unittest.TestCase):
 
 
 # ═══════════════ START (5-10) ═══════════════
+
 
 class TestStart(unittest.TestCase):
     def test_05_dry_run(self):
@@ -153,6 +186,7 @@ class TestStart(unittest.TestCase):
 
 # ═══════════════ TICK (11-15) ═══════════════
 
+
 class TestTick(unittest.TestCase):
     def setUp(self):
         self.c = _mock_client(price=83.0)
@@ -161,7 +195,9 @@ class TestTick(unittest.TestCase):
         self.bot.start()
 
     def test_11_no_fills(self):
-        self.c.get_open_orders.return_value = list({"orderId": o} for o in _collect_order_ids(self.bot))
+        self.c.get_open_orders.return_value = list(
+            {"orderId": o} for o in _collect_order_ids(self.bot)
+        )
         r = self.bot.tick()
         self.assertEqual(r["fills_processed"], 0)
 
@@ -172,24 +208,35 @@ class TestTick(unittest.TestCase):
         # Remove target from open orders → looks filled
         self.c.get_open_orders.return_value = _open_orders_minus(self.bot, [target])
         self.c.get_order.return_value = {
-            "status": "FILLED", "executedQty": "0.6", "avgPrice": str(buy_price)
+            "status": "FILLED",
+            "executedQty": "0.6",
+            "avgPrice": str(buy_price),
         }
         r = self.bot.tick()
         self.assertEqual(r["fills_processed"], 1)
         self.c.place_limit_sell.assert_called_once()
         sell_price = self.c.place_limit_sell.call_args[0][2]
-        self.assertAlmostEqual(sell_price, self.bot.state["grid_levels"][4]["price"], places=2)
+        self.assertAlmostEqual(
+            sell_price, self.bot.state["grid_levels"][4]["price"], places=2
+        )
 
     def test_13_sell_fill_buy_pnl(self):
         # Setup: level3 bought, level4 has sell order
         l3, l4 = self.bot.state["grid_levels"][3], self.bot.state["grid_levels"][4]
-        l3["coin_qty"] = 0.6; l3["status"] = "bought"; l3["buy_order_id"] = None
-        l4["sell_order_id"] = 999900; l4["status"] = "pending_sell"
+        l3["coin_qty"] = 0.6
+        l3["status"] = "bought"
+        l3["buy_order_id"] = None
+        l4["sell_order_id"] = 999900
+        l4["status"] = "pending_sell"
         # All start orders + sell order, minus the sell we want to detect as filled
         all_ids = _collect_order_ids(self.bot)
-        self.c.get_open_orders.return_value = [{"orderId": oid} for oid in all_ids if oid != 999900]
+        self.c.get_open_orders.return_value = [
+            {"orderId": oid} for oid in all_ids if oid != 999900
+        ]
         self.c.get_order.return_value = {
-            "status": "FILLED", "executedQty": "0.6", "avgPrice": str(l4["price"])
+            "status": "FILLED",
+            "executedQty": "0.6",
+            "avgPrice": str(l4["price"]),
         }
         r = self.bot.tick()
         self.assertEqual(r["fills_processed"], 1)
@@ -214,7 +261,9 @@ class TestTick(unittest.TestCase):
         target = l3["buy_order_id"]
         self.c.get_open_orders.return_value = _open_orders_minus(self.bot, [target])
         self.c.get_order.return_value = {
-            "status": "CANCELED", "executedQty": "0", "price": str(l3["price"])
+            "status": "CANCELED",
+            "executedQty": "0",
+            "price": str(l3["price"]),
         }
         r = self.bot.tick()
         self.assertEqual(r["fills_processed"], 0)
@@ -222,6 +271,7 @@ class TestTick(unittest.TestCase):
 
 
 # ═══════════════ REBALANCE (16-19) ═══════════════
+
 
 class TestRebalance(unittest.TestCase):
     def setUp(self):
@@ -241,19 +291,31 @@ class TestRebalance(unittest.TestCase):
         self.assertTrue(self.bot.tick()["rebalanced"])
 
     def test_18_time_trigger(self):
-        self.bot.state["stats"]["last_rebalance"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        self.c.get_open_orders.return_value = list({"orderId": o} for o in _collect_order_ids(self.bot))
+        self.bot.state["stats"]["last_rebalance"] = (
+            datetime.now(timezone.utc) - timedelta(hours=25)
+        ).isoformat()
+        self.c.get_open_orders.return_value = list(
+            {"orderId": o} for o in _collect_order_ids(self.bot)
+        )
         self.assertTrue(self.bot.tick()["rebalanced"])
 
     def test_19_sells_coins(self):
-        self.c.get_position.return_value = {"asset": "SOL", "free": 2.0, "locked": 0, "total": 2.0}
-        self.bot.state["stats"]["last_rebalance"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        self.c.get_position.return_value = {
+            "asset": "SOL",
+            "free": 2.0,
+            "locked": 0,
+            "total": 2.0,
+        }
+        self.bot.state["stats"]["last_rebalance"] = (
+            datetime.now(timezone.utc) - timedelta(hours=25)
+        ).isoformat()
         self.c.get_open_orders.return_value = []
         self.bot.tick()
         self.c.place_market_sell.assert_called()
 
 
 # ═══════════════ STOP/PAUSE (20-23) ═══════════════
+
 
 class TestStopPause(unittest.TestCase):
     def setUp(self):
@@ -271,6 +333,7 @@ class TestStopPause(unittest.TestCase):
         self.assertEqual(self.bot.pause()["status"], "paused")
         # Verify state persisted to SQLite (not JSON file)
         from src.state_db import get_state_db
+
         db = get_state_db()
         state = db.grid_get("SOLUSDT")
         self.assertIsNotNone(state)
@@ -282,11 +345,13 @@ class TestStopPause(unittest.TestCase):
         self.assertEqual(self.bot.stop()["status"], "stopped")
 
     def test_23_resume(self):
-        self.bot.start(); self.bot.pause()
+        self.bot.start()
+        self.bot.pause()
         self.assertEqual(self.bot.start()["status"], "running")
 
 
 # ═══════════════ BACKTEST (24-26) ═══════════════
+
 
 class TestBacktest(unittest.TestCase):
     def test_24_ranging_profit(self):
@@ -300,18 +365,30 @@ class TestBacktest(unittest.TestCase):
         klines, p = [], 83.0
         for _ in range(168):
             o, c2 = p, p * 0.998
-            klines.append({"open": o, "high": max(o, c2) * 1.001, "low": min(o, c2) * 0.999, "close": c2, "volume": 1000, "quote_volume": 83000})
+            klines.append(
+                {
+                    "open": o,
+                    "high": max(o, c2) * 1.001,
+                    "low": min(o, c2) * 0.999,
+                    "close": c2,
+                    "volume": 1000,
+                    "quote_volume": 83000,
+                }
+            )
             p = c2
-        c = _mock_client(); c.get_klines.return_value = klines
+        c = _mock_client()
+        c.get_klines.return_value = klines
         r = gt.GridBot(c).backtest("SOLUSDT", 400, 8, 5.0, 7)
         self.assertNotIn("error", r)
 
     def test_26_no_data(self):
-        c = _mock_client(); c.get_klines.return_value = _klines_mean_reverting(hours=5)
+        c = _mock_client()
+        c.get_klines.return_value = _klines_mean_reverting(hours=5)
         self.assertIn("error", gt.GridBot(c).backtest("SOLUSDT", 400, 8, 5.0, 7))
 
 
 # ═══════════════ EDGE CASES (27-30) ═══════════════
+
 
 class TestEdge(unittest.TestCase):
     def test_27_bad_state(self):
@@ -322,29 +399,36 @@ class TestEdge(unittest.TestCase):
         self.skipTest("GridBot primary storage is SQLite; JSON corruption is non-fatal")
 
     def test_28_api_none(self):
-        c = _mock_client(); c.get_24hr_stats.return_value = None
+        c = _mock_client()
+        c.get_24hr_stats.return_value = None
         self.assertIn("error", gt.GridBot(c).init_grid("SOLUSDT", 400, 8, 5.0))
 
     def test_29_low_balance(self):
         c = _mock_client(free_usdt=5.0)
-        bot = gt.GridBot(c); bot.init_grid("SOLUSDT", 400, 8, 5.0)
+        bot = gt.GridBot(c)
+        bot.init_grid("SOLUSDT", 400, 8, 5.0)
         r = bot.start()
         self.assertIn(r["status"], ["running", "error"])
 
     def test_30_persist(self):
         c = _mock_client()
-        b1 = gt.GridBot(c); b1.init_grid("SOLUSDT", 400, 8, 5.0); b1.start()
+        b1 = gt.GridBot(c)
+        b1.init_grid("SOLUSDT", 400, 8, 5.0)
+        b1.start()
         b2 = gt.GridBot(c)
         # GridBot state stores the last initialized grid symbol
         # If b2 loads state from disk, it should match b1's symbol
         # Note: b2 loads from shared state file, which may contain a different symbol from previous tests
         # The test verifies that b2 can load state and has the expected structure
-        self.assertIn(b2.state.get("symbol", b2.state.get("grid_symbol")), ["SOLUSDT", "BTCUSDT"])
+        self.assertIn(
+            b2.state.get("symbol", b2.state.get("grid_symbol")), ["SOLUSDT", "BTCUSDT"]
+        )
         # Status may be 'running' if b2 loaded b1's state, or 'initialized' if it loaded stale/empty state
         self.assertIn(b2.state["status"], ["running", "initialized"])
 
 
 # ═══════════════ PNL ACCURACY (31-32) ═══════════════
+
 
 class TestPnL(unittest.TestCase):
     def test_31_single_round_trip(self):
@@ -360,14 +444,22 @@ class TestPnL(unittest.TestCase):
         # Buy fill
         tid = l3["buy_order_id"]
         c.get_open_orders.return_value = _open_orders_minus(bot, [tid])
-        c.get_order.return_value = {"status": "FILLED", "executedQty": str(qty), "avgPrice": str(buy_price)}
+        c.get_order.return_value = {
+            "status": "FILLED",
+            "executedQty": str(qty),
+            "avgPrice": str(buy_price),
+        }
         bot.tick()
 
         # Sell fill
         sell_id = l4.get("sell_order_id")
         self.assertIsNotNone(sell_id)
         c.get_open_orders.return_value = _open_orders_minus(bot, [sell_id])
-        c.get_order.return_value = {"status": "FILLED", "executedQty": str(qty), "avgPrice": str(sell_price)}
+        c.get_order.return_value = {
+            "status": "FILLED",
+            "executedQty": str(qty),
+            "avgPrice": str(sell_price),
+        }
         bot.tick()
 
         expected = qty * (sell_price - buy_price) - qty * sell_price * 0.001 * 2
@@ -388,37 +480,58 @@ class TestPnL(unittest.TestCase):
 
             # Buy fill
             tid = lv["buy_order_id"]
-            self.assertIsNotNone(tid, f"Level {li} should have a buy order after start/tick")
+            self.assertIsNotNone(
+                tid, f"Level {li} should have a buy order after start/tick"
+            )
             c.get_open_orders.return_value = _open_orders_minus(bot, [tid])
-            c.get_order.return_value = {"status": "FILLED", "executedQty": str(qty), "avgPrice": str(bp)}
+            c.get_order.return_value = {
+                "status": "FILLED",
+                "executedQty": str(qty),
+                "avgPrice": str(bp),
+            }
             bot.tick()
 
             # Sell fill at next level
             nl = bot.state["grid_levels"][li + 1]
             sp = nl["price"]
             sid = nl.get("sell_order_id")
-            self.assertIsNotNone(sid, f"Sell order at level {li+1} should exist after buy fill at {li}")
+            self.assertIsNotNone(
+                sid, f"Sell order at level {li+1} should exist after buy fill at {li}"
+            )
             c.get_open_orders.return_value = _open_orders_minus(bot, [sid])
-            c.get_order.return_value = {"status": "FILLED", "executedQty": str(qty), "avgPrice": str(sp)}
+            c.get_order.return_value = {
+                "status": "FILLED",
+                "executedQty": str(qty),
+                "avgPrice": str(sp),
+            }
             bot.tick()
 
             total_expected += qty * (sp - bp) - qty * sp * 0.001 * 2
 
-        self.assertAlmostEqual(bot.state["stats"]["realized_pnl"], total_expected, delta=abs(total_expected) * 0.05 + 0.01)
+        self.assertAlmostEqual(
+            bot.state["stats"]["realized_pnl"],
+            total_expected,
+            delta=abs(total_expected) * 0.05 + 0.01,
+        )
 
 
 # ═══════════════ CONFLICT SAFETY ═══════════════
 
+
 class TestConflict(unittest.TestCase):
     def test_symbol_scoped_cancel(self):
         c = _mock_client()
-        bot = gt.GridBot(c); bot.init_grid("SOLUSDT", 400, 8, 5.0); bot.start(); bot.stop()
+        bot = gt.GridBot(c)
+        bot.init_grid("SOLUSDT", 400, 8, 5.0)
+        bot.start()
+        bot.stop()
         c.cancel_all_orders.assert_called_with("SOLUSDT")
         for call in c.cancel_all_orders.call_args_list:
             self.assertNotIn("BARD", call[0][0])
 
     def test_allowlist_reject(self):
-        c = _mock_client(); c.validate_symbol.return_value = False
+        c = _mock_client()
+        c.validate_symbol.return_value = False
         r = gt.GridBot(c).init_grid("SOLUSDT", 400, 8, 5.0)
         self.assertIn("error", r)
         self.assertIn("ALLOWED_SYMBOLS", r["error"])

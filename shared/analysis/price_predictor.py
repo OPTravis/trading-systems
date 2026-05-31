@@ -86,7 +86,7 @@ class PricePredictor:
         X_scaled = self.scaler.fit_transform(X)
         
         # Initialize and train LightGBM
-        self.model = lgb.LGBMClassifier(**LGBM_PARAMS)
+        self.model = lgb.LGBMClassifier(**LGBM_PARAMS)  # type: ignore[arg-type]
         self.model.fit(X_scaled, y)
         self.is_trained = True
         
@@ -121,8 +121,10 @@ class PricePredictor:
             raise RuntimeError("Model not trained. Call train() or load_model() first.")
         
         X = self._extract_features(features)
+        assert self.scaler is not None, "Scaler not initialized"
         X_scaled = self.scaler.transform(X)
-        
+
+        assert self.model is not None, "Model not initialized"
         prob_up = self.model.predict_proba(X_scaled)[0, 1]
         direction = 'up' if prob_up > 0.5 else 'down'
         confidence = abs(prob_up - 0.5) * 2  # Scale to 0-1

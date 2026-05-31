@@ -14,22 +14,32 @@ Triggers relearning when drift detected.
 
 import json
 import logging
-import math
 import time
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # Detection thresholds
-KL_DIVERGENCE_THRESHOLD = 0.10    # KL > 0.10 = significant drift
+KL_DIVERGENCE_THRESHOLD = 0.10  # KL > 0.10 = significant drift
 CORRELATION_SHIFT_THRESHOLD = 0.3  # Correlation changed by > 0.3
-WIN_RATE_DROP_THRESHOLD = 15.0     # Win rate dropped > 15% from baseline
-MIN_SAMPLES_FOR_DETECTION = 30     # Need at least 30 closed trades for reliable drift detection
+WIN_RATE_DROP_THRESHOLD = 15.0  # Win rate dropped > 15% from baseline
+MIN_SAMPLES_FOR_DETECTION = (
+    30  # Need at least 30 closed trades for reliable drift detection
+)
 
 FACTOR_NAMES = [
-    "technical", "trend", "volume", "sentiment", "price_action",
-    "obv_divergence", "consolidation", "bb_squeeze", "rsi_divergence",
-    "onchain", "market_sentiment", "orderbook",
+    "technical",
+    "trend",
+    "volume",
+    "sentiment",
+    "price_action",
+    "obv_divergence",
+    "consolidation",
+    "bb_squeeze",
+    "rsi_divergence",
+    "onchain",
+    "market_sentiment",
+    "orderbook",
 ]
 
 
@@ -39,6 +49,7 @@ class ConceptDriftDetector:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
 
@@ -136,7 +147,9 @@ class ConceptDriftDetector:
 
         return result
 
-    def _check_correlation_shift(self, historical: List[Dict], recent: List[Dict]) -> Dict:
+    def _check_correlation_shift(
+        self, historical: List[Dict], recent: List[Dict]
+    ) -> Dict:
         """Check if factor-PnL correlations have shifted significantly."""
         hist_corr = self._compute_correlations(historical)
         recent_corr = self._compute_correlations(recent)
@@ -144,7 +157,7 @@ class ConceptDriftDetector:
         if not hist_corr or not recent_corr:
             return {"drift": False, "reason": "insufficient data"}
 
-        max_shift = 0
+        max_shift = 0.0
         shifted_factors = []
 
         for factor in FACTOR_NAMES:
@@ -165,10 +178,12 @@ class ConceptDriftDetector:
 
     def _check_win_rate_trend(self, historical: List[Dict], recent: List[Dict]) -> Dict:
         """Check if win rate has dropped significantly."""
+
         def _is_win(r):
             if r.get("is_win") is not None:
                 return r["is_win"]
             return r.get("net_pnl_pct", 0) > 0
+
         hist_wr = sum(1 for r in historical if _is_win(r)) / len(historical) * 100
         recent_wr = sum(1 for r in recent if _is_win(r)) / len(recent) * 100
         drop = hist_wr - recent_wr
@@ -181,7 +196,9 @@ class ConceptDriftDetector:
             "threshold": WIN_RATE_DROP_THRESHOLD,
         }
 
-    def _check_pnl_distribution(self, historical: List[Dict], recent: List[Dict]) -> Dict:
+    def _check_pnl_distribution(
+        self, historical: List[Dict], recent: List[Dict]
+    ) -> Dict:
         """Check if PnL distribution has shifted (mean and variance)."""
         hist_pnl = [r.get("net_pnl_pct", 0) for r in historical]
         recent_pnl = [r.get("net_pnl_pct", 0) for r in recent]
@@ -210,7 +227,7 @@ class ConceptDriftDetector:
 
     def _compute_correlations(self, rows: List[Dict]) -> Optional[Dict[str, float]]:
         """Compute factor-PnL correlations for a set of trades."""
-        factor_scores = {f: [] for f in FACTOR_NAMES}
+        factor_scores: Dict[str, List[float]] = {f: [] for f in FACTOR_NAMES}
         pnl_values = []
 
         for row in rows:
@@ -220,7 +237,11 @@ class ConceptDriftDetector:
             try:
                 factors = json.loads(factors_json)
             except (json.JSONDecodeError, TypeError):
-                logger.warning("Dropping malformed factors_json row: %s", factors_json[:200] if factors_json else None, exc_info=True)
+                logger.warning(
+                    "Dropping malformed factors_json row: %s",
+                    factors_json[:200] if factors_json else None,
+                    exc_info=True,
+                )
                 continue
 
             pnl = row.get("net_pnl_pct", 0)
@@ -240,7 +261,9 @@ class ConceptDriftDetector:
 
             mean_x = sum(scores) / n
             mean_y = sum(pnl_values) / n
-            cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(scores, pnl_values)) / n
+            cov = (
+                sum((x - mean_x) * (y - mean_y) for x, y in zip(scores, pnl_values)) / n
+            )
             std_x = (sum((x - mean_x) ** 2 for x in scores) / n) ** 0.5
             std_y = (sum((y - mean_y) ** 2 for y in pnl_values) / n) ** 0.5
 
@@ -278,30 +301,40 @@ class ConceptDriftDetector:
         # Correlation shift
         cs = checks.get("correlation_shift", {})
         if cs:
-            lines.extend(["", "**因子相關性漂移**:", f"- 最大偏移: {cs.get('max_shift', 0):.3f} (閾值 {cs.get('threshold', 0)})"])
+            lines.extend(
+                [
+                    "",
+                    "**因子相關性漂移**:",
+                    f"- 最大偏移: {cs.get('max_shift', 0):.3f} (閾值 {cs.get('threshold', 0)})",
+                ]
+            )
             for sf in cs.get("shifted_factors", []):
                 lines.append(f"  - {sf}")
 
         # Win rate trend
         wr = checks.get("win_rate_trend", {})
         if wr:
-            lines.extend([
-                "",
-                "**勝率趨勢**:",
-                f"- 歷史: {wr.get('historical_wr', 0):.1f}%",
-                f"- 近期: {wr.get('recent_wr', 0):.1f}%",
-                f"- 下降: {wr.get('drop', 0):.1f}%",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "**勝率趨勢**:",
+                    f"- 歷史: {wr.get('historical_wr', 0):.1f}%",
+                    f"- 近期: {wr.get('recent_wr', 0):.1f}%",
+                    f"- 下降: {wr.get('drop', 0):.1f}%",
+                ]
+            )
 
         # PnL distribution
         pd = checks.get("pnl_distribution", {})
         if pd:
-            lines.extend([
-                "",
-                "**PnL 分佈**:",
-                f"- 歷史均值: {pd.get('hist_mean', 0):+.2f}%",
-                f"- 近期均值: {pd.get('recent_mean', 0):+.2f}%",
-                f"- 方差比: {pd.get('var_ratio', 0):.2f}x",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "**PnL 分佈**:",
+                    f"- 歷史均值: {pd.get('hist_mean', 0):+.2f}%",
+                    f"- 近期均值: {pd.get('recent_mean', 0):+.2f}%",
+                    f"- 方差比: {pd.get('var_ratio', 0):.2f}x",
+                ]
+            )
 
         return "\n".join(lines)

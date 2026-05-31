@@ -1,0 +1,15 @@
+# Ruff configuration for crypto-ai-trader
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E402",  # Module-level import not at top (sys.path setup pattern)
+    "E501",  # Line too long (formatter handles this)
+    "E731",  # Lambda assignment (used for compat shims)
+    "E741",  # Ambiguous variable name
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["F841"]  # Unused variables in tests (mock setups)

@@ -31,6 +31,7 @@ class FeatureStore:
         self._redis_available = False
         self._fallback: Dict[str, Dict] = {}  # key -> {field: value}
         self._fallback_sorted: Dict[str, list] = {}  # key -> [(score, member), ...]
+        self._r: Optional[redis.Redis] = None
         try:
             self._r = redis.Redis(host=host, port=port, db=db, decode_responses=True)
             self._r.ping()
@@ -57,19 +58,25 @@ class FeatureStore:
     #  Public API
     # ------------------------------------------------------------------ #
 
-    def store_features(self, symbol: str, features: Dict, namespace: str = "online") -> bool:
+    def store_features(
+        self, symbol: str, features: Dict, namespace: str = "online"
+    ) -> bool:
         """Store a feature dict for *symbol* under *namespace*."""
         if namespace == "online":
             key = self._online_key(symbol)
         else:
-            key = self._feature_key(symbol)  # generic fallback for non-online namespaces
+            key = self._feature_key(
+                symbol
+            )  # generic fallback for non-online namespaces
 
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 pipe = self._r.pipeline()
                 pipe.delete(key)
                 if features:
-                    pipe.hset(key, mapping={k: json.dumps(v) for k, v in features.items()})
+                    pipe.hset(
+                        key, mapping={k: json.dumps(v) for k, v in features.items()}
+                    )
                 if namespace == "online":
                     pipe.expire(key, ONLINE_EXPIRY_SECONDS)
                 pipe.execute()
@@ -88,21 +95,22 @@ class FeatureStore:
             key = self._feature_key(symbol)
 
         try:
-            if self._redis_available:
-                data = self._r.hgetall(key)
-                if not data:
+            if self._redis_available and self._r is not None:
+                raw_data = self._r.hgetall(key)
+                if not raw_data:
                     return None
+                return {k: json.loads(v) for k, v in raw_data.items()}
             else:
                 data = self._fallback.get(key)
                 if not data:
                     return None
-            return {k: json.loads(v) for k, v in data.items()}
+                return {k: json.loads(v) for k, v in data.items()}
         except Exception as e:
             logger.error("get_features failed: %s", e)
             return None
 
     def snapshot_for_training(
-        self, symbol: str, label: int, timestamp: float = None
+        self, symbol: str, label: int, timestamp: Optional[float] = None
     ) -> bool:
         """
         Copy the current online features for *symbol* into the training namespace
@@ -114,16 +122,18 @@ class FeatureStore:
             return False
 
         ts = timestamp if timestamp is not None else time.time()
-        member = json.dumps({
-            "features": features,
-            "label": label,
-            "timestamp": ts,
-        })
+        member = json.dumps(
+            {
+                "features": features,
+                "label": label,
+                "timestamp": ts,
+            }
+        )
 
         key = self._training_key(symbol)
 
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 self._r.zadd(key, {member: ts})
                 # Auto-prune oldest samples beyond the cap
                 count = self._r.zcard(key)
@@ -136,14 +146,16 @@ class FeatureStore:
                 # Sort and prune
                 self._fallback_sorted[key].sort(key=lambda x: x[0])
                 if len(self._fallback_sorted[key]) > MAX_TRAINING_SAMPLES:
-                    self._fallback_sorted[key] = self._fallback_sorted[key][-MAX_TRAINING_SAMPLES:]
+                    self._fallback_sorted[key] = self._fallback_sorted[key][
+                        -MAX_TRAINING_SAMPLES:
+                    ]
             return True
         except Exception as e:
             logger.error("snapshot_for_training failed: %s", e)
             return False
 
     def get_training_data(
-        self, symbol: str = None, limit: int = 1000
+        self, symbol: Optional[str] = None, limit: int = 1000
     ) -> List[Dict]:
         """
         Return training samples.  If *symbol* is ``None``, return data for all symbols.
@@ -152,17 +164,19 @@ class FeatureStore:
         results: List[Dict] = []
 
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 if symbol:
                     keys = [self._training_key(symbol)]
                 else:
                     keys = [
-                        k for k in self._r.scan_iter("features:training:*")
+                        k
+                        for k in self._r.scan_iter("features:training:*")
                         if not k.startswith("features:training::")
                     ]
                 for key in keys:
                     raw = self._r.zrange(key, 0, limit - 1, withscores=True)
-                    for member, _score in raw:
+                    for entry in raw:  # type: ignore[assignment]
+                        member = entry[0] if isinstance(entry, (tuple, list)) else entry
                         results.append(json.loads(member))
                     if symbol:
                         break  # only one key
@@ -182,9 +196,9 @@ class FeatureStore:
 
     def get_feature_names(self) -> List[str]:
         """Return all known feature keys across online and training namespaces."""
-        names = set()
+        names: set = set()
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 # Scan online keys
                 for key in self._r.scan_iter("features:online:*"):
                     names.update(self._r.hkeys(key))
@@ -200,15 +214,14 @@ class FeatureStore:
         """Delete all keys belonging to *namespace*.  Returns count of deleted keys."""
         count = 0
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 pattern = f"features:{namespace}:*"
                 keys = list(self._r.scan_iter(pattern))
                 if keys:
                     count = self._r.delete(*keys)
             else:
                 to_delete = [
-                    k for k in self._fallback
-                    if k.startswith(f"features:{namespace}:")
+                    k for k in self._fallback if k.startswith(f"features:{namespace}:")
                 ]
                 for k in to_delete:
                     del self._fallback[k]
@@ -221,7 +234,7 @@ class FeatureStore:
         """Return per-namespace key count and Redis memory usage."""
         stats: Dict = {}
         try:
-            if self._redis_available:
+            if self._redis_available and self._r is not None:
                 for ns in ("online", "training"):
                     pattern = f"features:{ns}:*"
                     keys = list(self._r.scan_iter(pattern))
@@ -235,7 +248,9 @@ class FeatureStore:
                     1 for k in self._fallback if k.startswith("features:online:")
                 )
                 training_count = sum(
-                    1 for k in self._fallback_sorted if k.startswith("features:training:")
+                    1
+                    for k in self._fallback_sorted
+                    if k.startswith("features:training:")
                 )
                 stats["online_count"] = online_count
                 stats["training_count"] = training_count

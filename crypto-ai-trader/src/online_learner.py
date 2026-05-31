@@ -41,15 +41,24 @@ DEFAULT_WEIGHTS = {
 
 # Factor names in order matching _calculate_weighted_score
 FACTOR_NAMES = [
-    "technical", "trend", "volume", "sentiment", "price_action",
-    "obv_divergence", "consolidation", "bb_squeeze", "rsi_divergence",
-    "onchain", "market_sentiment", "orderbook",
+    "technical",
+    "trend",
+    "volume",
+    "sentiment",
+    "price_action",
+    "obv_divergence",
+    "consolidation",
+    "bb_squeeze",
+    "rsi_divergence",
+    "onchain",
+    "market_sentiment",
+    "orderbook",
 ]
 
 # Weight constraints
-MIN_WEIGHT = 2.0   # No factor below 2%
+MIN_WEIGHT = 2.0  # No factor below 2%
 MAX_WEIGHT = 25.0  # No factor above 25%
-MIN_TRADES = 10    # Need at least 10 closed trades to learn
+MIN_TRADES = 10  # Need at least 10 closed trades to learn
 
 # Learning rate: how aggressively to adjust weights per cycle
 # 0.0 = no change, 1.0 = fully replace with learned weights
@@ -62,6 +71,7 @@ class OnlineLearner:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
 
@@ -83,7 +93,9 @@ class OnlineLearner:
 
         return dict(DEFAULT_WEIGHTS)
 
-    def _compute_optimal_weights(self, min_trades: int = 5, max_trades: int = None) -> Optional[Dict]:
+    def _compute_optimal_weights(
+        self, min_trades: int = 5, max_trades: Optional[int] = None
+    ) -> Optional[Dict]:
         """Compute optimal factor weights from closed trade outcomes.
 
         Args:
@@ -104,16 +116,14 @@ class OnlineLearner:
             rows = rows[:max_trades]
 
         if len(rows) < min_trades:
-            logger.info(
-                f"Insufficient trades for learning: {len(rows)}/{min_trades}"
-            )
+            logger.info(f"Insufficient trades for learning: {len(rows)}/{min_trades}")
             return None
 
         # Convert to dicts
         rows = [dict(r) for r in rows]
 
         # Extract factor scores and PnL
-        factor_scores = {f: [] for f in FACTOR_NAMES}
+        factor_scores: Dict[str, List[float]] = {f: [] for f in FACTOR_NAMES}
         pnl_values = []
 
         for row in rows:
@@ -123,7 +133,9 @@ class OnlineLearner:
             try:
                 factors = json.loads(factors_json)
             except (json.JSONDecodeError, TypeError):
-                logger.error("Failed to parse trade factors JSON, skipping trade", exc_info=True)
+                logger.error(
+                    "Failed to parse trade factors JSON, skipping trade", exc_info=True
+                )
                 continue
 
             pnl = row.get("net_pnl_pct", 0)
@@ -146,10 +158,9 @@ class OnlineLearner:
             # Pearson correlation
             mean_x = sum(scores) / n
             mean_y = sum(pnl_values) / n
-            cov = sum(
-                (x - mean_x) * (y - mean_y)
-                for x, y in zip(scores, pnl_values)
-            ) / n
+            cov = (
+                sum((x - mean_x) * (y - mean_y) for x, y in zip(scores, pnl_values)) / n
+            )
             std_x = (sum((x - mean_x) ** 2 for x in scores) / n) ** 0.5
             std_y = (sum((y - mean_y) ** 2 for y in pnl_values) / n) ** 0.5
             correlation = cov / (std_x * std_y) if std_x > 0 and std_y > 0 else 0
@@ -197,7 +208,7 @@ class OnlineLearner:
         diff = 100.0 - sum(weights.values())
         if abs(diff) > 0.01:
             # Adjust the largest weight to absorb rounding error
-            max_factor = max(weights, key=weights.get)
+            max_factor = max(weights, key=lambda k: weights[k])
             weights[max_factor] = round(weights[max_factor] + diff, 2)
 
         return {
@@ -259,6 +270,7 @@ class OnlineLearner:
         # Also update strategy weights (Phase 3)
         try:
             from src.strategy_registry import StrategyRegistry
+
             registry = StrategyRegistry(db=self._db)
             sw_result = registry.update_strategy_weights()
             if sw_result and sw_result.get("changes"):
@@ -270,18 +282,22 @@ class OnlineLearner:
         # Also run strategy evolution (Phase 5)
         try:
             from src.strategy_evolver import StrategyEvolver
+
             evolver = StrategyEvolver(db=self._db)
             evo_changes = evolver.evaluate_and_evolve()
             if evo_changes:
                 result["evolution_changes"] = evo_changes
                 for c in evo_changes:
-                    logger.info(f"STRATEGY_EVOLVED: {c['action']} {c['strategy']} — {c['reason']}")
+                    logger.info(
+                        f"STRATEGY_EVOLVED: {c['action']} {c['strategy']} — {c['reason']}"
+                    )
         except Exception as e:
             logger.debug(f"Strategy evolution skipped: {e}")
 
         # Also run concept drift detection (Phase 7)
         try:
             from src.concept_drift import ConceptDriftDetector
+
             drift_detector = ConceptDriftDetector(db=self._db)
             drift_result = drift_detector.detect_drift()
             if drift_result and drift_result.get("drift_detected"):
@@ -291,7 +307,9 @@ class OnlineLearner:
                     f"signals={drift_result['drift_signals']}/3 — {drift_result['recommendation']}"
                 )
                 # Re-optimize weights using only recent trades to adapt to new regime
-                logger.warning("Concept drift detected — blending recent-trade weights with full-sample weights")
+                logger.warning(
+                    "Concept drift detected — blending recent-trade weights with full-sample weights"
+                )
                 optimal = self._compute_optimal_weights(min_trades=10, max_trades=20)
                 if optimal:
                     # Blend: 60% recent + 40% full-sample to avoid ping-pong
@@ -299,7 +317,9 @@ class OnlineLearner:
                     blended = {}
                     for factor in optimal["weights"]:
                         recent_w = optimal["weights"][factor]
-                        full_w = current_weights.get(factor, DEFAULT_WEIGHTS.get(factor, 5.0))
+                        full_w = current_weights.get(
+                            factor, DEFAULT_WEIGHTS.get(factor, 5.0)
+                        )
                         blended[factor] = round(0.6 * recent_w + 0.4 * full_w, 2)
                     # Store the blended weights
                     conn = self._db._get_conn()
@@ -310,7 +330,9 @@ class OnlineLearner:
                     )
                     conn.commit()
                     result["drift_reoptimized"] = blended
-                    logger.info("Blended drift-adapted weights (60%% recent + 40%% full-sample)")
+                    logger.info(
+                        "Blended drift-adapted weights (60%% recent + 40%% full-sample)"
+                    )
         except Exception as e:
             logger.debug(f"Drift detection skipped: {e}")
 
@@ -319,11 +341,9 @@ class OnlineLearner:
     def get_weight_history(self) -> List[Dict]:
         """Get history of weight changes (from audit_log)."""
         conn = self._db._get_conn()
-        rows = conn.execute(
-            """SELECT * FROM audit_log
+        rows = conn.execute("""SELECT * FROM audit_log
             WHERE action = 'learned_weights_update'
-            ORDER BY timestamp DESC LIMIT 20"""
-        ).fetchall()
+            ORDER BY timestamp DESC LIMIT 20""").fetchall()
         return [dict(r) for r in rows]
 
     def format_report(self, result: Dict) -> str:

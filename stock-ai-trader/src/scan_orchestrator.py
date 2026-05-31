@@ -26,9 +26,11 @@ logger = logging.getLogger(__name__)
 
 # ─── Data Models ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TradeSignal:
     """Output signal from the scan pipeline."""
+
     symbol: str
     side: str  # 'BUY' or 'SELL'
     quantity: float = 0.0
@@ -50,6 +52,7 @@ class TradeSignal:
 @dataclass
 class ScanResult:
     """Full scan pipeline result."""
+
     timestamp: str
     regime: str
     universe_size: int
@@ -62,7 +65,8 @@ class ScanResult:
 
 # ─── Universe Loading ───────────────────────────────────────────────────────
 
-def load_universe(name: str = "sp500", config_dir: str = None) -> List[str]:
+
+def load_universe(name: str = "sp500", config_dir: Optional[str] = None) -> List[str]:
     """Load a stock universe from universes.yaml."""
     config_dir = config_dir or os.path.join(
         os.path.dirname(os.path.dirname(__file__)), "config"
@@ -99,6 +103,7 @@ def load_universe(name: str = "sp500", config_dir: str = None) -> List[str]:
 
 # ─── Scan Orchestrator ──────────────────────────────────────────────────────
 
+
 class ScanOrchestrator:
     """
     Main pipeline orchestrator for the stock AI trader.
@@ -124,7 +129,7 @@ class ScanOrchestrator:
         position_sizer=None,
         trade_executor=None,
         feature_store=None,
-        config: dict = None,
+        config: Optional[dict] = None,
     ):
         """
         Args:
@@ -156,9 +161,7 @@ class ScanOrchestrator:
 
     def _load_config(self) -> dict:
         """Load config from YAML."""
-        config_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "config"
-        )
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
         config_path = os.path.join(config_dir, "config.yaml")
         if os.path.exists(config_path):
             with open(config_path) as f:
@@ -187,10 +190,16 @@ class ScanOrchestrator:
             ScanResult with signals and metadata.
         """
         t_start = time.time()
-        auto_execute = auto_execute or os.environ.get("AUTO_EXECUTE", "").lower() == "true"
+        auto_execute = (
+            auto_execute or os.environ.get("AUTO_EXECUTE", "").lower() == "true"
+        )
 
         logger.info("=" * 60)
-        logger.info("SCAN PIPELINE START — universe=%s, auto_execute=%s", universe_name, auto_execute)
+        logger.info(
+            "SCAN PIPELINE START — universe=%s, auto_execute=%s",
+            universe_name,
+            auto_execute,
+        )
         logger.info("=" * 60)
 
         # ── Phase 1: Sync + Regime + Universe ──────────────────────────
@@ -200,9 +209,14 @@ class ScanOrchestrator:
         if not universe:
             logger.warning("Empty universe, aborting")
             return ScanResult(
-                timestamp=datetime.now().isoformat(), regime=regime,
-                universe_size=0, candidates_scored=0, research_completed=0,
-                signals=[], blocked=[], duration_sec=time.time() - t_start,
+                timestamp=datetime.now().isoformat(),
+                regime=regime,
+                universe_size=0,
+                candidates_scored=0,
+                research_completed=0,
+                signals=[],
+                blocked=[],
+                duration_sec=time.time() - t_start,
             )
 
         # ── Phase 2: Score & Rank ──────────────────────────────────────
@@ -225,7 +239,9 @@ class ScanOrchestrator:
             logger.info("Phase 5: Executing %d trades", len(approved_signals))
             self._phase5_execute(approved_signals)
         elif approved_signals:
-            logger.info("Phase 5: %d signals ready (auto_execute=false)", len(approved_signals))
+            logger.info(
+                "Phase 5: %d signals ready (auto_execute=false)", len(approved_signals)
+            )
 
         duration = time.time() - t_start
         result = ScanResult(
@@ -239,8 +255,12 @@ class ScanOrchestrator:
             duration_sec=duration,
         )
 
-        logger.info("SCAN PIPELINE COMPLETE in %.1fs — %d signals, %d blocked",
-                     duration, len(approved_signals), len(blocked))
+        logger.info(
+            "SCAN PIPELINE COMPLETE in %.1fs — %d signals, %d blocked",
+            duration,
+            len(approved_signals),
+            len(blocked),
+        )
 
         # Cleanup: close DuckDB connections to prevent leaks
         if self.feature_store:
@@ -306,7 +326,11 @@ class ScanOrchestrator:
         if self.data_feed:
             try:
                 market_data = self.data_feed.get_multiple_quotes(universe)
-                logger.info("Batch quotes fetched: %d/%d symbols", len(market_data), len(universe))
+                logger.info(
+                    "Batch quotes fetched: %d/%d symbols",
+                    len(market_data),
+                    len(universe),
+                )
             except Exception as e:
                 logger.warning("Batch quote failed, falling back to individual: %s", e)
                 for sym in universe:
@@ -335,10 +359,14 @@ class ScanOrchestrator:
         # Rank using CompositeRanker
         if self.ranker and factor_scores:
             try:
-                ranked_df = self.ranker.rank_universe(list(factor_scores.keys()), factor_scores)
+                ranked_df = self.ranker.rank_universe(
+                    list(factor_scores.keys()), factor_scores
+                )
                 ranked_symbols = ranked_df["symbol"].tolist()
             except Exception as e:
-                logger.warning("CompositeRanker failed, falling back to composite sort: %s", e)
+                logger.warning(
+                    "CompositeRanker failed, falling back to composite sort: %s", e
+                )
         else:
             # Fallback: sort by composite score
             ranked_symbols = sorted(
@@ -347,8 +375,12 @@ class ScanOrchestrator:
                 reverse=True,
             )
 
-        logger.info("Scored %d / %d stocks, top 5: %s",
-                     len(factor_scores), len(universe), ranked_symbols[:5])
+        logger.info(
+            "Scored %d / %d stocks, top 5: %s",
+            len(factor_scores),
+            len(universe),
+            ranked_symbols[:5],
+        )
         return ranked_symbols, factor_scores
 
     # ── Phase 3 ────────────────────────────────────────────────────────
@@ -369,14 +401,16 @@ class ScanOrchestrator:
         if not self.researcher:
             # No researcher — pass through with no adjustment
             for sym in candidates:
-                results.append({
-                    "symbol": sym,
-                    "score_adjustment": 0.0,
-                    "confidence": "none",
-                    "summary": "No researcher configured",
-                    "news": [],
-                    "sentiment": 0.0,
-                })
+                results.append(
+                    {
+                        "symbol": sym,
+                        "score_adjustment": 0.0,
+                        "confidence": "none",
+                        "summary": "No researcher configured",
+                        "news": [],
+                        "sentiment": 0.0,
+                    }
+                )
             return results
 
         # Parallel research
@@ -392,20 +426,29 @@ class ScanOrchestrator:
                         report = fut.result()  # ResearchReport dataclass
                         # Convert recommendation to numeric score adjustment
                         _rec_map = {
-                            "STRONG_BUY": 20, "BUY": 10, "HOLD": 0,
-                            "SELL": -10, "STRONG_SELL": -20,
+                            "STRONG_BUY": 20,
+                            "BUY": 10,
+                            "HOLD": 0,
+                            "SELL": -10,
+                            "STRONG_SELL": -20,
                         }
-                        results.append({
-                            "symbol": sym,
-                            "score_adjustment": _rec_map.get(
-                                report.recommendation.value if hasattr(report.recommendation, 'value') else str(report.recommendation),
-                                0
-                            ),
-                            "confidence": report.confidence,
-                            "summary": report.summary,
-                            "news": report.catalysts,
-                            "sentiment": report.sentiment_score,
-                        })
+                        results.append(
+                            {
+                                "symbol": sym,
+                                "score_adjustment": _rec_map.get(
+                                    (
+                                        report.recommendation.value
+                                        if hasattr(report.recommendation, "value")
+                                        else str(report.recommendation)
+                                    ),
+                                    0,
+                                ),
+                                "confidence": report.confidence,
+                                "summary": report.summary,
+                                "news": report.catalysts,
+                                "sentiment": report.sentiment_score,
+                            }
+                        )
                     except Exception as e:
                         logger.warning("Research failed for %s: %s", sym, e)
             except TimeoutError:
@@ -415,10 +458,16 @@ class ScanOrchestrator:
                     if not fut.done():
                         fut.cancel()
                         cancelled += 1
-                logger.warning("Research timed out — %d / %d completed, %d pending futures cancelled",
-                               len(results), len(candidates), cancelled)
+                logger.warning(
+                    "Research timed out — %d / %d completed, %d pending futures cancelled",
+                    len(results),
+                    len(candidates),
+                    cancelled,
+                )
 
-        logger.info("Research completed for %d / %d candidates", len(results), len(candidates))
+        logger.info(
+            "Research completed for %d / %d candidates", len(results), len(candidates)
+        )
         return results
 
     # ── Phase 4 ────────────────────────────────────────────────────────
@@ -448,15 +497,17 @@ class ScanOrchestrator:
             adj_score = base_score + res.get("score_adjustment", 0.0)
 
             # Resolve sector: prefer factor_scores, then universe config, then empty
-            resolved_sector = factors.get("sector", "") or sector_map.get(sym, "")
+            resolved_sector = str(factors.get("sector", "") or sector_map.get(sym, ""))
 
             # Minimum score filter
             if adj_score < min_score:
-                blocked.append({
-                    "symbol": sym,
-                    "reason": f"Score {adj_score:.1f} < min {min_score}",
-                    "score": adj_score,
-                })
+                blocked.append(
+                    {
+                        "symbol": sym,
+                        "reason": f"Score {adj_score:.1f} < min {min_score}",
+                        "score": adj_score,
+                    }
+                )
                 continue
 
             # Get current price
@@ -469,7 +520,9 @@ class ScanOrchestrator:
                     pass
 
             if price <= 0:
-                blocked.append({"symbol": sym, "reason": "No price data", "score": adj_score})
+                blocked.append(
+                    {"symbol": sym, "reason": "No price data", "score": adj_score}
+                )
                 continue
 
             # Risk check
@@ -479,6 +532,7 @@ class ScanOrchestrator:
 
             if self.risk_mgr:
                 from src.risk.stock_risk_manager import TradeSignal as RiskSignal
+
                 risk_signal = RiskSignal(
                     symbol=sym,
                     side="buy",
@@ -493,11 +547,13 @@ class ScanOrchestrator:
                     risk_warnings = decision.warnings
                     position_multiplier = decision.position_multiplier
                     if not risk_approved:
-                        blocked.append({
-                            "symbol": sym,
-                            "reason": decision.reason,
-                            "score": adj_score,
-                        })
+                        blocked.append(
+                            {
+                                "symbol": sym,
+                                "reason": decision.reason,
+                                "score": adj_score,
+                            }
+                        )
                         continue
                 except Exception as e:
                     logger.warning("Risk check failed for %s: %s", sym, e)
@@ -552,9 +608,7 @@ class ScanOrchestrator:
     def _build_sector_map(self) -> Dict[str, str]:
         """Build a symbol -> sector lookup from the universe config."""
         sector_map: Dict[str, str] = {}
-        config_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "config"
-        )
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
         path = os.path.join(config_dir, "universes.yaml")
         if not os.path.exists(path):
             return sector_map
@@ -581,7 +635,9 @@ class ScanOrchestrator:
                 continue
 
             try:
-                quantity = signal.position_size_usd / signal.price if signal.price > 0 else 0
+                quantity = (
+                    signal.position_size_usd / signal.price if signal.price > 0 else 0
+                )
                 if quantity <= 0:
                     continue
 
@@ -602,11 +658,19 @@ class ScanOrchestrator:
                 )
 
                 if result.get("success"):
-                    logger.info("Executed: %s %s %.2f @ %.2f",
-                                signal.side, signal.symbol, quantity, signal.price)
+                    logger.info(
+                        "Executed: %s %s %.2f @ %.2f",
+                        signal.side,
+                        signal.symbol,
+                        quantity,
+                        signal.price,
+                    )
                 else:
-                    logger.warning("Execution failed for %s: %s",
-                                   signal.symbol, result.get("error"))
+                    logger.warning(
+                        "Execution failed for %s: %s",
+                        signal.symbol,
+                        result.get("error"),
+                    )
 
             except Exception as e:
                 logger.error("Execution error for %s: %s", signal.symbol, e)

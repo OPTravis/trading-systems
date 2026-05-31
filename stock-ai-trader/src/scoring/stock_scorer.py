@@ -1,9 +1,10 @@
 """
 Stock Scorer - Multi-dimensional stock scoring with IC dynamic weighting.
 """
+
+import logging
 from dataclasses import dataclass
 from typing import Dict, Optional
-import logging
 
 import yaml
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StockScore:
     """Composite stock score with dimension breakdown."""
+
     symbol: str
     composite: float  # 0-100
     technical: float = 0.0
@@ -21,7 +23,7 @@ class StockScore:
     sentiment: float = 0.0
     quality: Optional[float] = None
     value: Optional[float] = None
-    weights: Dict[str, float] = None
+    weights: Optional[Dict[str, float]] = None
 
     def __post_init__(self):
         if self.weights is None:
@@ -31,19 +33,25 @@ class StockScore:
 class StockScorer:
     """Multi-dimensional stock scoring with IC-based dynamic factor weights."""
 
-    def __init__(self, ic_tracker=None, fundamental_scorer=None, sentiment_scorer=None, feature_store=None):
+    def __init__(
+        self,
+        ic_tracker=None,
+        fundamental_scorer=None,
+        sentiment_scorer=None,
+        feature_store=None,
+    ):
         self.ic_tracker = ic_tracker
         self.fundamental_scorer = fundamental_scorer
         self.sentiment_scorer = sentiment_scorer
         self.feature_store = feature_store
         # Default equal weights
         self._default_weights = {
-            'technical': 0.20,
-            'fundamental': 0.20,
-            'momentum': 0.15,
-            'sentiment': 0.15,
-            'quality': 0.15,
-            'value': 0.15,
+            "technical": 0.20,
+            "fundamental": 0.20,
+            "momentum": 0.15,
+            "sentiment": 0.15,
+            "quality": 0.15,
+            "value": 0.15,
         }
         # Load per-symbol strategy allocation
         self._strategy_allocation = self._load_strategy_allocation()
@@ -52,7 +60,12 @@ class StockScorer:
     def _load_strategy_allocation() -> dict:
         """Load per-symbol strategy weights from config/strategy_allocation.yaml."""
         from pathlib import Path
-        config_path = Path(__file__).resolve().parent.parent.parent / "config" / "strategy_allocation.yaml"
+
+        config_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "config"
+            / "strategy_allocation.yaml"
+        )
         if not config_path.exists():
             return {}
         try:
@@ -62,7 +75,7 @@ class StockScorer:
         except Exception:
             return {}
 
-    def _get_weights(self, symbol: str = None) -> Dict[str, float]:
+    def _get_weights(self, symbol: Optional[str] = None) -> Dict[str, float]:
         """Get factor weights: per-symbol strategy allocation > IC-tracker > defaults."""
         # 1. Per-symbol strategy allocation (highest priority)
         if symbol and symbol in self._strategy_allocation:
@@ -101,14 +114,18 @@ class StockScorer:
         except Exception:
             return {}
 
-    def score_stock(self, symbol: str, market_data: dict = None) -> StockScore:
+    def score_stock(
+        self, symbol: str, market_data: Optional[dict] = None
+    ) -> StockScore:
         """Score a stock across all dimensions (0-100 scale)."""
         market_data = market_data or {}
 
         # Try feature store first (real computed factors)
         fs_scores = self._get_feature_store_scores(symbol)
 
-        technical = fs_scores.get("technical", self._score_technical(symbol, market_data))
+        technical = fs_scores.get(
+            "technical", self._score_technical(symbol, market_data)
+        )
         fundamental = self._score_fundamental(symbol)
         momentum = fs_scores.get("momentum", self._score_momentum(symbol, market_data))
         sentiment = self._score_sentiment(symbol)
@@ -117,12 +134,12 @@ class StockScorer:
 
         # Collect factor scores; None means "no data — skip this factor"
         scores = {
-            'technical': technical,
-            'fundamental': fundamental,
-            'momentum': momentum,
-            'sentiment': sentiment,
-            'quality': quality,
-            'value': value,
+            "technical": technical,
+            "fundamental": fundamental,
+            "momentum": momentum,
+            "sentiment": sentiment,
+            "quality": quality,
+            "value": value,
         }
 
         weights = self._get_weights(symbol=symbol)
@@ -138,11 +155,19 @@ class StockScorer:
             if active_weight > 0:
                 logger.info(
                     "Redistributing weight %.4f from skipped factors %s to active factors %s",
-                    skipped_weight, skipped_factors, active_factors,
+                    skipped_weight,
+                    skipped_factors,
+                    active_factors,
                 )
                 weights = {
-                    k: (weights.get(k, 0) + skipped_weight * weights.get(k, 0) / active_weight)
-                    if k in active_factors else 0.0
+                    k: (
+                        (
+                            weights.get(k, 0)
+                            + skipped_weight * weights.get(k, 0) / active_weight
+                        )
+                        if k in active_factors
+                        else 0.0
+                    )
                     for k in weights
                 }
             else:
@@ -152,7 +177,9 @@ class StockScorer:
                     skipped_factors,
                 )
                 n_active = len(active_factors)
-                weights = {k: (1.0 / n_active if k in active_factors else 0.0) for k in weights}
+                weights = {
+                    k: (1.0 / n_active if k in active_factors else 0.0) for k in weights
+                }
 
         # Compute composite using only active (non-None) factors
         composite = sum(
@@ -176,9 +203,9 @@ class StockScorer:
     def _score_technical(self, symbol: str, data: dict) -> float:
         """Score based on technical indicators (RSI, MACD, Bollinger, etc.)."""
         score = 50.0  # neutral default
-        rsi = data.get('rsi')
-        macd_signal = data.get('macd_signal', 0)
-        bb_position = data.get('bb_position', 0.5)  # 0=lower, 1=upper
+        rsi = data.get("rsi")
+        macd_signal = data.get("macd_signal", 0)
+        bb_position = data.get("bb_position", 0.5)  # 0=lower, 1=upper
 
         if rsi is not None:
             if rsi < 30:
@@ -208,9 +235,9 @@ class StockScorer:
     def _score_momentum(self, symbol: str, data: dict) -> float:
         """Score based on price momentum."""
         score = 50.0
-        ret_5d = data.get('return_5d', 0)
-        ret_20d = data.get('return_20d', 0)
-        rel_volume = data.get('relative_volume', 1.0)
+        ret_5d = data.get("return_5d", 0)
+        ret_20d = data.get("return_20d", 0)
+        rel_volume = data.get("relative_volume", 1.0)
 
         # Positive momentum scores higher
         score += min(20, ret_5d * 100)

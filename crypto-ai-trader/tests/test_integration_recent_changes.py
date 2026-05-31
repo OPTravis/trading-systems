@@ -23,16 +23,19 @@ os.chdir(PROJECT_ROOT)
 
 results = []
 
+
 def record(name, passed, detail=""):
     status = "PASS" if passed else "FAIL"
     results.append((name, status, detail))
     icon = "✅" if passed else "❌"
     print(f"  {icon} {status}: {name}" + (f" — {detail}" if detail else ""))
 
+
 def section(title):
     print(f"\n{'='*60}")
     print(f"  {title}")
     print(f"{'='*60}")
+
 
 # ======================================================================
 # TEST 1: ccxt client (USE_CCXT=1)
@@ -40,10 +43,13 @@ def section(title):
 section("1. CCXT Client (USE_CCXT=1)")
 
 try:
-    from src.ccxt_client import BinanceClient as CcxtBinanceClient
+    from pathlib import Path
+
     # Manually load env so API keys are available
     from dotenv import load_dotenv
-    from pathlib import Path
+
+    from src.ccxt_client import BinanceClient as CcxtBinanceClient
+
     load_dotenv(Path(PROJECT_ROOT) / "crypto-secrets.env", override=False)
     load_dotenv(Path(PROJECT_ROOT) / ".env", override=False)
 
@@ -62,7 +68,11 @@ try:
         try:
             symbols = client.get_symbols(quote="USDT")
             has_btc = any("BTCUSDT" in s for s in symbols) if symbols else False
-            record("ccxt_get_symbols", has_btc, f"found {len(symbols)} symbols, BTCUSDT={'yes' if has_btc else 'no'}")
+            record(
+                "ccxt_get_symbols",
+                has_btc,
+                f"found {len(symbols)} symbols, BTCUSDT={'yes' if has_btc else 'no'}",
+            )
         except Exception as e:
             record("ccxt_get_symbols", False, str(e)[:120])
 
@@ -73,9 +83,20 @@ try:
             has_len = len(klines) > 0
             first_k = klines[0] if has_len else {}
             is_dict = isinstance(first_k, dict)
-            has_keys = all(k in first_k for k in ["open", "high", "low", "close", "volume", "open_time"]) if is_dict else False
+            has_keys = (
+                all(
+                    k in first_k
+                    for k in ["open", "high", "low", "close", "volume", "open_time"]
+                )
+                if is_dict
+                else False
+            )
             passed = is_list and has_len and is_dict and has_keys
-            record("ccxt_get_klines", passed, f"len={len(klines)} keys={list(first_k.keys())[:6] if first_k else 'none'}")
+            record(
+                "ccxt_get_klines",
+                passed,
+                f"len={len(klines)} keys={list(first_k.keys())[:6] if first_k else 'none'}",
+            )
         except Exception as e:
             record("ccxt_get_klines", False, str(e)[:120])
 
@@ -122,7 +143,6 @@ try:
     # Test USE_CCXT=1 path
     os.environ["USE_CCXT"] = "1"
     # Need to reimport to pick up the env change
-    import importlib
     if "src.binance_client" in sys.modules:
         del sys.modules["src.binance_client"]
     if "src.ccxt_client" in sys.modules:
@@ -134,8 +154,9 @@ try:
     os.environ.pop("USE_CCXT", None)
     os.environ["USE_CCXT"] = "1"
 
-    import src.binance_client as bc_mod
     import inspect
+
+    import src.binance_client as bc_mod
 
     # Check which implementation is loaded
     source_file = inspect.getfile(bc_mod.BinanceClient)
@@ -148,17 +169,21 @@ try:
     ccxt_source = Path(PROJECT_ROOT) / "src" / "ccxt_client.py"
     sdk_source = Path(PROJECT_ROOT) / "src" / "_binance_sdk_client.py"
     proxy_source = Path(PROJECT_ROOT) / "src" / "binance_client.py"
-    record("proxy_source_files_exist",
-           ccxt_source.exists() and sdk_source.exists() and proxy_source.exists(),
-           f"ccxt={ccxt_source.exists()} sdk={sdk_source.exists()} proxy={proxy_source.exists()}")
+    record(
+        "proxy_source_files_exist",
+        ccxt_source.exists() and sdk_source.exists() and proxy_source.exists(),
+        f"ccxt={ccxt_source.exists()} sdk={sdk_source.exists()} proxy={proxy_source.exists()}",
+    )
 
     # Verify the proxy module reads USE_CCXT correctly
     with open(proxy_source) as f:
         proxy_content = f.read()
     uses_ccxt_check = '"1"' in proxy_content or '"true"' in proxy_content
-    record("proxy_env_check_logic",
-           uses_ccxt_check,
-           "proxy checks USE_CCXT env var correctly")
+    record(
+        "proxy_env_check_logic",
+        uses_ccxt_check,
+        "proxy checks USE_CCXT env var correctly",
+    )
 
 except Exception as e:
     record("binance_client_proxy", False, str(e)[:120])
@@ -174,7 +199,11 @@ try:
     from src.paper_trader import PaperTrader, is_paper_mode
 
     # 3a. is_paper_mode
-    record("paper_is_paper_mode", is_paper_mode(), f"TRADING_MODE={os.environ.get('TRADING_MODE')}")
+    record(
+        "paper_is_paper_mode",
+        is_paper_mode(),
+        f"TRADING_MODE={os.environ.get('TRADING_MODE')}",
+    )
 
     # 3b. PaperTrader init
     try:
@@ -217,8 +246,11 @@ try:
                 qty = round(50.0 / current_price, 6)  # buy $50 worth
                 order = pt.place_order("BTCUSDT", "BUY", "MARKET", quantity=qty)
                 passed = order is not None and "orderId" in order
-                record("paper_place_market_buy", passed,
-                       f"orderId={order.get('orderId') if order else None}, qty={qty}, price={order.get('fills', [{}])[0].get('price') if order else None}")
+                record(
+                    "paper_place_market_buy",
+                    passed,
+                    f"orderId={order.get('orderId') if order else None}, qty={qty}, price={order.get('fills', [{}])[0].get('price') if order else None}",
+                )
             else:
                 record("paper_place_market_buy", False, "no price available")
         except Exception as e:
@@ -227,7 +259,11 @@ try:
         # 3g. verify balance decreased after buy
         try:
             new_bal = pt.get_balance("USDT")
-            record("paper_balance_after_buy", new_bal < 10000, f"balance={new_bal} (should be < 10000)")
+            record(
+                "paper_balance_after_buy",
+                new_bal < 10000,
+                f"balance={new_bal} (should be < 10000)",
+            )
         except Exception as e:
             record("paper_balance_after_buy", False, str(e)[:120])
 
@@ -250,12 +286,12 @@ section("4. RiskManager (all sub-modules)")
 
 try:
     from src.risk_manager import (
-        RiskManager,
-        TrendFilter,
-        TrailingStop,
         ConsecutiveLossGuard,
         DailyLossLimit,
         PerPairCooldown,
+        RiskManager,
+        TrailingStop,
+        TrendFilter,
     )
     from src.sector_classifier import SectorExposure
 
@@ -306,15 +342,30 @@ try:
     # 4g. RiskManager init (without client — simpler path)
     try:
         rm = RiskManager(binance_client=None)
-        has_tf = hasattr(rm, "trend_filter") and isinstance(rm.trend_filter, TrendFilter)
-        has_ts = hasattr(rm, "trailing_stop") and isinstance(rm.trailing_stop, TrailingStop)
-        has_clg = hasattr(rm, "loss_guard") and isinstance(rm.loss_guard, ConsecutiveLossGuard)
-        has_dll = hasattr(rm, "daily_loss") and isinstance(rm.daily_loss, DailyLossLimit)
-        has_ppc = hasattr(rm, "pair_cooldown") and isinstance(rm.pair_cooldown, PerPairCooldown)
-        has_se = hasattr(rm, "sector_exposure") and isinstance(rm.sector_exposure, SectorExposure)
+        has_tf = hasattr(rm, "trend_filter") and isinstance(
+            rm.trend_filter, TrendFilter
+        )
+        has_ts = hasattr(rm, "trailing_stop") and isinstance(
+            rm.trailing_stop, TrailingStop
+        )
+        has_clg = hasattr(rm, "loss_guard") and isinstance(
+            rm.loss_guard, ConsecutiveLossGuard
+        )
+        has_dll = hasattr(rm, "daily_loss") and isinstance(
+            rm.daily_loss, DailyLossLimit
+        )
+        has_ppc = hasattr(rm, "pair_cooldown") and isinstance(
+            rm.pair_cooldown, PerPairCooldown
+        )
+        has_se = hasattr(rm, "sector_exposure") and isinstance(
+            rm.sector_exposure, SectorExposure
+        )
         all_ok = all([has_tf, has_ts, has_clg, has_dll, has_ppc, has_se])
-        record("risk_manager_init_no_client", all_ok,
-               f"tf={has_tf} ts={has_ts} clg={has_clg} dll={has_dll} ppc={has_ppc} se={has_se}")
+        record(
+            "risk_manager_init_no_client",
+            all_ok,
+            f"tf={has_tf} ts={has_ts} clg={has_clg} dll={has_dll} ppc={has_ppc} se={has_se}",
+        )
     except Exception as e:
         record("risk_manager_init_no_client", False, str(e)[:120])
 
@@ -322,12 +373,16 @@ try:
     try:
         if os.environ.get("BINANCE_API_KEY") and os.environ.get("BINANCE_API_SECRET"):
             from src.ccxt_client import BinanceClient as CcxtClient
+
             client = CcxtClient(testnet=False)
             rm2 = RiskManager(binance_client=client)
             has_corr = rm2.correlation_risk is not None
             has_dd = rm2.drawdown_breaker is not None
-            record("risk_manager_init_with_client", has_corr and has_dd,
-                   f"correlation={has_corr} drawdown={has_dd}")
+            record(
+                "risk_manager_init_with_client",
+                has_corr and has_dd,
+                f"correlation={has_corr} drawdown={has_dd}",
+            )
         else:
             record("risk_manager_init_with_client", False, "no API keys")
     except Exception as e:
@@ -344,6 +399,7 @@ section("5. Funding Rate (fapi.binance.com REST)")
 
 try:
     from src.data_feed_funding import FundingRate
+
     fr = FundingRate()
 
     # 5a. Fetch BTC funding rates
@@ -353,11 +409,20 @@ try:
         has_data = len(rates) > 0 if is_list else False
         if has_data:
             first = rates[0]
-            has_keys = all(k in first for k in ["funding_rate", "funding_time", "symbol"])
-            record("funding_rate_fetch", has_keys,
-                   f"got {len(rates)} entries, keys={list(first.keys())}")
+            has_keys = all(
+                k in first for k in ["funding_rate", "funding_time", "symbol"]
+            )
+            record(
+                "funding_rate_fetch",
+                has_keys,
+                f"got {len(rates)} entries, keys={list(first.keys())}",
+            )
         else:
-            record("funding_rate_fetch", is_list, f"got empty list (len={len(rates) if is_list else 'N/A'})")
+            record(
+                "funding_rate_fetch",
+                is_list,
+                f"got empty list (len={len(rates) if is_list else 'N/A'})",
+            )
     except Exception as e:
         record("funding_rate_fetch", False, str(e)[:120])
 
@@ -398,18 +463,20 @@ try:
         synthetic_klines = []
         base_price = 100.0
         for i in range(30):
-            synthetic_klines.append({
-                "open_time": i * 3600000,
-                "open": base_price + i * 0.5,
-                "high": base_price + i * 0.5 + 2.0,
-                "low": base_price + i * 0.5 - 1.0,
-                "close": base_price + i * 0.5 + 0.5,
-                "volume": 1000 + i * 10,
-                "close_time": (i + 1) * 3600000 - 1,
-                "quote_volume": 0.0,
-                "trades": 0,
-                "is_closed": True,
-            })
+            synthetic_klines.append(
+                {
+                    "open_time": i * 3600000,
+                    "open": base_price + i * 0.5,
+                    "high": base_price + i * 0.5 + 2.0,
+                    "low": base_price + i * 0.5 - 1.0,
+                    "close": base_price + i * 0.5 + 0.5,
+                    "volume": 1000 + i * 10,
+                    "close_time": (i + 1) * 3600000 - 1,
+                    "quote_volume": 0.0,
+                    "trades": 0,
+                    "is_closed": True,
+                }
+            )
 
         atr_val = Indicators.atr(synthetic_klines, period=14)
         passed = isinstance(atr_val, float) and atr_val > 0
@@ -432,7 +499,11 @@ try:
         ema = Indicators.ema(prices, 20)
         rsi = Indicators.rsi(prices, 14)
         passed = all(isinstance(v, float) for v in [sma, ema, rsi])
-        record("indicators_sma_ema_rsi", passed, f"SMA={sma:.2f} EMA={ema:.2f} RSI={rsi:.2f}")
+        record(
+            "indicators_sma_ema_rsi",
+            passed,
+            f"SMA={sma:.2f} EMA={ema:.2f} RSI={rsi:.2f}",
+        )
     except Exception as e:
         record("indicators_sma_ema_rsi", False, str(e)[:120])
 
@@ -442,7 +513,11 @@ try:
             live_klines = client.get_klines("BTCUSDT", "1h", limit=30)
             atr_live = Indicators.atr(live_klines, period=14)
             passed = isinstance(atr_live, float) and atr_live > 0
-            record("atr_from_live_klines", passed, f"ATR={atr_live} (from {len(live_klines)} live klines)")
+            record(
+                "atr_from_live_klines",
+                passed,
+                f"ATR={atr_live} (from {len(live_klines)} live klines)",
+            )
         except Exception as e:
             record("atr_from_live_klines", False, str(e)[:120])
     else:

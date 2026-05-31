@@ -112,7 +112,7 @@ class StateDB:
         with self._lock:
             if self._conn:
                 self._conn.close()
-                self._conn = None
+                self._conn = None  # type: ignore[assignment]
 
     @classmethod
     def reset_for_testing(cls) -> None:

@@ -12,11 +12,8 @@ Tests:
 All tests run in simulation mode (mocked BinanceClient / SQLite state.db).
 """
 
-import json
 import os
-import sqlite3
 import sys
-import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -31,16 +28,13 @@ from src.drawdown_breaker import DrawdownBreaker
 from src.risk_manager import (
     ConsecutiveLossGuard,
     RiskManager,
-    SectorExposure,
-    TrendFilter,
-    TrailingStop,
 )
 from src.state_db import StateDB
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _env_and_tmp(monkeypatch, tmp_path):
@@ -53,6 +47,7 @@ def _env_and_tmp(monkeypatch, tmp_path):
 
     # Redirect risk_manager data dir
     import src.risk_manager as rm
+
     monkeypatch.setattr(rm, "_DATA_DIR", tmp_path / "data")
     (tmp_path / "data").mkdir(parents=True, exist_ok=True)
 
@@ -88,6 +83,7 @@ def mock_client():
 # 1. Drawdown Breaker
 # ---------------------------------------------------------------------------
 
+
 class TestDrawdownBreaker:
     """Simulate portfolio value dropping 15% from peak → breaker should trip."""
 
@@ -98,7 +94,10 @@ class TestDrawdownBreaker:
         result = db.check_drawdown(850.0)
         assert result["tripped"] is True, f"Expected tripped, got {result}"
         assert result["drawdown_pct"] == 15.0
-        assert "Hard stop triggered" in result["reason"] or "Breaker still tripped" in result["reason"]
+        assert (
+            "Hard stop triggered" in result["reason"]
+            or "Breaker still tripped" in result["reason"]
+        )
 
     def test_drawdown_below_threshold_no_trip(self, tmp_path):
         db = DrawdownBreaker(binance_client=None)
@@ -121,6 +120,7 @@ class TestDrawdownBreaker:
 # ---------------------------------------------------------------------------
 # 2. Streak Guard (Consecutive Loss Guard)
 # ---------------------------------------------------------------------------
+
 
 class TestStreakGuard:
     """3 consecutive losses → SOFT (size reduction), 5 losses → HARD pause (12h)."""
@@ -181,6 +181,7 @@ class TestStreakGuard:
 # 3. Daily Loss Limit
 # ---------------------------------------------------------------------------
 
+
 class TestDailyLossLimit:
     """Simulate daily PnL reaching -$50 → block new trades."""
 
@@ -208,12 +209,23 @@ class TestDailyLossLimit:
     def test_portfolio_daily_loss_pct(self, tmp_path):
         """PortfolioManager checks max_daily_loss_pct (default 3%)."""
         from src.portfolio import PortfolioManager
+
         pm = PortfolioManager()
         pm.cash_balance = 1000
         pm._daily_start_value = 1000
         pm._daily_start_date = __import__("datetime").datetime.now().date()
         # Simulate 5% loss by also reducing position value
-        pm.positions = {"DUMMYUSDT": {"symbol": "DUMMYUSDT", "quantity": 1, "entry_price": 50, "current_price": 50, "stop_loss": 1, "take_profit": 100, "created_at": __import__("datetime").datetime.now().isoformat()}}
+        pm.positions = {
+            "DUMMYUSDT": {
+                "symbol": "DUMMYUSDT",
+                "quantity": 1,
+                "entry_price": 50,
+                "current_price": 50,
+                "stop_loss": 1,
+                "take_profit": 100,
+                "created_at": __import__("datetime").datetime.now().isoformat(),
+            }
+        }
         pm.cash_balance = 940
         # Force total_value below daily_start to trigger loss
         pm._daily_start_value = 1000
@@ -233,29 +245,47 @@ class TestDailyLossLimit:
 # 4. Max Positions
 # ---------------------------------------------------------------------------
 
+
 class TestMaxPositions:
     """When positions == max_positions, reject new orders."""
 
     def test_max_positions_rejection(self, tmp_path):
         """Use a fresh PortfolioManager with isolated DB to avoid real positions."""
-        import os
         # Create isolated state DB
         db_path = str(tmp_path / "test_state.db")
         os.environ["STATE_DB_PATH"] = db_path
         # Reset the singleton so get_state_db() creates a new instance
         import src.state_db as sdb
+
         sdb._state_db_instance = None
         from src.portfolio import PortfolioManager
+
         pm = PortfolioManager()
         # Should start empty
-        assert len(pm.positions) == 0, f"Expected 0 positions but got {len(pm.positions)}: {list(pm.positions.keys())}"
+        assert (
+            len(pm.positions) == 0
+        ), f"Expected 0 positions but got {len(pm.positions)}: {list(pm.positions.keys())}"
         max_pos = pm.config.get("max_open_positions", 5)
         # Fill to max
         for i in range(max_pos):
-            pm.add_position(f"COIN{i}USDT", 1.0, 10.0, strategy="test", deduct_cash=False, _skip_validation=True)
+            pm.add_position(
+                f"COIN{i}USDT",
+                1.0,
+                10.0,
+                strategy="test",
+                deduct_cash=False,
+                _skip_validation=True,
+            )
         # Next should raise
         with pytest.raises(ValueError, match="Cannot open new position"):
-            pm.add_position(f"COIN{max_pos}USDT", 1.0, 10.0, strategy="test", deduct_cash=False, _skip_validation=True)
+            pm.add_position(
+                f"COIN{max_pos}USDT",
+                1.0,
+                10.0,
+                strategy="test",
+                deduct_cash=False,
+                _skip_validation=True,
+            )
         # Clean up env var and singleton
         del os.environ["STATE_DB_PATH"]
         sdb._state_db_instance = None
@@ -263,16 +293,30 @@ class TestMaxPositions:
     def test_main_max_positions(self):
         """main.execute_auto_trade checks active_positions >= max_positions."""
         from main import execute_auto_trade
-        with patch("src.trade_executor.get_trading_client") as MockBC, \
-             patch("src.trade_executor.FeishuNotifier") as MockNotifier, \
-             patch("src.trade_executor.count_active_positions", return_value=5):
+
+        with patch("src.trade_executor.get_trading_client") as MockBC, patch(
+            "src.trade_executor.FeishuNotifier"
+        ) as MockNotifier, patch(
+            "src.trade_executor.count_active_positions", return_value=5
+        ):
             mock_bc = MagicMock()
             mock_bc.get_free_balance.return_value = 1000.0
             MockBC.return_value = mock_bc
             result = execute_auto_trade(
-                "SOLUSDT", 100.0, "trend", 2.0,
-                [{"pct": 2.0, "size_pct": 33}, {"pct": 3.0, "size_pct": 33}, {"pct": 5.0, "size_pct": 34}],
-                98.0, 24, ["RSI"], "RSI", score=75,
+                "SOLUSDT",
+                100.0,
+                "trend",
+                2.0,
+                [
+                    {"pct": 2.0, "size_pct": 33},
+                    {"pct": 3.0, "size_pct": 33},
+                    {"pct": 5.0, "size_pct": 34},
+                ],
+                98.0,
+                24,
+                ["RSI"],
+                "RSI",
+                score=75,
             )
         assert result["success"] is False
         assert "Max positions" in result["error"]
@@ -282,27 +326,43 @@ class TestMaxPositions:
 # 5. Insufficient Cash
 # ---------------------------------------------------------------------------
 
+
 class TestInsufficientCash:
     """Cash below minimum order size → reject trade."""
 
     def test_execute_auto_trade_rejects_low_cash(self):
         from main import execute_auto_trade
-        with patch("src.trade_executor.get_trading_client") as MockGTC, \
-             patch("src.trade_executor.FeishuNotifier") as MockNotifier, \
-             patch("src.trade_executor.count_active_positions", return_value=0):
+
+        with patch("src.trade_executor.get_trading_client") as MockGTC, patch(
+            "src.trade_executor.FeishuNotifier"
+        ) as MockNotifier, patch(
+            "src.trade_executor.count_active_positions", return_value=0
+        ):
             mock_bc = MagicMock()
             mock_bc.get_free_balance.return_value = 5.0  # below $10 min
             MockGTC.return_value = mock_bc
             result = execute_auto_trade(
-                "SOLUSDT", 100.0, "trend", 2.0,
-                [{"pct": 2.0, "size_pct": 33}, {"pct": 3.0, "size_pct": 33}, {"pct": 5.0, "size_pct": 34}],
-                98.0, 24, ["RSI"], "RSI", score=75,
+                "SOLUSDT",
+                100.0,
+                "trend",
+                2.0,
+                [
+                    {"pct": 2.0, "size_pct": 33},
+                    {"pct": 3.0, "size_pct": 33},
+                    {"pct": 5.0, "size_pct": 34},
+                ],
+                98.0,
+                24,
+                ["RSI"],
+                "RSI",
+                score=75,
             )
         assert result["success"] is False
         assert "Insufficient USDT" in result["error"]
 
     def test_portfolio_add_position_checks_cash(self, tmp_path):
         from src.portfolio import PortfolioManager
+
         pm = PortfolioManager()
         pm.cash_balance = 3.0
         with pytest.raises(ValueError):
@@ -313,35 +373,46 @@ class TestInsufficientCash:
 # 6. Network Anomaly (API timeout / error handling)
 # ---------------------------------------------------------------------------
 
+
 class TestNetworkAnomaly:
     """Simulate Binance API timeout and verify retry logic."""
 
     def test_klines_ssl_retry_exhausts(self, tmp_path):
         import ccxt
+
         from src.binance_client import BinanceClient
+
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
             bc.exchange = MagicMock()
             # ccxt_client.get_klines uses exchange.publicGetKlines, not fetch_ohlcv
-            bc.exchange.publicGetKlines.side_effect = ccxt.NetworkError("SSLError timeout")
+            bc.exchange.publicGetKlines.side_effect = ccxt.NetworkError(
+                "SSLError timeout"
+            )
             result = bc.get_klines("BTCUSDT", "1h", max_retries=3)
         assert result == []
         assert bc.exchange.publicGetKlines.call_count == 3
 
     def test_place_order_network_retry_then_fail(self, tmp_path):
         import ccxt
+
         from src.binance_client import BinanceClient
+
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
             bc.exchange = MagicMock()
-            bc.exchange.create_order.side_effect = ccxt.NetworkError("ConnectionError timeout")
+            bc.exchange.create_order.side_effect = ccxt.NetworkError(
+                "ConnectionError timeout"
+            )
             result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.01, retry=3)
         assert result is None
         assert bc.exchange.create_order.call_count == 3
 
     def test_get_account_429_backoff(self, tmp_path):
         import ccxt
+
         from src.binance_client import BinanceClient
+
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
             bc.exchange = MagicMock()
@@ -354,11 +425,15 @@ class TestNetworkAnomaly:
 
     def test_get_account_network_error_returns_empty(self, tmp_path):
         import ccxt
+
         from src.binance_client import BinanceClient
+
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
             bc.exchange = MagicMock()
-            bc.exchange.private_get_account.side_effect = ccxt.NetworkError("ConnectionError timeout")
+            bc.exchange.private_get_account.side_effect = ccxt.NetworkError(
+                "ConnectionError timeout"
+            )
             with patch("src.ccxt_client.time.sleep"):
                 result = bc.get_account()
             assert result == {}
@@ -368,12 +443,14 @@ class TestNetworkAnomaly:
 # Integration: RiskManager pre_trade_check with multiple blocks
 # ---------------------------------------------------------------------------
 
+
 class TestRiskManagerIntegration:
     """End-to-end pre_trade_check under extreme conditions."""
 
     def test_all_blocks_together(self, mock_client, tmp_path):
         """Trend BEARISH + sector over limit + loss guard paused + drawdown tripped."""
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path / "data"
         (tmp_path / "data").mkdir(parents=True, exist_ok=True)
@@ -388,9 +465,23 @@ class TestRiskManagerIntegration:
             mgr = RiskManager(binance_client=mock_client)
             # Force BEARISH trend
             mock_client.get_klines.return_value = [
-                {"open": 200.0, "high": 210.0, "low": 190.0, "close": 200.0, "volume": 1000}
+                {
+                    "open": 200.0,
+                    "high": 210.0,
+                    "low": 190.0,
+                    "close": 200.0,
+                    "volume": 1000,
+                }
                 for _ in range(249)
-            ] + [{"open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 1000}]
+            ] + [
+                {
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 1000,
+                }
+            ]
 
             # Force loss guard pause
             mgr.loss_guard._state["consecutive_losses"] = 3
@@ -421,20 +512,23 @@ class TestRiskManagerIntegration:
 # SQLite State Manipulation Helpers (used by tests above implicitly)
 # ---------------------------------------------------------------------------
 
+
 class TestSQLiteStateManipulation:
     """Direct DB operations to simulate states."""
 
     def test_drawdown_persists_in_sqlite(self, fresh_state_db):
         db = fresh_state_db
-        db.drawdown_set({
-            "high_watermark": 1000.0,
-            "current_drawdown_pct": 15.0,
-            "max_drawdown_pct": 0.15,
-            "tripped_count": 1,
-            "tripped_at": time.time(),
-            "reset_at": None,
-            "history": [],
-        })
+        db.drawdown_set(
+            {
+                "high_watermark": 1000.0,
+                "current_drawdown_pct": 15.0,
+                "max_drawdown_pct": 0.15,
+                "tripped_count": 1,
+                "tripped_at": time.time(),
+                "reset_at": None,
+                "history": [],
+            }
+        )
         loaded = db.drawdown_get()
         assert loaded["high_watermark"] == 1000.0
         assert loaded["current_drawdown_pct"] == 15.0
@@ -449,26 +543,32 @@ class TestSQLiteStateManipulation:
 
     def test_portfolio_persists_in_sqlite(self, fresh_state_db):
         db = fresh_state_db
-        db.portfolio_set("BTCUSDT", {
-            "quantity": 0.01,
-            "entry_price": 50000.0,
-            "strategy": "trend",
-            "opened_at": time.time(),
-            "stop_loss": 49000.0,
-            "take_profit": 53000.0,
-        })
+        db.portfolio_set(
+            "BTCUSDT",
+            {
+                "quantity": 0.01,
+                "entry_price": 50000.0,
+                "strategy": "trend",
+                "opened_at": time.time(),
+                "stop_loss": 49000.0,
+                "take_profit": 53000.0,
+            },
+        )
         loaded = db.portfolio_get("BTCUSDT")
         assert loaded["quantity"] == 0.01
         assert loaded["entry_price"] == 50000.0
 
     def test_trailing_stop_persists_in_sqlite(self, fresh_state_db):
         db = fresh_state_db
-        db.ts_set("BTCUSDT", {
-            "entry_price": 50000.0,
-            "highest_price": 52000.0,
-            "sl_price": 51000.0,
-            "activated": True,
-        })
+        db.ts_set(
+            "BTCUSDT",
+            {
+                "entry_price": 50000.0,
+                "highest_price": 52000.0,
+                "sl_price": 51000.0,
+                "activated": True,
+            },
+        )
         loaded = db.ts_get("BTCUSDT")
         assert loaded["activated"] is True
         assert loaded["sl_price"] == 51000.0

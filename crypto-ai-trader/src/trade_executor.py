@@ -5,20 +5,22 @@ Extracted from main.py for maintainability.
 
 import logging
 import time
-import numpy as np
-from math import floor, ceil
+from math import floor
 
-from src.binance_client import BinanceClient
+import numpy as np
+
+from src.notifier import FeishuNotifier
 from src.paper_trader import get_trading_client
 from src.portfolio import PortfolioManager
-from src.notifier import FeishuNotifier
 
 logger = logging.getLogger(__name__)
 
 
-def _check_price_deviation(client, symbol: str, price: float, sigma: float = 3.0) -> bool:
+def _check_price_deviation(
+    client, symbol: str, price: float, sigma: float = 3.0
+) -> bool:
     """Check if current price deviates abnormally from 14-kline average.
-    
+
     Returns True if price is within normal range (safe to trade).
     Returns False if price is anomalous (>sigma std from mean).
     """
@@ -28,7 +30,7 @@ def _check_price_deviation(client, symbol: str, price: float, sigma: float = 3.0
             return True  # not enough data — pass through
         # klines from Binance API are list-of-lists: [open_time, open, high, low, close, ...]
         # Index 4 = close price (previously used k['close'] which failed on lists)
-        closes = [float(k['close']) for k in klines]
+        closes = [float(k["close"]) for k in klines]
         mean = np.mean(closes)
         std = np.std(closes)
         if std == 0:
@@ -42,13 +44,15 @@ def _check_price_deviation(client, symbol: str, price: float, sigma: float = 3.0
             return False
         return True
     except Exception as e:
-        logger.warning(f"Price deviation check failed for {symbol}: {e} — allowing trade (fail-open)")
+        logger.warning(
+            f"Price deviation check failed for {symbol}: {e} — allowing trade (fail-open)"
+        )
         return True  # fail-open: allow trade on transient check failure
 
 
 def _check_duplicate_order(client, symbol: str) -> bool:
     """Check if there's already a pending BUY order for this symbol.
-    
+
     Returns True if no duplicate exists (safe to place order).
     Returns False if duplicate found (should block).
     """
@@ -63,7 +67,9 @@ def _check_duplicate_order(client, symbol: str) -> bool:
                 return False
         return True
     except Exception as e:
-        logger.warning(f"Duplicate order check failed for {symbol}: {e} — allowing trade (fail-open)")
+        logger.warning(
+            f"Duplicate order check failed for {symbol}: {e} — allowing trade (fail-open)"
+        )
         return True  # fail-open: allow trade on transient check failure
 
 
@@ -83,8 +89,6 @@ def get_position_tier(score):
         return 0.15, "CAUTIOUS"
     else:
         return 0.0, "SKIP"
-
-
 
 
 def count_active_positions(client):
@@ -108,25 +112,40 @@ def count_active_positions(client):
         except Exception as e:
             logger.debug(f"count_active_positions: batch ticker fetch failed: {e}")
         count = 0
-        for b in acct['balances']:
-            free = float(b['free']) + float(b['locked'])
-            if free > 0 and b['asset'] not in ('USDT', 'NTRN'):
-                sym = b['asset'] + 'USDT'
+        for b in acct["balances"]:
+            free = float(b["free"]) + float(b["locked"])
+            if free > 0 and b["asset"] not in ("USDT", "NTRN"):
+                sym = b["asset"] + "USDT"
                 price = price_map.get(sym, 0)
                 if price > 0 and free * price >= 5.0:
                     count += 1
                 elif price == 0:
                     # Can't get price — conservatively skip (don't inflate count)
-                    logger.warning("count_active_positions: no price for %s, skipping", sym)
+                    logger.warning(
+                        "count_active_positions: no price for %s, skipping", sym
+                    )
         return count
     except Exception:
-        logger.warning(f"count_active_positions: account fetch failed")
+        logger.warning("count_active_positions: account fetch failed")
         return 0
 
 
-
-
-def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_price, max_hold, signals, reason, score=70, cash_reserve_pct=30, max_position_pct=15, max_total_exposure_pct=70, strategy_size_multiplier=1.0):
+def execute_auto_trade(
+    symbol,
+    price,
+    strategy,
+    stop_loss_pct,
+    tp_levels,
+    stop_price,
+    max_hold,
+    signals,
+    reason,
+    score=70,
+    cash_reserve_pct=30,
+    max_position_pct=15,
+    max_total_exposure_pct=70,
+    strategy_size_multiplier=1.0,
+):
     """Execute trade automatically with Kelly-optimal position sizing.
 
     Position size uses Half-Kelly criterion based on historical win rate
@@ -136,19 +155,20 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     Returns dict with success status and order details.
     """
     import copy
-    import numpy as np  # deferred import for compatibility
+
     tp_levels = copy.deepcopy(tp_levels)  # prevent mutation of cached strategy data
     client = get_trading_client()
     notifier = FeishuNotifier()
 
     # Get available USDT balance
-    usdt_bal = client.get_free_balance('USDT')
+    usdt_bal = client.get_free_balance("USDT")
     if usdt_bal < 10:
         return {"success": False, "error": f"Insufficient USDT: ${usdt_bal:.2f}"}
 
     # Circuit breaker: block trades when system is in failure/drawdown state
     try:
         from src.circuit_breaker import CircuitBreaker
+
         cb = CircuitBreaker()
         if cb.is_tripped():
             logger.warning("Circuit breaker tripped — blocking trade")
@@ -160,37 +180,48 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # Daily loss circuit breaker: tier-based daily P&L protection
     try:
         from src.daily_loss_breaker import get_daily_loss_breaker
+
         dlb = get_daily_loss_breaker()
         # Get total portfolio value for daily loss check
         total_value = usdt_bal  # fallback to available USDT
         try:
             _account = client.get_account()
-            for b in _account.get('balances', []):
-                _asset = b['asset']
-                _free = float(b.get('free', 0))
-                _locked = float(b.get('locked', 0))
+            for b in _account.get("balances", []):
+                _asset = b["asset"]
+                _free = float(b.get("free", 0))
+                _locked = float(b.get("locked", 0))
                 _qty = _free + _locked
-                if _qty > 0 and _asset not in ('USDT', 'NTRN'):
+                if _qty > 0 and _asset not in ("USDT", "NTRN"):
                     try:
                         _price = float(client.get_ticker_price(f"{_asset}USDT"))
                         total_value += _qty * _price
                     except Exception:
-                        logger.error("Failed to get asset price for daily loss calc", exc_info=True)
+                        logger.error(
+                            "Failed to get asset price for daily loss calc",
+                            exc_info=True,
+                        )
         except Exception:
-            logger.error("Failed to fetch account balance for daily loss calc", exc_info=True)
+            logger.error(
+                "Failed to fetch account balance for daily loss calc", exc_info=True
+            )
         dl_result = dlb.check_daily_loss(portfolio_value=total_value)
         if dlb.should_close_all():
             logger.warning(
                 f"Daily loss breaker tier {dl_result['tier']} — "
                 f"blocking trade, close all requested"
             )
-            return {"success": False, "error": f"Daily loss breaker tier {dl_result['tier']}: close all"}
+            return {
+                "success": False,
+                "error": f"Daily loss breaker tier {dl_result['tier']}: close all",
+            }
         if dlb.should_block_new_trades():
             logger.warning(
-                f"Daily loss breaker tier {dl_result['tier']} — "
-                f"blocking new trades"
+                f"Daily loss breaker tier {dl_result['tier']} — " f"blocking new trades"
             )
-            return {"success": False, "error": f"Daily loss breaker tier {dl_result['tier']}: new trades blocked"}
+            return {
+                "success": False,
+                "error": f"Daily loss breaker tier {dl_result['tier']}: new trades blocked",
+            }
     except Exception as e:
         logger.warning(f"Daily loss breaker check failed: {e}")
         return {"success": False, "error": f"Daily loss breaker check failed: {e}"}
@@ -203,16 +234,22 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     try:
         from src.drawdown_breaker import DrawdownBreaker
         from src.stepwise_drawdown import get_drawdown_action
+
         _ddb = DrawdownBreaker(binance_client=client)
         _dd_check = _ddb.check_drawdown(total_value)
         _dd_pct = _dd_check.get("drawdown_pct", 0)
         _dd_action = get_drawdown_action(_dd_pct)
         _sd_multiplier = _dd_action["size_multiplier"]
         if _sd_multiplier < 1.0:
-            logger.info(f"Stepwise drawdown: {_dd_pct:.1f}% → {_dd_action['level']} "
-                         f"(multiplier={_sd_multiplier}, {_dd_action['reason']})")
+            logger.info(
+                f"Stepwise drawdown: {_dd_pct:.1f}% → {_dd_action['level']} "
+                f"(multiplier={_sd_multiplier}, {_dd_action['reason']})"
+            )
         if _dd_action.get("block_new_trades"):
-            return {"success": False, "error": f"Stepwise drawdown {_dd_pct:.1f}%: {_dd_action['reason']}"}
+            return {
+                "success": False,
+                "error": f"Stepwise drawdown {_dd_pct:.1f}%: {_dd_action['reason']}",
+            }
     except Exception as e:
         logger.warning(f"Stepwise drawdown check failed (proceeding without): {e}")
 
@@ -221,7 +258,10 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     max_positions = 5
 
     if active_positions >= max_positions:
-        return {"success": False, "error": f"Max positions reached: {active_positions}/{max_positions}"}
+        return {
+            "success": False,
+            "error": f"Max positions reached: {active_positions}/{max_positions}",
+        }
 
     # Score below minimum threshold — no trade regardless of Kelly
     if score < 60:
@@ -231,8 +271,8 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # ── Position sizing: Kelly-first, tier-fallback ──
     # KellyPositionSizer uses historical win-rate data for optimal sizing.
     # When insufficient history (< 10 trades), falls back to tier-based sizing.
-    from src.kelly_sizer import KellyPositionSizer
     from src.fee_optimizer import FeeOptimizer
+    from src.kelly_sizer import KellyPositionSizer
     from src.state_db import get_state_db
 
     db = get_state_db()
@@ -274,9 +314,14 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         # Applying twice would double-count.
 
         if invest_pct <= 0 or invest_amount < 10:
-            logger.info(f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
-                         f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}")
-            return {"success": False, "error": f"Position too small: {invest_pct*100:.1f}% (${invest_amount:.2f})"}
+            logger.info(
+                f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
+                f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
+            )
+            return {
+                "success": False,
+                "error": f"Position too small: {invest_pct*100:.1f}% (${invest_amount:.2f})",
+            }
     else:
         # ── Tier-based fallback (insufficient history) ──
         base_pct, tier_label_tmp = get_position_tier(score)
@@ -314,8 +359,10 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # cash_reserve_pct comes from strategy_adaptor (regime + BTC trend + volatility).
     max_invest = usdt_bal * (1.0 - cash_reserve_pct / 100.0)
     if invest_amount > max_invest:
-        logger.info(f"Cash reserve cap: ${invest_amount:.2f} → ${max_invest:.2f} "
-                     f"(reserve={cash_reserve_pct}%)")
+        logger.info(
+            f"Cash reserve cap: ${invest_amount:.2f} → ${max_invest:.2f} "
+            f"(reserve={cash_reserve_pct}%)"
+        )
         invest_amount = max_invest
         invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
@@ -323,8 +370,10 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # No single trade can exceed max_position_pct of available USDT.
     max_single = usdt_bal * max_position_pct / 100.0
     if invest_amount > max_single:
-        logger.info(f"Position cap: ${invest_amount:.2f} → ${max_single:.2f} "
-                     f"(max_position_pct={max_position_pct}%)")
+        logger.info(
+            f"Position cap: ${invest_amount:.2f} → ${max_single:.2f} "
+            f"(max_position_pct={max_position_pct}%)"
+        )
         invest_amount = max_single
         invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
@@ -333,22 +382,26 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     try:
         _account = client.get_account()
         _invested = 0.0
-        for b in _account.get('balances', []):
-            _asset = b['asset']
-            _qty = float(b.get('free', 0)) + float(b.get('locked', 0))
-            if _qty > 0 and _asset not in ('USDT', 'NTRN'):
+        for b in _account.get("balances", []):
+            _asset = b["asset"]
+            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
+            if _qty > 0 and _asset not in ("USDT", "NTRN"):
                 try:
                     _p = float(client.get_ticker_price(f"{_asset}USDT"))
                     _invested += _qty * _p
                 except Exception:
-                    logger.error("Failed to get ticker price for exposure cap", exc_info=True)
+                    logger.error(
+                        "Failed to get ticker price for exposure cap", exc_info=True
+                    )
         _portfolio_val = usdt_bal + _invested
         _max_exposure = _portfolio_val * max_total_exposure_pct / 100.0
         if _invested + invest_amount > _max_exposure:
             _allowed = max(0, _max_exposure - _invested)
             if _allowed < invest_amount:
-                logger.info(f"Exposure cap: ${invest_amount:.2f} → ${_allowed:.2f} "
-                             f"(invested=${_invested:.2f}, max={max_total_exposure_pct}%)")
+                logger.info(
+                    f"Exposure cap: ${invest_amount:.2f} → ${_allowed:.2f} "
+                    f"(invested=${_invested:.2f}, max={max_total_exposure_pct}%)"
+                )
                 invest_amount = _allowed
                 invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
     except Exception as e:
@@ -357,18 +410,25 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # ── Position size multipliers (strategy + daily loss tier + stepwise drawdown) ──
     # P0-3: strategy_size_multiplier (from strategy_adaptor) was previously ignored,
     # causing FEAR regime positions to be 30-40% oversized.
-    _effective_multiplier = max(0.15, strategy_size_multiplier * _dl_multiplier * _sd_multiplier)
+    _effective_multiplier = max(
+        0.15, strategy_size_multiplier * _dl_multiplier * _sd_multiplier
+    )
     if _effective_multiplier < 1.0:
         _orig = invest_amount
         invest_amount *= _effective_multiplier
-        logger.info(f"Size multiplier {_effective_multiplier:.3f}x "
-                     f"(strategy={strategy_size_multiplier:.2f} × daily_loss={_dl_multiplier:.2f} × drawdown={_sd_multiplier:.2f}): "
-                     f"${_orig:.2f} → ${invest_amount:.2f}")
+        logger.info(
+            f"Size multiplier {_effective_multiplier:.3f}x "
+            f"(strategy={strategy_size_multiplier:.2f} × daily_loss={_dl_multiplier:.2f} × drawdown={_sd_multiplier:.2f}): "
+            f"${_orig:.2f} → ${invest_amount:.2f}"
+        )
         invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
     # Final minimum check — caps may have reduced below Binance minimum
     if invest_amount < 10:
-        return {"success": False, "error": f"Caps reduced position below $10 minimum: ${invest_amount:.2f}"}
+        return {
+            "success": False,
+            "error": f"Caps reduced position below $10 minimum: ${invest_amount:.2f}",
+        }
 
     # Tier label for logging (informational only for Kelly mode)
     _, tier_label = get_position_tier(score)
@@ -380,47 +440,69 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     _min_notional = 5.0
     try:
         from src.smart_order import SmartOrder
+
         _so = SmartOrder(client)
         _filters = _so.get_symbol_filters(symbol)
         if _filters:
-            _step_size = _filters.get('stepSize', 1.0)
-            _qty_decimals = _filters.get('qty_decimals', 0)
-            _min_qty = _filters.get('minQty', 1.0)
-            _min_notional = _filters.get('minNotional', 5.0)
+            _step_size = _filters.get("stepSize", 1.0)
+            _qty_decimals = _filters.get("qty_decimals", 0)
+            _min_qty = _filters.get("minQty", 1.0)
+            _min_notional = _filters.get("minNotional", 5.0)
     except Exception:
-        logger.debug(f"execute_auto_trade: SmartOrder filter fetch failed, using defaults")
+        logger.debug(
+            "execute_auto_trade: SmartOrder filter fetch failed, using defaults"
+        )
 
     raw_qty = invest_amount / price
     qty = round(raw_qty / _step_size) * _step_size
     qty = round(qty, _qty_decimals)
     if qty < _min_qty:
-        return {"success": False, "error": f"Qty too small: {qty} (min {_min_qty}). Invest amount: ${invest_amount:.2f}"}
+        return {
+            "success": False,
+            "error": f"Qty too small: {qty} (min {_min_qty}). Invest amount: ${invest_amount:.2f}",
+        }
 
-    logger.info(f"Kelly: {tier_label} | Score: {score} | WinRate: {kelly_result.get('win_rate',0):.1%} | "
-                f"Confidence: {kelly_result.get('confidence','N/A')} | "
-                f"Pct: {invest_pct*100:.1f}% | Qty: {qty} | Active pos: {active_positions}")
+    logger.info(
+        f"Kelly: {tier_label} | Score: {score} | WinRate: {kelly_result.get('win_rate',0):.1%} | "
+        f"Confidence: {kelly_result.get('confidence','N/A')} | "
+        f"Pct: {invest_pct*100:.1f}% | Qty: {qty} | Active pos: {active_positions}"
+    )
 
     results = []
-    executed_qty = 0
+    executed_qty = 0.0
 
     # ── P0 #1: 異常價格過濾 (flash crash / pump protection) ──
     if not _check_price_deviation(client, symbol, price):
-        return {"success": False, "error": f"Price anomaly: {symbol} ${price:.6f} deviates >3σ from 14h avg"}
+        return {
+            "success": False,
+            "error": f"Price anomaly: {symbol} ${price:.6f} deviates >3σ from 14h avg",
+        }
 
     # ── P0 #2: 雙重下單防護 ──
     if not _check_duplicate_order(client, symbol):
-        return {"success": False, "error": f"Duplicate order: {symbol} already has pending BUY"}
+        return {
+            "success": False,
+            "error": f"Duplicate order: {symbol} already has pending BUY",
+        }
 
     # Market buy - use place_market_buy for proper MARKET order handling
     buy_result = client.place_market_buy(symbol, qty)
     if buy_result is None:
-        return {"success": False, "error": f"BUY MARKET failed - {symbol} may be unavailable or balance insufficient"}
+        return {
+            "success": False,
+            "error": f"BUY MARKET failed - {symbol} may be unavailable or balance insufficient",
+        }
 
     # Get actual executed quantity from fills
-    fills = buy_result.get('fills', [])
+    fills = buy_result.get("fills", [])
     if fills:
-        executed_qty = sum(float(f.get('qty', 0)) for f in fills)
-        avg_price = sum(float(f.get('price', 0)) * float(f.get('qty', 0)) for f in fills) / executed_qty if executed_qty > 0 else price
+        executed_qty = sum(float(f.get("qty", 0)) for f in fills)
+        avg_price = (
+            sum(float(f.get("price", 0)) * float(f.get("qty", 0)) for f in fills)
+            / executed_qty
+            if executed_qty > 0
+            else price
+        )
         results.append(f"BUY: {executed_qty:.0f} @ ${avg_price:.6f}")
 
         # ── P1 #1: 滑點追蹤 (fill vs expected price) ──
@@ -430,7 +512,9 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                 f"SLIPPAGE: {symbol} fill=${avg_price:.6f} vs expected=${price:.6f} "
                 f"({slippage_pct:+.2f}%)"
             )
-            results.append(f"Slippage: {slippage_pct:+.2f}% (fill ${avg_price:.6f} vs expected ${price:.6f})")
+            results.append(
+                f"Slippage: {slippage_pct:+.2f}% (fill ${avg_price:.6f} vs expected ${price:.6f})"
+            )
     else:
         executed_qty = qty
         avg_price = price
@@ -444,17 +528,21 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     try:
         # M3 fix: handle BUSDUSDT edge case and multiple quote suffixes
         asset = symbol
-        for suffix in ('USDT', 'BUSD', 'USDC'):
+        for suffix in ("USDT", "BUSD", "USDC"):
             if asset.endswith(suffix):
-                asset = asset[:-len(suffix)]
+                asset = asset[: -len(suffix)]
                 break
         acct = client.get_account()
-        for b in acct.get('balances', []):
-            if b['asset'] == asset:
-                actual_free = float(b['free'])
+        for b in acct.get("balances", []):
+            if b["asset"] == asset:
+                actual_free = float(b["free"])
                 if actual_free > 0 and actual_free < executed_qty:
-                    logger.info("Fee-adjusted qty: %.8f -> %.8f (fee=%.8f)",
-                                executed_qty, actual_free, executed_qty - actual_free)
+                    logger.info(
+                        "Fee-adjusted qty: %.8f -> %.8f (fee=%.8f)",
+                        executed_qty,
+                        actual_free,
+                        executed_qty - actual_free,
+                    )
                     executed_qty = actual_free
                 break
     except Exception as e:
@@ -478,8 +566,8 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # 3. If OCO fails: fallback to separate SL + TP
 
     sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
-    sl_placed_qty = 0
-    tp_placed_qty = 0
+    sl_placed_qty = 0.0
+    tp_placed_qty = 0.0
     oco_placed = False
 
     # Determine primary TP price (highest probability first TP level)
@@ -491,19 +579,24 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     if full_qty_notional < _min_notional * 4:
         logger.info(
             "Small position $%.2f < $%.2f → SL-only mode",
-            full_qty_notional, _min_notional * 4,
+            full_qty_notional,
+            _min_notional * 4,
         )
         sl_qty = executed_qty
         sl = None
         for attempt in range(2):
             try:
                 sl = client.place_order(
-                    symbol, "SELL", "STOP_LOSS_LIMIT",
-                    sl_qty, price=sl_price, stop_price=sl_price,
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS_LIMIT",
+                    sl_qty,
+                    price=sl_price,
+                    stop_price=sl_price,
                 )
                 if sl:
                     break
-            except Exception as e:
+            except Exception:
                 logger.error("SL order placement failed for %s", symbol, exc_info=True)
                 if attempt == 0:
                     time.sleep(1)
@@ -513,9 +606,13 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         else:
             results.append("SL: FAILED")
             try:
-                notifier.send_text(f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!")
+                notifier.send_text(
+                    f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
+                )
             except Exception:
-                logger.error("Failed to send SL failure alert notification", exc_info=True)
+                logger.error(
+                    "Failed to send SL failure alert notification", exc_info=True
+                )
 
     # --- Strategy B: Medium+ position → Tiered TP exits (40/40/20) ---
     else:
@@ -528,18 +625,40 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         # Tiers: TP1=40%, TP2=40%, TP3=20% of executed_qty.
         tiered_ok = False
         _tiered_results = []
-        _tiered_sl_placed = 0
-        _tiered_tp_placed = 0
+        _tiered_sl_placed = 0.0
+        _tiered_tp_placed = 0.0
         try:
             # Tier quantities (40 / 40 / 20)
             tp1_qty = _round_qty(executed_qty * 0.40)
             tp3_qty = _round_qty(executed_qty * 0.20)
-            tp2_qty = _round_qty(executed_qty - tp1_qty - tp3_qty)  # remainder avoids rounding gaps
+            tp2_qty = _round_qty(
+                executed_qty - tp1_qty - tp3_qty
+            )  # remainder avoids rounding gaps
             # Validate: each tier must meet min notional OR be zero
             tiers = [
-                (1, tp1_qty, tp_levels[0]["pct"] if len(tp_levels) > 0 else primary_tp_pct),
-                (2, tp2_qty, tp_levels[1]["pct"] if len(tp_levels) > 1 else tp_levels[0]["pct"] * 1.5),
-                (3, tp3_qty, tp_levels[2]["pct"] if len(tp_levels) > 2 else tp_levels[0]["pct"] * 2.0),
+                (
+                    1,
+                    tp1_qty,
+                    tp_levels[0]["pct"] if len(tp_levels) > 0 else primary_tp_pct,
+                ),
+                (
+                    2,
+                    tp2_qty,
+                    (
+                        tp_levels[1]["pct"]
+                        if len(tp_levels) > 1
+                        else tp_levels[0]["pct"] * 1.5
+                    ),
+                ),
+                (
+                    3,
+                    tp3_qty,
+                    (
+                        tp_levels[2]["pct"]
+                        if len(tp_levels) > 2
+                        else tp_levels[0]["pct"] * 2.0
+                    ),
+                ),
             ]
             _all_tiers_valid = True
             for tier_num, tq, tp_pct_val in tiers:
@@ -556,20 +675,30 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                 for attempt in range(2):
                     try:
                         sl = client.place_order(
-                            symbol, "SELL", "STOP_LOSS_LIMIT",
-                            executed_qty, price=sl_price, stop_price=sl_price,
+                            symbol,
+                            "SELL",
+                            "STOP_LOSS_LIMIT",
+                            executed_qty,
+                            price=sl_price,
+                            stop_price=sl_price,
                         )
                         if sl:
                             break
-                    except Exception as e:
-                        logger.error("Tiered SL placement failed for %s", symbol, exc_info=True)
+                    except Exception:
+                        logger.error(
+                            "Tiered SL placement failed for %s", symbol, exc_info=True
+                        )
                         if attempt == 0:
                             time.sleep(1)
                 if sl:
-                    _tiered_results.append(f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)")
+                    _tiered_results.append(
+                        f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)"
+                    )
                     _tiered_sl_placed = executed_qty
                 else:
-                    raise RuntimeError("Tiered SL failed — falling back to OCO/Strategy C")
+                    raise RuntimeError(
+                        "Tiered SL failed — falling back to OCO/Strategy C"
+                    )
 
                 # Step 2: Place TP limit sells
                 for tier_num, tq, tp_pct_val in tiers:
@@ -579,36 +708,57 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                     tp_p = round(price * (1 + tp_pct_val / 100), p_prec)
                     tp_notional = tq * tp_p
                     if tp_notional < _min_notional:
-                        _tiered_results.append(f"TP{tier_num}(+{tp_pct_val}%): SKIPPED (notional ${tp_notional:.2f})")
+                        _tiered_results.append(
+                            f"TP{tier_num}(+{tp_pct_val}%): SKIPPED (notional ${tp_notional:.2f})"
+                        )
                         continue
                     tpo = None
                     for attempt in range(2):
                         try:
-                            tpo = client.place_order(symbol, "SELL", "LIMIT", tq, price=tp_p)
+                            tpo = client.place_order(
+                                symbol, "SELL", "LIMIT", tq, price=tp_p
+                            )
                             if tpo:
                                 break
-                        except Exception as e:
-                            logger.error("Tiered TP%d placement failed for %s", tier_num, symbol, exc_info=True)
+                        except Exception:
+                            logger.error(
+                                "Tiered TP%d placement failed for %s",
+                                tier_num,
+                                symbol,
+                                exc_info=True,
+                            )
                             if attempt == 0:
                                 time.sleep(1)
                     if tpo:
-                        _tiered_results.append(f"TP{tier_num}(+{tp_pct_val}%): {tq} @ ${tp_p}")
+                        _tiered_results.append(
+                            f"TP{tier_num}(+{tp_pct_val}%): {tq} @ ${tp_p}"
+                        )
                         _tiered_tp_placed += tq
                     else:
-                        raise RuntimeError(f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C")
+                        raise RuntimeError(
+                            f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C"
+                        )
 
                 tiered_ok = True
                 results.extend(_tiered_results)
                 sl_placed_qty = _tiered_sl_placed
                 tp_placed_qty = _tiered_tp_placed
-                logger.info("Tiered exits placed for %s: SL=full, TP placed=%s", symbol, _tiered_tp_placed)
+                logger.info(
+                    "Tiered exits placed for %s: SL=full, TP placed=%s",
+                    symbol,
+                    _tiered_tp_placed,
+                )
         except Exception as e:
-            logger.warning("Tiered exits failed for %s: %s — trying OCO fallback", symbol, e)
+            logger.warning(
+                "Tiered exits failed for %s: %s — trying OCO fallback", symbol, e
+            )
             # Cancel any partially-placed tiered orders so fallback has free balance
             try:
                 _open = client.get_open_orders(symbol)
                 for _o in _open:
-                    logger.info("Cancelling tiered residue: %s order %s", symbol, _o.get("id"))
+                    logger.info(
+                        "Cancelling tiered residue: %s order %s", symbol, _o.get("id")
+                    )
                     client.cancel_order(symbol, _o.get("id"))
             except Exception as _ce:
                 logger.error("Failed to cancel tiered residue for %s: %s", symbol, _ce)
@@ -629,7 +779,7 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
             if oco:
                 oco_placed = True
                 sl_placed_qty = executed_qty  # OCO covers full qty (both SL and TP)
-                tp_placed_qty = 0             # Avoid double-counting in covered calc
+                tp_placed_qty = 0  # Avoid double-counting in covered calc
                 results.append(
                     f"OCO: TP {primary_tp_pct}% @ ${primary_tp_price} | SL -{stop_loss_pct}% @ ${sl_price}"
                 )
@@ -646,7 +796,7 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                     raw_tp = executed_qty * tp["size_pct"] / 100
                     tq = _round_qty(raw_tp)
                     if tq < _step_size:
-                        tq = 0
+                        tq = 0.0
                     tp_qty_list.append(tq)
 
                 # Step 2: SL = total - sum of all rounded TP qtys (guarantees full coverage)
@@ -660,22 +810,33 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                 sl_qty = round(executed_qty - total_tp, _qty_decimals)
                 # Safety: SL must be at least 30% for small enough positions
                 if sl_qty < _step_size and executed_qty >= _step_size * 3:
-                    sl_qty = max(_step_size, round(executed_qty * 0.30 / _step_size) * _step_size)
+                    sl_qty = max(
+                        _step_size, round(executed_qty * 0.30 / _step_size) * _step_size
+                    )
                     sl_qty = round(sl_qty, _qty_decimals)
                     total_tp = round(executed_qty - sl_qty, _qty_decimals)
                     # Recalculate TP qtys to fit within total_tp
                     remaining = total_tp
                     tp_qty_list = []
                     for i, tp in enumerate(tp_levels):
-                        tq = _round_qty(total_tp * tp["size_pct"] / 100) if total_tp > 0 else 0
+                        tq = (
+                            _round_qty(total_tp * tp["size_pct"] / 100)
+                            if total_tp > 0
+                            else 0
+                        )
                         tq = min(tq, remaining)  # Don't exceed remaining
                         if tq < _step_size:
-                            tq = 0
+                            tq = 0.0
                         tp_qty_list.append(tq)
                         remaining = round(remaining - tq, _qty_decimals)
 
-                logger.info("Strategy C: SL=%s, TPs=%s (total=%s, executed=%s)",
-                            sl_qty, tp_qty_list, round(sl_qty + sum(tp_qty_list), _qty_decimals), executed_qty)
+                logger.info(
+                    "Strategy C: SL=%s, TPs=%s (total=%s, executed=%s)",
+                    sl_qty,
+                    tp_qty_list,
+                    round(sl_qty + sum(tp_qty_list), _qty_decimals),
+                    executed_qty,
+                )
 
                 # Step 3: Place SL
                 if sl_qty >= _step_size:
@@ -683,24 +844,39 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                     for attempt in range(2):
                         try:
                             sl = client.place_order(
-                                symbol, "SELL", "STOP_LOSS_LIMIT",
-                                sl_qty, price=sl_price, stop_price=sl_price,
+                                symbol,
+                                "SELL",
+                                "STOP_LOSS_LIMIT",
+                                sl_qty,
+                                price=sl_price,
+                                stop_price=sl_price,
                             )
                             if sl:
                                 break
-                        except Exception as e:
-                            logger.error("Fallback SL order placement failed for %s", symbol, exc_info=True)
+                        except Exception:
+                            logger.error(
+                                "Fallback SL order placement failed for %s",
+                                symbol,
+                                exc_info=True,
+                            )
                             if attempt == 0:
                                 time.sleep(1)
                     if sl:
-                        results.append(f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
+                        results.append(
+                            f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
+                        )
                         sl_placed_qty = sl_qty
                     else:
                         results.append("SL: FAILED")
                         try:
-                            notifier.send_text(f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!")
+                            notifier.send_text(
+                                f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
+                            )
                         except Exception:
-                            logger.error("Failed to send fallback SL failure alert", exc_info=True)
+                            logger.error(
+                                "Failed to send fallback SL failure alert",
+                                exc_info=True,
+                            )
 
                 # Step 4: Place TP orders (using pre-calculated rounded quantities)
                 for i, (tp, tp_qty) in enumerate(zip(tp_levels, tp_qty_list)):
@@ -709,20 +885,30 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
                     tp_price = round(price * (1 + tp["pct"] / 100), p_prec)
                     tp_notional = tp_qty * tp_price
                     if tp_notional < _min_notional:
-                        results.append(f"TP{i+1}(+{tp['pct']}%): SKIPPED (notional ${tp_notional:.2f})")
+                        results.append(
+                            f"TP{i+1}(+{tp['pct']}%): SKIPPED (notional ${tp_notional:.2f})"
+                        )
                         continue
                     tpo = None
                     for attempt in range(2):
                         try:
-                            tpo = client.place_order(symbol, "SELL", "LIMIT", tp_qty, price=tp_price)
+                            tpo = client.place_order(
+                                symbol, "SELL", "LIMIT", tp_qty, price=tp_price
+                            )
                             if tpo:
                                 break
-                        except Exception as e:
-                            logger.error("TP limit order placement failed for %s", symbol, exc_info=True)
+                        except Exception:
+                            logger.error(
+                                "TP limit order placement failed for %s",
+                                symbol,
+                                exc_info=True,
+                            )
                             if attempt == 0:
                                 time.sleep(1)
                     if tpo:
-                        results.append(f"TP{i+1}(+{tp['pct']}%): {tp_qty} @ ${tp_price}")
+                        results.append(
+                            f"TP{i+1}(+{tp['pct']}%): {tp_qty} @ ${tp_price}"
+                        )
                         tp_placed_qty += tp_qty
                     else:
                         results.append(f"TP{i+1}: FAILED")
@@ -737,13 +923,21 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         for attempt in range(2):
             try:
                 extra_sl = client.place_order(
-                    symbol, "SELL", "STOP_LOSS_LIMIT",
-                    extra_sl_qty, price=sl_price, stop_price=sl_price,
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS_LIMIT",
+                    extra_sl_qty,
+                    price=sl_price,
+                    stop_price=sl_price,
                 )
                 if extra_sl:
                     break
-            except Exception as e:
-                logger.error("Extra SL order for uncovered units failed for %s", symbol, exc_info=True)
+            except Exception:
+                logger.error(
+                    "Extra SL order for uncovered units failed for %s",
+                    symbol,
+                    exc_info=True,
+                )
                 if attempt == 0:
                     time.sleep(1)
         if extra_sl:
@@ -753,19 +947,36 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     elif uncovered >= _step_size and sl_placed_qty == 0 and not oco_placed:
         results.append(f"🔴 未保護: {uncovered:.4f} units (no SL placed)")
         try:
-            notifier.send_text(f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！")
+            notifier.send_text(
+                f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！"
+            )
         except Exception:
-            logger.error("Failed to send 'No SL' critical alert notification", exc_info=True)
+            logger.error(
+                "Failed to send 'No SL' critical alert notification", exc_info=True
+            )
         # Emergency: attempt market sell to close unprotected position
         try:
             emergency_sell = client.place_order(
-                symbol, "SELL", "MARKET", uncovered,
+                symbol,
+                "SELL",
+                "MARKET",
+                uncovered,
             )
             if emergency_sell:
-                results.append(f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)")
-                logger.warning("Emergency market sell executed for %s (%.4f units — no SL possible)", symbol, uncovered)
+                results.append(
+                    f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)"
+                )
+                logger.warning(
+                    "Emergency market sell executed for %s (%.4f units — no SL possible)",
+                    symbol,
+                    uncovered,
+                )
         except Exception:
-            logger.error("Emergency market sell FAILED for %s — position is naked!", symbol, exc_info=True)
+            logger.error(
+                "Emergency market sell FAILED for %s — position is naked!",
+                symbol,
+                exc_info=True,
+            )
 
     if sl_placed_qty + tp_placed_qty < executed_qty:
         remainder = executed_qty - sl_placed_qty - tp_placed_qty
@@ -782,7 +993,7 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         f"信號: {reason}",
         f"活躍持倉: {active_positions + 1}/{max_positions}",
         "",
-        "📊 訂單:"
+        "📊 訂單:",
     ]
     for r in results:
         lines.append(f"  {r}")
@@ -794,10 +1005,13 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
         portfolio = PortfolioManager()
         # H3 fix: query actual post-trade USDT balance instead of pre-trade estimate
         try:
-            actual_usdt = client.get_free_balance('USDT')
+            actual_usdt = client.get_free_balance("USDT")
             portfolio.update_balance(actual_usdt)
         except Exception:
-            logger.error("Failed to fetch actual USDT balance for portfolio tracking", exc_info=True)
+            logger.error(
+                "Failed to fetch actual USDT balance for portfolio tracking",
+                exc_info=True,
+            )
             # Fallback: estimate with actual fee rate (not flat 1%)
             portfolio.update_balance(usdt_bal - invest_amount * (1 + fee_rate))
         portfolio.add_position(
@@ -822,22 +1036,29 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
     # Publish event to event bus (Phase 9)
     try:
         from src.event_bus import get_event_bus
+
         bus = get_event_bus()
-        bus.publish("trade_executed", {
-            "symbol": symbol,
-            "action": "BUY",
-            "qty": executed_qty,
-            "price": avg_price,
-            "strategy": strategy,
-            "score": score,
-            "invest_amount": invest_amount,
-        })
-        bus.publish("position_opened", {
-            "symbol": symbol,
-            "entry_price": avg_price,
-            "quantity": executed_qty,
-            "strategy": strategy,
-        })
+        bus.publish(
+            "trade_executed",
+            {
+                "symbol": symbol,
+                "action": "BUY",
+                "qty": executed_qty,
+                "price": avg_price,
+                "strategy": strategy,
+                "score": score,
+                "invest_amount": invest_amount,
+            },
+        )
+        bus.publish(
+            "position_opened",
+            {
+                "symbol": symbol,
+                "entry_price": avg_price,
+                "quantity": executed_qty,
+                "strategy": strategy,
+            },
+        )
     except Exception as e:
         logger.debug(f"Event bus publish failed: {e}")
 
@@ -858,8 +1079,5 @@ def execute_auto_trade(symbol, price, strategy, stop_loss_pct, tp_levels, stop_p
             "reward_risk": kelly_result.get("reward_risk", 0),
             "reason": kelly_result.get("reason", ""),
         },
-        "orders": results
+        "orders": results,
     }
-
-
-

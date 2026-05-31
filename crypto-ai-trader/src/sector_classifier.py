@@ -10,42 +10,75 @@ Sectors: AI, AI_INFRA, AI_AGENT, CORE, MEME, L2DEFI, RWA, OTHER
 
 import json
 import logging
-import os
 import random as _random
 import time
-from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 # Python 3.11.15 removed random.randbits; numpy expects it
-if not hasattr(_random, 'randbits'):
-    _random.randbits = _random.getrandbits
+if not hasattr(_random, "randbits"):
+    _random.randbits = _random.getrandbits  # type: ignore[attr-defined]
 
 import requests
 
-from src.utils import get_project_root
 from src.llm_client import get_llm_client
+from src.utils import get_project_root
 
 logger = logging.getLogger(__name__)
 
 # Sector definitions (base classification)
 BASE_SECTORS: Dict[str, List[str]] = {
     "AI_INFRA": [
-        "RNDR", "FET", "AGIX", "TAO", "GRT", "OCEAN",
+        "RNDR",
+        "FET",
+        "AGIX",
+        "TAO",
+        "GRT",
+        "OCEAN",
     ],
     "AI_AGENT": [
-        "PAAL", "AI16Z", "VIRTUAL", "AIXBT", "GRIFT", "VANA", "IO",
+        "PAAL",
+        "AI16Z",
+        "VIRTUAL",
+        "AIXBT",
+        "GRIFT",
+        "VANA",
+        "IO",
     ],
     "CORE": [
-        "BTC", "ETH", "SOL", "BNB", "AVAX", "ADA", "DOT",
-        "MATIC", "ATOM", "NEAR",
+        "BTC",
+        "ETH",
+        "SOL",
+        "BNB",
+        "AVAX",
+        "ADA",
+        "DOT",
+        "MATIC",
+        "ATOM",
+        "NEAR",
     ],
     "MEME": [
-        "DOGE", "SHIB", "PEPE", "WIF", "BONK", "FLOKI",
-        "BRETT", "POPCAT",
+        "DOGE",
+        "SHIB",
+        "PEPE",
+        "WIF",
+        "BONK",
+        "FLOKI",
+        "BRETT",
+        "POPCAT",
     ],
     "L2DEFI": [
-        "ARB", "OP", "STRK", "ZK", "INJ", "SUI", "SEI",
-        "APT", "AAVE", "UNI", "CRV", "LDO",
+        "ARB",
+        "OP",
+        "STRK",
+        "ZK",
+        "INJ",
+        "SUI",
+        "SEI",
+        "APT",
+        "AAVE",
+        "UNI",
+        "CRV",
+        "LDO",
     ],
     "RWA": ["ON", "ENA"],
 }
@@ -108,11 +141,16 @@ class SectorClassifier:
         try:
             _CLASSIFICATION_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(_CLASSIFICATION_FILE, "w", encoding="utf-8") as f:
-                json.dump({
-                    "classifications": self._classifications,
-                    "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "version": 2,
-                }, f, indent=2, ensure_ascii=False)
+                json.dump(
+                    {
+                        "classifications": self._classifications,
+                        "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "version": 2,
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
             return True
         except Exception as e:
             logger.error(f"Failed to save sector classifications: {e}")
@@ -174,11 +212,13 @@ class SectorClassifier:
 
         try:
             # Build prompt
-            sectors_desc = "\n".join([
-                f"- {k}: {', '.join(v[:5])}{'...' if len(v) > 5 else ''}"
-                for k, v in BASE_SECTORS.items()
-                if k != "AI"
-            ])
+            "\n".join(
+                [
+                    f"- {k}: {', '.join(v[:5])}{'...' if len(v) > 5 else ''}"
+                    for k, v in BASE_SECTORS.items()
+                    if k != "AI"
+                ]
+            )
 
             prompt = f"""Classify the cryptocurrency {symbol} into exactly one of these sectors:
 
@@ -204,7 +244,9 @@ Answer with only the sector name in uppercase."""
             )
 
             if result is None:
-                logger.warning(f"All LLM providers failed for sector classification of {symbol}")
+                logger.warning(
+                    f"All LLM providers failed for sector classification of {symbol}"
+                )
                 return None
 
             content = result["content"].upper()
@@ -224,13 +266,17 @@ Answer with only the sector name in uppercase."""
                 if found:
                     sector = found
                 else:
-                    logger.warning(f"LLM returned invalid sector '{content}' for {symbol}, using OTHER")
+                    logger.warning(
+                        f"LLM returned invalid sector '{content}' for {symbol}, using OTHER"
+                    )
                     sector = "OTHER"
 
             # Save classification
             self._classifications[symbol] = sector
             self._save_classifications()
-            logger.info(f"SectorClassifier: {symbol} -> {sector} (LLM via {provider_used})")
+            logger.info(
+                f"SectorClassifier: {symbol} -> {sector} (LLM via {provider_used})"
+            )
             return sector
 
         except Exception as e:
@@ -275,7 +321,12 @@ Answer with only the sector name in uppercase."""
 
             if len(histories) < 3:
                 logger.warning("Clustering: insufficient data (< 3 symbols)")
-                return {"clusters": {}, "correlations": {}, "suggested_sectors": {}, "ai_split_recommended": False}
+                return {
+                    "clusters": {},
+                    "correlations": {},
+                    "suggested_sectors": {},
+                    "ai_split_recommended": False,
+                }
 
             import numpy as np
 
@@ -286,7 +337,7 @@ Answer with only the sector name in uppercase."""
                 prices = np.array(histories[sym])
                 returns[sym] = np.diff(np.log(prices))
 
-            corr_matrix = {}
+            corr_matrix: Dict[str, Dict[str, float]] = {}
             for i, sym_a in enumerate(symbols_with_data):
                 corr_matrix[sym_a] = {}
                 for sym_b in symbols_with_data:
@@ -295,7 +346,9 @@ Answer with only the sector name in uppercase."""
                     else:
                         if len(returns[sym_a]) == len(returns[sym_b]):
                             corr = np.corrcoef(returns[sym_a], returns[sym_b])[0, 1]
-                            corr_matrix[sym_a][sym_b] = float(corr) if not np.isnan(corr) else 0.0
+                            corr_matrix[sym_a][sym_b] = (
+                                float(corr) if not np.isnan(corr) else 0.0
+                            )
                         else:
                             corr_matrix[sym_a][sym_b] = 0.0
 
@@ -304,9 +357,14 @@ Answer with only the sector name in uppercase."""
             assigned: Set[str] = set()
             cluster_id = 0
 
-            for sym in sorted(symbols_with_data, key=lambda s: -sum(
-                abs(corr_matrix[s].get(other, 0)) for other in symbols_with_data if other != s
-            )):
+            for sym in sorted(
+                symbols_with_data,
+                key=lambda s: -sum(
+                    abs(corr_matrix[s].get(other, 0))
+                    for other in symbols_with_data
+                    if other != s
+                ),
+            ):
                 if sym in assigned:
                     continue
 
@@ -318,10 +376,14 @@ Answer with only the sector name in uppercase."""
                 for other in symbols_with_data:
                     if other in assigned:
                         continue
-                    avg_corr = np.mean([
-                        abs(corr_matrix[sym].get(m, 0))
-                        for m in clusters[cluster_id]
-                    ])
+                    avg_corr = float(
+                        np.mean(
+                            [
+                                abs(corr_matrix[sym].get(m, 0))
+                                for m in clusters[cluster_id]
+                            ]
+                        )
+                    )
                     if avg_corr >= min_correlation:
                         clusters[cluster_id].append(other)
                         assigned.add(other)
@@ -335,11 +397,11 @@ Answer with only the sector name in uppercase."""
                 if sym not in assigned:
                     # Find best cluster
                     best_cluster = 0
-                    best_corr = 0
+                    best_corr = 0.0
                     for cid, members in clusters.items():
-                        avg_corr = np.mean([
-                            abs(corr_matrix[sym].get(m, 0)) for m in members
-                        ])
+                        avg_corr = float(
+                            np.mean([abs(corr_matrix[sym].get(m, 0)) for m in members])
+                        )
                         if avg_corr > best_corr:
                             best_corr = avg_corr
                             best_cluster = cid
@@ -347,21 +409,31 @@ Answer with only the sector name in uppercase."""
                     assigned.add(sym)
 
             # Detect AI split recommendation
-            ai_symbols = [s for s in symbols_with_data if self.classify_position(s + "USDT") in ("AI", "AI_INFRA", "AI_AGENT")]
+            ai_symbols = [
+                s
+                for s in symbols_with_data
+                if self.classify_position(s + "USDT") in ("AI", "AI_INFRA", "AI_AGENT")
+            ]
             ai_split_recommended = False
             if len(ai_symbols) >= 4:
                 # Check if AI_INFRA and AI_AGENT have low cross-correlation
                 infra = [s for s in ai_symbols if s in BASE_SECTORS.get("AI_INFRA", [])]
-                agents = [s for s in ai_symbols if s in BASE_SECTORS.get("AI_AGENT", [])]
+                agents = [
+                    s for s in ai_symbols if s in BASE_SECTORS.get("AI_AGENT", [])
+                ]
                 if infra and agents:
                     cross_corrs = []
-                    for i in infra:
+                    for infra_sym in infra:
                         for a in agents:
-                            cross_corrs.append(abs(corr_matrix.get(i, {}).get(a, 0)))
+                            cross_corrs.append(
+                                abs(corr_matrix.get(infra_sym, {}).get(a, 0))
+                            )
                     avg_cross = np.mean(cross_corrs) if cross_corrs else 1.0
                     if avg_cross < 0.5:
                         ai_split_recommended = True
-                        logger.info(f"Clustering: AI split recommended (infra-agent corr={avg_cross:.2f})")
+                        logger.info(
+                            f"Clustering: AI split recommended (infra-agent corr={avg_cross:.2f})"
+                        )
 
             result = {
                 "clusters": clusters,
@@ -376,7 +448,12 @@ Answer with only the sector name in uppercase."""
 
         except Exception as e:
             logger.error(f"Correlation clustering failed: {e}")
-            return {"clusters": {}, "correlations": {}, "suggested_sectors": {}, "ai_split_recommended": False}
+            return {
+                "clusters": {},
+                "correlations": {},
+                "suggested_sectors": {},
+                "ai_split_recommended": False,
+            }
 
 
 # Backward-compatible interface for RiskManager
@@ -394,21 +471,54 @@ class SectorExposure:
     # Keep old sector definitions for compatibility
     SECTORS: Dict[str, List[str]] = {
         "AI": [
-            "RNDR", "FET", "AGIX", "TAO", "GRT", "OCEAN",
-            "PAAL", "AI16Z", "VIRTUAL", "AIXBT", "GRIFT",
-            "VANA", "IO",
+            "RNDR",
+            "FET",
+            "AGIX",
+            "TAO",
+            "GRT",
+            "OCEAN",
+            "PAAL",
+            "AI16Z",
+            "VIRTUAL",
+            "AIXBT",
+            "GRIFT",
+            "VANA",
+            "IO",
         ],
         "CORE": [
-            "BTC", "ETH", "SOL", "BNB", "AVAX", "ADA", "DOT",
-            "MATIC", "ATOM", "NEAR",
+            "BTC",
+            "ETH",
+            "SOL",
+            "BNB",
+            "AVAX",
+            "ADA",
+            "DOT",
+            "MATIC",
+            "ATOM",
+            "NEAR",
         ],
         "MEME": [
-            "DOGE", "SHIB", "PEPE", "WIF", "BONK", "FLOKI",
-            "BRETT", "POPCAT",
+            "DOGE",
+            "SHIB",
+            "PEPE",
+            "WIF",
+            "BONK",
+            "FLOKI",
+            "BRETT",
+            "POPCAT",
         ],
         "L2DEFI": [
-            "ARB", "STRK", "ZK", "INJ", "SUI", "SEI",
-            "APT", "AAVE", "UNI", "CRV", "LDO",
+            "ARB",
+            "STRK",
+            "ZK",
+            "INJ",
+            "SUI",
+            "SEI",
+            "APT",
+            "AAVE",
+            "UNI",
+            "CRV",
+            "LDO",
         ],
         "RWA": ["ON", "ENA"],
     }
@@ -476,7 +586,9 @@ class SectorExposure:
         allowed_sectors: List[str] = []
         blocked_sectors: List[str] = []
 
-        all_sector_names = list(set(list(self.SECTORS.keys()) + ["AI_INFRA", "AI_AGENT", "OTHER"]))
+        all_sector_names = list(
+            set(list(self.SECTORS.keys()) + ["AI_INFRA", "AI_AGENT", "OTHER"])
+        )
         for sector in all_sector_names:
             sector_val = sector_values.get(sector, 0)
             pct = (sector_val / total_value * 100) if total_value > 0 else 0
@@ -501,7 +613,9 @@ class SectorExposure:
             "total_value": round(total_value, 2),
         }
 
-    def is_sector_allowed(self, symbol: str, positions: List[Dict], new_value_usdt: float = 0) -> bool:
+    def is_sector_allowed(
+        self, symbol: str, positions: List[Dict], new_value_usdt: float = 0
+    ) -> bool:
         """Check if adding a new position would exceed sector limit."""
         sector = self.classify_position(symbol)
         if not positions:
@@ -521,14 +635,19 @@ class SectorExposure:
             new_value_usdt = total_value * 0.02
         adjusted_total = total_value + new_value_usdt
         adjusted_sector = sector_value + new_value_usdt
-        sector_pct = (adjusted_sector / adjusted_total) * 100 if adjusted_total > 0 else 0
+        sector_pct = (
+            (adjusted_sector / adjusted_total) * 100 if adjusted_total > 0 else 0
+        )
         limit_pct = self.get_sector_limit(sector)
         allowed = sector_pct < limit_pct
 
         if not allowed:
             logger.info(
                 "SectorExposure: %s (%s) blocked – sector at %.1f%% (limit %d%%)",
-                symbol, sector, sector_pct, limit_pct,
+                symbol,
+                sector,
+                sector_pct,
+                limit_pct,
             )
 
         return allowed

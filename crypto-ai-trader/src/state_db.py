@@ -14,15 +14,15 @@ Tables:
 - strategy_state: Strategy adaptor state (replaces strategy_state.json)
 - audit_log: Audit trail
 """
-import sqlite3
+
 import json
-import os
-import time
 import logging
+import os
+import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class StateDB:
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local connection (sqlite3 is not thread-safe by default).
-        
+
         FIX M1: Auto-close stale connections to prevent file descriptor leaks.
         Connections older than 5 minutes are recycled.
         """
@@ -61,9 +61,11 @@ class StateDB:
                     logger.error("Failed to close stale DB connection", exc_info=True)
                 self._local.conn = None
                 self._local.conn_created = 0
-        
+
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._local.conn = sqlite3.connect(
+                str(self.db_path), check_same_thread=False
+            )
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
@@ -79,6 +81,7 @@ class StateDB:
         All operations within the block share the same connection and
         are committed together, or rolled back on exception.
         """
+
         class _TransactionCtx:
             def __init__(self, db):
                 self.db = db
@@ -89,12 +92,14 @@ class StateDB:
                 self.conn.execute("BEGIN IMMEDIATE")
                 return self.conn
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                if exc_type is None:
-                    self.conn.commit()
-                else:
-                    self.conn.rollback()
+            def __exit__(self, exc_type, _exc_val, _exc_tb):
+                if self.conn is not None:
+                    if exc_type is None:
+                        self.conn.commit()
+                    else:
+                        self.conn.rollback()
                 return False  # Don't suppress exceptions
+
         return _TransactionCtx(self)
 
     def close(self):
@@ -110,8 +115,7 @@ class StateDB:
     def _init_db(self):
         """Create tables if not exist."""
         conn = self._get_conn()
-        conn.executescript(
-            """
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS trailing_stop (
                 symbol TEXT PRIMARY KEY,
                 entry_price REAL,
@@ -263,8 +267,7 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_outcomes_symbol ON trade_outcomes(symbol);
             CREATE INDEX IF NOT EXISTS idx_outcomes_status ON trade_outcomes(status);
             CREATE INDEX IF NOT EXISTS idx_outcomes_entry_time ON trade_outcomes(entry_time);
-            """
-        )
+            """)
         conn.commit()
 
         # Migration: add invest_pct column if missing (for existing databases)
@@ -276,9 +279,11 @@ class StateDB:
     # ==================== Trailing Stop ====================
 
     def ts_get(self, symbol: str) -> Optional[Dict]:
-        row = self._get_conn().execute(
-            "SELECT * FROM trailing_stop WHERE symbol = ?", (symbol,)
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT * FROM trailing_stop WHERE symbol = ?", (symbol,))
+            .fetchone()
+        )
         if not row:
             return None
         return {
@@ -317,16 +322,20 @@ class StateDB:
         self._get_conn().commit()
 
     def ts_remove(self, symbol: str):
-        self._get_conn().execute("DELETE FROM trailing_stop WHERE symbol = ?", (symbol,))
+        self._get_conn().execute(
+            "DELETE FROM trailing_stop WHERE symbol = ?", (symbol,)
+        )
         self._get_conn().commit()
 
     # ==================== Portfolio ====================
 
     def portfolio_get(self, symbol: str) -> Optional[Dict]:
         symbol = symbol.replace("/", "")
-        row = self._get_conn().execute(
-            "SELECT * FROM portfolio WHERE symbol = ?", (symbol,)
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT * FROM portfolio WHERE symbol = ?", (symbol,))
+            .fetchone()
+        )
         if not row:
             return None
         return dict(row)
@@ -337,9 +346,11 @@ class StateDB:
 
     def portfolio_get_cash_balance(self) -> float:
         """Get cash_balance from kv store. Returns 0.0 if not set."""
-        row = self._get_conn().execute(
-            "SELECT value FROM kv WHERE key = 'cash_balance'"
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT value FROM kv WHERE key = 'cash_balance'")
+            .fetchone()
+        )
         if row and row["value"]:
             try:
                 return float(row["value"])
@@ -398,9 +409,7 @@ class StateDB:
     # ==================== Drawdown ====================
 
     def drawdown_get(self) -> Dict:
-        row = self._get_conn().execute(
-            "SELECT * FROM drawdown WHERE id = 1"
-        ).fetchone()
+        row = self._get_conn().execute("SELECT * FROM drawdown WHERE id = 1").fetchone()
         if not row:
             return {
                 "high_watermark": 0,
@@ -409,7 +418,7 @@ class StateDB:
                 "tripped_count": 0,
                 "tripped_at": None,
                 "reset_at": None,
-                "history": []
+                "history": [],
             }
         # Use tuple indexing (connection may not have row_factory=Row)
         return {
@@ -419,7 +428,7 @@ class StateDB:
             "tripped_count": row[4],
             "tripped_at": row[5],
             "reset_at": row[6],
-            "history": json.loads(row[7]) if row[7] else []
+            "history": json.loads(row[7]) if row[7] else [],
         }
 
     def drawdown_set(self, data: Dict):
@@ -444,7 +453,7 @@ class StateDB:
                 data.get("tripped_at"),
                 data.get("reset_at"),
                 json.dumps(data.get("history", [])),
-                now
+                now,
             ),
         )
         self._get_conn().commit()
@@ -452,9 +461,9 @@ class StateDB:
     # ==================== Risk Guard ====================
 
     def risk_get(self) -> Dict:
-        row = self._get_conn().execute(
-            "SELECT * FROM risk_guard WHERE id = 1"
-        ).fetchone()
+        row = (
+            self._get_conn().execute("SELECT * FROM risk_guard WHERE id = 1").fetchone()
+        )
         if not row:
             now = time.time()
             self._get_conn().execute(
@@ -463,7 +472,11 @@ class StateDB:
             )
             self._get_conn().commit()
             return {"daily_pnl": 0, "streak": 0, "last_reset": now}
-        return {"daily_pnl": row["daily_pnl"], "streak": row["streak"], "last_reset": row["last_reset"]}
+        return {
+            "daily_pnl": row["daily_pnl"],
+            "streak": row["streak"],
+            "last_reset": row["last_reset"],
+        }
 
     def risk_set(self, data: Dict):
         now = time.time()
@@ -475,37 +488,56 @@ class StateDB:
                streak=excluded.streak,
                last_reset=excluded.last_reset,
                updated_at=excluded.updated_at""",
-            (data.get("daily_pnl", 0), data.get("streak", 0), data.get("last_reset", now), now),
+            (
+                data.get("daily_pnl", 0),
+                data.get("streak", 0),
+                data.get("last_reset", now),
+                now,
+            ),
         )
         self._get_conn().commit()
 
     # ==================== Trades ====================
 
-    def trade_add(self, symbol: str, side: str, qty: float, price: float, pnl: float = 0):
+    def trade_add(
+        self, symbol: str, side: str, qty: float, price: float, pnl: float = 0
+    ):
         self._get_conn().execute(
             "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
             (symbol, side, qty, price, pnl, time.time()),
         )
         self._get_conn().commit()
 
-    def trade_get_recent(self, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def trade_get_recent(
+        self, symbol: Optional[str] = None, limit: int = 50
+    ) -> List[Dict]:
         if symbol:
-            rows = self._get_conn().execute(
-                "SELECT * FROM trades WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
-                (symbol, limit),
-            ).fetchall()
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT * FROM trades WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+                    (symbol, limit),
+                )
+                .fetchall()
+            )
         else:
-            rows = self._get_conn().execute(
-                "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
+                )
+                .fetchall()
+            )
         return [dict(r) for r in rows]
 
     # ==================== Grid State (replaces grid_state.json) ====================
 
     def grid_get(self, symbol: str) -> Optional[Dict]:
-        row = self._get_conn().execute(
-            "SELECT * FROM grid_state WHERE symbol = ?", (symbol,)
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT * FROM grid_state WHERE symbol = ?", (symbol,))
+            .fetchone()
+        )
         if not row:
             return None
         return {
@@ -563,9 +595,11 @@ class StateDB:
     # ==================== DCA State (replaces dca_state.json) ====================
 
     def dca_get(self, symbol: str) -> Optional[Dict]:
-        row = self._get_conn().execute(
-            "SELECT * FROM dca_state WHERE symbol = ?", (symbol,)
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT * FROM dca_state WHERE symbol = ?", (symbol,))
+            .fetchone()
+        )
         if not row:
             return None
         return {
@@ -613,9 +647,11 @@ class StateDB:
     # ==================== Strategy State (replaces strategy_state.json) ====================
 
     def strategy_get(self, key: str) -> Optional[Dict]:
-        row = self._get_conn().execute(
-            "SELECT * FROM strategy_state WHERE key = ?", (key,)
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT * FROM strategy_state WHERE key = ?", (key,))
+            .fetchone()
+        )
         if not row:
             return None
         try:
@@ -651,8 +687,12 @@ class StateDB:
 
     # ==================== KV Store ====================
 
-    def kv_get(self, key: str, default: Any = None) -> Any:
-        row = self._get_conn().execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+    def kv_get(self, key: str, default: Optional[Any] = None) -> Any:
+        row = (
+            self._get_conn()
+            .execute("SELECT value FROM kv WHERE key = ?", (key,))
+            .fetchone()
+        )
         if row:
             try:
                 return json.loads(row["value"])
@@ -674,20 +714,32 @@ class StateDB:
 
     # ==================== Audit Log ====================
 
-    def audit_log(self, action: str, details: str = "", old_value: str = "", new_value: str = "", source: str = "system"):
+    def audit_log(
+        self,
+        action: str,
+        details: Any = "",
+        old_value: str = "",
+        new_value: str = "",
+        source: str = "system",
+    ):
         """Log an audit event."""
         now = time.time()
+        details_str = json.dumps(details) if not isinstance(details, str) else details
         self._get_conn().execute(
             "INSERT INTO audit_log (timestamp, action, details, old_value, new_value, source) VALUES (?, ?, ?, ?, ?, ?)",
-            (now, action, details, old_value, new_value, source),
+            (now, action, details_str, old_value, new_value, source),
         )
         self._get_conn().commit()
 
     def audit_get_recent(self, limit: int = 50) -> List[Dict]:
         """Get recent audit log entries."""
-        rows = self._get_conn().execute(
-            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = (
+            self._get_conn()
+            .execute(
+                "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+            )
+            .fetchall()
+        )
         return [dict(r) for r in rows]
 
     # ==================== Decisions (TradeJournal) ====================
@@ -702,15 +754,16 @@ class StateDB:
         qty: float = 0,
         side: str = "",
         strategy: str = "",
-        reasons: list = None,
-        signals: list = None,
-        bear_result: Any = None,
+        reasons: Optional[list] = None,
+        signals: Optional[list] = None,
+        bear_result: Optional[Any] = None,
         research: str = "",
         exit_price: float = 0,
         pnl_pct: float = 0,
     ) -> int:
         """Insert a decision/trade record. Returns row id."""
         from datetime import datetime
+
         now = time.time()
         date_str = datetime.now().strftime("%Y-%m-%d")
 
@@ -732,28 +785,47 @@ class StateDB:
                 bear_reasons = json.dumps(bear_result.get("reasons", []))
                 bear_confidence = bear_result.get("confidence")
 
-        rowid = self._get_conn().execute(
-            """INSERT INTO decisions
+        rowid = (
+            self._get_conn()
+            .execute(
+                """INSERT INTO decisions
             (timestamp, date, symbol, type, decision, score, price, qty, side, strategy,
              reasons, signals, bear_score, bear_veto, bear_reasons, bear_confidence,
              research, exit_price, pnl_pct)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                now, date_str, symbol, type, decision, score, price, qty, side, strategy,
-                json.dumps(reasons or []), json.dumps(signals or []),
-                bear_score, bear_veto, bear_reasons, bear_confidence,
-                research, exit_price, pnl_pct,
-            ),
-        ).lastrowid
+                (
+                    now,
+                    date_str,
+                    symbol,
+                    type,
+                    decision,
+                    score,
+                    price,
+                    qty,
+                    side,
+                    strategy,
+                    json.dumps(reasons or []),
+                    json.dumps(signals or []),
+                    bear_score,
+                    bear_veto,
+                    bear_reasons,
+                    bear_confidence,
+                    research,
+                    exit_price,
+                    pnl_pct,
+                ),
+            )
+            .lastrowid
+        )
         self._get_conn().commit()
-        return rowid
+        return rowid or 0
 
     def decisions_get_history(
-        self, symbol: str = None, type: str = None, limit: int = 10
+        self, symbol: Optional[str] = None, type: Optional[str] = None, limit: int = 10
     ) -> List[Dict]:
         """Get recent decisions, optionally filtered by symbol and/or type."""
-        conditions = []
-        params = []
+        conditions: List[str] = []
+        params: List[Any] = []
         if symbol:
             conditions.append("symbol = ?")
             params.append(symbol)
@@ -762,37 +834,53 @@ class StateDB:
             params.append(type)
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
         params.append(limit)
-        rows = self._get_conn().execute(
-            f"SELECT * FROM decisions{where} ORDER BY timestamp DESC LIMIT ?",
-            params,
-        ).fetchall()
+        rows = (
+            self._get_conn()
+            .execute(
+                f"SELECT * FROM decisions{where} ORDER BY timestamp DESC LIMIT ?",
+                params,
+            )
+            .fetchall()
+        )
         return [dict(r) for r in rows]
 
-    def decisions_get_lessons(self, symbol: str = None, limit: int = 5) -> List[Dict]:
+    def decisions_get_lessons(
+        self, symbol: Optional[str] = None, limit: int = 5
+    ) -> List[Dict]:
         """Get recent decisions with exit data and |pnl| > 3% (for lessons)."""
         conditions = ["pnl_pct != 0", "exit_price != 0", "ABS(pnl_pct) > 3.0"]
-        params = []
+        params: List[Any] = []
         if symbol:
             conditions.append("symbol = ?")
             params.append(symbol)
         where = " WHERE " + " AND ".join(conditions)
         params.append(limit)
-        rows = self._get_conn().execute(
-            f"SELECT * FROM decisions{where} ORDER BY timestamp DESC LIMIT ?",
-            params,
-        ).fetchall()
+        rows = (
+            self._get_conn()
+            .execute(
+                f"SELECT * FROM decisions{where} ORDER BY timestamp DESC LIMIT ?",
+                params,
+            )
+            .fetchall()
+        )
         return [dict(r) for r in rows]
 
-    def decisions_count(self, date: str = None) -> int:
+    def decisions_count(self, date: Optional[str] = None) -> int:
         """Count decisions, optionally by date."""
         if date:
-            row = self._get_conn().execute(
-                "SELECT COUNT(*) as cnt FROM decisions WHERE date = ?", (date,)
-            ).fetchone()
+            row = (
+                self._get_conn()
+                .execute(
+                    "SELECT COUNT(*) as cnt FROM decisions WHERE date = ?", (date,)
+                )
+                .fetchone()
+            )
         else:
-            row = self._get_conn().execute(
-                "SELECT COUNT(*) as cnt FROM decisions"
-            ).fetchone()
+            row = (
+                self._get_conn()
+                .execute("SELECT COUNT(*) as cnt FROM decisions")
+                .fetchone()
+            )
         return row["cnt"] if row else 0
 
 
@@ -803,7 +891,7 @@ _state_db_lock = threading.Lock()
 
 def get_state_db(db_path: Optional[str] = None) -> StateDB:
     """Get singleton StateDB instance.
-    
+
     Supports STATE_DB_PATH env var override for testing isolation.
     """
     global _state_db_instance

@@ -32,15 +32,41 @@ Examples:
   python3 -m src.cli.backtest --symbol BTC --start 2025-01-01 --end 2025-06-01
         """,
     )
-    parser.add_argument("--symbol", "-s", type=str, help="Single symbol to backtest (e.g. BTC or BTCUSDT)")
-    parser.add_argument("--symbols", type=str, help="Multiple symbols, comma-separated (e.g. BTC,ETH,SOL)")
-    parser.add_argument("--interval", type=str, default="1h", choices=["1m","5m","15m","30m","1h","4h","1d"], help="K-line interval (default: 1h)")
-    parser.add_argument("--days", type=int, default=90, help="Number of days to backtest (default: 90)")
+    parser.add_argument(
+        "--symbol",
+        "-s",
+        type=str,
+        help="Single symbol to backtest (e.g. BTC or BTCUSDT)",
+    )
+    parser.add_argument(
+        "--symbols",
+        type=str,
+        help="Multiple symbols, comma-separated (e.g. BTC,ETH,SOL)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=str,
+        default="1h",
+        choices=["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
+        help="K-line interval (default: 1h)",
+    )
+    parser.add_argument(
+        "--days", type=int, default=90, help="Number of days to backtest (default: 90)"
+    )
     parser.add_argument("--start", type=str, help="Start date YYYY-MM-DD")
     parser.add_argument("--end", type=str, help="End date YYYY-MM-DD")
-    parser.add_argument("--capital", type=float, default=10000, help="Initial capital in USDT (default: 10000)")
-    parser.add_argument("--trend-filter", action="store_true", help="Enable BTC 200MA trend filter")
-    parser.add_argument("--trailing-stop", action="store_true", help="Enable trailing stop-loss")
+    parser.add_argument(
+        "--capital",
+        type=float,
+        default=10000,
+        help="Initial capital in USDT (default: 10000)",
+    )
+    parser.add_argument(
+        "--trend-filter", action="store_true", help="Enable BTC 200MA trend filter"
+    )
+    parser.add_argument(
+        "--trailing-stop", action="store_true", help="Enable trailing stop-loss"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
@@ -57,6 +83,7 @@ Examples:
     # Initialize BinanceClient
     try:
         from src.binance_client import BinanceClient
+
         client = BinanceClient()
     except Exception as e:
         print(f"ERROR: Failed to initialize BinanceClient: {e}")

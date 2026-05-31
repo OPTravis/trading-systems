@@ -22,12 +22,8 @@ from .broker_protocol import (
     Contract,
     ContractDetails,
     Order,
-    OrderSide,
-    OrderStatus,
-    OrderType,
     Position,
     Tick,
-    TimeInForce,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,7 +54,8 @@ class AlpacaClient(BrokerProtocol):
         self._paper = paper
         self._connected = False
         self._base_url = (
-            "https://paper-api.alpaca.markets" if paper
+            "https://paper-api.alpaca.markets"
+            if paper
             else "https://api.alpaca.markets"
         )
 
@@ -91,11 +88,14 @@ class AlpacaClient(BrokerProtocol):
         what_to_show: str = "TRADES",
         use_rth: bool = True,
     ) -> list[Bar]:
-        raise NotImplementedError("AlpacaClient.get_historical_bars not yet implemented")
+        raise NotImplementedError(
+            "AlpacaClient.get_historical_bars not yet implemented"
+        )
 
     async def stream_market_data(self, contract: Contract) -> AsyncIterator[Tick]:
+        # Make this a generator, then raise
+        yield  # type: ignore[misc]
         raise NotImplementedError("AlpacaClient.stream_market_data not yet implemented")
-        yield  # Make this a generator
 
     # ── Account & Positions ──────────────────────────────────────────────
 
@@ -117,8 +117,11 @@ class AlpacaClient(BrokerProtocol):
         raise NotImplementedError("AlpacaClient.cancel_order not yet implemented")
 
     async def modify_order(
-        self, order_id: int, quantity: Optional[float] = None,
-        limit_price: Optional[float] = None, stop_price: Optional[float] = None
+        self,
+        order_id: int,
+        quantity: Optional[float] = None,
+        limit_price: Optional[float] = None,
+        stop_price: Optional[float] = None,
     ) -> Order:
         raise NotImplementedError("AlpacaClient.modify_order not yet implemented")
 

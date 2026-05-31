@@ -13,19 +13,16 @@ Crypto-ai-trader 完整系統測試套件
 運行：cd ~/crypto-ai-trader && .venv/bin/python3 -m pytest tests/test_crypto_system.py -v
 """
 
-import json
-import os
 import time
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def tmp_data_dir(tmp_path):
@@ -39,18 +36,29 @@ def tmp_data_dir(tmp_path):
 # A. Portfolio 同步
 # ===========================================================================
 
+
 class TestPortfolioSync:
     """Test portfolio_state.json sync with Binance (ghost, qty mismatch, missing)."""
 
     def _make_portfolio(self, tmp_data_dir, positions=None, cash=100.0):
         from src.portfolio import PortfolioManager
+
         pm = PortfolioManager.__new__(PortfolioManager)
-        pm.config = pm._default_config() if hasattr(pm, '_default_config') else {
-            "max_position_pct": 20, "max_total_exposure_pct": 80,
-            "cash_reserve_pct": 20, "max_daily_loss_pct": 3,
-            "max_leverage": 1, "max_open_positions": 3, "max_hold_hours": 24,
-            "stop_loss": {"default_pct": 2.0}, "take_profit": {"default_pct": 6.0},
-        }
+        pm.config = (
+            pm._default_config()
+            if hasattr(pm, "_default_config")
+            else {
+                "max_position_pct": 20,
+                "max_total_exposure_pct": 80,
+                "cash_reserve_pct": 20,
+                "max_daily_loss_pct": 3,
+                "max_leverage": 1,
+                "max_open_positions": 3,
+                "max_hold_hours": 24,
+                "stop_loss": {"default_pct": 2.0},
+                "take_profit": {"default_pct": 6.0},
+            }
+        )
         pm.positions = positions or {}
         pm.cash_balance = cash
         pm.orders_log = []
@@ -64,16 +72,36 @@ class TestPortfolioSync:
 
     def test_sync_removes_ghost_position(self, tmp_data_dir):
         """Bug regression: state has TAO but Binance doesn't → should remove."""
-        pm = self._make_portfolio(tmp_data_dir, positions={
-            "BARDUSDT": {"symbol": "BARDUSDT", "quantity": 44.0, "entry_price": 0.3336,
-                         "current_price": 0.306, "stop_loss": 0, "trailing_stop_pct": 1.5,
-                         "highest_price": 0.339, "strategy": "synced",
-                         "created_at": "2026-04-15T09:27:15", "updated_at": "2026-04-19T22:02:56"},
-            "TAOUSDT": {"symbol": "TAOUSDT", "quantity": 0.0595, "entry_price": 254.0,
-                        "current_price": 247.5, "stop_loss": 0, "trailing_stop_pct": 1.5,
-                        "highest_price": 259.3, "strategy": "synced",
-                        "created_at": "2026-04-17T22:02:22", "updated_at": "2026-04-19T22:02:57"},
-        }, cash=392.12)
+        pm = self._make_portfolio(
+            tmp_data_dir,
+            positions={
+                "BARDUSDT": {
+                    "symbol": "BARDUSDT",
+                    "quantity": 44.0,
+                    "entry_price": 0.3336,
+                    "current_price": 0.306,
+                    "stop_loss": 0,
+                    "trailing_stop_pct": 1.5,
+                    "highest_price": 0.339,
+                    "strategy": "synced",
+                    "created_at": "2026-04-15T09:27:15",
+                    "updated_at": "2026-04-19T22:02:56",
+                },
+                "TAOUSDT": {
+                    "symbol": "TAOUSDT",
+                    "quantity": 0.0595,
+                    "entry_price": 254.0,
+                    "current_price": 247.5,
+                    "stop_loss": 0,
+                    "trailing_stop_pct": 1.5,
+                    "highest_price": 259.3,
+                    "strategy": "synced",
+                    "created_at": "2026-04-17T22:02:22",
+                    "updated_at": "2026-04-19T22:02:57",
+                },
+            },
+            cash=392.12,
+        )
 
         # Simulate Binance having only BARD (no TAO)
         binance_assets = {"BARDUSDT"}
@@ -87,12 +115,23 @@ class TestPortfolioSync:
 
     def test_sync_updates_quantity(self, tmp_data_dir):
         """Binance has 14 NEAR but state has 32 → should update to 14."""
-        pm = self._make_portfolio(tmp_data_dir, positions={
-            "NEARUSDT": {"symbol": "NEARUSDT", "quantity": 32.0, "entry_price": 1.425,
-                         "current_price": 1.375, "stop_loss": 0, "trailing_stop_pct": 1.5,
-                         "highest_price": 1.429, "strategy": "synced",
-                         "created_at": "2026-04-17T22:02:22", "updated_at": "2026-04-19T22:02:57"},
-        })
+        pm = self._make_portfolio(
+            tmp_data_dir,
+            positions={
+                "NEARUSDT": {
+                    "symbol": "NEARUSDT",
+                    "quantity": 32.0,
+                    "entry_price": 1.425,
+                    "current_price": 1.375,
+                    "stop_loss": 0,
+                    "trailing_stop_pct": 1.5,
+                    "highest_price": 1.429,
+                    "strategy": "synced",
+                    "created_at": "2026-04-17T22:02:22",
+                    "updated_at": "2026-04-19T22:02:57",
+                },
+            },
+        )
 
         # Simulate quantity update from Binance
         binance_qty = 14.0
@@ -108,10 +147,16 @@ class TestPortfolioSync:
 
         # Simulate discovering a new position
         pm.positions["BNBUSDT"] = {
-            "symbol": "BNBUSDT", "quantity": 0.0058, "entry_price": 640.41,
-            "current_price": 626.0, "stop_loss": 0, "trailing_stop_pct": 1.5,
-            "highest_price": 643.92, "strategy": "synced",
-            "created_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat(),
+            "symbol": "BNBUSDT",
+            "quantity": 0.0058,
+            "entry_price": 640.41,
+            "current_price": 626.0,
+            "stop_loss": 0,
+            "trailing_stop_pct": 1.5,
+            "highest_price": 643.92,
+            "strategy": "synced",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
         }
 
         assert "BNBUSDT" in pm.positions
@@ -122,12 +167,14 @@ class TestPortfolioSync:
 # B. TrailingStop
 # ===========================================================================
 
+
 class TestTrailingStop:
     """Test trailing stop activation, trigger, SL movement, and contradictions."""
 
     @pytest.fixture
     def ts(self, tmp_data_dir):
         from src.risk_manager import TrailingStop
+
         ts_obj = TrailingStop.__new__(TrailingStop)
         ts_obj._filepath = tmp_data_dir / "trailing_stops.json"
         ts_obj._state = {}
@@ -199,6 +246,7 @@ class TestTrailingStop:
 # C. SL Coverage (trailing-check logic)
 # ===========================================================================
 
+
 class TestSLCoverage:
     """Test the SL coverage logic in trailing-check: fully locked TP, notional, normal."""
 
@@ -252,12 +300,14 @@ class TestSLCoverage:
 # D. ConsecutiveLossGuard
 # ===========================================================================
 
+
 class TestConsecutiveLossGuard:
     """Test loss streak tracking, pause, auto-expire, and garbage detection."""
 
     @pytest.fixture
     def lg(self, tmp_data_dir):
         from src.risk_manager import ConsecutiveLossGuard
+
         lg_obj = ConsecutiveLossGuard.__new__(ConsecutiveLossGuard)
         lg_obj._filepath = tmp_data_dir / "loss_guard.json"
         lg_obj._state = {
@@ -321,9 +371,9 @@ class TestConsecutiveLossGuard:
     def test_detect_garbage_records(self):
         """50 BNB records with tiny PnL ($0.0001-$0.016) → should be flagged as garbage."""
         from collections import Counter
+
         history = [
-            {"symbol": "BNB", "pnl": round(-0.0001 * i + 0.001, 4)}
-            for i in range(50)
+            {"symbol": "BNB", "pnl": round(-0.0001 * i + 0.001, 4)} for i in range(50)
         ]
         symbols = [h.get("symbol") for h in history]
         sym_counts = Counter(symbols)
@@ -341,12 +391,14 @@ class TestConsecutiveLossGuard:
 # E. StrategyAdaptor
 # ===========================================================================
 
+
 class TestStrategyAdaptor:
     """Test all 5 market regimes produce correct strategy enable/disable."""
 
     @pytest.fixture
     def adaptor(self, tmp_data_dir):
         from src.strategy_adaptor import StrategyAdaptor
+
         sa = StrategyAdaptor.__new__(StrategyAdaptor)
         sa._filepath = tmp_data_dir / "strategy_state.json"
         sa._state = {"last_regime": None, "last_adjustments": None, "history": []}
@@ -362,41 +414,59 @@ class TestStrategyAdaptor:
         # HMM: return no cached prediction → skip HMM overlay
         mock_hmm = MagicMock()
         mock_hmm.return_value.get_cached_prediction.return_value = None
-        monkeypatch.setattr("src.strategy_adaptor.HMMRegimeDetector", mock_hmm, raising=False)
+        monkeypatch.setattr(
+            "src.strategy_adaptor.HMMRegimeDetector", mock_hmm, raising=False
+        )
         # CVaR: return default scale=1.0
         mock_cvar_cls = MagicMock()
         instance = mock_cvar_cls.return_value
-        instance._db._get_conn.return_value.execute.return_value.fetchall.return_value = []
+        instance._db._get_conn.return_value.execute.return_value.fetchall.return_value = (
+            []
+        )
         instance.compute_cvar.return_value = 0
-        instance.compute_portfolio_risk.return_value = {"position_scale": 1.0, "risk_level": None}
+        instance.compute_portfolio_risk.return_value = {
+            "position_scale": 1.0,
+            "risk_level": None,
+        }
         # ParamOptimizer: return empty dict
         mock_po_cls = MagicMock()
         mock_po_cls.return_value.get_current_params.return_value = {}
-        monkeypatch.setattr("src.strategy_adaptor.ParamOptimizer", mock_po_cls, raising=False)
+        monkeypatch.setattr(
+            "src.strategy_adaptor.ParamOptimizer", mock_po_cls, raising=False
+        )
         # Contextual bandit: return default 0.8
         mock_bandit_cls = MagicMock()
         mock_bandit_cls.return_value.recommend_size.return_value = 0.8
-        monkeypatch.setattr("src.strategy_adaptor.get_contextual_bandit",
-                            mock_bandit_cls.return_value.recommend_size, raising=False)
+        monkeypatch.setattr(
+            "src.strategy_adaptor.get_contextual_bandit",
+            mock_bandit_cls.return_value.recommend_size,
+            raising=False,
+        )
 
     def _get_enabled(self, adaptor, regime_result):
         return {k for k, v in regime_result["strategies"].items() if v["enabled"]}
 
     def test_extreme_fear_regime(self, adaptor):
         """F&G=20, BEARISH BTC → only DCA + RSI + Bollinger (vwap disabled by default)."""
-        result = adaptor.adapt(fear_greed=20, btc_trend="BEARISH", btc_price_change_24h=-3.0)
+        result = adaptor.adapt(
+            fear_greed=20, btc_trend="BEARISH", btc_price_change_24h=-3.0
+        )
         enabled = self._get_enabled(adaptor, result)
 
         assert "dca" in enabled, "DCA should be enabled in EXTREME_FEAR"
         assert "rsi_reversion" in enabled, "RSI should be enabled in EXTREME_FEAR"
-        assert "bollinger" in enabled, "Bollinger should be enabled (BEARISH + extreme fear)"
+        assert (
+            "bollinger" in enabled
+        ), "Bollinger should be enabled (BEARISH + extreme fear)"
         assert "vwap" not in enabled, "VWAP disabled by default (FIX-4)"
         assert "grid" not in enabled
         assert "trend" not in enabled
 
     def test_fear_regime(self, adaptor):
         """F&G=27 → DCA + RSI + Bollinger enabled, Grid/Trend/VWAP disabled."""
-        result = adaptor.adapt(fear_greed=27, btc_trend="BEARISH", btc_price_change_24h=-2.0)
+        result = adaptor.adapt(
+            fear_greed=27, btc_trend="BEARISH", btc_price_change_24h=-2.0
+        )
         enabled = self._get_enabled(adaptor, result)
 
         assert "dca" in enabled
@@ -408,7 +478,9 @@ class TestStrategyAdaptor:
 
     def test_neutral_regime(self, adaptor):
         """F&G=50 → dca, rsi_reversion, bollinger, trend enabled (vwap disabled by default)."""
-        result = adaptor.adapt(fear_greed=50, btc_trend="NEUTRAL", btc_price_change_24h=1.5)
+        result = adaptor.adapt(
+            fear_greed=50, btc_trend="NEUTRAL", btc_price_change_24h=1.5
+        )
         enabled = self._get_enabled(adaptor, result)
 
         assert enabled == {"bollinger", "dca", "rsi_reversion", "trend"}
@@ -417,7 +489,9 @@ class TestStrategyAdaptor:
 
     def test_greed_regime(self, adaptor):
         """F&G=65 → Grid + Trend + Bollinger, DCA/RSI/VWAP disabled."""
-        result = adaptor.adapt(fear_greed=65, btc_trend="BULLISH", btc_price_change_24h=2.0)
+        result = adaptor.adapt(
+            fear_greed=65, btc_trend="BULLISH", btc_price_change_24h=2.0
+        )
         enabled = self._get_enabled(adaptor, result)
 
         assert "grid" in enabled
@@ -429,7 +503,9 @@ class TestStrategyAdaptor:
 
     def test_extreme_greed_regime(self, adaptor):
         """F&G=80 → Bollinger + Trend, rest disabled."""
-        result = adaptor.adapt(fear_greed=80, btc_trend="NEUTRAL", btc_price_change_24h=1.0)
+        result = adaptor.adapt(
+            fear_greed=80, btc_trend="NEUTRAL", btc_price_change_24h=1.0
+        )
         enabled = self._get_enabled(adaptor, result)
 
         assert "bollinger" in enabled
@@ -441,7 +517,9 @@ class TestStrategyAdaptor:
 
     def test_no_strategy_overlap(self, adaptor):
         """No strategy should appear in both enabled and disabled lists."""
-        result = adaptor.adapt(fear_greed=27, btc_trend="BEARISH", btc_price_change_24h=-2.0)
+        result = adaptor.adapt(
+            fear_greed=27, btc_trend="BEARISH", btc_price_change_24h=-2.0
+        )
         enabled = {k for k, v in result["strategies"].items() if v["enabled"]}
         disabled = {k for k, v in result["strategies"].items() if not v["enabled"]}
         assert enabled & disabled == set(), f"Overlap: {enabled & disabled}"
@@ -451,6 +529,7 @@ class TestStrategyAdaptor:
 # ===========================================================================
 # F. Entry Price (FIFO)
 # ===========================================================================
+
 
 class TestEntryPrice:
     """Test FIFO-based average entry price calculation."""
@@ -463,6 +542,7 @@ class TestEntryPrice:
     def test_fifo_calculation(self):
         """3 buys: 10@$100, 5@$120, 5@$140 → avg = (10*100+5*120+5*140)/20 = $115."""
         from src.entry_price import get_avg_entry_price
+
         trades = [
             {"qty": "10", "price": "100", "isBuyer": True, "time": 1000},
             {"qty": "5", "price": "120", "isBuyer": True, "time": 2000},
@@ -477,6 +557,7 @@ class TestEntryPrice:
     def test_partial_sell_reduces_batch(self):
         """Buy 10@$100, sell 4, buy 5@$120 → remaining = 6@$100 + 5@$120 = avg ~108.89."""
         from src.entry_price import get_avg_entry_price
+
         trades = [
             {"qty": "10", "price": "100", "isBuyer": True, "time": 1000},
             {"qty": "4", "price": "110", "isBuyer": False, "time": 2000},
@@ -492,6 +573,7 @@ class TestEntryPrice:
     def test_insufficient_history_returns_none(self):
         """Calculated qty doesn't match actual → should return None."""
         from src.entry_price import get_avg_entry_price
+
         trades = [
             {"qty": "10", "price": "100", "isBuyer": True, "time": 1000},
         ]
@@ -503,6 +585,7 @@ class TestEntryPrice:
     def test_no_trades_returns_none(self):
         """No trade history → should return None."""
         from src.entry_price import get_avg_entry_price
+
         client = self._make_mock_client([])
         result = get_avg_entry_price(client, "TESTUSDT")
         assert result is None
@@ -510,7 +593,10 @@ class TestEntryPrice:
     def test_zero_current_qty_returns_none(self):
         """current_qty=0 → should return None."""
         from src.entry_price import get_avg_entry_price
-        client = self._make_mock_client([{"qty": "10", "price": "100", "isBuyer": True, "time": 1000}])
+
+        client = self._make_mock_client(
+            [{"qty": "10", "price": "100", "isBuyer": True, "time": 1000}]
+        )
         result = get_avg_entry_price(client, "TESTUSDT", current_qty=0)
         assert result is None
 
@@ -519,12 +605,14 @@ class TestEntryPrice:
 # G. SmartOrder
 # ===========================================================================
 
+
 class TestSmartOrder:
     """Test position sizing and ATR-based SL/TP calculations."""
 
     def test_calculate_sl_tp_normal_atr(self):
         """Normal ATR: SL=-2*ATR, TP1=+2*ATR, TP2=+4*ATR, TP3=+6*ATR."""
         from src.smart_order import SmartOrder
+
         result = SmartOrder.calculate_sl_tp(price=100.0, atr=2.0)
 
         assert result["sl_price"] == pytest.approx(96.0, abs=0.01)
@@ -538,22 +626,29 @@ class TestSmartOrder:
         assert tp1_distance == pytest.approx(sl_distance, abs=0.01)  # 1:1
 
         # Size percentages sum to 100
-        total_size = result["tp1_size_pct"] + result["tp2_size_pct"] + result["tp3_size_pct"]
+        total_size = (
+            result["tp1_size_pct"] + result["tp2_size_pct"] + result["tp3_size_pct"]
+        )
         assert total_size == 100
 
     def test_calculate_sl_tp_levels_monotonic(self):
         """TP levels must be strictly ascending: entry < TP1 < TP2 < TP3."""
         from src.smart_order import SmartOrder
+
         for atr in [0.5, 1.0, 5.0, 50.0]:
             for price in [1.0, 100.0, 50000.0]:
                 result = SmartOrder.calculate_sl_tp(price=price, atr=atr)
-                assert result["sl_price"] < price, f"SL above entry: price={price}, atr={atr}"
-                assert result["tp1_price"] < result["tp2_price"] < result["tp3_price"], \
-                    f"TPs not ascending: price={price}, atr={atr}"
+                assert (
+                    result["sl_price"] < price
+                ), f"SL above entry: price={price}, atr={atr}"
+                assert (
+                    result["tp1_price"] < result["tp2_price"] < result["tp3_price"]
+                ), f"TPs not ascending: price={price}, atr={atr}"
 
     def test_calculate_sl_tp_sl_distance_capped(self):
         """SL distance should be capped at 6*ATR."""
         from src.smart_order import SmartOrder
+
         # Very high ATR relative to price
         result = SmartOrder.calculate_sl_tp(price=100.0, atr=20.0)
         sl_distance = 100.0 - result["sl_price"]
@@ -563,16 +658,19 @@ class TestSmartOrder:
     def test_position_size_rejects_max_positions(self):
         """When 5 positions already open → should return (0, 0)."""
         from src.smart_order import SmartOrder
+
         mock_client = MagicMock()
         mock_client.get_free_balance.return_value = 500.0
-        mock_client.get_account.return_value = {"balances": [
-            {"asset": "BTC", "free": "0.01", "locked": "0"},
-            {"asset": "ETH", "free": "1.0", "locked": "0"},
-            {"asset": "SOL", "free": "10.0", "locked": "0"},
-            {"asset": "NEAR", "free": "50.0", "locked": "0"},
-            {"asset": "BARD", "free": "100.0", "locked": "0"},
-            {"asset": "USDT", "free": "500.0", "locked": "0"},
-        ]}
+        mock_client.get_account.return_value = {
+            "balances": [
+                {"asset": "BTC", "free": "0.01", "locked": "0"},
+                {"asset": "ETH", "free": "1.0", "locked": "0"},
+                {"asset": "SOL", "free": "10.0", "locked": "0"},
+                {"asset": "NEAR", "free": "50.0", "locked": "0"},
+                {"asset": "BARD", "free": "100.0", "locked": "0"},
+                {"asset": "USDT", "free": "500.0", "locked": "0"},
+            ]
+        }
         # Return proper batch ticker list so count_active_positions counts all 5 positions
         mock_client.get_24hr_stats.return_value = [
             {"symbol": "BTCUSDT", "last_price": "100.0"},
@@ -589,21 +687,35 @@ class TestSmartOrder:
     def test_position_size_respects_single_limit(self):
         """Position size should not exceed MAX_SINGLE_POSITION_PCT of balance."""
         from src.smart_order import SmartOrder
+
         mock_client = MagicMock()
         mock_client.get_free_balance.return_value = 1000.0
-        mock_client.get_account.return_value = {"balances": [
-            {"asset": "USDT", "free": "1000.0", "locked": "0"},
-        ]}
+        mock_client.get_account.return_value = {
+            "balances": [
+                {"asset": "USDT", "free": "1000.0", "locked": "0"},
+            ]
+        }
         mock_client.get_24hr_stats.return_value = {"last_price": "50.0"}
         mock_client.get_exchange_info.return_value = {
-            "symbols": [{
-                "symbol": "TESTUSDT",
-                "filters": [
-                    {"filterType": "LOT_SIZE", "minQty": "0.1", "maxQty": "1000", "stepSize": "0.1"},
-                    {"filterType": "PRICE_FILTER", "minPrice": "0.01", "tickSize": "0.01"},
-                    {"filterType": "NOTIONAL", "minNotional": "5"},
-                ]
-            }]
+            "symbols": [
+                {
+                    "symbol": "TESTUSDT",
+                    "filters": [
+                        {
+                            "filterType": "LOT_SIZE",
+                            "minQty": "0.1",
+                            "maxQty": "1000",
+                            "stepSize": "0.1",
+                        },
+                        {
+                            "filterType": "PRICE_FILTER",
+                            "minPrice": "0.01",
+                            "tickSize": "0.01",
+                        },
+                        {"filterType": "NOTIONAL", "minNotional": "5"},
+                    ],
+                }
+            ]
         }
 
         so = SmartOrder(mock_client)
@@ -616,21 +728,35 @@ class TestSmartOrder:
     def test_position_size_minimum_trade(self):
         """Below $10 minimum → should return (0, 0)."""
         from src.smart_order import SmartOrder
+
         mock_client = MagicMock()
         mock_client.get_free_balance.return_value = 50.0  # very small balance
-        mock_client.get_account.return_value = {"balances": [
-            {"asset": "USDT", "free": "50.0", "locked": "0"},
-        ]}
+        mock_client.get_account.return_value = {
+            "balances": [
+                {"asset": "USDT", "free": "50.0", "locked": "0"},
+            ]
+        }
         mock_client.get_24hr_stats.return_value = {"last_price": "50.0"}
         mock_client.get_exchange_info.return_value = {
-            "symbols": [{
-                "symbol": "TESTUSDT",
-                "filters": [
-                    {"filterType": "LOT_SIZE", "minQty": "0.1", "maxQty": "1000", "stepSize": "0.1"},
-                    {"filterType": "PRICE_FILTER", "minPrice": "0.01", "tickSize": "0.01"},
-                    {"filterType": "NOTIONAL", "minNotional": "5"},
-                ]
-            }]
+            "symbols": [
+                {
+                    "symbol": "TESTUSDT",
+                    "filters": [
+                        {
+                            "filterType": "LOT_SIZE",
+                            "minQty": "0.1",
+                            "maxQty": "1000",
+                            "stepSize": "0.1",
+                        },
+                        {
+                            "filterType": "PRICE_FILTER",
+                            "minPrice": "0.01",
+                            "tickSize": "0.01",
+                        },
+                        {"filterType": "NOTIONAL", "minNotional": "5"},
+                    ],
+                }
+            ]
         }
 
         so = SmartOrder(mock_client)

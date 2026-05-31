@@ -4,20 +4,23 @@ Extracted from main.py for maintainability.
 """
 
 import logging
-import yaml
 import os
-from datetime import datetime
+from typing import Dict
 
-from src.paper_trader import get_trading_client, is_paper_mode
-from src.binance_client import BinanceClient
+from src.bear_analyst import BearAnalyst
+from src.binance_client import BinanceClient  # noqa: F401 — needed for test mocking
 from src.market_scanner import MarketScanner
-from src.sentiment import SentimentAnalyzer
 from src.notifier import FeishuNotifier
+from src.paper_trader import get_trading_client, is_paper_mode
+from src.pending_confirmation import clear_pending, save_pending
 from src.portfolio import PortfolioManager
 from src.position_optimizer import PositionOptimizer
-from src.pending_confirmation import save_pending, load_pending, clear_pending, check_confirmation
-from src.trade_executor import execute_auto_trade, get_position_tier, count_active_positions
-from src.bear_analyst import BearAnalyst
+from src.sentiment import SentimentAnalyzer
+from src.trade_executor import (
+    count_active_positions,
+    execute_auto_trade,
+    get_position_tier,
+)
 from src.trade_journal import TradeJournal
 
 logger = logging.getLogger(__name__)
@@ -36,12 +39,20 @@ def cmd_scan(send_notification: bool = False):
     losers = [m for m in movers if m["direction"] == "loser"]
     print("\n📈 Top Gainers:")
     for g in gainers:
-        vol_str = f"${g.get('quote_volume', 0)/1e6:.1f}M" if g.get('quote_volume', 0) > 0 else "N/A"
+        vol_str = (
+            f"${g.get('quote_volume', 0)/1e6:.1f}M"
+            if g.get("quote_volume", 0) > 0
+            else "N/A"
+        )
         print(f"  {g['symbol']}: +{g['change_pct']:.2f}% (Vol: {vol_str})")
 
     print("\n📉 Top Losers:")
     for l in losers:
-        vol_str = f"${l.get('quote_volume', 0)/1e6:.1f}M" if l.get('quote_volume', 0) > 0 else "N/A"
+        vol_str = (
+            f"${l.get('quote_volume', 0)/1e6:.1f}M"
+            if l.get("quote_volume", 0) > 0
+            else "N/A"
+        )
         print(f"  {l['symbol']}: {l['change_pct']:.2f}% (Vol: {vol_str})")
 
     # Scan for opportunities
@@ -50,7 +61,7 @@ def cmd_scan(send_notification: bool = False):
 
     print(f"\n📊 Found {len(opportunities)} opportunities:")
     for opp in opportunities[:10]:
-        vol_str = f"${opp['volume_24h']/1e6:.1f}M" if opp['volume_24h'] > 0 else "N/A"
+        vol_str = f"${opp['volume_24h']/1e6:.1f}M" if opp["volume_24h"] > 0 else "N/A"
         print(f"\n  {opp['symbol']} (Score: {opp['score']:.0f}/100)")
         print(f"    24h Change: {opp['price_change_24h']:.2f}%")
         print(f"    Volume: {vol_str}")
@@ -61,13 +72,11 @@ def cmd_scan(send_notification: bool = False):
         notifier = FeishuNotifier()
         gainers = [m for m in movers if m["direction"] == "gainer"]
         losers = [m for m in movers if m["direction"] == "loser"]
-        movers_data = gainers + losers
+        gainers + losers
         notifier.send_market_scan(opportunities, gainers, losers)
         logger.info("Feishu notification sent")
 
-        print("="*50)
-
-
+        print("=" * 50)
 
 
 def _sync_from_binance(portfolio, client):
@@ -82,6 +91,7 @@ def _sync_from_binance(portfolio, client):
 # ===================================================================
 # Step functions for cmd_cron_scan pipeline
 # ===================================================================
+
 
 def _step_scan_opportunities():
     """Step 1: Market scan with sentiment, strategy adaptation, and filtering.
@@ -104,8 +114,8 @@ def _step_scan_opportunities():
     notifier = FeishuNotifier()
     sentiment = SentimentAnalyzer()
 
-    from src.risk_manager import RiskManager
     from src.market_researcher import MarketResearcher
+    from src.risk_manager import RiskManager
     from src.strategy_adaptor import StrategyAdaptor
 
     # ===== Step 0: Sync with Binance (source of truth) =====
@@ -145,7 +155,9 @@ def _step_scan_opportunities():
         # Get BTC 24h change
         btc_stats = client.get_24hr_stats("BTCUSDT")
         btc_change_24h = float(btc_stats.get("price_change_pct", 0))
-        logger.info(f"BTC: trend={btc_trend} score={btc_score:.1f} ADX={btc_adx} 24h={btc_change_24h:+.2f}%")
+        logger.info(
+            f"BTC: trend={btc_trend} score={btc_score:.1f} ADX={btc_adx} 24h={btc_change_24h:+.2f}%"
+        )
     except Exception as e:
         logger.warning(f"BTC trend check failed: {e}")
 
@@ -154,8 +166,12 @@ def _step_scan_opportunities():
     btc_funding_rate = 0.0
     try:
         import requests as _req
-        fr_resp = _req.get("https://fapi.binance.com/fapi/v1/fundingRate",
-                           params={"symbol": "BTCUSDT", "limit": 1}, timeout=5)
+
+        fr_resp = _req.get(
+            "https://fapi.binance.com/fapi/v1/fundingRate",
+            params={"symbol": "BTCUSDT", "limit": "1"},
+            timeout=5,
+        )
         if fr_resp.status_code == 200:
             data = fr_resp.json()
             if data:
@@ -176,21 +192,28 @@ def _step_scan_opportunities():
     dynamic_threshold = global_cfg["score_threshold"]
 
     # Output strategy adaptation status
-    print(f"STRATEGY_ADAPT: regime={regime} F&G={fng} BTC={btc_trend}({btc_score:.0f}) threshold={dynamic_threshold} funding={btc_funding_rate:+.4f}% signal={global_cfg.get('funding_signal','N/A')}")
+    print(
+        f"STRATEGY_ADAPT: regime={regime} F&G={fng} BTC={btc_trend}({btc_score:.0f}) threshold={dynamic_threshold} funding={btc_funding_rate:+.4f}% signal={global_cfg.get('funding_signal','N/A')}"
+    )
     for sname, scfg in adapted["strategies"].items():
         status = "ON" if scfg["enabled"] else "OFF"
         if scfg["enabled"]:
-            print(f"  {sname}: {status} size={scfg['size_multiplier']*100:.0f}% SL={scfg['sl_pct']}% hold={scfg['max_hold_hours']}h")
+            print(
+                f"  {sname}: {status} size={scfg['size_multiplier']*100:.0f}% SL={scfg['sl_pct']}% hold={scfg['max_hold_hours']}h"
+            )
         else:
             print(f"  {sname}: {status} ({scfg['reason']})")
     # BTC factor breakdown
     if btc_factors:
-        print(f"  BTC Factors: EMA={btc_factors.get('ema_cross',0):.0f} RSI={btc_factors.get('rsi',0):.0f} MACD={btc_factors.get('macd',0):.0f} Struct={btc_factors.get('price_structure',0):.0f} Vol={btc_factors.get('volume',0):.0f}")
+        print(
+            f"  BTC Factors: EMA={btc_factors.get('ema_cross',0):.0f} RSI={btc_factors.get('rsi',0):.0f} MACD={btc_factors.get('macd',0):.0f} Struct={btc_factors.get('price_structure',0):.0f} Vol={btc_factors.get('volume',0):.0f}"
+        )
 
     # ===== Step 3b: Six-Dimension Resonance =====
     dim_result = None
     try:
         from src.dimension_scorer import DimensionScorer
+
         dim_scorer = DimensionScorer(binance_client=client)
         dim_result = dim_scorer.score_all()
         print(dim_scorer.format_report(dim_result))
@@ -201,42 +224,54 @@ def _step_scan_opportunities():
     dim_resonance = dim_result.get("resonance", "NEUTRAL") if dim_result else "NEUTRAL"
     if dim_resonance in ("STRONG_BULL", "BULL"):
         dynamic_threshold -= 5  # Lower bar when multiple dimensions align bullishly
-        logger.info(f"Dimension resonance={dim_resonance}, lowering threshold by 5 to {dynamic_threshold}")
+        logger.info(
+            f"Dimension resonance={dim_resonance}, lowering threshold by 5 to {dynamic_threshold}"
+        )
     elif dim_resonance in ("STRONG_BEAR", "BEAR"):
         dynamic_threshold += 5  # Raise bar in bearish resonance
-        logger.info(f"Dimension resonance={dim_resonance}, raising threshold by 5 to {dynamic_threshold}")
+        logger.info(
+            f"Dimension resonance={dim_resonance}, raising threshold by 5 to {dynamic_threshold}"
+        )
     # Clamp threshold to reasonable range
     dynamic_threshold = max(40, min(95, dynamic_threshold))
 
     # ===== Step 4: Market Scan =====
-    movers = scanner.get_top_movers(limit=5)
+    scanner.get_top_movers(limit=5)
     opportunities = scanner.scan_all()
 
     # Skip held positions (including dust > $1)
     acct = client.get_account()
     held_symbols = set()
-    for b in acct.get('balances', []):
-        total = float(b.get('free', 0)) + float(b.get('locked', 0))
+    for b in acct.get("balances", []):
+        total = float(b.get("free", 0)) + float(b.get("locked", 0))
         if total <= 0:
             continue
-        asset = b['asset']
-        if asset == 'USDT':
+        asset = b["asset"]
+        if asset == "USDT":
             continue
         # Only count as held if value >= $1 (dust filter)
         try:
-            stats = client.get_24hr_stats(asset + 'USDT')
-            price_val = float(stats.get('last_price', 0))
+            stats = client.get_24hr_stats(asset + "USDT")
+            price_val = float(stats.get("last_price", 0))
             if total * price_val >= 1.0:
                 held_symbols.add(asset)
         except Exception:
-            logger.error("Price check failed for held symbol %s, assuming real position", asset, exc_info=True)
+            logger.error(
+                "Price check failed for held symbol %s, assuming real position",
+                asset,
+                exc_info=True,
+            )
             # Can't get price — assume it's a real position
             held_symbols.add(asset)
-    opportunities = [o for o in opportunities if o['symbol'].replace('USDT','') not in held_symbols]
+    opportunities = [
+        o for o in opportunities if o["symbol"].replace("USDT", "") not in held_symbols
+    ]
 
     # Apply adapted threshold
-    opportunities = [o for o in opportunities if o['score'] >= dynamic_threshold]
-    logger.info(f"{len(opportunities)} opportunities after adapted threshold ({dynamic_threshold})")
+    opportunities = [o for o in opportunities if o["score"] >= dynamic_threshold]
+    logger.info(
+        f"{len(opportunities)} opportunities after adapted threshold ({dynamic_threshold})"
+    )
 
     if not opportunities:
         print("NO_OPPORTUNITIES")
@@ -244,7 +279,9 @@ def _step_scan_opportunities():
         return None
 
     # ===== Step 4b: Position Optimization (Smart Switch) =====
-    optimizer = PositionOptimizer(binance_client=client, portfolio=portfolio, market_scanner=scanner)
+    optimizer = PositionOptimizer(
+        binance_client=client, portfolio=portfolio, market_scanner=scanner
+    )
     # Pass pre-computed opportunities + BTC change for smart activation (avoids redundant scan_all)
     # Filter opportunities to top 20 for optimizer input
     top_opps = sorted(opportunities, key=lambda x: x.get("score", 0), reverse=True)[:20]
@@ -256,8 +293,10 @@ def _step_scan_opportunities():
     if switch_decisions:
         for decision in switch_decisions:
             status = "EXECUTED" if decision.get("executed") else "FAILED"
-            print(f"SWITCH_{status}: {decision['from_symbol']} -> {decision['to_symbol']} "
-                  f"(reason: {decision['reason']}, expected_gain: {decision['expected_gain_pct']:.2f}%)")
+            print(
+                f"SWITCH_{status}: {decision['from_symbol']} -> {decision['to_symbol']} "
+                f"(reason: {decision['reason']}, expected_gain: {decision['expected_gain_pct']:.2f}%)"
+            )
     else:
         print("SWITCH: No switch opportunities found")
 
@@ -305,52 +344,64 @@ def _step_research_top_n(ctx):
     adapted = ctx["adapted"]
     regime = ctx["regime"]
     fng = ctx["fng"]
-    fng_label = ctx["fng_label"]
+    ctx["fng_label"]
     btc_trend = ctx["btc_trend"]
     acct = ctx["acct"]
 
     # ===== Step 5: Risk Checks =====
-    acct_balances = acct.get('balances', [])
+    acct_balances = acct.get("balances", [])
     risk_positions = []
     for b in acct_balances:
-        asset = b['asset']
-        total = float(b['free']) + float(b['locked'])
-        if asset != 'USDT' and total > 0 and asset != 'NTRN':
+        asset = b["asset"]
+        total = float(b["free"]) + float(b["locked"])
+        if asset != "USDT" and total > 0 and asset != "NTRN":
             try:
-                stats = client.get_24hr_stats(asset + 'USDT')
-                price_val = float(stats.get('last_price', 0))
+                stats = client.get_24hr_stats(asset + "USDT")
+                price_val = float(stats.get("last_price", 0))
                 if total * price_val >= 1.0:
-                    risk_positions.append({"symbol": asset + "USDT", "value_usdt": total * price_val})
+                    risk_positions.append(
+                        {"symbol": asset + "USDT", "value_usdt": total * price_val}
+                    )
             except Exception:
-                logger.error("Risk position price check failed for %s", asset, exc_info=True)
+                logger.error(
+                    "Risk position price check failed for %s", asset, exc_info=True
+                )
 
     # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold to near-unreachable
     # (historical 0/7 wins in FEAR, 0/6 wins when BTC non-bullish)
     # Instead of hard block, set threshold to 98 so only extraordinary setups pass
     if regime in ("EXTREME_FEAR",):
         dynamic_threshold = max(dynamic_threshold, 98)
-        print(f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (historical 0% win rate)")
+        print(
+            f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (historical 0% win rate)"
+        )
     elif regime == "FEAR" and btc_trend != "BULLISH":
         dynamic_threshold = max(dynamic_threshold, 95)
-        print(f"REGIME_GUARD: {regime} + BTC {btc_trend} — threshold raised to {dynamic_threshold}")
+        print(
+            f"REGIME_GUARD: {regime} + BTC {btc_trend} — threshold raised to {dynamic_threshold}"
+        )
 
     filtered = []
     for opp in opportunities:
-        sym = opp['symbol']
-        atr = opp.get('atr', 0)
+        sym = opp["symbol"]
+        atr = opp.get("atr", 0)
         if atr == 0:
             try:
                 klines = client.get_klines(sym, "1h", limit=15)
-                closes = [float(k['close']) for k in klines]  # index 4 = close price
+                closes = [float(k["close"]) for k in klines]  # index 4 = close price
                 if len(closes) >= 2:
-                    trs = [abs(closes[i] - closes[i-1]) for i in range(1, len(closes))]
+                    trs = [
+                        abs(closes[i] - closes[i - 1]) for i in range(1, len(closes))
+                    ]
                     atr = sum(trs) / len(trs) if trs else 0
             except Exception:
-                logger.error("ATR calculation failed for %s, defaulting to 0", sym, exc_info=True)
+                logger.error(
+                    "ATR calculation failed for %s, defaulting to 0", sym, exc_info=True
+                )
                 atr = 0
 
         # Determine preliminary strategy for risk check
-        prelim_signals = opp.get('signals', [])
+        prelim_signals = opp.get("signals", [])
         prelim_strategy = "trend"
         if any("RSI Oversold" in s for s in prelim_signals):
             prelim_strategy = "rsi"
@@ -360,60 +411,65 @@ def _step_research_top_n(ctx):
             prelim_strategy = "vwap"
         elif any("Bollinger" in s for s in prelim_signals):
             prelim_strategy = "bollinger"
-        
+
         # In fear regime, non-fear-buy strategies default to DCA
         fear_buy_ok = {"dca", "rsi", "bollinger"}
-        if adapted["regime"] in ("EXTREME_FEAR", "FEAR") and prelim_strategy not in fear_buy_ok:
+        if (
+            adapted["regime"] in ("EXTREME_FEAR", "FEAR")
+            and prelim_strategy not in fear_buy_ok
+        ):
             prelim_strategy = "dca"
 
         check = risk_mgr.pre_trade_check(
             symbol=sym,
-            price=opp.get('price', 0),
+            price=opp.get("price", 0),
             atr=atr,
             positions=risk_positions,
-            score=opp.get('score'),
+            score=opp.get("score"),
             strategy=prelim_strategy,
         )
-        if check['allowed']:
-            opp['_size_multiplier'] = check['adjustments'].get('size_multiplier', 1.0)
+        if check["allowed"]:
+            opp["_size_multiplier"] = check["adjustments"].get("size_multiplier", 1.0)
             filtered.append(opp)
         else:
-            logger.info(f"RiskManager: %s blocked – %s", sym, '; '.join(check['reasons']))
+            logger.info(
+                "RiskManager: %s blocked – %s", sym, "; ".join(check["reasons"])
+            )
             # Output full opportunity data even when blocked, so AI can display all fields
-            score_val = opp.get('score', 'N/A')
+            score_val = opp.get("score", "N/A")
             # Derive technical score from the opportunity's 1h analysis data
-            analysis_1h = opp.get('analysis', {}).get('1h', {})
-            tech_val = opp.get('technical_score')
+            analysis_1h = opp.get("analysis", {}).get("1h", {})
+            tech_val = opp.get("technical_score")
             if tech_val is None:
                 # Calculate from available indicator fields
                 tech_score = 0.0
-                rsi = analysis_1h.get('rsi', 50)
+                rsi = analysis_1h.get("rsi", 50)
                 if rsi < 30:
                     tech_score += 25
                 elif rsi < 40:
                     tech_score += 18
                 elif rsi < 50:
                     tech_score += 12
-                macd_hist = analysis_1h.get('macd_histogram', 0)
+                macd_hist = analysis_1h.get("macd_histogram", 0)
                 if macd_hist > 0:
                     tech_score += 25
-                bb_lower = analysis_1h.get('bb_lower', 0)
-                current_price = analysis_1h.get('current_price', 0)
+                bb_lower = analysis_1h.get("bb_lower", 0)
+                current_price = analysis_1h.get("current_price", 0)
                 if current_price and bb_lower and current_price < bb_lower:
                     tech_score += 20
-                vwap = analysis_1h.get('vwap', 0)
+                vwap = analysis_1h.get("vwap", 0)
                 if current_price and vwap and current_price > vwap:
                     tech_score += 15
-                ma7 = analysis_1h.get('ma7', 0)
-                ma25 = analysis_1h.get('ma25', 0)
-                ma99 = analysis_1h.get('ma99', 0)
+                ma7 = analysis_1h.get("ma7", 0)
+                ma25 = analysis_1h.get("ma25", 0)
+                ma99 = analysis_1h.get("ma99", 0)
                 if ma7 > ma25 > ma99:
                     tech_score += 15
                 tech_val = round(tech_score, 1)
-            trend_val = opp.get('trend_score', opp.get('trend_strength', 'N/A'))
-            vol_val = opp.get('volume_surge', False)
-            funding_val = opp.get('funding_rate', 'N/A')
-            if funding_val is not None and funding_val != 'N/A':
+            trend_val = opp.get("trend_score", opp.get("trend_strength", "N/A"))
+            vol_val = opp.get("volume_surge", False)
+            funding_val = opp.get("funding_rate", "N/A")
+            if funding_val is not None and funding_val != "N/A":
                 # Format funding rate with appropriate precision
                 if abs(funding_val) < 0.0001:
                     funding_val = f"{funding_val*100:.6f}%"
@@ -423,9 +479,11 @@ def _step_research_top_n(ctx):
                     funding_val = f"{funding_val*100:.4f}%"
                 else:
                     funding_val = f"{funding_val*100:.2f}%"
-            signals_list = opp.get('signals', [])
+            signals_list = opp.get("signals", [])
             print(f"RISK_BLOCKED:{sym} – {'; '.join(check['reasons'])}")
-            print(f"  評分={score_val} 技術={tech_val} 趨勢={trend_val} 成交量={vol_val} 資金費率={funding_val} 信號={signals_list}")
+            print(
+                f"  評分={score_val} 技術={tech_val} 趨勢={trend_val} 成交量={vol_val} 資金費率={funding_val} 信號={signals_list}"
+            )
     opportunities = filtered
 
     if not opportunities:
@@ -434,14 +492,16 @@ def _step_research_top_n(ctx):
         return None
 
     # ===== Step 6: Deep Research on Top 3 Candidates (parallel) =====
+    import time as _time
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from concurrent.futures import TimeoutError as FuturesTimeout
-    import time as _time
 
     top_n = opportunities[:3]
     research_results = {}  # symbol -> research dict
 
-    logger.info(f"Researching top {len(top_n)} candidates: {[o['symbol'] for o in top_n]}")
+    logger.info(
+        f"Researching top {len(top_n)} candidates: {[o['symbol'] for o in top_n]}"
+    )
     t_research = _time.time()
 
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -450,25 +510,33 @@ def _step_research_top_n(ctx):
             for opp in top_n
         }
         try:
-            for fut in as_completed(futures, timeout=90):  # 90s covers 3 coins × 60s RESEARCH_TIMEOUT with headroom
+            for fut in as_completed(
+                futures, timeout=90
+            ):  # 90s covers 3 coins × 60s RESEARCH_TIMEOUT with headroom
                 opp = futures[fut]
                 try:
                     research_results[opp["symbol"]] = (opp, fut.result())
                 except Exception as e:
                     logger.warning(f"Research failed for {opp['symbol']}: {e}")
         except FuturesTimeout:
-            logger.warning(f"Research timeout: {len(research_results)}/{len(top_n)} completed in 90s")
+            logger.warning(
+                f"Research timeout: {len(research_results)}/{len(top_n)} completed in 90s"
+            )
             for fut in futures:
                 fut.cancel()
 
-    logger.info(f"Research completed in {_time.time()-t_research:.1f}s for {len(research_results)} coins")
+    logger.info(
+        f"Research completed in {_time.time()-t_research:.1f}s for {len(research_results)} coins"
+    )
 
     # Output all research results
     for sym, (opp, res) in research_results.items():
         adj = res["score_adjustment"]
         conf = res["confidence"]
         final = int(max(0, min(100, opp["score"] + adj)))
-        print(f"RESEARCH: {sym} adj={adj:+.1f} score={int(opp['score'])}→{final} confidence={conf}")
+        print(
+            f"RESEARCH: {sym} adj={adj:+.1f} score={int(opp['score'])}→{final} confidence={conf}"
+        )
         print(f"  Summary: {res['sentiment_summary']}")
         if res["news"]:
             for n in res["news"][:2]:
@@ -478,7 +546,7 @@ def _step_research_top_n(ctx):
 
     # Select best candidate by adjusted score
     best_sym = None
-    best_adj_score = -1
+    best_adj_score = -1.0
     for sym, (opp, res) in research_results.items():
         adj_score = max(0, min(100, opp["score"] + res["score_adjustment"]))
         if adj_score > best_adj_score:
@@ -486,7 +554,11 @@ def _step_research_top_n(ctx):
             best_sym = sym
 
     if not best_sym or best_adj_score < dynamic_threshold:
-        reason = "no research completed" if not best_sym else f"best={int(best_adj_score)} < {dynamic_threshold}"
+        reason = (
+            "no research completed"
+            if not best_sym
+            else f"best={int(best_adj_score)} < {dynamic_threshold}"
+        )
         print(f"SCORE_BELOW_THRESHOLD: {reason} after research")
         clear_pending()
         return None
@@ -505,31 +577,47 @@ def _step_research_top_n(ctx):
 
     # Re-check threshold with adjusted score
     if adjusted_score < dynamic_threshold:
-        print(f"SCORE_BELOW_THRESHOLD: {int(adjusted_score)} < {dynamic_threshold} after research adjustment")
+        print(
+            f"SCORE_BELOW_THRESHOLD: {int(adjusted_score)} < {dynamic_threshold} after research adjustment"
+        )
         journal = TradeJournal()
-        journal.record_decision(symbol=symbol, decision='BLOCKED', score=adjusted_score, research=research)
+        journal.record_decision(
+            symbol=symbol, decision="BLOCKED", score=adjusted_score, research=research
+        )
         clear_pending()
         return None
 
     # ===== Step 6b: Bear Analysis (Devil's Advocate) =====
     bear = BearAnalyst()
-    bear_result = bear.analyze(symbol, {
-        'score': adjusted_score,
-        'technical_score': top.get('technical_score', 0),
-        'rsi': top.get('analysis', {}).get('1h', {}).get('rsi', 50),
-        'funding_rate': top.get('funding_rate', 0),
-        'market_sentiment': fng,
-        'on_chain_score': top.get('onchain_score', 50),
-        'volume_surge': top.get('volume_surge', False),
-        'trend_strength': top.get('trend_strength', 50),
-    }, research)
+    bear_result = bear.analyze(
+        symbol,
+        {
+            "score": adjusted_score,
+            "technical_score": top.get("technical_score", 0),
+            "rsi": top.get("analysis", {}).get("1h", {}).get("rsi", 50),
+            "funding_rate": top.get("funding_rate", 0),
+            "market_sentiment": fng,
+            "on_chain_score": top.get("onchain_score", 50),
+            "volume_surge": top.get("volume_surge", False),
+            "trend_strength": top.get("trend_strength", 50),
+        },
+        research,
+    )
 
     if bear_result.veto:
-        print(f'BEAR_VETO: {symbol} – bear_score={bear_result.bear_score:.0f} vs bull_score={adjusted_score:.0f}')
+        print(
+            f"BEAR_VETO: {symbol} – bear_score={bear_result.bear_score:.0f} vs bull_score={adjusted_score:.0f}"
+        )
         for r in bear_result.reasons or []:
-            print(f'  🐻 {r}')
+            print(f"  🐻 {r}")
         journal = TradeJournal()
-        journal.record_decision(symbol=symbol, decision='VETOED', score=adjusted_score, bear_result=bear_result, research=research)
+        journal.record_decision(
+            symbol=symbol,
+            decision="VETOED",
+            score=adjusted_score,
+            bear_result=bear_result,
+            research=research,
+        )
         clear_pending()
         return None
 
@@ -537,11 +625,17 @@ def _step_research_top_n(ctx):
         # Reduce score by half the bear_score as penalty
         penalty = (bear_result.bear_score - 50) * 0.3
         adjusted_score = max(adjusted_score - penalty, 0)
-        print(f'🐻 Bear penalty: -{penalty:.1f} → adjusted_score={adjusted_score:.1f}')
+        print(f"🐻 Bear penalty: -{penalty:.1f} → adjusted_score={adjusted_score:.1f}")
         if adjusted_score < dynamic_threshold:
-            print(f'SCORE_BELOW_THRESHOLD after bear penalty')
+            print("SCORE_BELOW_THRESHOLD after bear penalty")
             journal = TradeJournal()
-            journal.record_decision(symbol=symbol, decision='BLOCKED', score=adjusted_score, bear_result=bear_result, research=research)
+            journal.record_decision(
+                symbol=symbol,
+                decision="BLOCKED",
+                score=adjusted_score,
+                bear_result=bear_result,
+                research=research,
+            )
             clear_pending()
             return None
 
@@ -550,14 +644,20 @@ def _step_research_top_n(ctx):
     strategy = "score_based"  # Default when no specific strategy matches
     try:
         from src.strategy_registry import StrategyRegistry
+
         registry = StrategyRegistry()
 
         # Get klines for the top coin (needed by strategy classes)
         try:
             klines_raw = client.get_klines(symbol, "1h", limit=100)
             klines_data = [
-                {"open": float(k['open']), "high": float(k['high']), "low": float(k['low']),
-                 "close": float(k['close']), "volume": float(k['volume'])}
+                {
+                    "open": float(k["open"]),
+                    "high": float(k["high"]),
+                    "low": float(k["low"]),
+                    "close": float(k["close"]),
+                    "volume": float(k["volume"]),
+                }
                 for k in klines_raw
             ]
         except Exception:
@@ -565,26 +665,36 @@ def _step_research_top_n(ctx):
             klines_data = []
 
         # Get enabled strategies from adaptor
-        enabled = [s for s, cfg in adapted.get("strategies", {}).items() if cfg.get("enabled", True)]
+        enabled = [
+            s
+            for s, cfg in adapted.get("strategies", {}).items()
+            if cfg.get("enabled", True)
+        ]
 
         if klines_data and enabled:
             best = registry.select_best(symbol, klines_data, enabled)
             if best:
                 strategy_name, confidence, reason, meta = best
                 strategy = strategy_name
-                logger.info(f"StrategyRegistry: selected {strategy} (confidence={confidence:.1f}, weight={meta.get('weight', 1.0):.2f})")
+                logger.info(
+                    f"StrategyRegistry: selected {strategy} (confidence={confidence:.1f}, weight={meta.get('weight', 1.0):.2f})"
+                )
             else:
                 # No strategy emitted BUY/SELL — fall back to first enabled strategy.
                 # The 12-factor scoring system already validated this opportunity;
                 # strategy name only drives SL/TP/max_hold configs, not entry logic.
                 strategy = enabled[0]
-                logger.info(f"StrategyRegistry: no explicit BUY signal, falling back to {strategy}")
+                logger.info(
+                    f"StrategyRegistry: no explicit BUY signal, falling back to {strategy}"
+                )
     except Exception as e:
         logger.warning(f"StrategyRegistry failed: {e}")
         # Block trade when registry fails — don't fall back to score_based (0% win rate)
         print(f"STRATEGY_REGISTRY_FAILED: {e}, blocking trade")
         journal = TradeJournal()
-        journal.record_decision(symbol=symbol, decision='BLOCKED', score=adjusted_score, research=research)
+        journal.record_decision(
+            symbol=symbol, decision="BLOCKED", score=adjusted_score, research=research
+        )
         clear_pending()
         return None
 
@@ -597,7 +707,9 @@ def _step_research_top_n(ctx):
             if fb_cfg and fb_cfg["enabled"]:
                 strategy = fallback
                 strategy_cfg = fb_cfg
-                logger.info(f"Strategy {fallback} adapted to {strategy} (original was disabled)")
+                logger.info(
+                    f"Strategy {fallback} adapted to {strategy} (original was disabled)"
+                )
                 break
 
     reason = " / ".join(signals[:3]) if signals else "Multiple signals"
@@ -611,7 +723,9 @@ def _step_research_top_n(ctx):
     else:
         # Fallback to notifier config
         cfg = notifier.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)  # FIX-11: Widened from 2.0→4.0% (was triggering 71.4% of the time)
+        stop_loss_pct = cfg.get(
+            "stop_loss_pct", 4.0
+        )  # FIX-11: Widened from 2.0→4.0% (was triggering 71.4% of the time)
         tp_levels = cfg.get("take_profit_levels", [])
         max_hold = cfg.get("max_hold_hours", 48)
         size_multiplier = 1.0
@@ -622,33 +736,35 @@ def _step_research_top_n(ctx):
     _, tier_label = get_position_tier(adjusted_score)
     active_pos = count_active_positions(client)
 
-    ctx.update({
-        "symbol": symbol,
-        "price": price,
-        "score": score,
-        "signals": signals,
-        "adjusted_score": adjusted_score,
-        "research": research,
-        "research_adj": research_adj,
-        "research_confidence": research_confidence,
-        "research_summary": research_summary,
-        "bear_result": bear_result,
-        "strategy": strategy,
-        "strategy_cfg": strategy_cfg,
-        "stop_loss_pct": stop_loss_pct,
-        "tp_levels": tp_levels,
-        "max_hold": max_hold,
-        "stop_price": stop_price,
-        "active_pos": active_pos,
-        "tier_label": tier_label,
-        "reason": reason,
-        "top": top,
-        "size_multiplier": size_multiplier,  # P0-3 fix: pass strategy-level multiplier to executor
-    })
+    ctx.update(
+        {
+            "symbol": symbol,
+            "price": price,
+            "score": score,
+            "signals": signals,
+            "adjusted_score": adjusted_score,
+            "research": research,
+            "research_adj": research_adj,
+            "research_confidence": research_confidence,
+            "research_summary": research_summary,
+            "bear_result": bear_result,
+            "strategy": strategy,
+            "strategy_cfg": strategy_cfg,
+            "stop_loss_pct": stop_loss_pct,
+            "tp_levels": tp_levels,
+            "max_hold": max_hold,
+            "stop_price": stop_price,
+            "active_pos": active_pos,
+            "tier_label": tier_label,
+            "reason": reason,
+            "top": top,
+            "size_multiplier": size_multiplier,  # P0-3 fix: pass strategy-level multiplier to executor
+        }
+    )
     return ctx
 
 
-def _step_journal_results(ctx, result=None, decision='BUY'):
+def _step_journal_results(ctx, result=None, decision="BUY"):
     """Record trade decision and execution in the trade journal.
 
     Args:
@@ -658,20 +774,31 @@ def _step_journal_results(ctx, result=None, decision='BUY'):
     """
     journal = TradeJournal()
 
-    if result and decision == 'BUY':
+    if result and decision == "BUY":
         journal.record_trade(
-            symbol=ctx['symbol'], side='BUY', price=ctx['price'], qty=result['qty'],
-            score=ctx['adjusted_score'], reasons=[ctx['reason']], signals=ctx['signals'],
-            strategy=ctx['strategy']
+            symbol=ctx["symbol"],
+            side="BUY",
+            price=ctx["price"],
+            qty=result["qty"],
+            score=ctx["adjusted_score"],
+            reasons=[ctx["reason"]],
+            signals=ctx["signals"],
+            strategy=ctx["strategy"],
         )
         journal.record_decision(
-            symbol=ctx['symbol'], decision=decision, score=ctx['adjusted_score'],
-            bear_result=ctx['bear_result'], research=ctx['research']
+            symbol=ctx["symbol"],
+            decision=decision,
+            score=ctx["adjusted_score"],
+            bear_result=ctx["bear_result"],
+            research=ctx["research"],
         )
     else:
         journal.record_decision(
-            symbol=ctx['symbol'], decision=decision, score=ctx['adjusted_score'],
-            bear_result=ctx.get('bear_result'), research=ctx.get('research')
+            symbol=ctx["symbol"],
+            decision=decision,
+            score=ctx["adjusted_score"],
+            bear_result=ctx.get("bear_result"),
+            research=ctx.get("research"),
         )
 
 
@@ -698,26 +825,30 @@ def _step_execute_trades(ctx):
         "",
         "📊 建議止盈:",
     ]
-    for i, tp in enumerate(ctx['tp_levels']):
-        tp_price = ctx['price'] * (1 + tp["pct"] / 100)
-        prefix = "├" if i < len(ctx['tp_levels']) - 1 else "└"
-        lines.append(f"{prefix} TP{i+1}: +{tp['pct']}% @ ${tp_price:.6f} (賣出 {tp['size_pct']}%)")
+    for i, tp in enumerate(ctx["tp_levels"]):
+        tp_price = ctx["price"] * (1 + tp["pct"] / 100)
+        prefix = "├" if i < len(ctx["tp_levels"]) - 1 else "└"
+        lines.append(
+            f"{prefix} TP{i+1}: +{tp['pct']}% @ ${tp_price:.6f} (賣出 {tp['size_pct']}%)"
+        )
 
     # Add research summary
-    lines.extend([
-        "",
-        f"🔍 研究摘要: {ctx['research_summary']}",
-        f"   信心度: {ctx['research_confidence']} | 評分調整: {ctx['research_adj']:+.1f}",
-    ])
+    lines.extend(
+        [
+            "",
+            f"🔍 研究摘要: {ctx['research_summary']}",
+            f"   信心度: {ctx['research_confidence']} | 評分調整: {ctx['research_adj']:+.1f}",
+        ]
+    )
 
     auto_execute = os.environ.get("AUTO_EXECUTE", "false").lower() == "true"
 
     # Output opportunity data BEFORE auto-execution so AI can parse all fields
     # (moved outside execution block so data is always available even on failure)
-    tech_score = ctx['top'].get('technical_score', 'N/A')
-    trend_score = ctx['top'].get('trend_score', ctx['top'].get('trend_strength', 'N/A'))
-    vol_surge = ctx['top'].get('volume_surge', False)
-    funding = ctx['top'].get('funding_rate')
+    tech_score = ctx["top"].get("technical_score", "N/A")
+    trend_score = ctx["top"].get("trend_score", ctx["top"].get("trend_strength", "N/A"))
+    vol_surge = ctx["top"].get("volume_surge", False)
+    funding = ctx["top"].get("funding_rate")
     # Format funding rate with appropriate precision
     if funding is not None:
         # For very small values, show more decimal places
@@ -730,130 +861,183 @@ def _step_execute_trades(ctx):
         else:
             funding_str = f"{funding*100:.2f}%"
     else:
-        funding_str = 'N/A'
-    print(f"OPPORTUNITY:{ctx['symbol']} 評分={int(ctx['adjusted_score'])} 技術={tech_score} 趨勢={trend_score} 成交量={vol_surge} 資金費率={funding_str} 信號={ctx['signals']}")
+        funding_str = "N/A"
+    print(
+        f"OPPORTUNITY:{ctx['symbol']} 評分={int(ctx['adjusted_score'])} 技術={tech_score} 趨勢={trend_score} 成交量={vol_surge} 資金費率={funding_str} 信號={ctx['signals']}"
+    )
 
     if auto_execute:
-        logger.info(f"AUTO_EXECUTE enabled - executing {ctx['symbol']} trade automatically")
+        logger.info(
+            f"AUTO_EXECUTE enabled - executing {ctx['symbol']} trade automatically"
+        )
         result = execute_auto_trade(
-            symbol=ctx['symbol'],
-            price=ctx['price'],
-            strategy=ctx['strategy'],
-            stop_loss_pct=ctx['stop_loss_pct'],
-            tp_levels=ctx['tp_levels'],
-            stop_price=ctx['stop_price'],
-            max_hold=ctx['max_hold'],
-            signals=ctx['signals'],
-            reason=ctx['reason'],
-            score=int(ctx['adjusted_score']),
-            cash_reserve_pct=ctx['adapted']["global"].get("cash_reserve_pct", 30),
-            max_position_pct=ctx['adapted']["global"].get("max_position_pct", 15),
-            max_total_exposure_pct=ctx['adapted']["global"].get("max_total_exposure_pct", 70),
-            strategy_size_multiplier=ctx.get("size_multiplier", 1.0),  # P0-3: pass strategy-level size_multiplier
+            symbol=ctx["symbol"],
+            price=ctx["price"],
+            strategy=ctx["strategy"],
+            stop_loss_pct=ctx["stop_loss_pct"],
+            tp_levels=ctx["tp_levels"],
+            stop_price=ctx["stop_price"],
+            max_hold=ctx["max_hold"],
+            signals=ctx["signals"],
+            reason=ctx["reason"],
+            score=int(ctx["adjusted_score"]),
+            cash_reserve_pct=ctx["adapted"]["global"].get("cash_reserve_pct", 30),
+            max_position_pct=ctx["adapted"]["global"].get("max_position_pct", 15),
+            max_total_exposure_pct=ctx["adapted"]["global"].get(
+                "max_total_exposure_pct", 70
+            ),
+            strategy_size_multiplier=ctx.get(
+                "size_multiplier", 1.0
+            ),  # P0-3: pass strategy-level size_multiplier
         )
         if result["success"]:
             # Record trade in journal
-            _step_journal_results(ctx, result=result, decision='BUY')
+            _step_journal_results(ctx, result=result, decision="BUY")
 
             # Phase 0: Record trade entry for self-learning pipeline
             try:
                 from src.trade_outcome_recorder import TradeOutcomeRecorder
+
                 recorder = TradeOutcomeRecorder()
                 # Extract factor scores from opportunity data (best available)
-                tech_score_entry = ctx['top'].get('technical_score', 0)
-                trend_score_entry = ctx['top'].get('trend_score', ctx['top'].get('trend_strength', 0))
-                funding_rate = ctx['top'].get('funding_rate', 0)
+                tech_score_entry = ctx["top"].get("technical_score", 0)
+                trend_score_entry = ctx["top"].get(
+                    "trend_score", ctx["top"].get("trend_strength", 0)
+                )
+                ctx["top"].get("funding_rate", 0)
                 # Get all factor scores from market_scanner
-                fs = ctx['top'].get('factor_scores', {})
+                fs = ctx["top"].get("factor_scores", {})
                 # Build TP percentages
-                tp_pcts = [tp.get('pct', 0) for tp in ctx['tp_levels']]
+                tp_pcts = [tp.get("pct", 0) for tp in ctx["tp_levels"]]
                 while len(tp_pcts) < 3:
                     tp_pcts.append(0)
                 entry_rowid = recorder.record_entry(
-                    symbol=ctx['symbol'],
-                    entry_price=result['price'],
-                    qty=result['qty'],
-                    score=ctx['adjusted_score'],
-                    strategy=ctx['strategy'],
-                    f_technical=float(fs.get('technical', tech_score_entry)) if isinstance(fs.get('technical', tech_score_entry), (int, float)) else 0,
-                    f_trend=float(fs.get('trend', trend_score_entry)) if isinstance(fs.get('trend', trend_score_entry), (int, float)) else 0,
-                    f_volume=float(fs.get('volume', 0)),
-                    f_sentiment=float(fs.get('sentiment', 0)),
-                    f_price_action=float(fs.get('price_action', 0)),
-                    f_obv_divergence=float(fs.get('obv_divergence', 0)),
-                    f_consolidation=float(fs.get('consolidation', 0)),
-                    f_bb_squeeze=float(fs.get('bb_squeeze', 0)),
-                    f_rsi_divergence=float(fs.get('rsi_divergence', 0)),
-                    f_onchain=float(fs.get('onchain', ctx['top'].get('onchain_score', 0))),
-                    f_market_sentiment=float(fs.get('market_sentiment', ctx['top'].get('market_sentiment_score', 0))),
-                    regime=ctx['adapted'].get("regime", ""),
-                    fng_score=int(ctx['fng']),
-                    fng_label=ctx['fng_label'],
-                    btc_trend=ctx['btc_trend'],
-                    kelly_pct=result.get('invest_pct', 0),
-                    kelly_win_rate=result.get('kelly', {}).get('win_rate', 0),
-                    kelly_confidence=result.get('kelly', {}).get('confidence', ''),
-                    stop_loss_pct=ctx['stop_loss_pct'],
+                    symbol=ctx["symbol"],
+                    entry_price=result["price"],
+                    qty=result["qty"],
+                    score=ctx["adjusted_score"],
+                    strategy=ctx["strategy"],
+                    f_technical=(
+                        float(fs.get("technical", tech_score_entry))
+                        if isinstance(
+                            fs.get("technical", tech_score_entry), (int, float)
+                        )
+                        else 0
+                    ),
+                    f_trend=(
+                        float(fs.get("trend", trend_score_entry))
+                        if isinstance(fs.get("trend", trend_score_entry), (int, float))
+                        else 0
+                    ),
+                    f_volume=float(fs.get("volume", 0)),
+                    f_sentiment=float(fs.get("sentiment", 0)),
+                    f_price_action=float(fs.get("price_action", 0)),
+                    f_obv_divergence=float(fs.get("obv_divergence", 0)),
+                    f_consolidation=float(fs.get("consolidation", 0)),
+                    f_bb_squeeze=float(fs.get("bb_squeeze", 0)),
+                    f_rsi_divergence=float(fs.get("rsi_divergence", 0)),
+                    f_onchain=float(
+                        fs.get("onchain", ctx["top"].get("onchain_score", 0))
+                    ),
+                    f_market_sentiment=float(
+                        fs.get(
+                            "market_sentiment",
+                            ctx["top"].get("market_sentiment_score", 0),
+                        )
+                    ),
+                    regime=ctx["adapted"].get("regime", ""),
+                    fng_score=int(ctx["fng"]),
+                    fng_label=ctx["fng_label"],
+                    btc_trend=ctx["btc_trend"],
+                    kelly_pct=result.get("invest_pct", 0),
+                    kelly_win_rate=result.get("kelly", {}).get("win_rate", 0),
+                    kelly_confidence=result.get("kelly", {}).get("confidence", ""),
+                    stop_loss_pct=ctx["stop_loss_pct"],
                     tp1_pct=tp_pcts[0],
                     tp2_pct=tp_pcts[1],
                     tp3_pct=tp_pcts[2],
-                    max_hold_hours=ctx['max_hold'],
-                    research_adj=ctx['research_adj'],
-                    bear_score=ctx['bear_result'].bear_score if ctx['bear_result'] and hasattr(ctx['bear_result'], 'bear_score') else 0,
-                    bear_veto=ctx['bear_result'].veto if ctx['bear_result'] and hasattr(ctx['bear_result'], 'veto') else False,
+                    max_hold_hours=ctx["max_hold"],
+                    research_adj=ctx["research_adj"],
+                    bear_score=(
+                        ctx["bear_result"].bear_score
+                        if ctx["bear_result"]
+                        and hasattr(ctx["bear_result"], "bear_score")
+                        else 0
+                    ),
+                    bear_veto=(
+                        ctx["bear_result"].veto
+                        if ctx["bear_result"] and hasattr(ctx["bear_result"], "veto")
+                        else False
+                    ),
                 )
                 # Store entry_rowid on position for precise outcome matching
-                if entry_rowid and ctx['symbol'] in portfolio.positions:
-                    portfolio.positions[ctx['symbol']]["entry_rowid"] = entry_rowid
+                if entry_rowid and ctx["symbol"] in ctx["portfolio"].positions:
+                    ctx["portfolio"].positions[ctx["symbol"]][
+                        "entry_rowid"
+                    ] = entry_rowid
             except Exception as e:
                 logger.warning(f"Trade outcome entry recording failed: {e}")
 
-            print(f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Tier: {result['tier']} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}")
+            print(
+                f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Tier: {result['tier']} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}"
+            )
         else:
             # Self-heal: diagnose failure at point of error
             heal_info = ""
             try:
                 from src.self_healer import diagnose_and_fix
-                heal = diagnose_and_fix(result['error'], {"symbol": ctx['symbol'], "price": ctx['price']})
+
+                heal = diagnose_and_fix(
+                    result["error"], {"symbol": ctx["symbol"], "price": ctx["price"]}
+                )
                 if heal["diagnosed"]:
                     status = "✅已修復" if heal["fixed"] else "🔧待修"
-                    heal_info = f"\n  {status} {heal['diagnosis']}: {heal['fix_result']}"
+                    heal_info = (
+                        f"\n  {status} {heal['diagnosis']}: {heal['fix_result']}"
+                    )
             except Exception:
-                logger.error("Self-healer diagnosis failed for %s", ctx['symbol'], exc_info=True)
+                logger.error(
+                    "Self-healer diagnosis failed for %s", ctx["symbol"], exc_info=True
+                )
             print(f"❌ Auto-execute failed: {result['error']}{heal_info}")
     else:
-        lines.extend([
-            "",
-            f"🛡 止損: -{ctx['stop_loss_pct']}% @ ${ctx['stop_price']:.6f}",
-            f"⏱ 最大持倉: {ctx['max_hold']}小時",
-            "",
-            f"💡 信號: {ctx['reason']}",
-            "",
-            "───"*4,
-            f"回覆 \"YES {ctx['symbol']}\" 確認下單",
-        ])
+        lines.extend(
+            [
+                "",
+                f"🛡 止損: -{ctx['stop_loss_pct']}% @ ${ctx['stop_price']:.6f}",
+                f"⏱ 最大持倉: {ctx['max_hold']}小時",
+                "",
+                f"💡 信號: {ctx['reason']}",
+                "",
+                "───" * 4,
+                f"回覆 \"YES {ctx['symbol']}\" 確認下單",
+            ]
+        )
         print("\n".join(lines))
         logger.info(f"Scan complete: {ctx['symbol']} opportunity formatted (Phase 3)")
 
-        save_pending({
-            "symbol": ctx['symbol'],
-            "price": ctx['price'],
-            "strategy": ctx['strategy'],
-            "score": int(ctx['adjusted_score']),
-            "original_score": ctx['score'],
-            "research_adjustment": ctx['research_adj'],
-            "signals": ctx['signals'],
-            "reason": ctx['reason'],
-            "stop_loss_pct": ctx['stop_loss_pct'],
-            "tp_levels": ctx['tp_levels'],
-            "stop_price": ctx['stop_price'],
-            "max_hold_hours": ctx['max_hold'],
-        })
+        save_pending(
+            {
+                "symbol": ctx["symbol"],
+                "price": ctx["price"],
+                "strategy": ctx["strategy"],
+                "score": int(ctx["adjusted_score"]),
+                "original_score": ctx["score"],
+                "research_adjustment": ctx["research_adj"],
+                "signals": ctx["signals"],
+                "reason": ctx["reason"],
+                "stop_loss_pct": ctx["stop_loss_pct"],
+                "tp_levels": ctx["tp_levels"],
+                "stop_price": ctx["stop_price"],
+                "max_hold_hours": ctx["max_hold"],
+            }
+        )
 
 
 # ===================================================================
 # Main orchestrator
 # ===================================================================
+
 
 def cmd_cron_scan():
     """Phase 3: Scan → Score → Research → Adapt → Execute.
@@ -890,22 +1074,24 @@ def _step_event_driven_adjustment(ctx):
     This creates the event-driven chain: news → sentiment → position adjustment
     """
     try:
-        from src.portfolio import PortfolioManager
-        from src.trade_executor import execute_auto_trade
         from src.notifier import FeishuNotifier
+        from src.portfolio import PortfolioManager
 
         portfolio = PortfolioManager()
-        positions = portfolio.get_all_positions()
+        _pos_list = portfolio.get_all_positions()
+        positions: Dict[str, Dict] = {
+            p["symbol"]: p for p in _pos_list if "symbol" in p
+        }
 
         if not positions:
             return
 
         # Get research results from context
-        research = ctx.get('research', {})
+        research = ctx.get("research", {})
         if not research:
             return
 
-        news = research.get('news', [])
+        news = research.get("news", [])
         if not news:
             return
 
@@ -914,8 +1100,8 @@ def _step_event_driven_adjustment(ctx):
         total_confidence = 0
         count = 0
         for article in news:
-            score = article.get('sentiment_score', 5)
-            confidence = article.get('sentiment_confidence', 0.5)
+            score = article.get("sentiment_score", 5)
+            confidence = article.get("sentiment_confidence", 0.5)
             total_score += score
             total_confidence += confidence
             count += 1
@@ -928,10 +1114,12 @@ def _step_event_driven_adjustment(ctx):
 
         # Check for strong sentiment
         if avg_confidence < 0.7:
-            logger.info(f"Event-driven: sentiment confidence too low ({avg_confidence:.2f}), skipping adjustment")
+            logger.info(
+                f"Event-driven: sentiment confidence too low ({avg_confidence:.2f}), skipping adjustment"
+            )
             return
 
-        symbol = ctx.get('symbol', '')
+        symbol = ctx.get("symbol", "")
         if not symbol:
             return
 
@@ -940,11 +1128,15 @@ def _step_event_driven_adjustment(ctx):
         if not position:
             return
 
-        logger.info(f"Event-driven: strong sentiment detected for {symbol} (score={avg_score:.1f}, confidence={avg_confidence:.2f})")
+        logger.info(
+            f"Event-driven: strong sentiment detected for {symbol} (score={avg_score:.1f}, confidence={avg_confidence:.2f})"
+        )
 
         # Strong bullish sentiment (score >= 8)
         if avg_score >= 8:
-            logger.info(f"Event-driven: strong bullish sentiment for {symbol}, considering position increase")
+            logger.info(
+                f"Event-driven: strong bullish sentiment for {symbol}, considering position increase"
+            )
             # Notify user about the opportunity
             notifier = FeishuNotifier()
             notifier.send_text(
@@ -956,7 +1148,9 @@ def _step_event_driven_adjustment(ctx):
 
         # Strong bearish sentiment (score <= 2)
         elif avg_score <= 2:
-            logger.info(f"Event-driven: strong bearish sentiment for {symbol}, considering position reduction")
+            logger.info(
+                f"Event-driven: strong bearish sentiment for {symbol}, considering position reduction"
+            )
             # Notify user about the risk
             notifier = FeishuNotifier()
             notifier.send_text(

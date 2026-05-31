@@ -6,21 +6,21 @@ into an independently testable component.
 """
 
 from .base import SpecialistResult
+from .market_sentiment_agent import MarketSentimentAgent
+from .onchain_agent import OnChainAgent
+from .prepump_agent import PrePumpAgent
+from .sentiment_agent import SentimentAgent
 from .technical_agent import TechnicalAgent
 from .trend_agent import TrendAgent
 from .volume_agent import VolumeAgent
-from .sentiment_agent import SentimentAgent
-from .onchain_agent import OnChainAgent
-from .market_sentiment_agent import MarketSentimentAgent
-from .prepump_agent import PrePumpAgent
 
 __all__ = [
-    'SpecialistResult',
-    'TechnicalAgent',
-    'TrendAgent',
-    'VolumeAgent',
-    'SentimentAgent',
-    'OnChainAgent',
-    'MarketSentimentAgent',
-    'PrePumpAgent',
+    "SpecialistResult",
+    "TechnicalAgent",
+    "TrendAgent",
+    "VolumeAgent",
+    "SentimentAgent",
+    "OnChainAgent",
+    "MarketSentimentAgent",
+    "PrePumpAgent",
 ]

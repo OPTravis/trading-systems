@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import statistics
-import requests
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,12 @@ class FundingRate:
         # if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
         #     logger.debug("FundingRate disabled (ENABLE_FUTURES not set). Skipping fapi call.")
         #     return []
-        
+
         try:
             # Phase 1: Fetch funding rate history (no markPrice in this endpoint)
             resp = self._session.get(
                 f"{self.FUTURES_BASE}/fapi/v1/fundingRate",
-                params={"symbol": symbol.upper(), "limit": limit},
+                params={"symbol": symbol.upper(), "limit": limit},  # type: ignore[arg-type]
                 timeout=10,
             )
             resp.raise_for_status()
@@ -85,7 +86,11 @@ class FundingRate:
                         for r in results:
                             r["mark_price"] = mark_price
                 except Exception as e:
-                    logger.debug("Could not fetch mark price from premiumIndex for %s: %s", symbol, e)
+                    logger.debug(
+                        "Could not fetch mark price from premiumIndex for %s: %s",
+                        symbol,
+                        e,
+                    )
 
             return results
         except Exception as e:

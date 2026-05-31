@@ -1,6 +1,7 @@
 """
 Financial news feed via Jina Reader and NewsAPI.
 """
+
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -37,7 +38,9 @@ class NewsFeed:
             List of dicts with keys: title, description, url, source,
             published_at, sentiment_hint.
         """
-        from_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        from_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+            "%Y-%m-%d"
+        )
         logger.info("Fetching news for %s (last %d days)", symbol, days)
 
         articles = []
@@ -47,7 +50,7 @@ class NewsFeed:
             try:
                 resp = requests.get(
                     f"{NEWSAPI_BASE}/everything",
-                    params={
+                    params={  # type: ignore[arg-type]
                         "q": symbol,
                         "from": from_date,
                         "sortBy": "publishedAt",
@@ -60,14 +63,16 @@ class NewsFeed:
                 resp.raise_for_status()
                 data = resp.json()
                 for a in data.get("articles", []):
-                    articles.append({
-                        "title": a.get("title", ""),
-                        "description": a.get("description", ""),
-                        "url": a.get("url", ""),
-                        "source": a.get("source", {}).get("name", ""),
-                        "published_at": a.get("publishedAt", ""),
-                        "content": a.get("content", ""),
-                    })
+                    articles.append(
+                        {
+                            "title": a.get("title", ""),
+                            "description": a.get("description", ""),
+                            "url": a.get("url", ""),
+                            "source": a.get("source", {}).get("name", ""),
+                            "published_at": a.get("publishedAt", ""),
+                            "content": a.get("content", ""),
+                        }
+                    )
             except Exception as exc:
                 logger.error("NewsAPI error for %s: %s", symbol, exc)
 
@@ -80,14 +85,16 @@ class NewsFeed:
                 )
                 if resp.ok:
                     text = resp.text[:5000]
-                    articles.append({
-                        "title": f"Yahoo Finance news for {symbol}",
-                        "description": text[:500],
-                        "url": f"https://finance.yahoo.com/quote/{symbol}/news",
-                        "source": "Yahoo Finance (via Jina)",
-                        "published_at": datetime.now(timezone.utc).isoformat(),
-                        "content": text,
-                    })
+                    articles.append(
+                        {
+                            "title": f"Yahoo Finance news for {symbol}",
+                            "description": text[:500],
+                            "url": f"https://finance.yahoo.com/quote/{symbol}/news",
+                            "source": "Yahoo Finance (via Jina)",
+                            "published_at": datetime.now(timezone.utc).isoformat(),
+                            "content": text,
+                        }
+                    )
             except Exception as exc:
                 logger.error("Jina reader error for %s: %s", symbol, exc)
 
@@ -107,7 +114,7 @@ class NewsFeed:
             try:
                 resp = requests.get(
                     f"{NEWSAPI_BASE}/top-headlines",
-                    params={
+                    params={  # type: ignore[arg-type]
                         "category": "business",
                         "language": "en",
                         "pageSize": min(limit, 100),
@@ -118,14 +125,16 @@ class NewsFeed:
                 resp.raise_for_status()
                 data = resp.json()
                 for a in data.get("articles", []):
-                    articles.append({
-                        "title": a.get("title", ""),
-                        "description": a.get("description", ""),
-                        "url": a.get("url", ""),
-                        "source": a.get("source", {}).get("name", ""),
-                        "published_at": a.get("publishedAt", ""),
-                        "content": a.get("content", ""),
-                    })
+                    articles.append(
+                        {
+                            "title": a.get("title", ""),
+                            "description": a.get("description", ""),
+                            "url": a.get("url", ""),
+                            "source": a.get("source", {}).get("name", ""),
+                            "published_at": a.get("publishedAt", ""),
+                            "content": a.get("content", ""),
+                        }
+                    )
             except Exception as exc:
                 logger.error("NewsAPI market news error: %s", exc)
 

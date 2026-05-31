@@ -5,20 +5,21 @@ and all RiskManager components.
 Scenarios 1-9:  BinanceClient rate-limit / retry logic
 Scenarios 10-20: RiskManager sub-modules and integration
 """
-import time
+
 from unittest.mock import MagicMock, patch
 
-import pytest
 import ccxt
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _rate_limit_error(message="Rate limit exceeded"):
     """Build a ccxt RateLimitExceeded error."""
     return ccxt.RateLimitExceeded(message)
+
 
 def _network_error(message="Connection timeout"):
     """Build a ccxt NetworkError."""
@@ -49,7 +50,9 @@ class TestBinanceClientRateLimit:
 
     # --- Scenario 2: get_account() → 429 → no Retry-After → exponential backoff ---
     @patch("src.ccxt_client.time.sleep")
-    def test_scenario2_get_account_429_exponential(self, mock_sleep, make_binance_client):
+    def test_scenario2_get_account_429_exponential(
+        self, mock_sleep, make_binance_client
+    ):
         bc = make_binance_client()
         err = _rate_limit_error()
         good = {"balances": [{"asset": "USDT", "free": "100", "locked": "0"}]}
@@ -87,7 +90,9 @@ class TestBinanceClientRateLimit:
 
     # --- Scenario 5: place_order() → network error → retry 3 times → None ---
     @patch("src.ccxt_client.time.sleep")
-    def test_scenario5_place_order_network_exhaust(self, mock_sleep, make_binance_client):
+    def test_scenario5_place_order_network_exhaust(
+        self, mock_sleep, make_binance_client
+    ):
         bc = make_binance_client()
         net_err = _network_error()
         bc.exchange.create_order = MagicMock(side_effect=net_err)
@@ -102,7 +107,9 @@ class TestBinanceClientRateLimit:
 
     # --- Scenario 6: cancel_order() → network error → retry succeeds ---
     @patch("src.ccxt_client.time.sleep")
-    def test_scenario6_cancel_order_network_retry(self, mock_sleep, make_binance_client):
+    def test_scenario6_cancel_order_network_retry(
+        self, mock_sleep, make_binance_client
+    ):
         bc = make_binance_client()
         net_err = _network_error()
         ok = {"symbol": "BTCUSDT", "orderId": 99, "status": "CANCELED"}
@@ -152,8 +159,11 @@ class TestTrendFilter:
         """Build minimal kline dicts from a list of close prices."""
         return [
             {
-                "open": c, "high": c + 10, "low": c - 10,
-                "close": c, "volume": 1000,
+                "open": c,
+                "high": c + 10,
+                "low": c - 10,
+                "close": c,
+                "volume": 1000,
             }
             for c in closes
         ]
@@ -161,10 +171,12 @@ class TestTrendFilter:
     # --- Scenario 10: SMA200 > price → BEARISH, allow_long=False ---
     def test_scenario10_bearish_trend(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import TrendFilter
+
             tf = TrendFilter()
 
             # 249 values at 200, last close = 100  → sma200 ≈ 199.5 >> 100
@@ -181,10 +193,12 @@ class TestTrendFilter:
     # --- Scenario 11: SMA200 < price but sma50 NOT > sma200 → NEUTRAL, allow_long=True ---
     def test_scenario11_neutral_trend(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import TrendFilter
+
             tf = TrendFilter()
 
             # 149 at 100, 49 at 50, last = 120
@@ -209,6 +223,7 @@ class TestSectorExposure:
     # --- Scenario 12: 3 same-sector (AI) positions at 35%+ → blocked ---
     def test_scenario12_sector_blocked(self):
         from src.risk_manager import SectorExposure
+
         se = SectorExposure()
 
         # classify_position looks up the raw symbol in SECTORS map.
@@ -217,9 +232,9 @@ class TestSectorExposure:
         # Use base symbols directly to test the sector logic.
         positions = [
             {"symbol": "RNDR", "value_usdt": 350},
-            {"symbol": "FET",  "value_usdt": 350},
-            {"symbol": "GRT",  "value_usdt": 350},
-            {"symbol": "BTC",  "value_usdt": 650},
+            {"symbol": "FET", "value_usdt": 350},
+            {"symbol": "GRT", "value_usdt": 350},
+            {"symbol": "BTC", "value_usdt": 650},
         ]
         # Total=1700, AI=1050, pct=61.8% > 30% → blocked
         assert se.is_sector_allowed("RNDR", positions) is False
@@ -227,6 +242,7 @@ class TestSectorExposure:
     # --- Scenario 13: 1 position → allowed ---
     def test_scenario13_sector_allowed(self):
         from src.risk_manager import SectorExposure
+
         se = SectorExposure()
 
         # Sector map uses base symbols (BTC, DOGE) not trading pairs (BTCUSDT).
@@ -242,10 +258,12 @@ class TestConsecutiveLossGuard:
     # --- Scenario 14: 3 consecutive losses → SOFT (size reduction, not pause) ---
     def test_scenario14_three_losses_soft(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import ConsecutiveLossGuard
+
             g = ConsecutiveLossGuard()
             # Clear stale DB state so test starts fresh
             g._clear_db_state()
@@ -275,10 +293,12 @@ class TestConsecutiveLossGuard:
     # --- Scenario 15: 2 losses + 1 win → reset to 0 ---
     def test_scenario15_win_resets_losses(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import ConsecutiveLossGuard
+
             g = ConsecutiveLossGuard()
 
             g.record_trade("BTCUSDT", -10.0)
@@ -297,10 +317,12 @@ class TestTrailingStop:
     # --- Scenario 16: price rises 1.0*ATR → activated (ACTIVATION_ATR_MULT=1.0) ---
     def test_scenario16_activation(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import TrailingStop
+
             ts = TrailingStop()
             # Clear any persisted state to ensure clean test
             ts._state = {}
@@ -320,17 +342,25 @@ class TestTrailingStop:
     # --- Scenario 17: activated → pullback below SL → triggered ---
     def test_scenario17_triggered_on_pullback(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import TrailingStop
+
             ts = TrailingStop()
             ts._state = {}
 
-            ts.update("BTCUSDT", current_price=100.0, atr=10.0, entry_price=100.0)   # entry
-            ts.update("BTCUSDT", current_price=115.0, atr=10.0, entry_price=100.0)    # activate, SL=105
+            ts.update(
+                "BTCUSDT", current_price=100.0, atr=10.0, entry_price=100.0
+            )  # entry
+            ts.update(
+                "BTCUSDT", current_price=115.0, atr=10.0, entry_price=100.0
+            )  # activate, SL=105
 
-            r = ts.update("BTCUSDT", current_price=104.0, atr=10.0, entry_price=100.0)  # below SL(105)
+            r = ts.update(
+                "BTCUSDT", current_price=104.0, atr=10.0, entry_price=100.0
+            )  # below SL(105)
             assert r.get("triggered") is True
             assert r["symbol"] == "BTCUSDT"
         finally:
@@ -339,15 +369,21 @@ class TestTrailingStop:
     # --- Scenario 18: activated → price keeps rising → SL moves up ---
     def test_scenario18_sl_moves_up(self, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import TrailingStop
+
             ts = TrailingStop()
 
             ts._state = {}  # Clear any persisted state to ensure clean test
-            ts.update("BTCUSDT", current_price=100.0, atr=10.0, entry_price=100.0)   # entry
-            ts.update("BTCUSDT", current_price=115.0, atr=10.0, entry_price=100.0)    # activate, SL=105
+            ts.update(
+                "BTCUSDT", current_price=100.0, atr=10.0, entry_price=100.0
+            )  # entry
+            ts.update(
+                "BTCUSDT", current_price=115.0, atr=10.0, entry_price=100.0
+            )  # activate, SL=105
 
             r = ts.update("BTCUSDT", current_price=130.0, atr=10.0, entry_price=100.0)
             assert r["activated"] is True
@@ -365,18 +401,19 @@ class TestRiskManagerIntegration:
 
     def _make_klines(self, closes):
         return [
-            {"open": c, "high": c + 10, "low": c - 10,
-             "close": c, "volume": 1000}
+            {"open": c, "high": c + 10, "low": c - 10, "close": c, "volume": 1000}
             for c in closes
         ]
 
     # --- Scenario 19: BEARISH + sector over limit → double block ---
     def test_scenario19_pre_trade_double_block(self, make_binance_client, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import RiskManager
+
             bc = make_binance_client()
             # BEARISH: price=100 < sma200≈199.5
             closes = [200.0] * 249 + [100.0]
@@ -390,9 +427,9 @@ class TestRiskManagerIntegration:
             # does NOT strip the USDT suffix — "RNDRUSDT" maps to OTHER.
             positions = [
                 {"symbol": "RNDR", "value_usdt": 350},
-                {"symbol": "FET",  "value_usdt": 350},
-                {"symbol": "GRT",  "value_usdt": 350},
-                {"symbol": "BTC",  "value_usdt": 650},
+                {"symbol": "FET", "value_usdt": 350},
+                {"symbol": "GRT", "value_usdt": 350},
+                {"symbol": "BTC", "value_usdt": 650},
             ]
 
             result = mgr.pre_trade_check("RNDR", 1.0, 0.5, positions=positions)
@@ -400,17 +437,23 @@ class TestRiskManagerIntegration:
             assert len(result["reasons"]) >= 2
             reasons_text = " ".join(result["reasons"])
             assert "BEARISH" in reasons_text or "longs not allowed" in reasons_text
-            assert "AI" in reasons_text or "Sector" in reasons_text or "sector" in reasons_text
+            assert (
+                "AI" in reasons_text
+                or "Sector" in reasons_text
+                or "sector" in reasons_text
+            )
         finally:
             rm._DATA_DIR = orig
 
     # --- Scenario 20: post_trade_update records loss + removes trailing stop ---
     def test_scenario20_post_trade_update(self, make_binance_client, tmp_path):
         import src.risk_manager as rm
+
         orig = rm._DATA_DIR
         rm._DATA_DIR = tmp_path
         try:
             from src.risk_manager import RiskManager
+
             bc = make_binance_client()
             mgr = RiskManager(binance_client=bc)
 

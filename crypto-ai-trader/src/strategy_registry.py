@@ -49,6 +49,7 @@ class StrategyRegistry:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
         self._strategies = {}
@@ -56,35 +57,43 @@ class StrategyRegistry:
 
     def _init_strategies(self):
         """Initialize all strategy instances."""
-        from src.strategies.rsi_reversion import RSIStrategy
         from src.strategies.bollinger import BollingerStrategy
-        from src.strategies.vwap import VWAPStrategy
-        from src.strategies.trend import TrendStrategy
         from src.strategies.dca import DCAStrategy
         from src.strategies.grid import GridStrategy
+        from src.strategies.rsi_reversion import RSIStrategy
+        from src.strategies.trend import TrendStrategy
+        from src.strategies.vwap import VWAPStrategy
 
         # Load params from optimized DB or defaults
         opt_params = self._get_optimized_params()
 
         self._strategies = {
-            "rsi": RSIStrategy({
-                "rsi_oversold": opt_params.get("rsi_oversold", 35),
-                "rsi_overbought": opt_params.get("rsi_overbought", 65),
-                "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
-                "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
-            }),
-            "bollinger": BollingerStrategy({
-                "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
-                "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
-            }),
-            "vwap": VWAPStrategy({
-                "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
-                "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
-            }),
-            "trend": TrendStrategy({
-                "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
-                "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
-            }),
+            "rsi": RSIStrategy(
+                {
+                    "rsi_oversold": opt_params.get("rsi_oversold", 35),
+                    "rsi_overbought": opt_params.get("rsi_overbought", 65),
+                    "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
+                    "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
+                }
+            ),
+            "bollinger": BollingerStrategy(
+                {
+                    "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
+                    "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
+                }
+            ),
+            "vwap": VWAPStrategy(
+                {
+                    "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
+                    "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
+                }
+            ),
+            "trend": TrendStrategy(
+                {
+                    "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
+                    "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
+                }
+            ),
             "dca": DCAStrategy({}),
             "grid": GridStrategy({}),
         }
@@ -126,10 +135,8 @@ class StrategyRegistry:
         Returns None if insufficient data.
         """
         conn = self._db._get_conn()
-        rows = conn.execute(
-            """SELECT strategy, net_pnl_pct, is_win
-            FROM trade_outcomes WHERE status = 'closed'"""
-        ).fetchall()
+        rows = conn.execute("""SELECT strategy, net_pnl_pct, is_win
+            FROM trade_outcomes WHERE status = 'closed'""").fetchall()
 
         if not rows:
             return None
@@ -205,7 +212,7 @@ class StrategyRegistry:
         self,
         symbol: str,
         klines: List[Dict],
-        enabled_strategies: List[str] = None,
+        enabled_strategies: Optional[List[str]] = None,
         position: Optional[Dict] = None,
     ) -> List[Tuple[str, float, str, Dict]]:
         """Run all enabled strategies and return their signals.
@@ -234,17 +241,19 @@ class StrategyRegistry:
                 if signal.signal in (SignalType.BUY, SignalType.SELL):
                     weight = weights.get(name, 1.0)
                     adjusted_confidence = signal.confidence * weight
-                    results.append((
-                        name,
-                        adjusted_confidence,
-                        signal.reason,
-                        {
-                            "signal": signal.signal.value,
-                            "raw_confidence": signal.confidence,
-                            "weight": weight,
-                            "metadata": signal.metadata,
-                        },
-                    ))
+                    results.append(
+                        (
+                            name,
+                            adjusted_confidence,
+                            signal.reason,
+                            {
+                                "signal": signal.signal.value,
+                                "raw_confidence": signal.confidence,
+                                "weight": weight,
+                                "metadata": signal.metadata,
+                            },
+                        )
+                    )
             except Exception as e:
                 logger.debug(f"Strategy {name} failed for {symbol}: {e}")
 
@@ -256,7 +265,7 @@ class StrategyRegistry:
         self,
         symbol: str,
         klines: List[Dict],
-        enabled_strategies: List[str] = None,
+        enabled_strategies: Optional[List[str]] = None,
         position: Optional[Dict] = None,
     ) -> Optional[Tuple[str, float, str, Dict]]:
         """Run all strategies and return the best one.

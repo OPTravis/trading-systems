@@ -10,14 +10,9 @@ Tests:
 - Stock scorer
 """
 
-import asyncio
-import pytest
-import pytest_asyncio
-from datetime import datetime, date
-from unittest.mock import MagicMock
+from datetime import date
 
-import pandas as pd
-import numpy as np
+import pytest
 
 from src.brokers.broker_protocol import (
     Contract,
@@ -25,16 +20,12 @@ from src.brokers.broker_protocol import (
     OrderSide,
     OrderStatus,
     OrderType,
-    TimeInForce,
 )
-from src.brokers.paper_client import PaperClient
-from src.market.market_hours import MarketHours, Market, MarketState
-from src.market.market_calendar import MarketCalendar
-from src.strategies.trend_strategy import TrendStrategy
-from src.strategies.base_strategy import SignalAction
+from src.market.market_hours import Market, MarketState
 from src.risk.pdt_guard import PDTGuard
 from src.scoring.stock_scorer import StockScorer
-
+from src.strategies.base_strategy import SignalAction
+from src.strategies.trend_strategy import TrendStrategy
 
 # ── Paper Client Tests ────────────────────────────────────────────────
 
@@ -112,7 +103,12 @@ class TestPaperClient:
         paper_client.set_market_price("AAPL", 150.0)
         contract = Contract(symbol="AAPL")
         await paper_client.place_order(
-            Order(contract=contract, side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=100)
+            Order(
+                contract=contract,
+                side=OrderSide.BUY,
+                order_type=OrderType.MARKET,
+                quantity=100,
+            )
         )
 
         # Reset
@@ -341,7 +337,7 @@ class TestStockScorer:
         score = scorer.score_stock("AAPL", market_data)
         assert score.symbol == "AAPL"
         assert score.technical > 50  # Should be above neutral (oversold RSI)
-        assert score.momentum > 50   # Positive momentum
+        assert score.momentum > 50  # Positive momentum
 
     def test_stock_scorer_weights(self):
         """Test that scorer uses weights correctly."""

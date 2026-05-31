@@ -16,19 +16,17 @@ Key metrics:
 - Dynamic position sizing based on CVaR
 """
 
-import json
 import logging
-import math
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
 # Risk thresholds
-CVAR_95_WARNING = -8.0    # Warn if CVaR_95 < -8%
+CVAR_95_WARNING = -8.0  # Warn if CVaR_95 < -8%
 CVAR_95_CRITICAL = -15.0  # Critical if CVaR_95 < -15%
 MAX_PORTFOLIO_CVAR = -12.0  # Max allowed portfolio CVaR
-POSITION_SCALE_LOW_RISK = 1.2   # Scale up when risk is low
+POSITION_SCALE_LOW_RISK = 1.2  # Scale up when risk is low
 POSITION_SCALE_HIGH_RISK = 0.5  # Scale down when risk is high
 
 
@@ -38,6 +36,7 @@ class CVaRRiskManager:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
 
@@ -114,11 +113,9 @@ class CVaRRiskManager:
 
         # Collect returns from trade outcomes
         conn = self._db._get_conn()
-        rows = conn.execute(
-            """SELECT net_pnl_pct FROM trade_outcomes
+        rows = conn.execute("""SELECT net_pnl_pct FROM trade_outcomes
             WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
-            ORDER BY exit_time DESC LIMIT 100"""
-        ).fetchall()
+            ORDER BY exit_time DESC LIMIT 100""").fetchall()
 
         returns = [r["net_pnl_pct"] for r in rows] if rows else []
 
@@ -137,10 +134,15 @@ class CVaRRiskManager:
             for p in positions
         )
         if total_value > 0:
-            max_position_pct = max(
-                float(p.get("quantity", 0)) * float(p.get("current_price", 0)) / total_value
-                for p in positions
-            ) * 100
+            max_position_pct = (
+                max(
+                    float(p.get("quantity", 0))
+                    * float(p.get("current_price", 0))
+                    / total_value
+                    for p in positions
+                )
+                * 100
+            )
         else:
             max_position_pct = 0
 
@@ -165,7 +167,9 @@ class CVaRRiskManager:
         if cvar_95 < CVAR_95_CRITICAL:
             recommendations.append(f"CVaR_95 = {cvar_95:.1f}% 觸及臨界值，建議減倉")
         if cvar_99 < -20:
-            recommendations.append(f"CVaR_99 = {cvar_99:.1f}%，極端情況下可能虧損超 20%")
+            recommendations.append(
+                f"CVaR_99 = {cvar_99:.1f}%，極端情況下可能虧損超 20%"
+            )
 
         return {
             "portfolio_cvar_95": cvar_95,

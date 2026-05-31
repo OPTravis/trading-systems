@@ -7,25 +7,26 @@ daily reports, and earnings notifications to the Stock Feishu group.
 Uses Feishu IM API (tenant_access_token + chat_id) instead of webhooks.
 """
 
-import os
 import logging
-import requests
+import os
 import time
-from typing import Dict, List, Optional
 from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
 # Token cache
-_token_cache = {"token": "", "expires_at": 0.0}
+_token_cache: Dict[str, float | str] = {"token": "", "expires_at": 0.0}
 
 
 def _get_tenant_token() -> str:
     """Get Feishu tenant access token (cached, auto-refresh)."""
     now = time.time()
-    if _token_cache["token"] and now < _token_cache["expires_at"]:
-        return _token_cache["token"]
+    if _token_cache["token"] and now < float(_token_cache["expires_at"]):
+        return str(_token_cache["token"])
 
     app_id = os.environ.get("FEISHU_APP_ID", "")
     app_secret = os.environ.get("FEISHU_APP_SECRET", "")
@@ -53,6 +54,7 @@ def _get_tenant_token() -> str:
 
 class AlertLevel(str, Enum):
     """Alert severity levels."""
+
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -84,10 +86,7 @@ class FeishuNotifier:
     """
 
     def __init__(self, chat_id: Optional[str] = None):
-        self.chat_id = (
-            chat_id
-            or os.environ.get("FEISHU_CHAT_ID", "")
-        )
+        self.chat_id = chat_id or os.environ.get("FEISHU_CHAT_ID", "")
         self._enabled = bool(self.chat_id)
         if not self._enabled:
             logger.warning(
@@ -108,6 +107,7 @@ class FeishuNotifier:
 
         try:
             import json as _json
+
             payload = {
                 "receive_id": self.chat_id,
                 "msg_type": "text",
@@ -141,6 +141,7 @@ class FeishuNotifier:
 
         try:
             import json as _json
+
             card = {
                 "header": {
                     "title": {"tag": "plain_text", "content": title},
@@ -217,11 +218,13 @@ class FeishuNotifier:
             for k, v in metadata.items():
                 lines.append(f"  {k}: {v}")
 
-        lines.extend([
-            "",
-            "─" * 30,
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                "─" * 30,
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))
 
@@ -269,11 +272,13 @@ class FeishuNotifier:
             for k, v in risk_status.items():
                 lines.append(f"  {k}: {v}")
 
-        lines.extend([
-            "",
-            "═" * 30,
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                "═" * 30,
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))
 
@@ -313,10 +318,12 @@ class FeishuNotifier:
             if estimated_eps is not None:
                 lines.append(f"預估EPS: ${estimated_eps:.2f}")
 
-        lines.extend([
-            "",
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))
 
@@ -336,7 +343,7 @@ class FeishuNotifier:
         total_cost = price * quantity
 
         lines = [
-            f"🚀 訂單已執行",
+            "🚀 訂單已執行",
             "",
             f"操作: {action_emoji} {action}",
             f"股票: {symbol}",
@@ -348,10 +355,12 @@ class FeishuNotifier:
         if order_id:
             lines.append(f"訂單ID: {order_id}")
 
-        lines.extend([
-            "",
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))
 
@@ -371,11 +380,13 @@ class FeishuNotifier:
         for k, v in details.items():
             lines.append(f"  {k}: {v}")
 
-        lines.extend([
-            "",
-            "⚠️ 請檢查系統狀態",
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                "⚠️ 請檢查系統狀態",
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))
 
@@ -406,9 +417,11 @@ class FeishuNotifier:
             if msg:
                 lines.append(f"      {msg}")
 
-        lines.extend([
-            "",
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            ]
+        )
 
         return self._send("\n".join(lines))

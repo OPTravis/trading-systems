@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import requests
 
@@ -38,7 +38,15 @@ class DeFiLlamaOnChain:
     """
 
     BASE = "https://api.llama.fi"
-    MAJOR_CHAINS = ["Ethereum", "BSC", "Arbitrum", "Base", "Solana", "Avalanche", "Polygon"]
+    MAJOR_CHAINS = [
+        "Ethereum",
+        "BSC",
+        "Arbitrum",
+        "Base",
+        "Solana",
+        "Avalanche",
+        "Polygon",
+    ]
 
     def __init__(self) -> None:
         self._cache: Dict[str, float] = {}
@@ -63,10 +71,14 @@ class DeFiLlamaOnChain:
                 return (tvl_now - tvl_yesterday) / tvl_yesterday * 100
             except Exception:
                 if attempt < MAX_RETRIES:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = RETRY_BASE_DELAY * (2**attempt)
                     time.sleep(delay)
                 else:
-                    logger.warning("DeFiLlama TVL fetch failed for %s after %d attempts", chain, MAX_RETRIES + 1)
+                    logger.warning(
+                        "DeFiLlama TVL fetch failed for %s after %d attempts",
+                        chain,
+                        MAX_RETRIES + 1,
+                    )
                     return None
         return None  # unreachable, satisfies type checker
 
@@ -99,8 +111,11 @@ class DeFiLlamaOnChain:
 
         # All fetches failed — try cache
         if self._cache and (time.time() - self._cache_ts) < CACHE_TTL:
-            logger.info("Using cached DeFiLlama data (%d chains, age %.0fs)",
-                        len(self._cache), time.time() - self._cache_ts)
+            logger.info(
+                "Using cached DeFiLlama data (%d chains, age %.0fs)",
+                len(self._cache),
+                time.time() - self._cache_ts,
+            )
             return self._cache
 
         return results

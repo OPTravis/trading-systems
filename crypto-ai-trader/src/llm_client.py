@@ -18,7 +18,6 @@ Usage:
     # Returns: {"content": "...", "provider": "deepseek"} or None on total failure
 """
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -70,6 +69,7 @@ def _load_config() -> Dict:
     try:
         if _CONFIG_PATH.exists():
             import yaml
+
             with open(_CONFIG_PATH, "r") as f:
                 file_cfg = yaml.safe_load(f) or {}
             if "llm" in file_cfg:
@@ -95,6 +95,7 @@ def _load_config() -> Dict:
 # Provider definitions
 # ---------------------------------------------------------------------------
 
+
 def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
     """Return (provider_config_dict, api_key) for a named provider."""
     cfg = _load_config()
@@ -102,7 +103,11 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
     provider = pcfg.get("provider", provider_name)
 
     env_key_map = {
-        "deepseek": ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+        "deepseek": (
+            "DEEPSEEK_API_KEY",
+            "DEEPSEEK_BASE_URL",
+            "https://api.deepseek.com/v1",
+        ),
         "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
         "kimi": ("KIMI_API_KEY", "KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
         "xiaomi": ("XIAOMI_API_KEY", "XIAOMI_BASE_URL", "https://api.xiaomi.com/v1"),
@@ -127,6 +132,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 # ---------------------------------------------------------------------------
 # Core client
 # ---------------------------------------------------------------------------
+
 
 class LLMClient:
     """Centralized LLM client with automatic provider fallback.
@@ -276,20 +282,31 @@ class LLMClient:
                 )
 
                 # Check for trigger conditions
-                if resp.status_code == 429 and self._fallback_triggers.get("rate_limit_429"):
+                if resp.status_code == 429 and self._fallback_triggers.get(
+                    "rate_limit_429"
+                ):
                     logger.warning(
                         "LLMClient [%s]: rate limited (429), attempt %d/%d",
-                        provider_name, attempt + 1, 1 + max_retries,
+                        provider_name,
+                        attempt + 1,
+                        1 + max_retries,
                     )
                     last_error = Exception(f"Rate limited (429) by {provider_name}")
                     continue  # retry, then fallback
 
-                if resp.status_code >= 500 and self._fallback_triggers.get("server_error_5xx"):
+                if resp.status_code >= 500 and self._fallback_triggers.get(
+                    "server_error_5xx"
+                ):
                     logger.warning(
                         "LLMClient [%s]: server error %d, attempt %d/%d",
-                        provider_name, resp.status_code, attempt + 1, 1 + max_retries,
+                        provider_name,
+                        resp.status_code,
+                        attempt + 1,
+                        1 + max_retries,
                     )
-                    last_error = Exception(f"Server error {resp.status_code} from {provider_name}")
+                    last_error = Exception(
+                        f"Server error {resp.status_code} from {provider_name}"
+                    )
                     continue
 
                 if resp.status_code == 200:
@@ -298,7 +315,8 @@ class LLMClient:
                 # Other errors (400, 401, etc.) — don't retry or fallback
                 logger.warning(
                     "LLMClient [%s]: HTTP %d — not retryable",
-                    provider_name, resp.status_code,
+                    provider_name,
+                    resp.status_code,
                 )
                 return None
 
@@ -306,7 +324,9 @@ class LLMClient:
                 if self._fallback_triggers.get("timeout"):
                     logger.warning(
                         "LLMClient [%s]: timeout, attempt %d/%d",
-                        provider_name, attempt + 1, 1 + max_retries,
+                        provider_name,
+                        attempt + 1,
+                        1 + max_retries,
                     )
                     last_error = Exception(f"Timeout from {provider_name}")
                     continue
@@ -316,7 +336,10 @@ class LLMClient:
                 if self._fallback_triggers.get("connection_error"):
                     logger.warning(
                         "LLMClient [%s]: connection error, attempt %d/%d: %s",
-                        provider_name, attempt + 1, 1 + max_retries, e,
+                        provider_name,
+                        attempt + 1,
+                        1 + max_retries,
+                        e,
                     )
                     last_error = e
                     continue
@@ -349,7 +372,9 @@ class LLMClient:
                 "model": model_used,
             }
         except (KeyError, IndexError, TypeError) as e:
-            logger.warning("LLMClient: failed to parse response from %s: %s", provider, e)
+            logger.warning(
+                "LLMClient: failed to parse response from %s: %s", provider, e
+            )
             return None
 
 
@@ -393,7 +418,9 @@ def get_second_opinion_client() -> Optional[LLMClient]:
         xiaomi_cfg = {
             "provider": "xiaomi",
             "model": "mimo-v2.5",
-            "base_url": os.environ.get("XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"),
+            "base_url": os.environ.get(
+                "XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"
+            ),
             "timeout": 30,
         }
         _second_client._primary_cfg = xiaomi_cfg

@@ -9,7 +9,7 @@ No JSON files are used; all state is persisted via StateDB.
 """
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..core.exchange_client import ExchangeClient
 from typing import Dict
@@ -26,7 +26,7 @@ class DrawdownBreaker:
     # Hard stop threshold
     HARD_STOP_PCT = 0.10  # 10%
 
-    def __init__(self, binance_client: 'ExchangeClient' = None):
+    def __init__(self, binance_client: Optional['ExchangeClient'] = None):
         self.client = binance_client
         self._state = self._load_state()
 
@@ -181,7 +181,7 @@ class DrawdownBreaker:
             "reason": f"Drawdown {drawdown*100:.1f}% within limit",
         }
 
-    def reset(self, new_balance: float = None):
+    def reset(self, new_balance: Optional[float] = None):
         """Manually reset the breaker (requires human confirmation).
 
         Only call this after investigating why drawdown occurred.

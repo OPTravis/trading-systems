@@ -15,13 +15,22 @@ import asyncio
 import logging
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import AsyncIterator, Optional
 
-from ib_async import IB, Contract as IBContract, Order as IBOrder, OrderState
-from ib_async import MarketOrder, LimitOrder, StopOrder, StopLimitOrder
-from ib_async import Stock, Forex, Future, Option
-from ib_async.util import dataclassAsDict
+from ib_async import (
+    IB,
+    Forex,
+    Future,
+    LimitOrder,
+    MarketOrder,
+    Option,
+    Stock,
+    StopLimitOrder,
+    StopOrder,
+)
+from ib_async import Contract as IBContract
+from ib_async import Order as IBOrder
 
 from .broker_protocol import (
     AccountSummary,
@@ -36,7 +45,6 @@ from .broker_protocol import (
     OrderType,
     Position,
     Tick,
-    TimeInForce,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,7 +159,7 @@ class IBKRClient(BrokerProtocol):
             except Exception as e:
                 logger.warning(f"Connection attempt {attempt} failed: {e}")
                 if attempt < self._max_reconnect:
-                    backoff = min(2 ** attempt, 30)
+                    backoff = min(2**attempt, 30)
                     logger.info(f"Retrying in {backoff}s...")
                     await asyncio.sleep(backoff)
 
@@ -182,7 +190,7 @@ class IBKRClient(BrokerProtocol):
             logger.error("Max reconnect attempts reached, giving up")
             return
 
-        backoff = min(2 ** self._reconnect_attempts, 60)
+        backoff = min(2**self._reconnect_attempts, 60)
         await asyncio.sleep(backoff)
         try:
             await self.connect()
@@ -209,15 +217,20 @@ class IBKRClient(BrokerProtocol):
             return Forex(contract.symbol)
         elif contract.sec_type == "FUT":
             return Future(
-                contract.symbol, contract.expiry or "",
-                contract.exchange, contract.currency,
-                multiplier=contract.multiplier,
+                contract.symbol,
+                contract.expiry or "",
+                contract.exchange,
+                contract.currency,
+                multiplier=str(contract.multiplier) if contract.multiplier else "",
             )
         elif contract.sec_type == "OPT":
             return Option(
-                contract.symbol, contract.expiry or "",
-                contract.strike or 0, contract.right or "C",
-                contract.exchange, contract.currency,
+                contract.symbol,
+                contract.expiry or "",
+                contract.strike or 0,
+                contract.right or "C",
+                contract.exchange,
+                contract.currency,
             )
         else:
             return IBContract(
@@ -245,7 +258,9 @@ class IBKRClient(BrokerProtocol):
         await self._rate_limiter.acquire()
         ib_contract = self._to_ib_contract(contract)
 
-        ticker = self._ib.reqMktData(ib_contract, "", snapshot=snapshot, regulatorySnapshot=False)
+        ticker = self._ib.reqMktData(
+            ib_contract, "", snapshot=snapshot, regulatorySnapshot=False
+        )
 
         # Wait for initial data
         for _ in range(50):
@@ -295,7 +310,7 @@ class IBKRClient(BrokerProtocol):
             durationStr=duration,
             barSizeSetting=bar_size.value,
             whatToShow=what_to_show,
-            useRTH=int(use_rth),
+            useRTH=use_rth,
             formatDate=1,
         )
 
@@ -317,7 +332,9 @@ class IBKRClient(BrokerProtocol):
         """Async generator yielding real-time ticks."""
         await self._rate_limiter.acquire()
         ib_contract = self._to_ib_contract(contract)
-        ticker = self._ib.reqMktData(ib_contract, "", snapshot=False, regulatorySnapshot=False)
+        ticker = self._ib.reqMktData(
+            ib_contract, "", snapshot=False, regulatorySnapshot=False
+        )
 
         try:
             while self._connected:
@@ -347,16 +364,24 @@ class IBKRClient(BrokerProtocol):
 
         # Request account summary
         tags = [
-            "NetLiquidation", "TotalCashValue", "AvailableFunds",
-            "BuyingPower", "GrossPositionValue", "UnrealizedPnL",
-            "RealizedPnL", "MaintMarginReq", "ExcessLiquidity",
+            "NetLiquidation",
+            "TotalCashValue",
+            "AvailableFunds",
+            "BuyingPower",
+            "GrossPositionValue",
+            "UnrealizedPnL",
+            "RealizedPnL",
+            "MaintMarginReq",
+            "ExcessLiquidity",
         ]
         accounts = self._ib.managedAccounts()
         if not accounts:
-            raise ConnectionError("No managed accounts found — TWS/Gateway may not be logged in")
+            raise ConnectionError(
+                "No managed accounts found — TWS/Gateway may not be logged in"
+            )
         account = self._account_id or accounts[0].split(",")[0]
 
-        summary = self._ib.reqAccountSummary(account, tags)
+        summary = self._ib.reqAccountSummary(acctCodeOverride=account, tags=",".join(tags))  # type: ignore[call-arg]
         values = {s.tag: float(s.value) for s in summary}
 
         return AccountSummary(
@@ -399,12 +424,15 @@ class IBKRClient(BrokerProtocol):
         for p in positions:
             contract = self._from_ib_contract(p.contract)
             # TODO: avgCost is not market price — need real-time mark for accurate P&L
-            result.append(Position(
-                contract=contract,
-                quantity=p.position,
-                avg_cost=p.avgCost,
-                market_value=p.position * p.avgCost,  # Approximate — not market price
-            ))
+            result.append(
+                Position(
+                    contract=contract,
+                    quantity=p.position,
+                    avg_cost=p.avgCost,
+                    market_value=p.position
+                    * p.avgCost,  # Approximate — not market price
+                )
+            )
         return result
 
     # ── Order Management ─────────────────────────────────────────────────
@@ -414,14 +442,17 @@ class IBKRClient(BrokerProtocol):
         action = order.side.value
 
         if order.order_type == OrderType.MARKET:
-            ib_order = MarketOrder(action, order.quantity)
+            ib_order: IBOrder = MarketOrder(action, order.quantity)
         elif order.order_type == OrderType.LIMIT:
-            ib_order = LimitOrder(action, order.quantity, order.limit_price)
+            ib_order = LimitOrder(action, order.quantity, order.limit_price or 0.0)
         elif order.order_type == OrderType.STOP:
-            ib_order = StopOrder(action, order.quantity, order.stop_price)
+            ib_order = StopOrder(action, order.quantity, order.stop_price or 0.0)
         elif order.order_type == OrderType.STOP_LIMIT:
             ib_order = StopLimitOrder(
-                action, order.quantity, order.limit_price, order.stop_price
+                action,
+                order.quantity,
+                order.limit_price or 0.0,
+                order.stop_price or 0.0,
             )
         else:
             ib_order = MarketOrder(action, order.quantity)
@@ -440,7 +471,7 @@ class IBKRClient(BrokerProtocol):
         ib_contract = self._to_ib_contract(order.contract)
         ib_order = self._to_ib_order(order)
 
-        trade: Trade = self._ib.placeOrder(ib_contract, ib_order)
+        trade = self._ib.placeOrder(ib_contract, ib_order)
 
         order.order_id = trade.order.orderId
         order.status = self._map_order_status(trade.orderStatus.status)
@@ -463,8 +494,11 @@ class IBKRClient(BrokerProtocol):
         logger.warning(f"Order {order_id} not found in open orders")
 
     async def modify_order(
-        self, order_id: int, quantity: Optional[float] = None,
-        limit_price: Optional[float] = None, stop_price: Optional[float] = None
+        self,
+        order_id: int,
+        quantity: Optional[float] = None,
+        limit_price: Optional[float] = None,
+        stop_price: Optional[float] = None,
     ) -> Order:
         """Modify an existing order."""
         await self._rate_limiter.acquire()
@@ -531,16 +565,18 @@ class IBKRClient(BrokerProtocol):
                 contract = Contract(symbol="")
                 status = OrderStatus.SUBMITTED
 
-            orders.append(Order(
-                contract=contract,
-                side=OrderSide.BUY if ib_order.action == "BUY" else OrderSide.SELL,
-                order_type=OrderType(ib_order.orderType),
-                quantity=ib_order.totalQuantity,
-                limit_price=getattr(ib_order, "lmtPrice", None),
-                stop_price=getattr(ib_order, "auxPrice", None),
-                order_id=ib_order.orderId,
-                status=status,
-            ))
+            orders.append(
+                Order(
+                    contract=contract,
+                    side=OrderSide.BUY if ib_order.action == "BUY" else OrderSide.SELL,
+                    order_type=OrderType(ib_order.orderType),
+                    quantity=ib_order.totalQuantity,
+                    limit_price=getattr(ib_order, "lmtPrice", None),
+                    stop_price=getattr(ib_order, "auxPrice", None),
+                    order_id=ib_order.orderId,
+                    status=status,
+                )
+            )
         return orders
 
     async def get_order(self, order_id: int) -> Optional[Order]:

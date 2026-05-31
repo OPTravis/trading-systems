@@ -14,13 +14,12 @@ Usage:
 import json
 import logging
 import time
-from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List, Optional
 
 import numpy as np
 import requests
 
-from src.sector_classifier import SectorClassifier, BASE_SECTORS
+from src.sector_classifier import BASE_SECTORS, SectorClassifier
 from src.utils import get_project_root
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,9 @@ def fetch_price_history(symbol: str, days: int = 30) -> List[float]:
     return []
 
 
-def compute_log_return_correlation(prices_a: List[float], prices_b: List[float]) -> float:
+def compute_log_return_correlation(
+    prices_a: List[float], prices_b: List[float]
+) -> float:
     """Compute Pearson correlation of log returns."""
     if len(prices_a) != len(prices_b) or len(prices_a) < 15:
         return 0.0
@@ -56,7 +57,7 @@ def compute_log_return_correlation(prices_a: List[float], prices_b: List[float])
 
 def run_clustering_analysis(
     symbols: List[str],
-    classifier: SectorClassifier = None,
+    classifier: Optional[SectorClassifier] = None,
     min_correlation: float = 0.5,
 ) -> Dict:
     """Run full clustering analysis on a list of symbols.
@@ -83,7 +84,7 @@ def run_clustering_analysis(
         return {"error": "Insufficient data"}
 
     # Compute correlation matrix
-    corr_matrix = {}
+    corr_matrix: Dict[str, Dict[str, float]] = {}
     for sym_a in valid_symbols:
         corr_matrix[sym_a] = {}
         for sym_b in valid_symbols:
@@ -95,17 +96,20 @@ def run_clustering_analysis(
                 )
 
     # Analyze AI sector split
-    ai_symbols = [s for s in valid_symbols
-                  if classifier.classify_position(s + "USDT") in ("AI", "AI_INFRA", "AI_AGENT")]
+    ai_symbols = [
+        s
+        for s in valid_symbols
+        if classifier.classify_position(s + "USDT") in ("AI", "AI_INFRA", "AI_AGENT")
+    ]
 
     ai_infra = [s for s in ai_symbols if s in BASE_SECTORS.get("AI_INFRA", [])]
     ai_agent = [s for s in ai_symbols if s in BASE_SECTORS.get("AI_AGENT", [])]
 
     infra_agent_corrs = []
-    for i in ai_infra:
+    for infra_sym in ai_infra:
         for a in ai_agent:
-            if i in corr_matrix and a in corr_matrix[i]:
-                infra_agent_corrs.append(abs(corr_matrix[i][a]))
+            if infra_sym in corr_matrix and a in corr_matrix[infra_sym]:
+                infra_agent_corrs.append(abs(corr_matrix[infra_sym][a]))
 
     avg_infra_agent_corr = np.mean(infra_agent_corrs) if infra_agent_corrs else 1.0
 
@@ -127,19 +131,23 @@ def run_clustering_analysis(
     recommendations = []
 
     if avg_infra_agent_corr < 0.5 and avg_infra_corr > 0.6 and avg_agent_corr > 0.6:
-        recommendations.append({
-            "type": "AI_SPLIT",
-            "message": f"AI_INFRA and AI_AGENT are weakly correlated ({avg_infra_agent_corr:.2f}). Keep separate sectors.",
-            "infra_agent_corr": round(avg_infra_agent_corr, 3),
-            "infra_internal_corr": round(avg_infra_corr, 3),
-            "agent_internal_corr": round(avg_agent_corr, 3),
-        })
+        recommendations.append(
+            {
+                "type": "AI_SPLIT",
+                "message": f"AI_INFRA and AI_AGENT are weakly correlated ({avg_infra_agent_corr:.2f}). Keep separate sectors.",
+                "infra_agent_corr": round(avg_infra_agent_corr, 3),
+                "infra_internal_corr": round(avg_infra_corr, 3),
+                "agent_internal_corr": round(avg_agent_corr, 3),
+            }
+        )
     elif avg_infra_agent_corr > 0.7:
-        recommendations.append({
-            "type": "AI_MERGE",
-            "message": f"AI_INFRA and AI_AGENT are highly correlated ({avg_infra_agent_corr:.2f}). Consider merging to single AI sector.",
-            "infra_agent_corr": round(avg_infra_agent_corr, 3),
-        })
+        recommendations.append(
+            {
+                "type": "AI_MERGE",
+                "message": f"AI_INFRA and AI_AGENT are highly correlated ({avg_infra_agent_corr:.2f}). Consider merging to single AI sector.",
+                "infra_agent_corr": round(avg_infra_agent_corr, 3),
+            }
+        )
 
     # Detect misclassified symbols (high correlation with different sector)
     misclassified = []
@@ -155,19 +163,23 @@ def run_clustering_analysis(
                 continue
             sector_syms = [s for s in sector_symbols if s in corr_matrix and s != sym]
             if sector_syms:
-                avg_corr = np.mean([abs(corr_matrix[sym].get(s, 0)) for s in sector_syms])
+                avg_corr = np.mean(
+                    [abs(corr_matrix[sym].get(s, 0)) for s in sector_syms]
+                )
                 sector_corrs[sector_name] = avg_corr
 
         if sector_corrs:
-            best_sector = max(sector_corrs, key=sector_corrs.get)
+            best_sector = max(sector_corrs, key=lambda k: sector_corrs[k])
             best_corr = sector_corrs[best_sector]
             if best_sector != current_sector and best_corr > 0.7:
-                misclassified.append({
-                    "symbol": sym,
-                    "current_sector": current_sector,
-                    "suggested_sector": best_sector,
-                    "correlation": round(best_corr, 3),
-                })
+                misclassified.append(
+                    {
+                        "symbol": sym,
+                        "current_sector": current_sector,
+                        "suggested_sector": best_sector,
+                        "correlation": round(best_corr, 3),
+                    }
+                )
 
     report = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -182,8 +194,10 @@ def run_clustering_analysis(
         },
         "recommendations": recommendations,
         "misclassified": misclassified,
-        "correlation_matrix": {k: {k2: round(v2, 3) for k2, v2 in v.items()}
-                               for k, v in corr_matrix.items()},
+        "correlation_matrix": {
+            k: {k2: round(v2, 3) for k2, v2 in v.items()}
+            for k, v in corr_matrix.items()
+        },
     }
 
     # Save report
@@ -204,7 +218,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="Sector clustering analysis")
     parser.add_argument("--symbols", nargs="+", help="Specific symbols to analyze")
-    parser.add_argument("--min-corr", type=float, default=0.5, help="Minimum correlation threshold")
+    parser.add_argument(
+        "--min-corr", type=float, default=0.5, help="Minimum correlation threshold"
+    )
     args = parser.parse_args()
 
     if args.symbols:
@@ -229,15 +245,17 @@ def main():
             print(f"  [{rec['type']}] {rec['message']}")
 
     ai = report.get("ai_sector", {})
-    print(f"\nAI Sector Analysis:")
+    print("\nAI Sector Analysis:")
     print(f"  INFRA symbols: {ai.get('infra', [])}")
     print(f"  AGENT symbols: {ai.get('agent', [])}")
     print(f"  Cross-correlation: {ai.get('infra_agent_correlation', 'N/A')}")
 
     if report.get("misclassified"):
-        print(f"\nPotentially misclassified:")
+        print("\nPotentially misclassified:")
         for m in report["misclassified"]:
-            print(f"  {m['symbol']}: {m['current_sector']} -> {m['suggested_sector']} (corr={m['correlation']})")
+            print(
+                f"  {m['symbol']}: {m['current_sector']} -> {m['suggested_sector']} (corr={m['correlation']})"
+            )
 
     print(f"\nFull report: {_REPORT_FILE}")
 

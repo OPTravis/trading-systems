@@ -1,12 +1,9 @@
 """
 Sector performance and rotation signals via FMP and Yahoo Finance.
 """
-import logging
-import os
-from typing import Optional
 
-import pandas as pd
-import requests
+import logging
+
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
@@ -92,7 +89,11 @@ class SectorData:
         perf_3m = self.get_sector_performance("3mo")
 
         if not perf_1m or not perf_3m:
-            return {"momentum_leaders": [], "momentum_laggards": [], "rotation_signal": "neutral"}
+            return {
+                "momentum_leaders": [],
+                "momentum_laggards": [],
+                "rotation_signal": "neutral",
+            }
 
         # Composite score: 60% 1-month + 40% 3-month
         scores = {}
@@ -108,7 +109,14 @@ class SectorData:
 
         # Risk-on: cyclicals (Tech, Consumer Disc., Industrials) leading
         # Risk-off: defensives (Utilities, Staples, Healthcare) leading
-        cyclical = {"Technology", "Consumer Discretionary", "Industrials", "Financials", "Materials", "Energy"}
+        cyclical = {
+            "Technology",
+            "Consumer Discretionary",
+            "Industrials",
+            "Financials",
+            "Materials",
+            "Energy",
+        }
         defensive = {"Utilities", "Consumer Staples", "Healthcare", "Real Estate"}
 
         leader_set = set(leaders)

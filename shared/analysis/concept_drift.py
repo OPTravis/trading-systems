@@ -144,8 +144,8 @@ class ConceptDriftDetector:
         if not hist_corr or not recent_corr:
             return {"drift": False, "reason": "insufficient data"}
 
-        max_shift = 0
-        shifted_factors = []
+        max_shift = 0.0
+        shifted_factors: list[str] = []
 
         for factor in FACTOR_NAMES:
             h = hist_corr.get(factor, 0)
@@ -210,7 +210,7 @@ class ConceptDriftDetector:
 
     def _compute_correlations(self, rows: List[Dict]) -> Optional[Dict[str, float]]:
         """Compute factor-PnL correlations for a set of trades."""
-        factor_scores = {f: [] for f in FACTOR_NAMES}
+        factor_scores: Dict[str, list] = {f: [] for f in FACTOR_NAMES}
         pnl_values = []
 
         for row in rows:

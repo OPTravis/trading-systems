@@ -90,7 +90,9 @@ class ScoringDataAggregator:
             # Determine price direction from mark price in funding data
             price_up: Optional[bool] = None
             if funding_data and len(funding_data) >= 2:
-                price_up = funding_data[-1]["mark_price"] > funding_data[0]["mark_price"]
+                price_up = (
+                    funding_data[-1]["mark_price"] > funding_data[0]["mark_price"]
+                )
 
             if price_up is not None:
                 if oi_increasing and price_up:

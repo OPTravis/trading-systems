@@ -3,11 +3,10 @@ E2E Risk Management Test Suite (精簡版)
 Direct SQLite manipulation + code logic verification.
 禁止實際下單，只操作 SQLite 和讀取代碼。
 """
+
 import sqlite3
-import json
-import time
 import sys
-import os
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,11 +14,11 @@ from unittest.mock import MagicMock
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.state_db import get_state_db, StateDB
-from src.risk_manager import RiskManager, ConsecutiveLossGuard, TrendFilter
-from src.portfolio import PortfolioManager
-from src.drawdown_breaker import DrawdownBreaker
 from src.binance_client import BinanceClient
+from src.drawdown_breaker import DrawdownBreaker
+from src.portfolio import PortfolioManager
+from src.risk_manager import ConsecutiveLossGuard
+from src.state_db import get_state_db
 
 # Risk parameters per task
 MAX_POSITIONS = 6
@@ -33,6 +32,7 @@ DB_PATH = PROJECT_ROOT / "data" / "state.db"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def reset_db():
     """Wipe all risk-related tables for a clean test run."""
     conn = sqlite3.connect(str(DB_PATH))
@@ -45,7 +45,9 @@ def reset_db():
     conn.close()
     # Also clear singleton cache so StateDB re-reads fresh
     import src.state_db as sdb
+
     sdb._state_db_instance = None
+
 
 def log_result(test_name: str, passed: bool, detail: str = ""):
     status = "PASS" if passed else "FAIL"
@@ -53,9 +55,11 @@ def log_result(test_name: str, passed: bool, detail: str = ""):
     if detail:
         print(f"         {detail}")
 
+
 # ---------------------------------------------------------------------------
 # 1. SQLite 模擬風險場景
 # ---------------------------------------------------------------------------
+
 
 def test_drawdown_circuit_breaker():
     """插入 drawdown 記錄（portfolio_value=1000, peak=1200, ratio=0.17），檢查 RiskManager 是否觸發熔斷。"""
@@ -63,15 +67,17 @@ def test_drawdown_circuit_breaker():
 
     # Manually seed drawdown table: current = 1000, peak = 1200 => drawdown = 16.7%
     db = get_state_db()
-    db.drawdown_set({
-        "high_watermark": 1200.0,
-        "current_drawdown_pct": 16.67,
-        "max_drawdown_pct": 0.1667,
-        "tripped_count": 0,
-        "tripped_at": None,
-        "reset_at": None,
-        "history": []
-    })
+    db.drawdown_set(
+        {
+            "high_watermark": 1200.0,
+            "current_drawdown_pct": 16.67,
+            "max_drawdown_pct": 0.1667,
+            "tripped_count": 0,
+            "tripped_at": None,
+            "reset_at": None,
+            "history": [],
+        }
+    )
 
     # Create a mock client so drawdown_breaker can fetch account total
     mock_client = MagicMock()
@@ -117,7 +123,9 @@ def test_risk_guard_cooldown():
     status = guard.get_status()
 
     passed = paused and status["consecutive_losses"] >= STREAK_LIMIT
-    detail = f"paused={paused}, streak={status['consecutive_losses']}, daily_pnl context=-55"
+    detail = (
+        f"paused={paused}, streak={status['consecutive_losses']}, daily_pnl context=-55"
+    )
     log_result("Risk Guard Cooldown (streak=3, daily_pnl=-55)", passed, detail)
     return passed
 
@@ -137,7 +145,9 @@ def test_portfolio_manager_no_cash():
         # add_position does NOT check cash_balance; it only deducts cash.
         # With cash=0 it will go negative.
         passed = pm.cash_balance < 0
-        detail = f"cash_balance after add={pm.cash_balance} (negative = allowed but risky)"
+        detail = (
+            f"cash_balance after add={pm.cash_balance} (negative = allowed but risky)"
+        )
     except Exception as e:
         passed = True
         detail = f"Exception raised as expected: {e}"
@@ -150,17 +160,20 @@ def test_portfolio_manager_no_cash():
 # 2. risk_manager.py 代碼邏輯檢查
 # ---------------------------------------------------------------------------
 
+
 def test_daily_loss_limit_logic():
     """檢查 daily_loss_limit 是否正確應用。"""
     # We inspect PortfolioManager.check_risk_limits logic
     pm = PortfolioManager(config_path=None, binance_client=None)
     pm.cash_balance = 900
     pm._daily_start_value = 1000
-    pm._daily_start_date = __import__('datetime').datetime.now().date()
+    pm._daily_start_date = __import__("datetime").datetime.now().date()
     pm.positions = {}
 
     risk = pm.check_risk_limits()
-    daily_loss = (risk["total_value"] - pm._daily_start_value) / pm._daily_start_value * 100
+    daily_loss = (
+        (risk["total_value"] - pm._daily_start_value) / pm._daily_start_value * 100
+    )
     triggered = "Daily loss" in " ".join(risk["warnings"])
 
     # daily_loss = -10%, max_daily_loss_pct default = 3% => should trigger
@@ -208,6 +221,7 @@ def test_drawdown_threshold_logic():
 # 3. 網絡異常處理：模擬 binance_client API 超時
 # ---------------------------------------------------------------------------
 
+
 def test_binance_client_timeout_retry():
     """模擬 binance_client 在 API 超時時的行為（檢查是否有重試邏輯）。"""
     import inspect
@@ -226,6 +240,7 @@ def test_binance_client_timeout_retry():
 def test_klines_max_retries():
     """檢查 get_klines 是否有 max_retries 參數並正確使用。"""
     import inspect
+
     sig = inspect.signature(BinanceClient.get_klines)
     has_max_retries = "max_retries" in sig.parameters
 

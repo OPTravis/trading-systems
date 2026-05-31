@@ -1,10 +1,11 @@
 """
 Insider trading data from SEC Form 4 filings via FMP API.
 """
+
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -22,7 +23,7 @@ class InsiderTrading:
         self.api_key = api_key or os.environ.get("FMP_API_KEY", "")
         self._cache: dict = {}
 
-    def _get(self, endpoint: str, params: Optional[dict] = None) -> any:
+    def _get(self, endpoint: str, params: Optional[dict] = None) -> Any:
         p = params or {}
         p["apikey"] = self.api_key
         resp = requests.get(f"{FMP_BASE_URL}/{endpoint}", params=p, timeout=15)
@@ -63,17 +64,21 @@ class InsiderTrading:
                 shares = int(item.get("securitiesTransacted", 0) or 0)
                 price = float(item.get("price", 0) or 0)
 
-                trades.append({
-                    "date": trade_date_str,
-                    "insider_name": item.get("reportingName", item.get("insiderName", "")),
-                    "title": item.get("typeOfOwner", item.get("title", "")),
-                    "transaction_type": item.get("transactionType", ""),
-                    "shares": shares,
-                    "price": price,
-                    "value": shares * price,
-                    "security_name": item.get("securityName", ""),
-                    "acquisition": item.get("acquisitionOrDisposition", ""),
-                })
+                trades.append(
+                    {
+                        "date": trade_date_str,
+                        "insider_name": item.get(
+                            "reportingName", item.get("insiderName", "")
+                        ),
+                        "title": item.get("typeOfOwner", item.get("title", "")),
+                        "transaction_type": item.get("transactionType", ""),
+                        "shares": shares,
+                        "price": price,
+                        "value": shares * price,
+                        "security_name": item.get("securityName", ""),
+                        "acquisition": item.get("acquisitionOrDisposition", ""),
+                    }
+                )
             except (ValueError, TypeError) as exc:
                 logger.debug("Skipping insider trade entry: %s", exc)
                 continue
@@ -95,7 +100,9 @@ class InsiderTrading:
         SELL_TYPES = {"S-SALE", "SALE", "S"}
 
         buys = [t for t in trades if t.get("transaction_type", "").upper() in BUY_TYPES]
-        sells = [t for t in trades if t.get("transaction_type", "").upper() in SELL_TYPES]
+        sells = [
+            t for t in trades if t.get("transaction_type", "").upper() in SELL_TYPES
+        ]
 
         total_buy_shares = sum(t["shares"] for t in buys)
         total_sell_shares = sum(t["shares"] for t in sells)

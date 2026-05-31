@@ -14,6 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Load env
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env", override=False)
+load_dotenv(Path.home() / ".hermes" / ".env", override=False)  # Shared API keys
 
 results = {}
 
@@ -119,7 +120,7 @@ def test_market_scanner():
             "trend_score": 55,
             "entry_signal": "long",
         }
-        score = scanner._calculate_weighted_score(mtf_result, None, coin_data)
+        score, _factor_scores = scanner._calculate_weighted_score(mtf_result, None, coin_data)
         print(f"Direct score: {score:.2f}")
         signals = scanner._generate_signals(mtf_result.get("tf_1h"), mtf_result.get("tf_4h"), mtf_result, None, False, None)
         print(f"Signals: {signals}")
@@ -145,10 +146,10 @@ def test_scoring():
     }
     coin_data = {"symbol": "BTCUSDT", "volume_surge": True, "price": 100000, "volume_24h": 5e9, "price_change_24h": 3.5}
     
-    score = scanner._calculate_weighted_score(mtf_result, None, coin_data)
+    score, _ = scanner._calculate_weighted_score(mtf_result, None, coin_data)
     print(f"Score (bullish): {score:.2f}")
     assert 0 <= score <= 100, f"Score {score} out of range"
-    
+
     # Test with bearish data
     mtf_bear = {
         "tf_1h": {"rsi": 75, "macd_histogram": -300, "current_price": 100000, "bb_position": 0.9, "volume_ratio": 0.5, "trend": "strong_down", "vwap": 101000, "bb_lower": 97000, "bb_upper": 103000, "price_action_score": 30},
@@ -157,7 +158,7 @@ def test_scoring():
         "trend_score": 20,
         "entry_signal": None,
     }
-    score_bear = scanner._calculate_weighted_score(mtf_bear, None, coin_data)
+    score_bear, _ = scanner._calculate_weighted_score(mtf_bear, None, coin_data)
     print(f"Score (bearish): {score_bear:.2f}")
     assert 0 <= score_bear <= 100, f"Score {score_bear} out of range"
     

@@ -1,7 +1,9 @@
 """Synchronous wrapper around ib_insync IB for use with StockDataFeed and other sync code."""
-from ib_async import IB, Stock, Forex, util
-from typing import Optional, Dict, Any, List
+
 import logging
+from typing import Any, Dict
+
+from ib_async import IB, Stock
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,9 @@ class SyncIBKRWrapper:
 
     def connect(self) -> None:
         if not self._connected:
-            self._ib.connect(self._host, self._port, clientId=self._client_id, timeout=15)
+            self._ib.connect(
+                self._host, self._port, clientId=self._client_id, timeout=15
+            )
             self._connected = True
             # Request delayed market data (type 3) since we don't have live subscription
             self._ib.reqMarketDataType(3)
@@ -35,7 +39,7 @@ class SyncIBKRWrapper:
     def get_market_data(self, symbol: str) -> Dict[str, Any]:
         """Get real-time quote for a symbol. Returns dict with price, volume, etc."""
         try:
-            contract = Stock(symbol, 'SMART', 'USD')
+            contract = Stock(symbol, "SMART", "USD")
             self._ib.qualifyContracts(contract)
             [ticker] = self._ib.reqTickers(contract)
 
@@ -53,24 +57,34 @@ class SyncIBKRWrapper:
                 "low": ticker.low,
                 "close": ticker.close,
                 "open": ticker.open,
-                "change": ticker.close - ticker.open if ticker.close == ticker.close and ticker.open == ticker.open else 0,
-                "change_pct": ((ticker.close / ticker.open) - 1) * 100 if ticker.open and ticker.open == ticker.open else 0,
+                "change": (
+                    ticker.close - ticker.open
+                    if ticker.close == ticker.close and ticker.open == ticker.open
+                    else 0
+                ),
+                "change_pct": (
+                    ((ticker.close / ticker.open) - 1) * 100
+                    if ticker.open and ticker.open == ticker.open
+                    else 0
+                ),
             }
         except Exception as e:
             logger.warning("get_market_data failed for %s: %s", symbol, e)
             return {"symbol": symbol, "price": 0, "volume": 0}
 
-    def get_historical_bars(self, symbol: str, duration: str = "1 M", bar_size: str = "1 day") -> list:
+    def get_historical_bars(
+        self, symbol: str, duration: str = "1 M", bar_size: str = "1 day"
+    ) -> list:
         """Get historical bars. Returns list of OHLCV dicts."""
         try:
-            contract = Stock(symbol, 'SMART', 'USD')
+            contract = Stock(symbol, "SMART", "USD")
             self._ib.qualifyContracts(contract)
             bars = self._ib.reqHistoricalData(
                 contract,
-                endDateTime='',
+                endDateTime="",
                 durationStr=duration,
                 barSizeSetting=bar_size,
-                whatToShow='TRADES',
+                whatToShow="TRADES",
                 useRTH=True,
             )
             return [
@@ -91,8 +105,10 @@ class SyncIBKRWrapper:
     def get_account(self):
         """Get account summary."""
         from src.brokers.broker_protocol import AccountSummary
+
         acct = self._ib.accountSummary()
-        fields = {}
+        fields: Dict[str, float] = {}
+        currency = "HKD"
         for item in acct:
             tag = item.tag
             try:
@@ -101,7 +117,7 @@ class SyncIBKRWrapper:
                 continue  # Skip non-numeric fields like 'INDIVIDUAL'
             if tag == "TotalCashValue":
                 fields["total_cash"] = val
-                fields["currency"] = item.currency
+                currency = item.currency
             elif tag == "NetLiquidation":
                 fields["net_liquidation"] = val
             elif tag == "AvailableFunds":
@@ -122,25 +138,33 @@ class SyncIBKRWrapper:
             buying_power=fields.get("buying_power", 0),
             gross_position_value=fields.get("gross_position_value", 0),
             unrealized_pnl=fields.get("unrealized_pnl", 0),
-            currency=fields.get("currency", "HKD"),
+            currency=currency,
         )
 
     def get_portfolio(self) -> list:
         """Get portfolio positions."""
-        from src.brokers.broker_protocol import Position as BPPosition, Contract as BPContract
+        from src.brokers.broker_protocol import (
+            Contract as BPContract,
+        )
+        from src.brokers.broker_protocol import (
+            Position as BPPosition,
+        )
+
         positions = self._ib.positions()
         result = []
         for p in positions:
-            result.append(BPPosition(
-                contract=BPContract(
-                    symbol=p.contract.symbol,
-                    exchange=p.contract.exchange or "SMART",
-                    currency=p.contract.currency or "USD",
-                    contract_id=p.contract.conId,
-                ),
-                quantity=p.position,
-                avg_cost=p.avgCost,
-                market_value=p.position * p.avgCost,
-                unrealized_pnl=0,
-            ))
+            result.append(
+                BPPosition(
+                    contract=BPContract(
+                        symbol=p.contract.symbol,
+                        exchange=p.contract.exchange or "SMART",
+                        currency=p.contract.currency or "USD",
+                        contract_id=p.contract.conId,
+                    ),
+                    quantity=p.position,
+                    avg_cost=p.avgCost,
+                    market_value=p.position * p.avgCost,
+                    unrealized_pnl=0,
+                )
+            )
         return result

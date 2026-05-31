@@ -2,6 +2,7 @@
 Sentiment analysis using FinBERT (ProsusAI/finbert).
 Provides single-text and batch sentiment scoring from -1 (bearish) to +1 (bullish).
 """
+
 import logging
 from typing import Optional
 
@@ -16,7 +17,9 @@ class SentimentFeed:
     Scores range from -1.0 (very negative) to +1.0 (very positive).
     """
 
-    def __init__(self, model_name: str = "ProsusAI/finbert", device: Optional[str] = None):
+    def __init__(
+        self, model_name: str = "ProsusAI/finbert", device: Optional[str] = None
+    ):
         """
         Args:
             model_name: HuggingFace model identifier.
@@ -44,7 +47,9 @@ class SentimentFeed:
             )
             logger.info("FinBERT loaded successfully")
         except ImportError:
-            logger.error("transformers package not installed – install with: pip install transformers torch")
+            logger.error(
+                "transformers package not installed – install with: pip install transformers torch"
+            )
             raise
         except Exception as exc:
             logger.error("Failed to load FinBERT: %s", exc)
@@ -79,7 +84,7 @@ class SentimentFeed:
             # FinBERT handles up to 512 tokens; truncate to ~2000 chars
             # (~450 words, safely under 512 token limit)
             truncated = text[:2000]
-            results = self._pipeline(truncated)
+            results = self._pipeline(truncated)  # type: ignore[misc]
 
             # results is [[{label, score}, ...]] with top_k=None
             if results and isinstance(results[0], list):
@@ -114,7 +119,7 @@ class SentimentFeed:
 
         try:
             truncated = [t[:2000] for t in texts]
-            results = self._pipeline(truncated, batch_size=16)
+            results = self._pipeline(truncated, batch_size=16)  # type: ignore[misc]
 
             scores = []
             for result in results:

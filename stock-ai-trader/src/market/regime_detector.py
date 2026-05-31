@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class Regime(str, Enum):
-    DEFENSIVE = "DEFENSIVE"    # High volatility, bearish — reduce exposure
-    NEUTRAL = "NEUTRAL"        # Normal conditions — standard allocation
+    DEFENSIVE = "DEFENSIVE"  # High volatility, bearish — reduce exposure
+    NEUTRAL = "NEUTRAL"  # Normal conditions — standard allocation
     AGGRESSIVE = "AGGRESSIVE"  # Low vol, bullish — increase exposure
 
 
@@ -167,7 +167,9 @@ class RegimeDetector:
             return None
 
         if len(spy_returns) < 252:
-            logger.warning("Need at least 1 year of data for HMM, got %d", len(spy_returns))
+            logger.warning(
+                "Need at least 1 year of data for HMM, got %d", len(spy_returns)
+            )
             return None
 
         returns = spy_returns.dropna().values.reshape(-1, 1)
@@ -237,7 +239,7 @@ class RegimeDetector:
         for s in range(self._hmm_states):
             mask = states == s
             if mask.sum() > 0:
-                state_vols[s] = np.std(returns[mask[:len(returns)]])
+                state_vols[s] = np.std(returns[mask[: len(returns)]])
 
         if not state_vols:
             return 0
@@ -312,7 +314,9 @@ class RegimeDetector:
 
         logger.info(
             "Regime detected: %s (score=%.2f, signals=%s)",
-            regime, score, signals,
+            regime,
+            score,
+            signals,
         )
         return regime
 

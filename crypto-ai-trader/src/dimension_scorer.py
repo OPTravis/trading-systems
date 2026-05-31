@@ -20,7 +20,7 @@ Dimensions 1, 3, 6 are approximated from available data.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,7 @@ class DimensionScorer:
         bearish = sum(1 for d in dims.values() if d["score"] < -0.2)
 
         # Weighted score
-        weighted = sum(
-            d["score"] * d["weight"] for d in dims.values()
-        )
+        weighted = sum(d["score"] * d["weight"] for d in dims.values())
 
         # Resonance classification
         if bullish >= 5:
@@ -112,7 +110,7 @@ class DimensionScorer:
         """D1: On-Chain — approximated from Binance orderbook depth."""
         score = 0.0
         signals = []
-        data = {}
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.25, "data": data}
@@ -149,10 +147,11 @@ class DimensionScorer:
         """D2: Liquidity — funding rate 30d rolling average."""
         score = 0.0
         signals = []
-        data = {}
+        data: Dict[str, Any] = {}
 
         try:
             from src.data_feed_funding import FundingRate
+
             fr = FundingRate()
             btc_fr = fr.get_funding_rolling_avg("BTCUSDT", days=30)
             data = btc_fr
@@ -171,14 +170,19 @@ class DimensionScorer:
         except Exception as e:
             logger.debug(f"Liquidity scoring failed: {e}")
 
-        return {"score": max(-1, min(1, score)), "signals": signals, "weight": 0.25, "data": data}
+        return {
+            "score": max(-1, min(1, score)),
+            "signals": signals,
+            "weight": 0.25,
+            "data": data,
+        }
 
     # ------------------------------------------------------------------
     def _score_macro(self) -> Dict:
         """D3: Macro — BTC trend strength + market regime."""
         score = 0.0
         signals = []
-        data = {}
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.20, "data": data}
@@ -211,10 +215,11 @@ class DimensionScorer:
         """D4: Sentiment — CFGI persistence tracking."""
         score = 0.0
         signals = []
-        data = {}
+        data: Dict[str, Any] = {}
 
         try:
             from src.sentiment import SentimentAnalyzer
+
             sa = SentimentAnalyzer()
             market = sa.get_market_sentiment()
             data = {
@@ -261,7 +266,7 @@ class DimensionScorer:
         """D5: Technical — RSI + volume trend."""
         score = 0.0
         signals = []
-        data = {}
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.10, "data": data}
@@ -276,7 +281,7 @@ class DimensionScorer:
                 gains = []
                 losses = []
                 for i in range(1, len(closes)):
-                    diff = closes[i] - closes[i-1]
+                    diff = closes[i] - closes[i - 1]
                     gains.append(max(0, diff))
                     losses.append(max(0, -diff))
                 avg_gain = sum(gains[-14:]) / 14
@@ -323,20 +328,39 @@ class DimensionScorer:
                     btc_change = float(btc_stats.get("price_change_pct", 0))
                     # Cross-signal: when BTC drops AND has high volume = panic/risk-off
                     if btc_change < -2 and btc_vol > 0:
-                        return {"score": -0.3, "signals": ["risk_off_high_volume"], "weight": 0.05, "data": {"btc_change": btc_change}}
+                        return {
+                            "score": -0.3,
+                            "signals": ["risk_off_high_volume"],
+                            "weight": 0.05,
+                            "data": {"btc_change": btc_change},
+                        }
                     elif btc_change > 2 and btc_vol > 0:
-                        return {"score": 0.3, "signals": ["risk_on_momentum"], "weight": 0.05, "data": {"btc_change": btc_change}}
+                        return {
+                            "score": 0.3,
+                            "signals": ["risk_on_momentum"],
+                            "weight": 0.05,
+                            "data": {"btc_change": btc_change},
+                        }
         except Exception:
             pass
-        return {"score": 0.0, "signals": ["neutral_regulatory"], "weight": 0.05, "data": {}}
+        return {
+            "score": 0.0,
+            "signals": ["neutral_regulatory"],
+            "weight": 0.05,
+            "data": {},
+        }
 
     # ------------------------------------------------------------------
     def format_report(self, result: Dict) -> str:
         """Format dimension scoring result for display."""
         lines = []
-        lines.append(f"=== 六維度共振分析 ===")
-        lines.append(f"共振狀態: {result['resonance']} | 暴漲概率: {result['surge_probability']}")
-        lines.append(f"看漲維度: {result['bullish_count']}/6 | 看跌維度: {result['bearish_count']}/6 | 加權分: {result['weighted_score']:+.3f}")
+        lines.append("=== 六維度共振分析 ===")
+        lines.append(
+            f"共振狀態: {result['resonance']} | 暴漲概率: {result['surge_probability']}"
+        )
+        lines.append(
+            f"看漲維度: {result['bullish_count']}/6 | 看跌維度: {result['bearish_count']}/6 | 加權分: {result['weighted_score']:+.3f}"
+        )
         lines.append("")
 
         for name, dim in result["dimensions"].items():
@@ -344,6 +368,8 @@ class DimensionScorer:
             weight = dim["weight"]
             icon = "🟢" if score > 0.2 else "🔴" if score < -0.2 else "⚪"
             signals_str = ", ".join(dim.get("signals", []))
-            lines.append(f"{icon} {name:12} ({weight*100:.0f}%) score={score:+.2f} | {signals_str}")
+            lines.append(
+                f"{icon} {name:12} ({weight*100:.0f}%) score={score:+.2f} | {signals_str}"
+            )
 
         return "\n".join(lines)

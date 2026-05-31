@@ -9,18 +9,19 @@ This module:
 2. Blocks new positions if correlation with existing holdings exceeds threshold
 3. Enforces maximum portfolio correlation (average pairwise correlation)
 """
+
 import logging
-import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # Correlation thresholds
-MAX_PAIRWISE_CORR = 0.70      # Block if new symbol correlates >0.7 with any holding
-MAX_PORTFOLIO_CORR = 0.60     # Block if average pairwise correlation >0.6
-MIN_HISTORY_DAYS = 15         # Minimum days of price history required
-CACHE_TTL_SECONDS = 3600      # Recompute correlations every hour
+MAX_PAIRWISE_CORR = 0.70  # Block if new symbol correlates >0.7 with any holding
+MAX_PORTFOLIO_CORR = 0.60  # Block if average pairwise correlation >0.6
+MIN_HISTORY_DAYS = 15  # Minimum days of price history required
+CACHE_TTL_SECONDS = 3600  # Recompute correlations every hour
 
 
 class CorrelationRiskManager:
@@ -28,7 +29,7 @@ class CorrelationRiskManager:
 
     def __init__(self, binance_client):
         self.client = binance_client
-        self._cache: Dict[str, any] = {}
+        self._cache: Dict[str, Any] = {}
         self._cache_ts: float = 0
 
     def _get_price_history(self, symbol: str, days: int = 14) -> List[float]:
@@ -39,9 +40,9 @@ class CorrelationRiskManager:
             symbol_usdt = f"{symbol}USDT"
             interval = "1d"
 
-            if hasattr(client, 'get_klines'):
+            if hasattr(client, "get_klines"):
                 klines = client.get_klines(symbol_usdt, interval, limit=days)
-            elif hasattr(client, 'klines'):
+            elif hasattr(client, "klines"):
                 raw = client.klines(symbol_usdt, interval, limit=days)
                 # Convert raw list format to dict format
                 klines = [
@@ -57,7 +58,9 @@ class CorrelationRiskManager:
                     for k in raw
                 ]
             else:
-                logger.warning(f"CorrelationRisk: client has no klines method for {symbol}")
+                logger.warning(
+                    f"CorrelationRisk: client has no klines method for {symbol}"
+                )
                 return []
 
             if not klines or len(klines) < MIN_HISTORY_DAYS:
@@ -67,7 +70,9 @@ class CorrelationRiskManager:
             logger.warning(f"Failed to get price history for {symbol}: {e}")
             return []
 
-    def _compute_correlation(self, prices_a: List[float], prices_b: List[float]) -> float:
+    def _compute_correlation(
+        self, prices_a: List[float], prices_b: List[float]
+    ) -> float:
         """Compute Pearson correlation between two price series."""
         if len(prices_a) != len(prices_b) or len(prices_a) < MIN_HISTORY_DAYS:
             return 0.0
@@ -83,7 +88,7 @@ class CorrelationRiskManager:
         self, symbols: List[str]
     ) -> Tuple[Dict[str, Dict[str, float]], Dict[str, List[float]]]:
         """Build correlation matrix for a list of symbols.
-        
+
         Returns:
             (correlation_dict, price_history_dict)
         """
@@ -95,7 +100,7 @@ class CorrelationRiskManager:
                 histories[sym] = hist
 
         # Compute pairwise correlations
-        corr_matrix = {}
+        corr_matrix: Dict[str, Dict[str, float]] = {}
         symbols_with_data = list(histories.keys())
         for i, sym_a in enumerate(symbols_with_data):
             corr_matrix[sym_a] = {}
@@ -109,9 +114,7 @@ class CorrelationRiskManager:
 
         return corr_matrix, histories
 
-    def check_new_position(
-        self, new_symbol: str, current_positions: List[str]
-    ) -> Dict:
+    def check_new_position(self, new_symbol: str, current_positions: List[str]) -> Dict:
         """Check if adding new_symbol would violate correlation limits.
 
         Args:
@@ -141,7 +144,9 @@ class CorrelationRiskManager:
         corr_matrix, histories = self._build_correlation_matrix(all_symbols)
 
         if new_symbol not in corr_matrix:
-            logger.warning(f"CorrelationRisk: insufficient data for {new_symbol}, fail-open with reduced size ×0.5 (P1)")
+            logger.warning(
+                f"CorrelationRisk: insufficient data for {new_symbol}, fail-open with reduced size ×0.5 (P1)"
+            )
             return {
                 "allowed": True,
                 "reason": f"Insufficient price history for {new_symbol} — fail-open with ×0.5 size",
@@ -170,11 +175,13 @@ class CorrelationRiskManager:
         portfolio_symbols = current_positions + [new_symbol]
         portfolio_corrs = []
         for i, sym_a in enumerate(portfolio_symbols):
-            for sym_b in portfolio_symbols[i+1:]:
+            for sym_b in portfolio_symbols[i + 1 :]:
                 if sym_a in corr_matrix and sym_b in corr_matrix.get(sym_a, {}):
                     portfolio_corrs.append(abs(corr_matrix[sym_a][sym_b]))
 
-        avg_corr = sum(portfolio_corrs) / len(portfolio_corrs) if portfolio_corrs else 0.0
+        avg_corr = (
+            sum(portfolio_corrs) / len(portfolio_corrs) if portfolio_corrs else 0.0
+        )
 
         # Decision
         if blocked_by_pair:
@@ -212,13 +219,15 @@ class CorrelationRiskManager:
         pairs = []
         corrs = []
         for i, sym_a in enumerate(positions):
-            for sym_b in positions[i+1:]:
+            for sym_b in positions[i + 1 :]:
                 if sym_a in corr_matrix and sym_b in corr_matrix.get(sym_a, {}):
                     corr = corr_matrix[sym_a][sym_b]
-                    pairs.append({
-                        "pair": f"{sym_a}-{sym_b}",
-                        "correlation": round(corr, 3),
-                    })
+                    pairs.append(
+                        {
+                            "pair": f"{sym_a}-{sym_b}",
+                            "correlation": round(corr, 3),
+                        }
+                    )
                     corrs.append(abs(corr))
 
         return {

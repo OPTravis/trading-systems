@@ -1,6 +1,7 @@
 """
 Earnings calendar and history using Alpha Vantage API.
 """
+
 import logging
 import os
 from datetime import date, datetime, timedelta
@@ -63,13 +64,15 @@ class EarningsCalendar:
                     continue
                 report_date = datetime.strptime(report_str, "%Y-%m-%d").date()
                 if today <= report_date <= cutoff:
-                    upcoming.append({
-                        "symbol": item.get("symbol", ""),
-                        "name": item.get("name", ""),
-                        "report_date": report_str,
-                        "fiscal_date_ending": item.get("fiscalDateEnding", ""),
-                        "estimate": float(item.get("epsEstimate", 0) or 0),
-                    })
+                    upcoming.append(
+                        {
+                            "symbol": item.get("symbol", ""),
+                            "name": item.get("name", ""),
+                            "report_date": report_str,
+                            "fiscal_date_ending": item.get("fiscalDateEnding", ""),
+                            "estimate": float(item.get("epsEstimate", 0) or 0),
+                        }
+                    )
             except (ValueError, TypeError):
                 continue
 
@@ -90,18 +93,23 @@ class EarningsCalendar:
 
         logger.info("Fetching earnings history for %s", symbol)
         data = self._query("EARNINGS", {"symbol": symbol})
-        raw = data.get("quarterlyEarnings", data.get("earnings", []))
+        if isinstance(data, list):
+            raw = data
+        else:
+            raw = data.get("quarterlyEarnings", data.get("earnings", []))
         history = []
         for item in raw:
             try:
-                history.append({
-                    "fiscal_date_ending": item.get("fiscalDateEnding", ""),
-                    "reported_eps": float(item.get("reportedEPS", 0) or 0),
-                    "estimated_eps": float(item.get("estimatedEPS", 0) or 0),
-                    "surprise": float(item.get("surprise", 0) or 0),
-                    "surprise_pct": float(item.get("surprisePercentage", 0) or 0),
-                    "report_date": item.get("reportedDate", ""),
-                })
+                history.append(
+                    {
+                        "fiscal_date_ending": item.get("fiscalDateEnding", ""),
+                        "reported_eps": float(item.get("reportedEPS", 0) or 0),
+                        "estimated_eps": float(item.get("estimatedEPS", 0) or 0),
+                        "surprise": float(item.get("surprise", 0) or 0),
+                        "surprise_pct": float(item.get("surprisePercentage", 0) or 0),
+                        "report_date": item.get("reportedDate", ""),
+                    }
+                )
             except (ValueError, TypeError):
                 continue
 
@@ -121,7 +129,7 @@ class EarningsCalendar:
         """
         target = target_date or date.today()
         target_str = target.strftime("%Y-%m-%d")
-        symbol_upper = symbol.upper()
+        symbol.upper()
 
         # Check historical earnings for this specific symbol first (cheaper)
         history = self.get_earnings_history(symbol)
@@ -147,7 +155,9 @@ class EarningsCalendar:
             found = False
             for item in items:
                 try:
-                    report_str = item.get("reportDate", item.get("report_date", ""))[:10]
+                    report_str = item.get("reportDate", item.get("report_date", ""))[
+                        :10
+                    ]
                     if report_str == target_str:
                         found = True
                         break
@@ -157,5 +167,7 @@ class EarningsCalendar:
             self._cache[cache_key] = found
             return found
         except Exception as exc:
-            logger.debug("Symbol-filtered earnings lookup failed for %s: %s", symbol, exc)
+            logger.debug(
+                "Symbol-filtered earnings lookup failed for %s: %s", symbol, exc
+            )
             return False

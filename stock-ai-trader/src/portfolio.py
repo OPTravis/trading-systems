@@ -12,7 +12,6 @@ Handles:
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import time
@@ -49,14 +48,15 @@ def _get_fx_to_usd(currency: str) -> float:
     # Refresh cache from yfinance
     try:
         import yfinance as yf
+
         pairs = {
             "HKD": "USDHKD=X",
             "CNY": "USDCNY=X",
             "CNH": "USDCNH=X",
             "JPY": "USDJPY=X",
-            "EUR": "EURUSD=X",   # 1 EUR = X USD (multiply)
-            "GBP": "GBPUSD=X",   # 1 GBP = X USD (multiply)
-            "AUD": "AUDUSD=X",   # 1 AUD = X USD (multiply)
+            "EUR": "EURUSD=X",  # 1 EUR = X USD (multiply)
+            "GBP": "GBPUSD=X",  # 1 GBP = X USD (multiply)
+            "AUD": "AUDUSD=X",  # 1 AUD = X USD (multiply)
         }
         symbols = list(set(pairs.values()))
         tickers = yf.Tickers(" ".join(symbols))
@@ -79,7 +79,9 @@ def _get_fx_to_usd(currency: str) -> float:
         if new_cache:
             _FX_CACHE = new_cache
             _FX_CACHE_TS = now
-            logger.info("FX rates refreshed: %s", {k: round(v, 4) for k, v in new_cache.items()})
+            logger.info(
+                "FX rates refreshed: %s", {k: round(v, 4) for k, v in new_cache.items()}
+            )
     except Exception as e:
         logger.warning("Failed to fetch FX rates: %s", e)
 
@@ -87,14 +89,16 @@ def _get_fx_to_usd(currency: str) -> float:
     if currency != "USD" and rate == 1.0:
         logger.warning(
             "FX rate for %s not available, using fallback rate 1.0 — "
-            "NAV calculations may be inaccurate", currency
+            "NAV calculations may be inaccurate",
+            currency,
         )
     return rate
 
+
 SETTLEMENT_DAYS = {
-    "US": 1,   # T+1
-    "HK": 2,   # T+2
-    "CN": 1,   # T+1 (A-share)
+    "US": 1,  # T+1
+    "HK": 2,  # T+2
+    "CN": 1,  # T+1 (A-share)
     "DEFAULT": 2,
 }
 
@@ -107,9 +111,11 @@ CURRENCY_SYMBOLS = {
 
 # ─── Data models ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class UnsettledTrade:
     """Record of an unsettled trade proceeds or purchase."""
+
     amount: float
     currency: str
     market: str
@@ -121,6 +127,7 @@ class UnsettledTrade:
 @dataclass
 class Position:
     """Single stock position."""
+
     symbol: str
     quantity: float
     entry_price: float
@@ -156,6 +163,7 @@ class Position:
             if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 return None
             return v
+
         return {
             "symbol": self.symbol,
             "quantity": self.quantity,
@@ -180,6 +188,7 @@ class Position:
 @dataclass
 class RealizedTrade:
     """Record of a closed (realized) trade."""
+
     symbol: str
     side: str  # 'BUY' or 'SELL'
     quantity: float
@@ -193,36 +202,51 @@ class RealizedTrade:
 @dataclass
 class CashAccount:
     """Cash balance for a single currency."""
+
     currency: str
     total_cash: float = 0.0
     unsettled: List[UnsettledTrade] = field(default_factory=list)
 
-    def available(self, today: date = None) -> float:
+    def available(self, today: Optional[date] = None) -> float:
         """Cash available for trading (excludes unsettled)."""
         today = today or date.today()
         self._settle_past(today)
-        unsettled_total = sum(t.amount for t in self.unsettled if t.trade_type == "SELL")
+        unsettled_total = sum(
+            t.amount for t in self.unsettled if t.trade_type == "SELL"
+        )
         reserved = sum(t.amount for t in self.unsettled if t.trade_type == "BUY")
         return max(0.0, self.total_cash - unsettled_total - reserved)
 
-    def unsettled_amount(self, today: date = None) -> float:
+    def unsettled_amount(self, today: Optional[date] = None) -> float:
         today = today or date.today()
         self._settle_past(today)
         return sum(t.amount for t in self.unsettled)
 
-    def record_sell(self, amount: float, market: str = "US", trade_date: date = None):
+    def record_sell(
+        self, amount: float, market: str = "US", trade_date: Optional[date] = None
+    ):
         """Record sale proceeds; funds unavailable until settlement."""
         trade_date = trade_date or date.today()
         settle_days = SETTLEMENT_DAYS.get(market.upper(), SETTLEMENT_DAYS["DEFAULT"])
         settle_date = trade_date + timedelta(days=settle_days)
-        self.unsettled.append(UnsettledTrade(
-            amount=amount, currency=self.currency, market=market.upper(),
-            trade_date=trade_date, settle_date=settle_date, trade_type="SELL",
-        ))
+        self.unsettled.append(
+            UnsettledTrade(
+                amount=amount,
+                currency=self.currency,
+                market=market.upper(),
+                trade_date=trade_date,
+                settle_date=settle_date,
+                trade_type="SELL",
+            )
+        )
         self.total_cash += amount
-        logger.info("SELL proceeds $%.2f %s settles %s", amount, self.currency, settle_date)
+        logger.info(
+            "SELL proceeds $%.2f %s settles %s", amount, self.currency, settle_date
+        )
 
-    def record_buy(self, amount: float, market: str = "US", trade_date: date = None):
+    def record_buy(
+        self, amount: float, market: str = "US", trade_date: Optional[date] = None
+    ):
         """Record cash deduction for a buy."""
         trade_date = trade_date or date.today()
         self.total_cash -= amount
@@ -236,6 +260,7 @@ class CashAccount:
 
 
 # ─── Portfolio Manager ──────────────────────────────────────────────────────
+
 
 class PortfolioManager:
     """
@@ -312,7 +337,9 @@ class PortfolioManager:
                 pos.stop_loss = stop_loss
             if take_profit is not None:
                 pos.take_profit = take_profit
-            logger.info("Merged position: %s -> %.2f @ %.2f", symbol, new_qty, new_entry)
+            logger.info(
+                "Merged position: %s -> %.2f @ %.2f", symbol, new_qty, new_entry
+            )
         else:
             pos = Position(
                 symbol=symbol,
@@ -330,13 +357,26 @@ class PortfolioManager:
                 updated_at=now,
             )
             self._positions[symbol] = pos
-            logger.info("Opened position: %s %.2f @ %.2f (%s)", symbol, quantity, price, currency)
+            logger.info(
+                "Opened position: %s %.2f @ %.2f (%s)",
+                symbol,
+                quantity,
+                price,
+                currency,
+            )
 
         # Record trade
-        self._realized_trades.append(RealizedTrade(
-            symbol=symbol, side="BUY", quantity=quantity, price=price,
-            currency=currency, market=market, timestamp=now,
-        ))
+        self._realized_trades.append(
+            RealizedTrade(
+                symbol=symbol,
+                side="BUY",
+                quantity=quantity,
+                price=price,
+                currency=currency,
+                market=market,
+                timestamp=now,
+            )
+        )
 
         self._save(force=True)
         return pos
@@ -382,8 +422,14 @@ class PortfolioManager:
 
         # Record realized trade
         trade = RealizedTrade(
-            symbol=symbol, side="SELL", quantity=quantity, price=price,
-            pnl=pnl, currency=pos_currency, market=pos_market, timestamp=now,
+            symbol=symbol,
+            side="SELL",
+            quantity=quantity,
+            price=price,
+            pnl=pnl,
+            currency=pos_currency,
+            market=pos_market,
+            timestamp=now,
         )
         self._realized_trades.append(trade)
 
@@ -438,7 +484,7 @@ class PortfolioManager:
 
     # ── P&L ─────────────────────────────────────────────────────────────
 
-    def get_unrealized_pnl(self, currency: str = None) -> float:
+    def get_unrealized_pnl(self, currency: Optional[str] = None) -> float:
         """Total unrealized P&L across positions (optionally filtered by currency)."""
         total = 0.0
         for pos in self._positions.values():
@@ -447,7 +493,7 @@ class PortfolioManager:
             total += pos.unrealized_pnl
         return total
 
-    def get_realized_pnl(self, currency: str = None) -> float:
+    def get_realized_pnl(self, currency: Optional[str] = None) -> float:
         """Total realized P&L from closed trades."""
         total = 0.0
         for t in self._realized_trades:
@@ -456,7 +502,7 @@ class PortfolioManager:
             total += t.pnl
         return total
 
-    def get_total_pnl(self, currency: str = None) -> float:
+    def get_total_pnl(self, currency: Optional[str] = None) -> float:
         """Total P&L = realized + unrealized."""
         return self.get_realized_pnl(currency) + self.get_unrealized_pnl(currency)
 
@@ -465,7 +511,7 @@ class PortfolioManager:
 
     # ── NAV & Exposure ──────────────────────────────────────────────────
 
-    def get_market_value(self, currency: str = None) -> float:
+    def get_market_value(self, currency: Optional[str] = None) -> float:
         """Total market value of all positions."""
         total = 0.0
         for pos in self._positions.values():
@@ -499,7 +545,7 @@ class PortfolioManager:
         cash = self._get_cash(currency)
         today = date.today()
         cash._settle_past(today)
-        breakdown = {}
+        breakdown: Dict[str, float] = {}
         for t in cash.unsettled:
             breakdown[t.market] = breakdown.get(t.market, 0) + t.amount
         return breakdown
@@ -516,7 +562,7 @@ class PortfolioManager:
         nav = self.get_nav()
         if nav <= 0:
             return {}
-        exposure = {}
+        exposure: Dict[str, float] = {}
         for pos in self._positions.values():
             sector = pos.sector or "Unknown"
             exposure[sector] = exposure.get(sector, 0.0) + pos.market_value
@@ -566,18 +612,23 @@ class PortfolioManager:
                 self._positions[contract.symbol] = Position(
                     symbol=contract.symbol,
                     quantity=pos.quantity,
-                    avg_cost=pos.avg_cost,
-                    current_price=pos.market_value / pos.quantity if pos.quantity else pos.avg_cost,
+                    entry_price=pos.avg_cost,
+                    current_price=(
+                        pos.market_value / pos.quantity
+                        if pos.quantity
+                        else pos.avg_cost
+                    ),
                     currency=contract.currency,
                     market=market,
-                    entry_price=pos.avg_cost,
                 )
                 self._positions[contract.symbol].unrealized_pnl = pos.unrealized_pnl
 
             self._save(force=True)
             logger.info(
                 "Portfolio synced: %d positions, cash=%s%.2f",
-                len(self._positions), currency, account.total_cash,
+                len(self._positions),
+                currency,
+                account.total_cash,
             )
             return True
 

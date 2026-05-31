@@ -29,10 +29,10 @@ import requests
 
 # Re-export all sub-module classes for backward compatibility
 # so that `from src.data_feed import FearGreedIndex` still works.
-from src.data_feed_base import _get_conn, _init_tables, CACHE_DB  # noqa: F401
+from src.data_feed_base import CACHE_DB, _get_conn, _init_tables  # noqa: F401
 from src.data_feed_fng import FearGreedIndex  # noqa: F401
-from src.data_feed_news import NewsFeed  # noqa: F401
 from src.data_feed_funding import FundingRate  # noqa: F401
+from src.data_feed_news import NewsFeed  # noqa: F401
 from src.data_feed_oi import OpenInterest  # noqa: F401
 from src.data_feed_onchain import DeFiLlamaOnChain  # noqa: F401
 from src.data_feed_scorer import ScoringDataAggregator  # noqa: F401
@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 # ===================================================================
 # DataFeedManager  (unified entry point)
 # ===================================================================
+
 
 class DataFeedManager:
     """Orchestrates all data feeds with per-feed error isolation.
@@ -60,7 +61,9 @@ class DataFeedManager:
         self.oi = OpenInterest()
         self.scorer = ScoringDataAggregator(self.funding, self.oi)
         self.onchain = DeFiLlamaOnChain()
-        logger.info("DataFeedManager initialised (FNG + News + Funding + OI + Scorer + OnChain)")
+        logger.info(
+            "DataFeedManager initialised (FNG + News + Funding + OI + Scorer + OnChain)"
+        )
 
     # ------------------------------------------------------------------
     def get_market_snapshot(self) -> Dict[str, Any]:
@@ -203,11 +206,14 @@ class DataFeedManager:
 # ===================================================================
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format="%(name)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(name)s - %(levelname)s - %(message)s"
+    )
 
     mgr = DataFeedManager()
     snap = mgr.get_market_snapshot()
 
     import json
+
     print(json.dumps(snap, indent=2, default=str))
     mgr.close()

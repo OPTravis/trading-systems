@@ -7,9 +7,11 @@ Once tripped, all new trades are blocked until manual reset.
 STORAGE: SQLite state.db drawdown table (sole source of truth).
 No JSON files are used; all state is persisted via StateDB.
 """
+
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
 from typing import Dict
@@ -26,7 +28,7 @@ class DrawdownBreaker:
     # Hard stop threshold
     HARD_STOP_PCT = 0.10  # 10%
 
-    def __init__(self, binance_client: 'ExchangeClient' = None):
+    def __init__(self, binance_client: Optional["ExchangeClient"] = None):
         self.client = binance_client
         self._state = self._load_state()
 
@@ -34,6 +36,7 @@ class DrawdownBreaker:
         """Load state from SQLite drawdown table (sole source of truth)."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             state = db.drawdown_get()
             logger.info("DrawdownBreaker: loaded from SQLite drawdown table")
@@ -55,6 +58,7 @@ class DrawdownBreaker:
         """Save state to SQLite drawdown table (sole source of truth)."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db.drawdown_set(self._state)
         except Exception as e:
@@ -85,23 +89,30 @@ class DrawdownBreaker:
             if hwm > 0 and current_balance > hwm * 3:
                 logger.warning(
                     "DrawdownBreaker: rejected watermark update %.2f → %.2f (3x spike, likely phantom)",
-                    hwm, current_balance
+                    hwm,
+                    current_balance,
                 )
                 self._save_state()
                 return {
                     "tripped": False,
-                    "drawdown_pct": round(((hwm - current_balance) / hwm) * 100, 2) if hwm > 0 else 0,
+                    "drawdown_pct": (
+                        round(((hwm - current_balance) / hwm) * 100, 2)
+                        if hwm > 0
+                        else 0
+                    ),
                     "high_watermark": hwm,
                     "action": "HOLD",
                     "reason": f"Rejected phantom equity spike: {current_balance:.2f} > 3x watermark {hwm:.2f}",
                 }
             if hwm > 0:
                 # Record the peak before resetting
-                state["history"].append({
-                    "hwm": hwm,
-                    "new_hwm": current_balance,
-                    "timestamp": time.time(),
-                })
+                state["history"].append(
+                    {
+                        "hwm": hwm,
+                        "new_hwm": current_balance,
+                        "timestamp": time.time(),
+                    }
+                )
                 # Trim history to last 100 entries
                 state["history"] = state["history"][-100:]
             state["high_watermark"] = current_balance
@@ -144,6 +155,7 @@ class DrawdownBreaker:
                 # FIX-8: Send Feishu notification when breaker trips
                 try:
                     from src.notifier import FeishuNotifier
+
                     notifier = FeishuNotifier()
                     notifier.send_text(
                         f"\U0001f6a8 DRAWDOWN BREAKER TRIPPED!\n"
@@ -153,7 +165,10 @@ class DrawdownBreaker:
                         f"All new trades BLOCKED until manual reset."
                     )
                 except Exception:
-                    logger.error("DrawdownBreaker: failed to send trip notification", exc_info=True)
+                    logger.error(
+                        "DrawdownBreaker: failed to send trip notification",
+                        exc_info=True,
+                    )
                 return {
                     "tripped": True,
                     "drawdown_pct": round(drawdown * 100, 2),
@@ -181,7 +196,7 @@ class DrawdownBreaker:
             "reason": f"Drawdown {drawdown*100:.1f}% within limit",
         }
 
-    def reset(self, new_balance: float = None):
+    def reset(self, new_balance: Optional[float] = None):
         """Manually reset the breaker (requires human confirmation).
 
         Only call this after investigating why drawdown occurred.

@@ -35,7 +35,9 @@ class SentimentAgent:
         """
         # Early return for empty/missing data
         if not funding_data:
-            return SpecialistResult(score=50.0, signals=['⚠️ No data available'], data={}, confidence='none')
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data available"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -55,9 +57,13 @@ class SentimentAgent:
 
             if funding is not None:
                 if funding < -0.01:
-                    signals.append(f"💚 Negative Funding ({funding:.4f}) — contrarian bullish")
+                    signals.append(
+                        f"💚 Negative Funding ({funding:.4f}) — contrarian bullish"
+                    )
                 elif funding > 0.03:
-                    signals.append(f"💸 High Funding ({funding:.4f}) — overleveraged longs")
+                    signals.append(
+                        f"💸 High Funding ({funding:.4f}) — overleveraged longs"
+                    )
 
             if oi_change is not None:
                 if oi_change > 10:
@@ -67,17 +73,19 @@ class SentimentAgent:
 
         # --- data ------------------------------------------------------------
         if funding_data:
-            data['sentiment_score'] = funding_data.get("sentiment_score", 0)
-            data['funding_rate'] = funding_data.get("funding_rate")
-            data['oi_change_pct'] = funding_data.get("oi_change_pct")
+            data["sentiment_score"] = funding_data.get("sentiment_score", 0)
+            data["funding_rate"] = funding_data.get("funding_rate")
+            data["oi_change_pct"] = funding_data.get("oi_change_pct")
         else:
-            data['sentiment_score'] = 0
-            data['funding_rate'] = None
-            data['oi_change_pct'] = None
+            data["sentiment_score"] = 0
+            data["funding_rate"] = None
+            data["oi_change_pct"] = None
 
-        confidence = 'medium' if funding_data else 'low'
+        confidence = "medium" if funding_data else "low"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Factor 4: Sentiment (funding + OI)

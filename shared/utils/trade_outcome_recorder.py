@@ -269,7 +269,7 @@ class TradeOutcomeRecorder:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_closed_outcomes(self, limit: int = 50, strategy: str = None) -> List[Dict]:
+    def get_closed_outcomes(self, limit: int = 50, strategy: Optional[str] = None) -> List[Dict]:
         """Get closed trade outcomes for analysis."""
         if strategy:
             rows = self._db._get_conn().execute(

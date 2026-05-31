@@ -16,11 +16,10 @@ Actions: 5 position size multipliers [0.3, 0.5, 0.8, 1.0, 1.2]
 Total (context, action) pairs: 180 * 5 = 900
 """
 
-import json
 import logging
-import math
+from typing import Dict, List
+
 import numpy as np
-from typing import Dict, List, Optional, Tuple
 
 from src.state_db import get_state_db
 
@@ -63,7 +62,7 @@ PORTFOLIO_HEAT_MAP = {
 
 def _discretize_fear_greed(fng: float) -> int:
     """Map Fear & Greed index (0-100) to 5 buckets.
-    
+
     0-20: extreme_fear (0)
     21-40: fear (1)
     41-60: neutral (2)
@@ -76,7 +75,7 @@ def _discretize_fear_greed(fng: float) -> int:
 
 def _context_to_index(context: Dict) -> int:
     """Convert a context dict to a single integer index.
-    
+
     Index = hmm * 150 + fng_bucket * 30 + btc_trend * 10 + heat_bucket * 5
     Then map to action slots (multiply by 5 for the action dimension).
     """
@@ -137,10 +136,10 @@ class ContextualBandit:
 
     def recommend_size(self, context: Dict) -> float:
         """Recommend position size multiplier for given context.
-        
+
         Uses Thompson Sampling: samples from each action's Beta posterior
         and returns the multiplier with the highest sample.
-        
+
         Falls back to 0.8 on cold start (no priors for this context).
         """
         ctx_idx = _context_to_index(context)
@@ -159,7 +158,7 @@ class ContextualBandit:
 
     def update_from_outcome(self, context: Dict, action_taken: float, pnl_pct: float):
         """Update priors after a trade closes.
-        
+
         Args:
             context: The context dict at time of trade
             action_taken: The position size multiplier used
@@ -180,7 +179,7 @@ class ContextualBandit:
 
     def get_stats(self) -> Dict:
         """Return summary statistics of all priors.
-        
+
         Returns:
             Dict with:
               - total_contexts: number of context arms with data
@@ -190,13 +189,18 @@ class ContextualBandit:
         """
         total_contexts = len(self._priors)
         total_updates = 0
-        action_totals = [[0.0, 0.0, 0] for _ in ACTION_MULTIPLIERS]  # [sum_alpha, sum_beta, count]
+        action_totals = [
+            [0.0, 0.0, 0] for _ in ACTION_MULTIPLIERS
+        ]  # [sum_alpha, sum_beta, count]
 
         contexts_summary = {}
         for ctx_idx, actions in self._priors.items():
             ctx_updates = sum((a + b - 2) for a, b in actions)
             total_updates += int(ctx_updates)
-            best_action = max(range(len(actions)), key=lambda i: actions[i][0] / max(actions[i][0] + actions[i][1], 1e-10))
+            best_action = max(
+                range(len(actions)),
+                key=lambda i: actions[i][0] / max(actions[i][0] + actions[i][1], 1e-10),
+            )
             contexts_summary[str(ctx_idx)] = {
                 "priors": [[a, b] for a, b in actions],
                 "best_action_index": best_action,
@@ -231,6 +235,7 @@ class ContextualBandit:
 
 # Singleton instance
 _bandit_instance = None
+
 
 def get_contextual_bandit() -> ContextualBandit:
     """Get or create the global ContextualBandit instance."""

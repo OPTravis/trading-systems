@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
-from shared.core.state_db import get_state_db
 from shared.risk.risk_manager import RiskManager
 from src.brokers.broker_protocol import BrokerProtocol
 from src.execution.order_executor import OrderExecutor, OrderResult
@@ -47,6 +46,7 @@ VOLUME_PROFILE = [v / _TOTAL for v in DEFAULT_VOLUME_PROFILE]
 @dataclass
 class VWAPResult:
     """Aggregated result of a VWAP execution."""
+
     success: bool
     symbol: str
     side: str
@@ -75,14 +75,16 @@ class VWAPExecutor:
     - Situations where passive fills are acceptable
     """
 
-    def __init__(self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None):
+    def __init__(
+        self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None
+    ):
         self.order_executor = OrderExecutor(broker, risk_manager)
 
     # NOTE: This method uses blocking time.sleep() and synchronous broker calls.
     # In the future, this should be refactored to an async method (async def)
     # and called from an async context, using asyncio.sleep() and await on
     # broker calls. The parent caller is now async.
-    def execute_vwap(
+    async def execute_vwap(
         self,
         symbol: str,
         side: str,
@@ -110,7 +112,11 @@ class VWAPExecutor:
 
         logger.info(
             "VWAP start: %s %s %.0f shares over %d min using %d volume-weighted slices",
-            side, symbol, quantity, duration_minutes, num_slices,
+            side,
+            symbol,
+            quantity,
+            duration_minutes,
+            num_slices,
         )
 
         start_time = datetime.utcnow()
@@ -135,10 +141,15 @@ class VWAPExecutor:
 
             logger.info(
                 "VWAP slice %d/%d (%.1f%% vol): %s %s x%d",
-                i + 1, num_slices, weight * 100, side, symbol, slice_qty,
+                i + 1,
+                num_slices,
+                weight * 100,
+                side,
+                symbol,
+                slice_qty,
             )
 
-            result = self.order_executor.place_order(
+            result = await self.order_executor.place_order(
                 symbol=symbol,
                 side=side,
                 quantity=slice_qty,
@@ -182,9 +193,13 @@ class VWAPExecutor:
 
         logger.info(
             "VWAP done: %s %s — filled %.0f/%.0f (%.1f%%) avg $%.2f in %d slices",
-            side, symbol, total_filled, quantity,
+            side,
+            symbol,
+            total_filled,
+            quantity,
             (total_filled / quantity * 100) if quantity else 0,
-            avg_price, len(results),
+            avg_price,
+            len(results),
         )
 
         return vwap_result
@@ -198,6 +213,7 @@ class VWAPExecutor:
         """
         try:
             import yfinance as yf
+
             ticker = yf.Ticker(symbol)
             info = ticker.fast_info
             price = getattr(info, "last_price", None)

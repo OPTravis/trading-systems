@@ -2,11 +2,12 @@
 Sentiment Analyzer - News and Social Media Analysis
 """
 
-import os
 import logging
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Optional
+
 import requests
 from dotenv import load_dotenv
 
@@ -22,12 +23,12 @@ def tavily_search(query: str, count: int = 10) -> Optional[Dict]:
     if not api_key:
         logger.warning("TAVILY_API_KEY not set")
         return None
-    
+
     try:
         response = requests.post(
             "https://api.tavily.com/search",
             json={"query": query, "api_key": api_key, "max_results": count},
-            timeout=10
+            timeout=10,
         )
         return response.json()
     except Exception as e:
@@ -37,21 +38,21 @@ def tavily_search(query: str, count: int = 10) -> Optional[Dict]:
 
 class SentimentAnalyzer:
     """Analyze market sentiment from news and social media"""
-    
+
     def __init__(self):
         self.cache = {}
         self.cache_ttl = 300  # 5 minutes
-    
+
     def analyze_coin(self, symbol: str) -> Dict:
         """Analyze sentiment for a specific coin"""
         coin_name = symbol.replace("USDT", "")
-        
+
         # Get news
         news = self._get_news(coin_name)
-        
+
         # Analyze sentiment
         sentiment_score = self._calculate_sentiment(news)
-        
+
         return {
             "symbol": symbol,
             "coin_name": coin_name,
@@ -59,9 +60,9 @@ class SentimentAnalyzer:
             "sentiment_label": self._sentiment_label(sentiment_score),
             "news_count": len(news),
             "news": news[:5],  # Top 5 news
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     def analyze_batch(self, symbols: List[str]) -> List[Dict]:
         """Analyze sentiment for multiple coins"""
         results = []
@@ -72,7 +73,7 @@ class SentimentAnalyzer:
             except Exception as e:
                 logger.warning(f"Failed to analyze {symbol}: {e}")
         return results
-    
+
     def _get_news(self, coin_name: str) -> List[Dict]:
         """Get latest news for a coin"""
         try:
@@ -82,50 +83,83 @@ class SentimentAnalyzer:
             results = []
             if results_raw and "results" in results_raw:
                 for r in results_raw["results"]:
-                    results.append({
-                        "title": r.get("title", ""),
-                        "description": r.get("content", ""),
-                        "url": r.get("url", "")
-                    })
-            
+                    results.append(
+                        {
+                            "title": r.get("title", ""),
+                            "description": r.get("content", ""),
+                            "url": r.get("url", ""),
+                        }
+                    )
+
             # Add sentiment scores
             for r in results:
                 r["score"] = self._score_sentiment(r.get("description", ""))
-            
+
             return results
         except Exception as e:
             logger.error(f"Failed to get news: {e}")
             return []
-    
+
     def _calculate_sentiment(self, news: List[Dict]) -> float:
         """Calculate overall sentiment from news"""
         if not news:
             return 0.0
-        
+
         total = sum(n.get("score", 0) for n in news)
         return total / len(news)
-    
+
     def _score_sentiment(self, text: str) -> float:
         """Simple sentiment scoring based on keywords"""
         if not text:
             return 0.0
-        
+
         text_lower = text.lower()
-        
+
         # Positive keywords
         positive = [
-            "bullish", "buy", "up", "gain", "rise", "surge", "pump",
-            "growth", "positive", " rally", "high", "highs", "moon",
-            "adoption", "partnership", "launch", "upgrade", "breakout"
+            "bullish",
+            "buy",
+            "up",
+            "gain",
+            "rise",
+            "surge",
+            "pump",
+            "growth",
+            "positive",
+            " rally",
+            "high",
+            "highs",
+            "moon",
+            "adoption",
+            "partnership",
+            "launch",
+            "upgrade",
+            "breakout",
         ]
-        
+
         # Negative keywords
         negative = [
-            "bearish", "sell", "down", "drop", "fall", "crash", "dump",
-            "loss", "negative", "decline", "low", "lows", "hack",
-            "ban", "regulation", "fraud", "scam", "risk", "warning"
+            "bearish",
+            "sell",
+            "down",
+            "drop",
+            "fall",
+            "crash",
+            "dump",
+            "loss",
+            "negative",
+            "decline",
+            "low",
+            "lows",
+            "hack",
+            "ban",
+            "regulation",
+            "fraud",
+            "scam",
+            "risk",
+            "warning",
         ]
-        
+
         score = 0.0
         for word in positive:
             if word in text_lower:
@@ -133,9 +167,9 @@ class SentimentAnalyzer:
         for word in negative:
             if word in text_lower:
                 score -= 0.1
-        
+
         return max(-1.0, min(1.0, score))
-    
+
     def _sentiment_label(self, score: float) -> str:
         """Convert score to label"""
         if score >= 0.5:
@@ -148,7 +182,7 @@ class SentimentAnalyzer:
             return "Bearish"
         else:
             return "Very Bearish"
-    
+
     def get_market_sentiment(self) -> Dict:
         """Get overall crypto market sentiment via Fear & Greed Index API.
 
@@ -158,8 +192,7 @@ class SentimentAnalyzer:
         try:
             # Fetch 30 days for persistence calculation
             resp = requests.get(
-                "https://api.alternative.me/fng/?limit=30&format=json",
-                timeout=5
+                "https://api.alternative.me/fng/?limit=30&format=json", timeout=5
             )
             data_list = resp.json()["data"]
             latest = data_list[0]
@@ -202,7 +235,7 @@ class SentimentAnalyzer:
                 "consecutive_fear_days": consecutive_fear,
                 "consecutive_greed_days": consecutive_greed,
                 "signal": signal,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
         except Exception as e:
             logger.error(f"Failed to get Fear & Greed Index: {e}")
@@ -214,13 +247,17 @@ class SentimentAnalyzer:
                 "consecutive_fear_days": 0,
                 "consecutive_greed_days": 0,
                 "signal": "NO_DATA",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-    
+
     def _fng_label(self, value: int) -> str:
         """Map F&G value to actionable label"""
-        if value <= 25: return "Extreme Fear"
-        if value <= 45: return "Fear"
-        if value <= 55: return "Neutral"
-        if value <= 75: return "Greed"
+        if value <= 25:
+            return "Extreme Fear"
+        if value <= 45:
+            return "Fear"
+        if value <= 55:
+            return "Neutral"
+        if value <= 75:
+            return "Greed"
         return "Extreme Greed"

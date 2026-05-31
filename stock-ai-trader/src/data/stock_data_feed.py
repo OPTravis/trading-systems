@@ -2,6 +2,7 @@
 OHLCV stock data feed from Yahoo Finance and IBKR.
 Includes caching with configurable TTL.
 """
+
 import logging
 import time
 from typing import Any, Optional
@@ -70,8 +71,25 @@ class StockDataFeed:
     # -- helpers for global markets ------------------------------------------
 
     _NON_US_SUFFIXES = (
-        ".HK", ".T", ".L", ".SS", ".SZ", ".DE", ".PA", ".AS", ".SW", ".AX",
-        ".MI", ".MC", ".CO", ".OL", ".ST", ".HE", ".BR", ".LS", ".VI",
+        ".HK",
+        ".T",
+        ".L",
+        ".SS",
+        ".SZ",
+        ".DE",
+        ".PA",
+        ".AS",
+        ".SW",
+        ".AX",
+        ".MI",
+        ".MC",
+        ".CO",
+        ".OL",
+        ".ST",
+        ".HE",
+        ".BR",
+        ".LS",
+        ".VI",
     )
 
     @classmethod
@@ -140,7 +158,9 @@ class StockDataFeed:
                 self._set_cached(cache_key, quote, ttl=10)
                 return quote
             except Exception:
-                logger.debug("IBKR quote failed for %s, falling back to yfinance", symbol)
+                logger.debug(
+                    "IBKR quote failed for %s, falling back to yfinance", symbol
+                )
 
         # Yahoo Finance fallback
         logger.info("Fetching realtime quote for %s via yfinance", symbol)
@@ -195,7 +215,9 @@ class StockDataFeed:
                     "symbol": sym,
                     "price": float(getattr(info, "last_price", 0) or 0),
                     "change": float(getattr(info, "regular_market_change", 0) or 0),
-                    "change_pct": float(getattr(info, "regular_market_change_percent", 0) or 0),
+                    "change_pct": float(
+                        getattr(info, "regular_market_change_percent", 0) or 0
+                    ),
                     "volume": int(getattr(info, "last_volume", 0) or 0),
                     "market_cap": float(getattr(info, "market_cap", 0) or 0),
                     "timestamp": pd.Timestamp.now().isoformat(),

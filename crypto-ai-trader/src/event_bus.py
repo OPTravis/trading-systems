@@ -11,7 +11,7 @@ import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,12 @@ class EventBus:
                     processed INTEGER DEFAULT 0
                 )
             """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_event_type ON events(event_type)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_event_type ON events(event_type)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)"
+            )
             conn.commit()
             conn.close()
 
@@ -104,9 +108,17 @@ class EventBus:
                 try:
                     self._subscribers[event_type].remove(callback)
                 except ValueError:
-                    logger.debug("Callback already removed from event_type=%s (not subscribed)", event_type)
+                    logger.debug(
+                        "Callback already removed from event_type=%s (not subscribed)",
+                        event_type,
+                    )
 
-    def get_events(self, event_type: str = None, since: float = None, limit: int = 100) -> List[Dict]:
+    def get_events(
+        self,
+        event_type: Optional[str] = None,
+        since: Optional[float] = None,
+        limit: int = 100,
+    ) -> List[Dict]:
         with self._db_lock:
             conn = self._conn()
             try:
@@ -123,7 +135,13 @@ class EventBus:
 
                 rows = conn.execute(query, params).fetchall()
                 return [
-                    {"id": r[0], "event_type": r[1], "data": json.loads(r[2]), "timestamp": r[3], "processed": r[4]}
+                    {
+                        "id": r[0],
+                        "event_type": r[1],
+                        "data": json.loads(r[2]),
+                        "timestamp": r[3],
+                        "processed": r[4],
+                    }
                     for r in rows
                 ]
             finally:

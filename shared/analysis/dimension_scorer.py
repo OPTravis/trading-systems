@@ -111,8 +111,8 @@ class DimensionScorer:
     def _score_onchain(self) -> Dict:
         """D1: On-Chain — approximated from Binance orderbook depth."""
         score = 0.0
-        signals = []
-        data = {}
+        signals: list[str] = []
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.25, "data": data}
@@ -177,8 +177,8 @@ class DimensionScorer:
     def _score_macro(self) -> Dict:
         """D3: Macro — BTC trend strength + market regime."""
         score = 0.0
-        signals = []
-        data = {}
+        signals: list[str] = []
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.20, "data": data}
@@ -260,8 +260,8 @@ class DimensionScorer:
     def _score_technical(self) -> Dict:
         """D5: Technical — RSI + volume trend."""
         score = 0.0
-        signals = []
-        data = {}
+        signals: list[str] = []
+        data: Dict[str, Any] = {}
 
         if not self.client:
             return {"score": 0, "signals": ["no_client"], "weight": 0.10, "data": data}

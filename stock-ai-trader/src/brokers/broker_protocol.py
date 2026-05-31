@@ -12,8 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Optional
-
+from typing import AsyncIterator, Optional
 
 # ─── Data Models ────────────────────────────────────────────────────────────
 
@@ -59,6 +58,7 @@ class BarSize(str, Enum):
 @dataclass
 class Contract:
     """Represents a tradeable instrument."""
+
     symbol: str
     exchange: str = "SMART"
     currency: str = "USD"
@@ -78,6 +78,7 @@ class Contract:
 @dataclass
 class Order:
     """Represents a trade order."""
+
     contract: Contract
     side: OrderSide
     order_type: OrderType
@@ -98,6 +99,7 @@ class Order:
 @dataclass
 class Bar:
     """OHLCV bar data."""
+
     timestamp: datetime
     open: float
     high: float
@@ -111,6 +113,7 @@ class Bar:
 @dataclass
 class Tick:
     """Real-time tick data."""
+
     timestamp: datetime
     last_price: float
     bid: float = 0.0
@@ -128,6 +131,7 @@ class Tick:
 @dataclass
 class Position:
     """Account position."""
+
     contract: Contract
     quantity: float
     avg_cost: float
@@ -139,6 +143,7 @@ class Position:
 @dataclass
 class AccountSummary:
     """Account balance and margin info."""
+
     account_id: str
     net_liquidation: float
     total_cash: float
@@ -155,6 +160,7 @@ class AccountSummary:
 @dataclass
 class ContractDetails:
     """Extended contract information."""
+
     contract: Contract
     long_name: str = ""
     industry: str = ""
@@ -205,9 +211,7 @@ class BrokerProtocol(ABC):
     # ── Market Data ──────────────────────────────────────────────────────
 
     @abstractmethod
-    async def get_market_data(
-        self, contract: Contract, snapshot: bool = False
-    ) -> Tick:
+    async def get_market_data(self, contract: Contract, snapshot: bool = False) -> Tick:
         """
         Get real-time or snapshot market data for a contract.
 
@@ -247,9 +251,7 @@ class BrokerProtocol(ABC):
         ...
 
     @abstractmethod
-    def stream_market_data(
-        self, contract: Contract
-    ) -> AsyncIterator[Tick]:
+    def stream_market_data(self, contract: Contract) -> AsyncIterator[Tick]:
         """Async generator yielding real-time ticks."""
         ...
 
@@ -292,8 +294,11 @@ class BrokerProtocol(ABC):
 
     @abstractmethod
     async def modify_order(
-        self, order_id: int, quantity: Optional[float] = None,
-        limit_price: Optional[float] = None, stop_price: Optional[float] = None
+        self,
+        order_id: int,
+        quantity: Optional[float] = None,
+        limit_price: Optional[float] = None,
+        stop_price: Optional[float] = None,
     ) -> Order:
         """Modify a pending order's parameters."""
         ...

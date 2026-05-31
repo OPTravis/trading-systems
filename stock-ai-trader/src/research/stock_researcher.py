@@ -14,13 +14,10 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import requests
 
-from shared.core.state_db import get_state_db
-from shared.risk.risk_manager import RiskManager
-from src.brokers.broker_protocol import BrokerProtocol
 from src.data.stock_data_feed import StockDataFeed
 
 logger = logging.getLogger(__name__)
@@ -31,7 +28,10 @@ logger = logging.getLogger(__name__)
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
-XIAOMI_API_URL = os.environ.get("XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1") + "/chat/completions"
+XIAOMI_API_URL = (
+    os.environ.get("XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
+    + "/chat/completions"
+)
 XIAOMI_MODEL = "mimo-v2.5-pro"
 
 
@@ -46,22 +46,23 @@ class Recommendation(str, Enum):
 @dataclass
 class ResearchReport:
     """Structured research output for a single stock."""
+
     symbol: str
     timestamp: datetime
     recommendation: Recommendation
-    confidence: float              # 0.0 – 1.0
-    summary: str                   # 1-2 paragraph executive summary
-    bull_case: str                 # Key bull arguments
-    bear_case: str                 # Key bear arguments
+    confidence: float  # 0.0 – 1.0
+    summary: str  # 1-2 paragraph executive summary
+    bull_case: str  # Key bull arguments
+    bear_case: str  # Key bear arguments
     fair_value_estimate: Optional[float] = None
-    risk_rating: str = "MEDIUM"    # LOW / MEDIUM / HIGH
+    risk_rating: str = "MEDIUM"  # LOW / MEDIUM / HIGH
     catalysts: List[str] = field(default_factory=list)
     technical_summary: str = ""
     fundamental_summary: str = ""
-    sentiment_score: float = 0.0   # -1 to +1
+    sentiment_score: float = 0.0  # -1 to +1
     primary_model: str = "deepseek"
     verification_model: str = "xiaomi"
-    models_agreed: bool = True     # Did both models agree on direction?
+    models_agreed: bool = True  # Did both models agree on direction?
 
 
 # ─── Prompt templates ────────────────────────────────────────────────────────
@@ -107,9 +108,13 @@ Respond ONLY with valid JSON."""
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _call_llm(api_url: str, model: str, api_key: str, prompt: str, temperature: float = 0.3) -> Optional[str]:
+
+def _call_llm(
+    api_url: str, model: str, api_key: str, prompt: str, temperature: float = 0.3
+) -> Optional[str]:
     """Call an LLM API and return the response text, or None on failure. Retries up to 3 times."""
     import time as _time
+
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -130,19 +135,29 @@ def _call_llm(api_url: str, model: str, api_key: str, prompt: str, temperature: 
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
         except requests.exceptions.RequestException as e:
-            logger.warning("LLM call attempt %d/%d failed (%s/%s): %s", attempt + 1, max_retries, api_url, model, e)
+            logger.warning(
+                "LLM call attempt %d/%d failed (%s/%s): %s",
+                attempt + 1,
+                max_retries,
+                api_url,
+                model,
+                e,
+            )
             if attempt < max_retries - 1:
-                _time.sleep(2 ** attempt)  # exponential backoff: 1s, 2s
+                _time.sleep(2**attempt)  # exponential backoff: 1s, 2s
         except Exception as e:
             logger.error("LLM call failed (%s/%s): %s", api_url, model, e)
             return None
-    logger.error("LLM call failed after %d retries (%s/%s)", max_retries, api_url, model)
+    logger.error(
+        "LLM call failed after %d retries (%s/%s)", max_retries, api_url, model
+    )
     return None
 
 
 def _parse_json(text: str) -> Optional[dict]:
     """Extract JSON from LLM response, tolerating markdown fences and extra text."""
     import re
+
     text = text.strip()
     if not text:
         return None
@@ -171,11 +186,14 @@ def _parse_json(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    logger.warning("Failed to parse LLM JSON response (first 200 chars): %s", text[:200])
+    logger.warning(
+        "Failed to parse LLM JSON response (first 200 chars): %s", text[:200]
+    )
     return None
 
 
 # ─── StockResearcher ─────────────────────────────────────────────────────────
+
 
 class StockResearcher:
     """
@@ -243,7 +261,9 @@ class StockResearcher:
             sentiment_score=f"{sentiment_score:.2f}",
         )
 
-        primary_text = _call_llm(DEEPSEEK_API_URL, DEEPSEEK_MODEL, self.deepseek_key, prompt)
+        primary_text = _call_llm(
+            DEEPSEEK_API_URL, DEEPSEEK_MODEL, self.deepseek_key, prompt
+        )
         primary_json = _parse_json(primary_text) if primary_text else None
 
         if primary_json is None:
@@ -267,7 +287,9 @@ class StockResearcher:
                 symbol=symbol,
                 original_analysis=json.dumps(primary_json, indent=2),
             )
-            verify_text = _call_llm(XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, verify_prompt)
+            verify_text = _call_llm(
+                XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, verify_prompt
+            )
             verify_json = _parse_json(verify_text) if verify_text else None
 
             if verify_json and not verify_json.get("agree", True):
@@ -322,8 +344,16 @@ class StockResearcher:
             sma_50 = df["close"].tail(50).mean()
             rsi = self._compute_rsi(df["close"], 14)
             avg_vol = df["volume"].tail(20).mean()
-            pct_change_1w = (df["close"].iloc[-1] / df["close"].iloc[-5] - 1) * 100 if len(df) >= 5 else 0.0
-            pct_change_1m = (df["close"].iloc[-1] / df["close"].iloc[-20] - 1) * 100 if len(df) >= 20 else 0.0
+            pct_change_1w = (
+                (df["close"].iloc[-1] / df["close"].iloc[-5] - 1) * 100
+                if len(df) >= 5
+                else 0.0
+            )
+            pct_change_1m = (
+                (df["close"].iloc[-1] / df["close"].iloc[-20] - 1) * 100
+                if len(df) >= 20
+                else 0.0
+            )
 
             return (
                 f"Price: ${last['close']:.2f}  |  SMA20: ${sma_20:.2f}  |  SMA50: ${sma_50:.2f}\n"

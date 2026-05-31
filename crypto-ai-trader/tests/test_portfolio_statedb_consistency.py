@@ -8,9 +8,7 @@ Checks:
 4. cash_balance synchronization between memory and DB
 """
 
-import os
 import sys
-import sqlite3
 import tempfile
 import time
 from pathlib import Path
@@ -20,16 +18,18 @@ from unittest.mock import MagicMock
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.state_db import StateDB, get_state_db
 from src.portfolio import PortfolioManager
+from src.state_db import StateDB
 
 
 def _make_mock_binance_client(balances, prices):
     """Create a mock BinanceClient that returns given balances and prices."""
     client = MagicMock()
     client.get_account.return_value = {"balances": balances}
+
     def _get_24hr_stats(symbol):
         return {"last_price": prices.get(symbol, 0)}
+
     client.get_24hr_stats.side_effect = _get_24hr_stats
     return client
 
@@ -38,6 +38,7 @@ def _make_db(tmp_path: Path) -> StateDB:
     db_path = tmp_path / "test_state.db"
     # Reset singleton so each test gets fresh instance
     import src.state_db as sdb
+
     sdb._state_db_instance = None
     return StateDB(str(db_path))
 
@@ -49,8 +50,8 @@ def test_sync_from_binance_persistence():
 
     balances = [
         {"asset": "USDT", "free": "1000.0", "locked": "0"},
-        {"asset": "BTC",  "free": "0.05",  "locked": "0"},
-        {"asset": "ETH",  "free": "1.5",   "locked": "0"},
+        {"asset": "BTC", "free": "0.05", "locked": "0"},
+        {"asset": "ETH", "free": "1.5", "locked": "0"},
     ]
     prices = {"BTCUSDT": 50000.0, "ETHUSDT": 3000.0}
     client = _make_mock_binance_client(balances, prices)
@@ -64,8 +65,9 @@ def test_sync_from_binance_persistence():
 
     # Monkey-patch get_avg_entry_price to avoid network call
     import src.portfolio as pf
+
     original_get_avg = None
-    if hasattr(pf, 'get_avg_entry_price'):
+    if hasattr(pf, "get_avg_entry_price"):
         original_get_avg = pf.get_avg_entry_price
     pf.get_avg_entry_price = lambda c, s, q: prices.get(s, 0)
 
@@ -76,7 +78,9 @@ def test_sync_from_binance_persistence():
         # Check memory
         assert "BTCUSDT" in pm.positions, "BTC position missing in memory"
         assert "ETHUSDT" in pm.positions, "ETH position missing in memory"
-        assert pm.cash_balance == 1000.0, f"cash_balance should be 1000, got {pm.cash_balance}"
+        assert (
+            pm.cash_balance == 1000.0
+        ), f"cash_balance should be 1000, got {pm.cash_balance}"
 
         # Check DB directly
         db_positions = db.portfolio_get_all()

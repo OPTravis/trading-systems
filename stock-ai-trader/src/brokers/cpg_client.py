@@ -8,12 +8,14 @@ API docs: https://interactivebrokers.github.io/cpwebapi/
 
 import logging
 import os
+from typing import Any, Dict, List, Optional
+
 import requests
-from typing import Dict, List, Optional, Any
+import urllib3
 from urllib3.exceptions import InsecureRequestWarning
 
 # Suppress InsecureRequestWarning when SSL verify is disabled for localhost CPG
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+urllib3.disable_warnings(InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,12 @@ class CPGClient:
                 logger.error("CPG session expired — need browser re-login")
                 return None
             else:
-                logger.warning("CPG GET %s returned %d: %s",
-                               path, resp.status_code, resp.text[:200])
+                logger.warning(
+                    "CPG GET %s returned %d: %s",
+                    path,
+                    resp.status_code,
+                    resp.text[:200],
+                )
                 return None
         except requests.ConnectionError:
             logger.error("CPG not running at %s", self._base)
@@ -62,7 +68,7 @@ class CPGClient:
             return data["accounts"]
         return []
 
-    def get_account_summary(self, account_id: str) -> Optional[Dict[str, float]]:
+    def get_account_summary(self, account_id: str) -> Optional[Dict[str, object]]:
         """Get account balances.
 
         Returns dict with keys: total_cash, net_liquidation, buying_power,
@@ -72,7 +78,7 @@ class CPGClient:
         if not data:
             return None
 
-        result = {"account_id": account_id, "currency": "HKD"}
+        result: Dict[str, object] = {"account_id": account_id, "currency": "HKD"}
         field_map = {
             "totalcashvalue": "total_cash",
             "netliquidation": "net_liquidation",
@@ -106,15 +112,17 @@ class CPGClient:
             qty = p.get("position", 0)
             if abs(qty) < 0.001:
                 continue
-            positions.append({
-                "symbol": p.get("contractDesc", p.get("ticker", "?")),
-                "con_id": p.get("conid"),
-                "quantity": qty,
-                "avg_cost": p.get("avgCost", 0),
-                "market_value": p.get("marketValue", 0),
-                "unrealized_pnl": p.get("unrealizedPnL", 0),
-                "currency": p.get("currency", "USD"),
-            })
+            positions.append(
+                {
+                    "symbol": p.get("contractDesc", p.get("ticker", "?")),
+                    "con_id": p.get("conid"),
+                    "quantity": qty,
+                    "avg_cost": p.get("avgCost", 0),
+                    "market_value": p.get("marketValue", 0),
+                    "unrealized_pnl": p.get("unrealizedPnL", 0),
+                    "currency": p.get("currency", "USD"),
+                }
+            )
         return positions
 
     def get_live_status(self, account_id: Optional[str] = None) -> Optional[Dict]:

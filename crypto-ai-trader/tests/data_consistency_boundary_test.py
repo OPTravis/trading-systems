@@ -3,8 +3,9 @@
 Crypto-AI-Trader Data Consistency & Boundary Test Suite (v6)
 Tests against live StateDB (not raw sqlite3) to match WAL mode.
 """
-import sys
+
 import json
+import sys
 from pathlib import Path
 
 # Add project root to path
@@ -13,29 +14,36 @@ from src.state_db import get_state_db
 
 DB_PATH = Path.home() / "crypto-ai-trader/data/state.db"
 
+
 class bcolors:
     PASS = "\033[92m"
     FAIL = "\033[91m"
     WARN = "\033[93m"
     ENDC = "\033[0m"
 
+
 results = []
+
 
 def log_pass(test_name):
     results.append(("PASS", test_name))
     print(f"{bcolors.PASS}[PASS]{bcolors.ENDC} {test_name}")
 
+
 def log_fail(test_name, reason=""):
     results.append(("FAIL", test_name))
     print(f"{bcolors.FAIL}[FAIL]{bcolors.ENDC} {test_name} {reason}")
+
 
 def log_warn(test_name, reason=""):
     results.append(("WARN", test_name))
     print(f"{bcolors.WARN}[WARN]{bcolors.ENDC} {test_name} {reason}")
 
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 def get_db():
     return get_state_db(str(DB_PATH))
+
 
 # ── 1. Portfolio Data Types ──────────────────────────────────────────────
 def test_portfolio_datatypes():
@@ -60,21 +68,31 @@ def test_portfolio_datatypes():
     else:
         log_pass("1.3 portfolio.take_profit datatype")
 
+
 # ── 2. Boundary Conditions ───────────────────────────────────────────────
 def test_boundary_zero_quantity():
     db = get_db()
     positions = db.portfolio_get_all()
-    zero_rows = [sym for sym, data in positions.items() if data.get("quantity") == 0 or data.get("quantity") is None]
+    zero_rows = [
+        sym
+        for sym, data in positions.items()
+        if data.get("quantity") == 0 or data.get("quantity") is None
+    ]
     if zero_rows:
         log_warn("2.1 portfolio zero/null quantity", f"symbols={zero_rows}")
     else:
         log_pass("2.1 portfolio zero/null quantity (none found)")
 
+
 def test_boundary_tiny_price_sl_tp():
     """Check if any entry_price < 0.01 has SL/TP computed correctly (non-zero and sensible)."""
     db = get_db()
     positions = db.portfolio_get_all()
-    tiny = {sym: data for sym, data in positions.items() if data.get("entry_price", 0) < 0.01 and data.get("entry_price", 0) > 0}
+    tiny = {
+        sym: data
+        for sym, data in positions.items()
+        if data.get("entry_price", 0) < 0.01 and data.get("entry_price", 0) > 0
+    }
     if not tiny:
         log_pass("2.2 tiny price SL/TP (no tiny-price rows)")
     else:
@@ -82,9 +100,13 @@ def test_boundary_tiny_price_sl_tp():
             sl = data.get("stop_loss")
             tp = data.get("take_profit")
             if sl is None or tp is None or sl == 0 or tp == 0:
-                log_fail("2.2 tiny price SL/TP", f"{sym}: ep={data['entry_price']}, sl={sl}, tp={tp}")
+                log_fail(
+                    "2.2 tiny price SL/TP",
+                    f"{sym}: ep={data['entry_price']}, sl={sl}, tp={tp}",
+                )
                 return
         log_pass("2.2 tiny price SL/TP (all sensible)")
+
 
 def test_boundary_empty_portfolio_status():
     db = get_db()
@@ -94,6 +116,7 @@ def test_boundary_empty_portfolio_status():
         log_warn("2.3 empty portfolio status", "portfolio is empty")
     else:
         log_pass("2.3 empty portfolio status (has rows)")
+
 
 # ── 3. KV Table Integrity ────────────────────────────────────────────────
 def test_kv_integrity():
@@ -113,6 +136,7 @@ def test_kv_integrity():
             else:
                 log_pass(f"3 kv key {k} present")
 
+
 # ── 4. Trailing Stop / Portfolio Consistency ─────────────────────────────
 def test_trailing_portfolio_consistency():
     db = get_db()
@@ -125,7 +149,9 @@ def test_trailing_portfolio_consistency():
     # trailing_stop should only contain symbols present in portfolio
     extra = trail_symbols - porto_symbols
     if extra:
-        log_fail("4 trailing_stop vs portfolio symbols", f"extra in trailing_stop: {extra}")
+        log_fail(
+            "4 trailing_stop vs portfolio symbols", f"extra in trailing_stop: {extra}"
+        )
     else:
         log_pass("4 trailing_stop vs portfolio symbols")
 
@@ -152,6 +178,7 @@ def test_trailing_portfolio_consistency():
     else:
         log_pass("4 trailing_stop sl_price non-zero")
 
+
 # ── 5. Audit Log ───────────────────────────────────────────────────────
 def test_audit_log():
     db = get_db()
@@ -161,7 +188,14 @@ def test_audit_log():
     else:
         # Schema check via raw connection
         conn = db._get_conn()
-        required_cols = {"timestamp", "action", "details", "old_value", "new_value", "source"}
+        required_cols = {
+            "timestamp",
+            "action",
+            "details",
+            "old_value",
+            "new_value",
+            "source",
+        }
         cols = {c[1] for c in conn.execute("PRAGMA table_info(audit_log)").fetchall()}
         missing = required_cols - cols
         if missing:
@@ -176,9 +210,13 @@ def test_audit_log():
         # Check if old_value != new_value for any non-sync action
         meaningful = [r for r in rows if r.get("action") != "PORTFOLIO_SYNC"]
         if not meaningful:
-            log_warn("5 audit_log only PORTFOLIO_SYNC entries", "no other actions found in last 20")
+            log_warn(
+                "5 audit_log only PORTFOLIO_SYNC entries",
+                "no other actions found in last 20",
+            )
         else:
             log_pass("5 audit_log has diverse actions")
+
 
 # ── 6. Empty Portfolio Status Output ───────────────────────────────────────
 def test_empty_portfolio_status():
@@ -190,9 +228,15 @@ def test_empty_portfolio_status():
         log_pass("6 empty portfolio status (simulated)")
     else:
         # Verify status logic when portfolio is not empty
-        total_exposure = sum(data.get("quantity", 0) * data.get("entry_price", 0) for data in positions.values())
+        total_exposure = sum(
+            data.get("quantity", 0) * data.get("entry_price", 0)
+            for data in positions.values()
+        )
         total_value = cash + total_exposure
-        log_pass(f"6 empty portfolio status (simulated) — positions_count={len(positions)}, total_exposure={total_exposure:.2f}, total_value={total_value:.2f}")
+        log_pass(
+            f"6 empty portfolio status (simulated) — positions_count={len(positions)}, total_exposure={total_exposure:.2f}, total_value={total_value:.2f}"
+        )
+
 
 # ── Main ─────────────────────────────────────────────────────────────────
 def main():
@@ -208,7 +252,7 @@ def main():
     test_trailing_portfolio_consistency()
     test_audit_log()
     test_empty_portfolio_status()
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     passes = sum(1 for r in results if r[0] == "PASS")
     fails = sum(1 for r in results if r[0] == "FAIL")
     warns = sum(1 for r in results if r[0] == "WARN")
@@ -217,6 +261,7 @@ def main():
     for status, name in results:
         print(f"[{status}] {name}")
     return fails == 0
+
 
 if __name__ == "__main__":
     ok = main()

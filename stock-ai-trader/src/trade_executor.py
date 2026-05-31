@@ -12,10 +12,9 @@ Handles:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
@@ -27,12 +26,53 @@ logger = logging.getLogger(__name__)
 
 # Common NASDAQ-listed symbols
 NASDAQ_SYMBOLS = {
-    "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "META", "NVDA", "TSLA",
-    "AVGO", "COST", "NFLX", "AMD", "INTC", "CSCO", "ADBE", "QCOM",
-    "CMCSA", "PEP", "TMUS", "CHTR", "BKNG", "SBUX", "MELI", "PYPL",
-    "MRVL", "LRCX", "KLAC", "SNPS", "CDNS", "MNST", "ORLY", "IDXX",
-    "NXPI", "WDAY", "FTNT", "DDOG", "PANW", "CRWD", "ZS", "TEAM",
-    "ABNB", "COIN", "HOOD", "PLTR", "SOFI", "RIVN", "LCID",
+    "AAPL",
+    "MSFT",
+    "AMZN",
+    "GOOGL",
+    "GOOG",
+    "META",
+    "NVDA",
+    "TSLA",
+    "AVGO",
+    "COST",
+    "NFLX",
+    "AMD",
+    "INTC",
+    "CSCO",
+    "ADBE",
+    "QCOM",
+    "CMCSA",
+    "PEP",
+    "TMUS",
+    "CHTR",
+    "BKNG",
+    "SBUX",
+    "MELI",
+    "PYPL",
+    "MRVL",
+    "LRCX",
+    "KLAC",
+    "SNPS",
+    "CDNS",
+    "MNST",
+    "ORLY",
+    "IDXX",
+    "NXPI",
+    "WDAY",
+    "FTNT",
+    "DDOG",
+    "PANW",
+    "CRWD",
+    "ZS",
+    "TEAM",
+    "ABNB",
+    "COIN",
+    "HOOD",
+    "PLTR",
+    "SOFI",
+    "RIVN",
+    "LCID",
 }
 
 
@@ -44,9 +84,11 @@ class RoutingDecision(str, Enum):
 
 # ─── Order result model ─────────────────────────────────────────────────────
 
+
 @dataclass
 class ExecutionResult:
     """Result of an order execution attempt."""
+
     success: bool
     symbol: str
     side: str
@@ -80,6 +122,7 @@ class ExecutionResult:
 
 
 # ─── Position Sizer ─────────────────────────────────────────────────────────
+
 
 class HybridPositionSizer:
     """
@@ -132,7 +175,6 @@ class HybridPositionSizer:
         Returns:
             Dict with position_size (fraction), position_usd, method breakdown.
         """
-        import math
 
         # 1. Kelly Criterion (Half-Kelly for safety)
         kelly_frac = self._kelly_fraction()
@@ -150,7 +192,9 @@ class HybridPositionSizer:
         adjusted_frac = raw_frac * regime_multiplier * vix_multiplier
 
         # Clamp to limits
-        final_frac = max(self.MIN_POSITION_PCT, min(self.MAX_POSITION_PCT, adjusted_frac))
+        final_frac = max(
+            self.MIN_POSITION_PCT, min(self.MAX_POSITION_PCT, adjusted_frac)
+        )
 
         position_usd = nav * final_frac
 
@@ -158,10 +202,14 @@ class HybridPositionSizer:
             "PositionSizer %s: Kelly=%.2f%% CVaR=%.2f%% Vol=%.2f%% → raw=%.2f%% "
             "× regime=%.2f × vix=%.2f → final=%.2f%% ($%.0f)",
             symbol,
-            kelly_frac * 100, cvar_frac * 100, vol_frac * 100,
+            kelly_frac * 100,
+            cvar_frac * 100,
+            vol_frac * 100,
             raw_frac * 100,
-            regime_multiplier, vix_multiplier,
-            final_frac * 100, position_usd,
+            regime_multiplier,
+            vix_multiplier,
+            final_frac * 100,
+            position_usd,
         )
 
         return {
@@ -199,6 +247,7 @@ class HybridPositionSizer:
     def _vol_target_fraction(self, stock_vol: float, n_positions: int) -> float:
         """Volatility-target sizing: size = target_vol / (stock_vol × sqrt(n))."""
         import math
+
         if stock_vol <= 0:
             return 0.0
         n = max(1, n_positions)
@@ -206,6 +255,7 @@ class HybridPositionSizer:
 
 
 # ─── Trade Executor ─────────────────────────────────────────────────────────
+
 
 class TradeExecutor:
     """
@@ -226,7 +276,7 @@ class TradeExecutor:
     def __init__(
         self,
         broker=None,
-        position_sizer: HybridPositionSizer = None,
+        position_sizer: Optional[HybridPositionSizer] = None,
         portfolio=None,
     ):
         """
@@ -281,7 +331,11 @@ class TradeExecutor:
             Dict with success status and execution details.
         """
         from src.brokers.broker_protocol import (
-            Contract, Order, OrderSide, OrderStatus, OrderType, TimeInForce,
+            Contract,
+            Order,
+            OrderSide,
+            OrderType,
+            TimeInForce,
         )
 
         if not self.broker:
@@ -313,13 +367,17 @@ class TradeExecutor:
             side=side_enum,
             order_type=ot,
             quantity=quantity,
-            limit_price=price if ot in (OrderType.LIMIT, OrderType.STOP_LIMIT) else None,
+            limit_price=(
+                price if ot in (OrderType.LIMIT, OrderType.STOP_LIMIT) else None
+            ),
             stop_price=price if ot in (OrderType.STOP, OrderType.STOP_LIMIT) else None,
             time_in_force=tif,
         )
 
         # Execute with retry
-        result = await self._execute_with_retry(order, symbol, side, quantity, order_type)
+        result = await self._execute_with_retry(
+            order, symbol, side, quantity, order_type
+        )
 
         # Place stop-loss if requested and main order filled
         if result.success and stop_loss:
@@ -327,15 +385,24 @@ class TradeExecutor:
 
         # Place take-profit if requested and main order filled
         if result.success and take_profit:
-            await self._place_take_profit(symbol, quantity, take_profit, result.order_id)
+            await self._place_take_profit(
+                symbol, quantity, take_profit, result.order_id
+            )
 
         self._execution_log.append(result)
         return result.to_dict()
 
     async def _execute_with_retry(
-        self, order, symbol: str, side: str, quantity: float, order_type_str: str = "MKT"
+        self,
+        order,
+        symbol: str,
+        side: str,
+        quantity: float,
+        order_type_str: str = "MKT",
     ) -> ExecutionResult:
         """Place order with retry logic."""
+        from src.brokers.broker_protocol import OrderStatus
+
         result = None
 
         for attempt in range(self.MAX_RETRIES):
@@ -359,26 +426,38 @@ class TradeExecutor:
                     )
                     logger.info(
                         "ORDER FILLED: %s %s %.2f @ %.2f (order_id=%s, attempt=%d)",
-                        side, symbol, placed.filled_qty,
-                        placed.avg_fill_price, placed.order_id, attempt + 1,
+                        side,
+                        symbol,
+                        placed.filled_qty,
+                        placed.avg_fill_price,
+                        placed.order_id,
+                        attempt + 1,
                     )
                     return result
 
                 elif placed.status == OrderStatus.REJECTED:
                     result = ExecutionResult(
-                        success=False, symbol=symbol, side=side,
-                        order_type=order.order_type.value, requested_qty=quantity,
+                        success=False,
+                        symbol=symbol,
+                        side=side,
+                        order_type=order.order_type.value,
+                        requested_qty=quantity,
                         error="Order rejected by broker",
                         retry_count=attempt,
                         timestamp=datetime.now().isoformat(),
                     )
-                    logger.warning("ORDER REJECTED: %s %s — %s", side, symbol, result.error)
+                    logger.warning(
+                        "ORDER REJECTED: %s %s — %s", side, symbol, result.error
+                    )
                     return result  # Don't retry rejections
 
                 elif placed.status == OrderStatus.CANCELLED:
                     result = ExecutionResult(
-                        success=False, symbol=symbol, side=side,
-                        order_type=order.order_type.value, requested_qty=quantity,
+                        success=False,
+                        symbol=symbol,
+                        side=side,
+                        order_type=order.order_type.value,
+                        requested_qty=quantity,
                         error="Order cancelled",
                         retry_count=attempt,
                         timestamp=datetime.now().isoformat(),
@@ -387,25 +466,35 @@ class TradeExecutor:
 
                 else:
                     # Pending/submitted — wait for fill
-                    fill_result = await self._wait_for_fill(placed.order_id, symbol, side, quantity, attempt, order_type_str)
+                    fill_result = await self._wait_for_fill(
+                        placed.order_id, symbol, side, quantity, attempt, order_type_str
+                    )
                     if fill_result:
                         return fill_result
 
             except Exception as e:
                 logger.warning(
                     "Order attempt %d/%d failed for %s: %s",
-                    attempt + 1, self.MAX_RETRIES, symbol, e,
+                    attempt + 1,
+                    self.MAX_RETRIES,
+                    symbol,
+                    e,
                 )
                 if attempt < self.MAX_RETRIES - 1:
-                    backoff = self.RETRY_BACKOFF[min(attempt, len(self.RETRY_BACKOFF) - 1)]
+                    backoff = self.RETRY_BACKOFF[
+                        min(attempt, len(self.RETRY_BACKOFF) - 1)
+                    ]
                     logger.info("Retrying in %ds...", backoff)
                     time.sleep(backoff)
 
         # All retries exhausted
         if result is None:
             result = ExecutionResult(
-                success=False, symbol=symbol, side=side,
-                order_type=order.order_type.value, requested_qty=quantity,
+                success=False,
+                symbol=symbol,
+                side=side,
+                order_type=order.order_type.value,
+                requested_qty=quantity,
                 error=f"All {self.MAX_RETRIES} attempts failed",
                 retry_count=self.MAX_RETRIES,
                 timestamp=datetime.now().isoformat(),
@@ -413,8 +502,13 @@ class TradeExecutor:
         return result
 
     async def _wait_for_fill(
-        self, order_id: int, symbol: str, side: str, quantity: float, attempt: int,
-        order_type_str: str = "MKT"
+        self,
+        order_id: int,
+        symbol: str,
+        side: str,
+        quantity: float,
+        attempt: int,
+        order_type_str: str = "MKT",
     ) -> Optional[ExecutionResult]:
         """Poll for order fill confirmation."""
         from src.brokers.broker_protocol import OrderStatus
@@ -430,8 +524,11 @@ class TradeExecutor:
                     if o.order_id == order_id:
                         if o.status == OrderStatus.FILLED:
                             return ExecutionResult(
-                                success=True, symbol=symbol, side=side,
-                                order_type=order_type_str, requested_qty=quantity,
+                                success=True,
+                                symbol=symbol,
+                                side=side,
+                                order_type=order_type_str,
+                                requested_qty=quantity,
                                 filled_qty=o.filled_qty,
                                 avg_fill_price=o.avg_fill_price,
                                 commission=o.commission,
@@ -441,8 +538,11 @@ class TradeExecutor:
                             )
                         elif o.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED):
                             return ExecutionResult(
-                                success=False, symbol=symbol, side=side,
-                                order_type=order_type_str, requested_qty=quantity,
+                                success=False,
+                                symbol=symbol,
+                                side=side,
+                                order_type=order_type_str,
+                                requested_qty=quantity,
                                 error=f"Order {o.status.value}",
                                 order_id=order_id,
                                 retry_count=attempt,
@@ -450,10 +550,17 @@ class TradeExecutor:
                             )
             except Exception as e:
                 consecutive_errors += 1
-                logger.warning("Fill poll error (attempt %d/%d): %s",
-                               consecutive_errors, max_consecutive_errors, e)
+                logger.warning(
+                    "Fill poll error (attempt %d/%d): %s",
+                    consecutive_errors,
+                    max_consecutive_errors,
+                    e,
+                )
                 if consecutive_errors >= max_consecutive_errors:
-                    logger.error("Too many consecutive errors polling order %s — aborting", order_id)
+                    logger.error(
+                        "Too many consecutive errors polling order %s — aborting",
+                        order_id,
+                    )
                     return None
             time.sleep(1)
 
@@ -462,11 +569,22 @@ class TradeExecutor:
 
     # ── Stop-Loss / Take-Profit ─────────────────────────────────────────
 
-    async def _place_stop_loss(self, symbol: str, quantity: float, stop_price: float, parent_order_id: Optional[int] = None):
+    async def _place_stop_loss(
+        self,
+        symbol: str,
+        quantity: float,
+        stop_price: float,
+        parent_order_id: Optional[int] = None,
+    ):
         """Place a stop-loss order (SELL stop for longs, BUY stop for shorts)."""
         from src.brokers.broker_protocol import (
-            Contract, Order, OrderSide, OrderType, TimeInForce,
+            Contract,
+            Order,
+            OrderSide,
+            OrderType,
+            TimeInForce,
         )
+
         try:
             exchange = self.route_exchange(symbol)
             contract = Contract(symbol=symbol, exchange=exchange.value, currency="USD")
@@ -481,16 +599,32 @@ class TradeExecutor:
                 parent_id=parent_order_id,
             )
             placed = await self.broker.place_order(order)
-            logger.info("Stop-loss placed: %s @ %.2f (order_id=%s, parent=%s)",
-                        symbol, stop_price, placed.order_id, parent_order_id)
+            logger.info(
+                "Stop-loss placed: %s @ %.2f (order_id=%s, parent=%s)",
+                symbol,
+                stop_price,
+                placed.order_id,
+                parent_order_id,
+            )
         except Exception as e:
             logger.error("Failed to place stop-loss for %s: %s", symbol, e)
 
-    async def _place_take_profit(self, symbol: str, quantity: float, target_price: float, parent_order_id: Optional[int] = None):
+    async def _place_take_profit(
+        self,
+        symbol: str,
+        quantity: float,
+        target_price: float,
+        parent_order_id: Optional[int] = None,
+    ):
         """Place a take-profit (limit) order (SELL limit for longs, BUY limit for shorts)."""
         from src.brokers.broker_protocol import (
-            Contract, Order, OrderSide, OrderType, TimeInForce,
+            Contract,
+            Order,
+            OrderSide,
+            OrderType,
+            TimeInForce,
         )
+
         try:
             exchange = self.route_exchange(symbol)
             contract = Contract(symbol=symbol, exchange=exchange.value, currency="USD")
@@ -505,8 +639,13 @@ class TradeExecutor:
                 parent_id=parent_order_id,
             )
             placed = await self.broker.place_order(order)
-            logger.info("Take-profit placed: %s @ %.2f (order_id=%s, parent=%s)",
-                        symbol, target_price, placed.order_id, parent_order_id)
+            logger.info(
+                "Take-profit placed: %s @ %.2f (order_id=%s, parent=%s)",
+                symbol,
+                target_price,
+                placed.order_id,
+                parent_order_id,
+            )
         except Exception as e:
             logger.error("Failed to place take-profit for %s: %s", symbol, e)
 
@@ -556,7 +695,10 @@ class TradeExecutor:
 
         position_usd = sizing["position_usd"]
         if position_usd < 10:
-            return {"success": False, "error": f"Position too small: ${position_usd:.2f}"}
+            return {
+                "success": False,
+                "error": f"Position too small: ${position_usd:.2f}",
+            }
 
         quantity = int(position_usd / price)
         if quantity <= 0:
@@ -585,7 +727,7 @@ class TradeExecutor:
 
     def get_execution_log(self, limit: int = 50) -> List[dict]:
         """Get recent execution log."""
-        return [r.to_dict() for r in self._execution_log[-limit:]]
+        return [r.to_dict() for r in list(self._execution_log)[-limit:]]
 
     def get_pending_orders(self) -> list:
         """Get all open orders from broker."""

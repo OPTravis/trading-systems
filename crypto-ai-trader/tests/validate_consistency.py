@@ -18,8 +18,8 @@ Checks:
 import json
 import os
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Add project root
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -56,9 +56,12 @@ def get_binance_positions():
     """Get actual Binance balances via API."""
     from binance.spot import Spot
     from dotenv import load_dotenv
+
     load_dotenv(PROJECT_ROOT / ".env")
 
-    spot = Spot(api_key=os.getenv("BINANCE_API_KEY"), api_secret=os.getenv("BINANCE_API_SECRET"))
+    spot = Spot(
+        api_key=os.getenv("BINANCE_API_KEY"), api_secret=os.getenv("BINANCE_API_SECRET")
+    )
     account = spot.account()
 
     positions = {}
@@ -106,7 +109,9 @@ def check_portfolio_state(binance_positions):
     binance_usdt = binance_positions.get("USDT", {}).get("free", 0)
     cash_diff = abs(local_cash - binance_usdt)
     if cash_diff > 1.0:
-        err(f"現金不匹配: state={local_cash:.2f}, Binance free={binance_usdt:.2f}, diff={cash_diff:.2f}")
+        err(
+            f"現金不匹配: state={local_cash:.2f}, Binance free={binance_usdt:.2f}, diff={cash_diff:.2f}"
+        )
     else:
         ok(f"現金匹配: ${local_cash:.2f}")
 
@@ -127,7 +132,9 @@ def check_portfolio_state(binance_positions):
             local_qty = pos.get("quantity", 0)
             qty_diff = abs(local_qty - binance_qty)
             if qty_diff > 0.01:
-                err(f"{symbol} 數量不匹配: local={local_qty:.4f}, Binance={binance_qty:.4f}")
+                err(
+                    f"{symbol} 數量不匹配: local={local_qty:.4f}, Binance={binance_qty:.4f}"
+                )
             else:
                 ok(f"{symbol} 數量匹配: {local_qty:.4f}")
         else:
@@ -178,10 +185,15 @@ def check_trailing_check_output():
 
     # Run trailing-check and capture output
     import subprocess
+
     env = os.environ.copy()
     result = subprocess.run(
         [str(PROJECT_ROOT / ".venv/bin/python3"), "main.py", "trailing-check"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT), env=env, timeout=30
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
+        env=env,
+        timeout=30,
     )
 
     # Find the JSON line in output
@@ -193,7 +205,9 @@ def check_trailing_check_output():
             break
 
     if not json_line:
-        err(f"trailing-check 輸出無 JSON: stdout={result.stdout[:200]}, stderr={result.stderr[:200]}")
+        err(
+            f"trailing-check 輸出無 JSON: stdout={result.stdout[:200]}, stderr={result.stderr[:200]}"
+        )
         return
 
     try:
@@ -218,8 +232,21 @@ def check_trailing_check_output():
         ok(f"無重複 asset（{len(results)} 個結果）")
 
     # Check 3b: Mutual exclusivity — tracking and filled/triggered shouldn't coexist for same asset
-    terminal_actions = {"sltp_filled_detected", "trailing_triggered", "triggered_sell_failed", "triggered_no_free_balance"}
-    active_actions = {"tracking", "sl_moved", "sl_unchanged", "sl_created", "sl_create_failed", "sl_move_failed", "sl_cancel_failed"}
+    terminal_actions = {
+        "sltp_filled_detected",
+        "trailing_triggered",
+        "triggered_sell_failed",
+        "triggered_no_free_balance",
+    }
+    active_actions = {
+        "tracking",
+        "sl_moved",
+        "sl_unchanged",
+        "sl_created",
+        "sl_create_failed",
+        "sl_move_failed",
+        "sl_cancel_failed",
+    }
 
     for r in results:
         asset = r.get("asset", "?")
@@ -228,7 +255,9 @@ def check_trailing_check_output():
             # Check if this asset also has a tracking result
             for r2 in results:
                 if r2.get("asset") == asset and r2.get("action") in active_actions:
-                    err(f"矛盾: {asset} 同時 tracking ({r2['action']}) 和 terminal ({action})")
+                    err(
+                        f"矛盾: {asset} 同時 tracking ({r2['action']}) 和 terminal ({action})"
+                    )
 
     # Check 3c: filled/triggered with PnL ≈ 0 on an asset that still exists is suspicious
     for r in results:
@@ -239,20 +268,32 @@ def check_trailing_check_output():
             exit_p = r.get("exit_price", 0)
             # If PnL is near zero AND entry ≈ exit, likely a false positive
             if entry > 0 and exit_p > 0 and abs(pnl) < 0.01:
-                warn(f"可疑 fill: {asset} PnL≈${pnl} (entry={entry}, exit={exit_p}) — 可能是誤報")
+                warn(
+                    f"可疑 fill: {asset} PnL≈${pnl} (entry={entry}, exit={exit_p}) — 可能是誤報"
+                )
 
     # Check 3d: Verify positions count matches Binance reality
     pos_count = data.get("positions", 0)
     ok(f"trailing-check 報告 {pos_count} 個持倉")
 
     # Check 3e: All results have valid actions
-    valid_actions = terminal_actions | active_actions | {"skip", "uncovered_sl_created", "uncovered_sl_failed", "uncovered_sl_error", "no_free_balance_for_sl"}
+    valid_actions = (
+        terminal_actions
+        | active_actions
+        | {
+            "skip",
+            "uncovered_sl_created",
+            "uncovered_sl_failed",
+            "uncovered_sl_error",
+            "no_free_balance_for_sl",
+        }
+    )
     for r in results:
         action = r.get("action", "")
         if action not in valid_actions:
             warn(f"未知 action: {action} for {r.get('asset', '?')}")
 
-    ok(f"trailing-check 輸出自洽性檢查完成")
+    ok("trailing-check 輸出自洽性檢查完成")
 
 
 # ============================================================
@@ -275,9 +316,13 @@ def check_loss_guard():
         try:
             suspend_dt = datetime.fromtimestamp(suspended_until)
             if suspend_dt > datetime.now():
-                ok(f"交易暫停中，至 {suspend_dt.strftime('%Y-%m-%d %H:%M')}（{consecutive_losses} 連敗）")
+                ok(
+                    f"交易暫停中，至 {suspend_dt.strftime('%Y-%m-%d %H:%M')}（{consecutive_losses} 連敗）"
+                )
             else:
-                ok(f"暫停已過期（{suspend_dt.strftime('%Y-%m-%d %H:%M')}），下次 is_paused() 調用會自動清理")
+                ok(
+                    f"暫停已過期（{suspend_dt.strftime('%Y-%m-%d %H:%M')}），下次 is_paused() 調用會自動清理"
+                )
         except (ValueError, TypeError):
             err(f"paused_until 格式錯誤: {suspended_until}")
     else:
@@ -287,13 +332,16 @@ def check_loss_guard():
     if total_trades > 10:
         symbols = [h.get("symbol") for h in history]
         from collections import Counter
+
         sym_counts = Counter(symbols)
         dominant = sym_counts.most_common(1)[0]
         if dominant[1] / total_trades > 0.8:
             pnls = [h.get("pnl", 0) for h in history if h.get("symbol") == dominant[0]]
             avg_pnl = sum(abs(p) for p in pnls) / len(pnls) if pnls else 0
             if avg_pnl < 0.02:
-                warn(f"疑為垃圾記錄: {dominant[0]} 佔 {dominant[1]}/{total_trades} 筆，平均 PnL=${avg_pnl:.4f}")
+                warn(
+                    f"疑為垃圾記錄: {dominant[0]} 佔 {dominant[1]}/{total_trades} 筆，平均 PnL=${avg_pnl:.4f}"
+                )
 
     # Check consecutive_losses consistency
     if consecutive_losses > 0 and total_trades == 0:
@@ -386,7 +434,9 @@ def main():
     # Print actual positions for reference
     print("\n📋 Binance 實際持倉:")
     total_usd = 0
-    for asset, info in sorted(binance_positions.items(), key=lambda x: -x[1].get("usd_value", 0)):
+    for asset, info in sorted(
+        binance_positions.items(), key=lambda x: -x[1].get("usd_value", 0)
+    ):
         val = info.get("usd_value", 0)
         total_usd += val
         if val >= 0.01:
@@ -405,7 +455,9 @@ def main():
 
     # Summary
     print("\n" + "=" * 60)
-    print(f"📊 結果: ✅ {len(passed)} 通過 | ⚠️ {len(warnings)} 警告 | ❌ {len(errors)} 錯誤")
+    print(
+        f"📊 結果: ✅ {len(passed)} 通過 | ⚠️ {len(warnings)} 警告 | ❌ {len(errors)} 錯誤"
+    )
     print("=" * 60)
 
     if errors:

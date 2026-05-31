@@ -9,7 +9,6 @@ import threading
 from typing import Optional
 
 from prometheus_client import (
-    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
@@ -127,8 +126,12 @@ class MetricsExporter:
     def stop_server(self) -> None:
         """Shutdown the metrics server if running."""
         if self._server is not None:
-            server, _thread = self._server
-            server.shutdown()
+            try:
+                parts = self._server  # type: ignore[misc]
+                if isinstance(parts, tuple) and len(parts) >= 1:
+                    parts[0].shutdown()  # type: ignore[index]
+            except Exception:
+                pass
             self._server = None
 
     def update_portfolio_metrics(
@@ -148,9 +151,7 @@ class MetricsExporter:
         self.trades_total.labels(side=side).inc()
         self.trades_pnl_total_usdt.inc(pnl_usdt)
 
-    def update_trailing_stop(
-        self, symbol: str, active: bool, sl_price: float
-    ) -> None:
+    def update_trailing_stop(self, symbol: str, active: bool, sl_price: float) -> None:
         self.trailing_stop_active.labels(symbol=symbol).set(1 if active else 0)
         self.trailing_stop_sl_price.labels(symbol=symbol).set(sl_price)
 

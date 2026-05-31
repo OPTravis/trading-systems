@@ -8,15 +8,14 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
-from src.indicators import Indicators
-
-from src.drawdown_breaker import DrawdownBreaker
 from src.correlation_risk import CorrelationRiskManager
+from src.drawdown_breaker import DrawdownBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ def _ensure_data_dir() -> Path:
     return _DATA_DIR
 
 
-def _load_json(filepath: Path, default: Any = None) -> Any:
+def _load_json(filepath: Path, default: Optional[Any] = None) -> Any:
     """Load JSON from file, returning default on any error."""
     try:
         if filepath.exists():
@@ -61,6 +60,7 @@ def _save_json(filepath: Path, data: Any) -> bool:
 # 1. TrendFilter – BTC 趨勢過濾器
 # ---------------------------------------------------------------------------
 
+
 class TrendFilter:
     """Use BTC daily chart to determine overall market trend bias."""
 
@@ -73,7 +73,7 @@ class TrendFilter:
         self._cache_ts: float = 0
         self._cache_ttl: int = 300  # 5 minutes
 
-    def check_trend(self, binance_client: 'ExchangeClient') -> Dict:
+    def check_trend(self, binance_client: "ExchangeClient") -> Dict:
         """Analyze BTC trend using multi-factor scoring.
 
         Uses Indicators.btc_trend_score() for composite 0-100 scoring.
@@ -95,22 +95,30 @@ class TrendFilter:
         try:
             klines = binance_client.get_klines("BTCUSDT", "1d", 250)
             if not klines or len(klines) < 60:
-                logger.warning("TrendFilter: insufficient kline data (%d) — fail-safe: NEUTRAL",
-                               len(klines) if klines else 0)
+                logger.warning(
+                    "TrendFilter: insufficient kline data (%d) — fail-safe: NEUTRAL",
+                    len(klines) if klines else 0,
+                )
                 self._cache = {
-                    "trend": self.NEUTRAL, "allow_long": False,
-                    "score": 50, "factors": {},
-                    "btc_close": 0, "sma_200": 0, "sma_50": 0,
-                    "adx": 0, "size_multiplier": 0.5,
+                    "trend": self.NEUTRAL,
+                    "allow_long": False,
+                    "score": 50,
+                    "factors": {},
+                    "btc_close": 0,
+                    "sma_200": 0,
+                    "sma_50": 0,
+                    "adx": 0,
+                    "size_multiplier": 0.5,
                 }
                 self._cache_ts = now
                 return self._cache
 
             # --- Multi-factor scoring ---
             from .indicators import Indicators
+
             trend_result = Indicators.btc_trend_score(klines)
 
-            closes = [k["close"] for k in klines]
+            [k["close"] for k in klines]
             adx_value = Indicators.adx(klines, 14)
 
             # ADX filter: weak trend → reduce position size
@@ -147,10 +155,14 @@ class TrendFilter:
                 "TrendFilter: trend=%s score=%.1f allow_long=%s BTC=%.2f "
                 "EMA21=%.0f EMA55=%.0f RSI=%.1f MACD_H=%.4f ADX=%.2f | "
                 "factors: EMA=%.1f RSI=%.1f MACD=%.1f Struct=%.1f Vol=%.1f",
-                trend, trend_result["score"], trend_result["allow_long"],
+                trend,
+                trend_result["score"],
+                trend_result["allow_long"],
                 trend_result["btc_close"],
-                trend_result["ema_21"], trend_result["ema_55"],
-                trend_result["rsi_14"], trend_result["macd_hist"],
+                trend_result["ema_21"],
+                trend_result["ema_55"],
+                trend_result["rsi_14"],
+                trend_result["macd_hist"],
                 adx_value,
                 trend_result["factors"]["ema_cross"],
                 trend_result["factors"]["rsi"],
@@ -161,18 +173,26 @@ class TrendFilter:
             return result
 
         except Exception as e:
-            logger.error(f"TrendFilter.check_trend failed: {e} — fail-safe: blocking longs")
+            logger.error(
+                f"TrendFilter.check_trend failed: {e} — fail-safe: blocking longs"
+            )
             return {
-                "trend": self.NEUTRAL, "allow_long": False,
-                "score": 50, "factors": {},
-                "btc_close": 0, "sma_200": 0, "sma_50": 0,
-                "adx": 0, "size_multiplier": 0.5,
+                "trend": self.NEUTRAL,
+                "allow_long": False,
+                "score": 50,
+                "factors": {},
+                "btc_close": 0,
+                "sma_200": 0,
+                "sma_50": 0,
+                "adx": 0,
+                "size_multiplier": 0.5,
             }
 
 
 # ---------------------------------------------------------------------------
 # 2. TrailingStop – 追蹤止損
 # ---------------------------------------------------------------------------
+
 
 class TrailingStop:
     """Manage trailing stop-loss for open positions.
@@ -181,8 +201,10 @@ class TrailingStop:
     Format: {symbol: {entry_price, highest_price, sl_price, activated, atr}}
     """
 
-    ACTIVATION_ATR_MULT = 1.0    # activate trailing when profit >= 1.0 * ATR (was 2.0, too conservative)
-    TRAILING_ATR_MULT = 1.0      # stop distance from high = 1.0 * ATR (was 1.5, too loose)
+    ACTIVATION_ATR_MULT = (
+        1.0  # activate trailing when profit >= 1.0 * ATR (was 2.0, too conservative)
+    )
+    TRAILING_ATR_MULT = 1.0  # stop distance from high = 1.0 * ATR (was 1.5, too loose)
 
     def __init__(self):
         self._filepath = _DATA_DIR / "trailing_stops.json"
@@ -197,6 +219,7 @@ class TrailingStop:
         """Load trailing stops from SQLite (primary)."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             rows = db.ts_get_all()
             if rows:
@@ -214,6 +237,7 @@ class TrailingStop:
         self._last_save_ts = now
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             for sym, data in self._state.items():
                 db.ts_set(sym, data)
@@ -227,7 +251,13 @@ class TrailingStop:
             logger.error(f"TrailingStop: SQLite save failed: {e}")
             return False
 
-    def update(self, symbol: str, current_price: float, atr: float, entry_price: float = None) -> Dict:
+    def update(
+        self,
+        symbol: str,
+        current_price: float,
+        atr: float,
+        entry_price: Optional[float] = None,
+    ) -> Dict:
         """Update trailing stop for a symbol.
 
         Returns:
@@ -244,15 +274,32 @@ class TrailingStop:
 
         if atr <= 0:
             # Use last known ATR as fallback instead of skipping entirely
-            last_atr = self._state.get(symbol, {}).get("atr", 0) if symbol in self._state else 0
+            last_atr = (
+                self._state.get(symbol, {}).get("atr", 0)
+                if symbol in self._state
+                else 0
+            )
             if last_atr > 0:
-                logger.warning("TrailingStop: ATR=%.4f for %s — using last valid ATR=%.4f", atr, symbol, last_atr)
+                logger.warning(
+                    "TrailingStop: ATR=%.4f for %s — using last valid ATR=%.4f",
+                    atr,
+                    symbol,
+                    last_atr,
+                )
                 atr = last_atr
             elif symbol in self._state:
-                logger.warning("TrailingStop: ATR=%.4f for %s — no valid ATR, using price-based fallback", atr, symbol)
+                logger.warning(
+                    "TrailingStop: ATR=%.4f for %s — no valid ATR, using price-based fallback",
+                    atr,
+                    symbol,
+                )
                 atr = price * 0.02  # 2% of price as emergency ATR
             else:
-                logger.warning("TrailingStop: ATR=%.4f for %s — new symbol with no ATR, skipping", atr, symbol)
+                logger.warning(
+                    "TrailingStop: ATR=%.4f for %s — new symbol with no ATR, skipping",
+                    atr,
+                    symbol,
+                )
                 return {"activated": False}
 
         # Add new symbol if not tracked
@@ -260,7 +307,10 @@ class TrailingStop:
             # entry_price can be provided by caller (from trade history),
             # otherwise falls back to current market price
             if entry_price is None:
-                logger.error("TrailingStop: entry_price not provided for %s, using market price as last resort", symbol)
+                logger.error(
+                    "TrailingStop: entry_price not provided for %s, using market price as last resort",
+                    symbol,
+                )
                 entry_price = price
 
             self._state[symbol] = {
@@ -270,14 +320,23 @@ class TrailingStop:
                 "activated": False,
                 "atr": atr,
             }
-            logger.info("TrailingStop: started tracking %s entry=%.4f ATR=%.4f", symbol, entry_price, atr)
+            logger.info(
+                "TrailingStop: started tracking %s entry=%.4f ATR=%.4f",
+                symbol,
+                entry_price,
+                atr,
+            )
 
         state = self._state[symbol]
         entry = state["entry_price"]
         highest = state["highest_price"]
 
         # Update ATR if it changed significantly (>20% drift)
-        if atr > 0 and abs(atr - state.get("atr", atr)) / max(state.get("atr", 1e-9), 1e-9) > 0.2:
+        if (
+            atr > 0
+            and abs(atr - state.get("atr", atr)) / max(state.get("atr", 1e-9), 1e-9)
+            > 0.2
+        ):
             state["atr"] = atr
             logger.debug("TrailingStop: updated ATR for %s to %.4f", symbol, atr)
 
@@ -292,20 +351,30 @@ class TrailingStop:
             try:
                 from src.adaptive_trailing import calculate_trailing_sl
             except ImportError:
-                logger.error("adaptive_trailing module not available, using ATR fallback")
+                logger.error(
+                    "adaptive_trailing module not available, using ATR fallback"
+                )
                 new_sl = highest - self.TRAILING_ATR_MULT * atr
                 if new_sl > state["sl_price"]:
                     state["sl_price"] = new_sl
             else:
-                profit_pct = ((price - entry) / entry) * 100 if entry > 0 else 0
+                ((price - entry) / entry) * 100 if entry > 0 else 0
                 vol_adj = 1.0
                 try:
                     from src.garch_vol import get_vol_regime
+
                     daily_vol = atr / price if price > 0 else 0.02
                     vol_regime = get_vol_regime(daily_vol * 365**0.5)
-                    vol_adj = {"low": 0.7, "normal": 1.0, "high": 1.3, "extreme": 1.5}.get(vol_regime, 1.0)
+                    vol_adj = {
+                        "low": 0.7,
+                        "normal": 1.0,
+                        "high": 1.3,
+                        "extreme": 1.5,
+                    }.get(vol_regime, 1.0)
                 except Exception:
-                    logger.warning("GARCH vol unavailable for trailing stop, using vol_adj=1.0")
+                    logger.warning(
+                        "GARCH vol unavailable for trailing stop, using vol_adj=1.0"
+                    )
                 try:
                     adaptive = calculate_trailing_sl(
                         entry_price=entry,
@@ -338,12 +407,19 @@ class TrailingStop:
                 }
                 logger.warning(
                     "TrailingStop: TRIGGERED %s entry=%.4f highest=%.4f sl=%.4f price=%.4f callback=%.2f%%",
-                    symbol, entry, highest, state["sl_price"], price, callback_pct,
+                    symbol,
+                    entry,
+                    highest,
+                    state["sl_price"],
+                    price,
+                    callback_pct,
                 )
                 self._save()
                 return result
 
-            callback_pct = ((highest - state["sl_price"]) / highest) * 100 if highest > 0 else 0
+            callback_pct = (
+                ((highest - state["sl_price"]) / highest) * 100 if highest > 0 else 0
+            )
             self._save()
             return {
                 "activated": True,
@@ -360,7 +436,9 @@ class TrailingStop:
             state["sl_price"] = highest - self.TRAILING_ATR_MULT * atr
             logger.info(
                 "TrailingStop: ACTIVATED %s profit=%.4f >= %.4f threshold",
-                symbol, profit, self.ACTIVATION_ATR_MULT * atr,
+                symbol,
+                profit,
+                self.ACTIVATION_ATR_MULT * atr,
             )
             self._save()
             return {
@@ -368,7 +446,11 @@ class TrailingStop:
                 "symbol": symbol,
                 "sl_price": round(state["sl_price"], 6),
                 "highest_price": round(highest, 6),
-                "callback_pct": round(((highest - state["sl_price"]) / highest) * 100, 2) if highest > 0 else 0,
+                "callback_pct": (
+                    round(((highest - state["sl_price"]) / highest) * 100, 2)
+                    if highest > 0
+                    else 0
+                ),
             }
 
         self._save()
@@ -386,6 +468,7 @@ class TrailingStop:
         # Always remove from SQLite (primary)
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db.ts_remove(symbol)
             self._save()  # Sync JSON backup
@@ -417,13 +500,19 @@ class TrailingStop:
             "activated": True,
             "atr": atr,
         }
-        logger.info("TrailingStop: force-activated %s entry=%.4f ATR=%.4f", symbol, entry_price, atr)
+        logger.info(
+            "TrailingStop: force-activated %s entry=%.4f ATR=%.4f",
+            symbol,
+            entry_price,
+            atr,
+        )
         self._save()
 
 
 # ---------------------------------------------------------------------------
 # 3. ConsecutiveLossGuard – 連虧保護
 # ---------------------------------------------------------------------------
+
 
 class ConsecutiveLossGuard:
     """Pause trading after consecutive losing trades.
@@ -432,36 +521,46 @@ class ConsecutiveLossGuard:
     BACKUP: ~/crypto-ai-trader/data/loss_guard.json (human-readable)
     """
 
-    MAX_CONSECUTIVE_LOSSES_SOFT = 3   # After 3: reduce size by 50%
+    MAX_CONSECUTIVE_LOSSES_SOFT = 3  # After 3: reduce size by 50%
     MAX_CONSECUTIVE_LOSSES_HARD = 5  # After 5: full halt
-    PAUSE_DURATION_SEC = 12 * 3600   # 12 hours (was 24)
-    SIZE_REDUCTION_PCT = 0.5         # Reduce to 50% after soft threshold
+    PAUSE_DURATION_SEC = 12 * 3600  # 12 hours (was 24)
+    SIZE_REDUCTION_PCT = 0.5  # Reduce to 50% after soft threshold
     MAX_HISTORY = 50
 
     def __init__(self):
         self._filepath = _DATA_DIR / "loss_guard.json"
         # Load from SQLite first, fallback to JSON
-        self._state: Dict = self._load_from_db()
-        if not self._state:
-            self._state = _load_json(self._filepath, default={
-                "consecutive_losses": 0,
-                "last_loss_time": None,
-                "paused_until": None,
-                "history": [],
-            })
+        _default_state: Dict = {
+            "consecutive_losses": 0,
+            "last_loss_time": None,
+            "paused_until": None,
+            "history": [],
+        }
+        db_state = self._load_from_db()
+        self._state: Dict = (
+            db_state
+            if db_state
+            else _load_json(
+                self._filepath,
+                default=_default_state,
+            )
+        )
 
     def _load_from_db(self) -> Optional[Dict]:
         """Load loss guard state from SQLite (primary)."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             row = db.risk_get()
             if row:
-                logger.info(f"ConsecutiveLossGuard: loaded from StateDB")
+                logger.info("ConsecutiveLossGuard: loaded from StateDB")
                 return {
                     "consecutive_losses": row.get("streak", 0),
                     "last_loss_time": row.get("last_reset"),
-                    "paused_until": row.get("paused_until"),  # Reconstructed from DB if available
+                    "paused_until": row.get(
+                        "paused_until"
+                    ),  # Reconstructed from DB if available
                     "history": list(row.get("history", [])),  # Loaded from JSON backup
                 }
         except Exception as e:
@@ -472,6 +571,7 @@ class ConsecutiveLossGuard:
         """Clear any persisted DB state so tests start fresh."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db.risk_set({"daily_pnl": 0, "streak": 0, "last_reset": None})
         except Exception as e:
@@ -481,14 +581,17 @@ class ConsecutiveLossGuard:
         """Persist to SQLite (primary) and JSON backup (disaster recovery)."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
-            db.risk_set({
-                "daily_pnl": 0,  # Not tracked here, reserved for future
-                "streak": self._state.get("consecutive_losses", 0),
-                "last_reset": self._state.get("last_loss_time", time.time()),
-                # NOTE: DB column is named "last_reset" but stores "last_loss_time"
-                # (timestamp of the most recent loss). Schema migration needed to rename.
-            })
+            db.risk_set(
+                {
+                    "daily_pnl": 0,  # Not tracked here, reserved for future
+                    "streak": self._state.get("consecutive_losses", 0),
+                    "last_reset": self._state.get("last_loss_time", time.time()),
+                    # NOTE: DB column is named "last_reset" but stores "last_loss_time"
+                    # (timestamp of the most recent loss). Schema migration needed to rename.
+                }
+            )
             # Also persist history to JSON backup for disaster recovery
             _save_json(self._filepath, self._state)
             return True
@@ -520,7 +623,9 @@ class ConsecutiveLossGuard:
                 logger.warning(
                     "ConsecutiveLossGuard: %d consecutive losses → HARD HALT until %s",
                     self._state["consecutive_losses"],
-                    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._state["paused_until"])),
+                    time.strftime(
+                        "%Y-%m-%d %H:%M:%S", time.localtime(self._state["paused_until"])
+                    ),
                 )
             elif self._state["consecutive_losses"] >= self.MAX_CONSECUTIVE_LOSSES_SOFT:
                 logger.warning(
@@ -531,7 +636,9 @@ class ConsecutiveLossGuard:
             else:
                 logger.info(
                     "ConsecutiveLossGuard: loss on %s (PnL=%.4f USDT), consecutive=%d",
-                    symbol, pnl_usdt, self._state["consecutive_losses"],
+                    symbol,
+                    pnl_usdt,
+                    self._state["consecutive_losses"],
                 )
         elif pnl_usdt > 0:
             # Only a genuine win (positive PnL) resets the streak.
@@ -539,7 +646,9 @@ class ConsecutiveLossGuard:
             if self._state["consecutive_losses"] > 0:
                 logger.info(
                     "ConsecutiveLossGuard: win on %s (PnL=%.4f USDT) broke %d-loss streak",
-                    symbol, pnl_usdt, self._state["consecutive_losses"],
+                    symbol,
+                    pnl_usdt,
+                    self._state["consecutive_losses"],
                 )
             self._state["consecutive_losses"] = 0
             # Clear pause when a win occurs
@@ -549,13 +658,14 @@ class ConsecutiveLossGuard:
             # pnl == 0 (draw): log it but don't change streak
             logger.info(
                 "ConsecutiveLossGuard: draw on %s (PnL=0), streak unchanged at %d",
-                symbol, self._state["consecutive_losses"],
+                symbol,
+                self._state["consecutive_losses"],
             )
 
         # Append to history
         self._state["history"].append(trade_record)
         if len(self._state["history"]) > self.MAX_HISTORY:
-            self._state["history"] = self._state["history"][-self.MAX_HISTORY:]
+            self._state["history"] = self._state["history"][-self.MAX_HISTORY :]
 
         self._save()
         return self.get_status()
@@ -628,8 +738,11 @@ class ConsecutiveLossGuard:
             "paused": paused,
             "paused_until": self._state.get("paused_until"),
             "paused_until_str": (
-                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._state["paused_until"]))
-                if self._state.get("paused_until") else None
+                time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(self._state["paused_until"])
+                )
+                if self._state.get("paused_until")
+                else None
             ),
             "total_trades": len(self._state.get("history", [])),
             "last_loss_time": self._state.get("last_loss_time"),
@@ -655,10 +768,10 @@ class ConsecutiveLossGuard:
 
 from src.sector_classifier import SectorExposure
 
-
 # ---------------------------------------------------------------------------
 # 5. RiskManager – 統一入口
 # ---------------------------------------------------------------------------
+
 
 class DailyLossLimit:
     """Pause trading when cumulative daily PnL exceeds a threshold.
@@ -668,7 +781,7 @@ class DailyLossLimit:
     Resets at midnight (local time).
     """
 
-    MAX_DAILY_LOSS_PCT = 5.0   # stop trading if daily loss exceeds 5% of portfolio
+    MAX_DAILY_LOSS_PCT = 5.0  # stop trading if daily loss exceeds 5% of portfolio
     MAX_DAILY_LOSS_USDT_PCT = 0.01  # 1% of portfolio (replaces fixed $50)
 
     def __init__(self):
@@ -679,6 +792,7 @@ class DailyLossLimit:
     def _load_from_db(self) -> None:
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             row = db.risk_get()
             if row:
@@ -691,11 +805,14 @@ class DailyLossLimit:
     def _save(self) -> None:
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
-            db.risk_set({
-                "daily_pnl": self._daily_pnl,
-                "daily_pnl_date": self._date,
-            })
+            db.risk_set(
+                {
+                    "daily_pnl": self._daily_pnl,
+                    "daily_pnl_date": self._date,
+                }
+            )
         except Exception:
             logger.error("Failed to save daily PnL to StateDB", exc_info=True)
 
@@ -716,12 +833,18 @@ class DailyLossLimit:
         # Portfolio-relative absolute threshold: max(50, portfolio * 1%)
         max_daily_loss_usdt = max(50.0, portfolio_value * self.MAX_DAILY_LOSS_USDT_PCT)
         if self._daily_pnl < -max_daily_loss_usdt:
-            return {"blocked": True, "reason": f"Daily loss ${abs(self._daily_pnl):.2f} > ${max_daily_loss_usdt:.0f}"}
+            return {
+                "blocked": True,
+                "reason": f"Daily loss ${abs(self._daily_pnl):.2f} > ${max_daily_loss_usdt:.0f}",
+            }
 
         if portfolio_value > 0:
             loss_pct = abs(self._daily_pnl) / portfolio_value * 100
             if loss_pct > self.MAX_DAILY_LOSS_PCT:
-                return {"blocked": True, "reason": f"Daily loss {loss_pct:.1f}% > {self.MAX_DAILY_LOSS_PCT:.0f}%"}
+                return {
+                    "blocked": True,
+                    "reason": f"Daily loss {loss_pct:.1f}% > {self.MAX_DAILY_LOSS_PCT:.0f}%",
+                }
 
         return {"blocked": False, "daily_pnl": self._daily_pnl}
 
@@ -743,17 +866,21 @@ class PerPairCooldown:
     def _load_from_db(self) -> None:
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             # Store cooldowns in the same risk_guard JSON blob
             row = db.risk_get()
             if row and "pair_cooldowns" in row:
                 self._cooldowns = row["pair_cooldowns"]
         except Exception:
-            logger.error("Failed to load per-pair cooldowns from StateDB", exc_info=True)
+            logger.error(
+                "Failed to load per-pair cooldowns from StateDB", exc_info=True
+            )
 
     def _save(self) -> None:
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             existing = db.risk_get() or {}
             existing["pair_cooldowns"] = self._cooldowns
@@ -766,7 +893,12 @@ class PerPairCooldown:
         cooldown = self.LOSS_COOLDOWN_SEC if pnl_usdt < 0 else self.COOLDOWN_SEC
         self._cooldowns[symbol] = time.time() + cooldown
         self._save()
-        logger.info("PerPairCooldown: %s on cooldown for %ds (PnL=%.4f)", symbol, cooldown, pnl_usdt)
+        logger.info(
+            "PerPairCooldown: %s on cooldown for %ds (PnL=%.4f)",
+            symbol,
+            cooldown,
+            pnl_usdt,
+        )
 
     def is_on_cooldown(self, symbol: str) -> Dict:
         symbol = symbol.upper()
@@ -774,7 +906,11 @@ class PerPairCooldown:
         now = time.time()
         if until > now:
             remaining = int(until - now)
-            return {"blocked": True, "remaining_sec": remaining, "reason": f"Cooldown {remaining}s remaining"}
+            return {
+                "blocked": True,
+                "remaining_sec": remaining,
+                "reason": f"Cooldown {remaining}s remaining",
+            }
         return {"blocked": False}
 
     def clear(self, symbol: str) -> None:
@@ -788,14 +924,18 @@ class RiskManager:
     Orchestrates TrendFilter, TrailingStop, ConsecutiveLossGuard, and SectorExposure.
     """
 
-    def __init__(self, binance_client: 'ExchangeClient' = None):
+    def __init__(self, binance_client: Optional["ExchangeClient"] = None):
         self.client = binance_client
         self.trend_filter = TrendFilter()
         self.trailing_stop = TrailingStop()
         self.loss_guard = ConsecutiveLossGuard()
         self.sector_exposure = SectorExposure()
-        self.correlation_risk = CorrelationRiskManager(binance_client) if binance_client else None
-        self.drawdown_breaker = DrawdownBreaker(binance_client) if binance_client else None
+        self.correlation_risk = (
+            CorrelationRiskManager(binance_client) if binance_client else None
+        )
+        self.drawdown_breaker = (
+            DrawdownBreaker(binance_client) if binance_client else None
+        )
         self.daily_loss = DailyLossLimit()
         self.pair_cooldown = PerPairCooldown()
         logger.info("RiskManager initialized (all sub-modules ready)")
@@ -882,7 +1022,9 @@ class RiskManager:
                     for p in positions
                 ]
                 new_sym = symbol.replace("USDT", "")
-                corr_check = self.correlation_risk.check_new_position(new_sym, current_symbols)
+                corr_check = self.correlation_risk.check_new_position(
+                    new_sym, current_symbols
+                )
                 if not corr_check["allowed"]:
                     allowed = False
                     reasons.append(f"Correlation: {corr_check['reason']}")
@@ -895,9 +1037,7 @@ class RiskManager:
                         reasons.append(
                             f"Correlation fail-open: reducing size to ×{corr_sm} — {corr_check['reason']}"
                         )
-                    reasons.append(
-                        f"Correlation OK: {corr_check['reason']}"
-                    )
+                    reasons.append(f"Correlation OK: {corr_check['reason']}")
             except Exception as e:
                 logger.error(f"RiskManager: correlation check error: {e}")
 
@@ -928,12 +1068,17 @@ class RiskManager:
                                 _rm_portfolio_value += _qty
                             else:
                                 try:
-                                    _p = float(self.client.get_ticker_price(f"{_asset}USDT"))
+                                    _p = float(
+                                        self.client.get_ticker_price(f"{_asset}USDT")
+                                    )
                                     _rm_portfolio_value += _qty * _p
                                 except Exception:
                                     pass
                 except Exception:
-                    logger.error("RiskManager: failed to compute portfolio value for daily loss", exc_info=True)
+                    logger.error(
+                        "RiskManager: failed to compute portfolio value for daily loss",
+                        exc_info=True,
+                    )
             daily = self.daily_loss.is_blocked(portfolio_value=_rm_portfolio_value)
             if daily.get("blocked"):
                 allowed = False
@@ -999,7 +1144,10 @@ class RiskManager:
         if self.drawdown_breaker and self.client:
             try:
                 from src.stepwise_drawdown import get_drawdown_action
-                dd_pct = dd_check.get("drawdown_pct", 0.0) if 'dd_check' in dir() else 0.0
+
+                dd_pct = (
+                    dd_check.get("drawdown_pct", 0.0) if "dd_check" in dir() else 0.0
+                )
                 sd_action = get_drawdown_action(dd_pct)
                 sd_sm = sd_action.get("size_multiplier", 1.0)
                 if sd_sm < 1.0:
@@ -1011,7 +1159,9 @@ class RiskManager:
                     )
                 if sd_action.get("block_new_trades"):
                     allowed = False
-                    reasons.append(f"StepwiseDrawdown {sd_action['level']}: blocking new trades")
+                    reasons.append(
+                        f"StepwiseDrawdown {sd_action['level']}: blocking new trades"
+                    )
             except Exception as e:
                 logger.error(f"RiskManager: stepwise drawdown check error: {e}")
 
@@ -1024,17 +1174,21 @@ class RiskManager:
         if allowed:
             logger.info(
                 "RiskManager: pre-trade PASS for %s (size_mult=%.1f)",
-                symbol, adjustments["size_multiplier"],
+                symbol,
+                adjustments["size_multiplier"],
             )
         else:
             logger.warning(
                 "RiskManager: pre-trade BLOCK %s – %s",
-                symbol, "; ".join(reasons),
+                symbol,
+                "; ".join(reasons),
             )
 
         return result
 
-    def post_trade_update(self, symbol: str, pnl: float, remaining_qty: float = 0) -> None:
+    def post_trade_update(
+        self, symbol: str, pnl: float, remaining_qty: float = 0
+    ) -> None:
         """Update trailing stop and loss guard after a trade closes.
 
         Args:
@@ -1071,24 +1225,32 @@ class RiskManager:
             else:
                 logger.info(
                     "RiskManager: trailing stop preserved for %s (remaining_qty=%.8f, partial close)",
-                    symbol, remaining_qty,
+                    symbol,
+                    remaining_qty,
                 )
         except Exception as e:
             logger.error(f"RiskManager: failed to remove trailing stop: {e}")
 
         logger.info(
             "RiskManager: post-trade update for %s (PnL=%.4f USDT)",
-            symbol, pnl,
+            symbol,
+            pnl,
         )
 
     def get_full_status(self) -> Dict:
         """Return a comprehensive status of all risk modules."""
-        trend = self.trend_filter._cache if self.trend_filter._cache else {"trend": "N/A"}
+        trend = (
+            self.trend_filter._cache if self.trend_filter._cache else {"trend": "N/A"}
+        )
         return {
             "trend_filter": trend,
             "trailing_stops": self.trailing_stop.get_all(),
             "loss_guard": self.loss_guard.get_status(),
-            "drawdown_breaker": self.drawdown_breaker.get_status() if getattr(self, "drawdown_breaker", None) else None,
+            "drawdown_breaker": (
+                self.drawdown_breaker.get_status()
+                if self.drawdown_breaker is not None
+                else None
+            ),
             "sector_exposure": {
                 "max_sector_pct": self.sector_exposure.MAX_SECTOR_PCT,
                 "sectors": list(self.sector_exposure.SECTORS.keys()),
@@ -1117,7 +1279,6 @@ class RiskManager:
             }
         """
         from src.state_db import get_state_db
-        import sqlite3
 
         db = get_state_db()
         conn = db._get_conn()
@@ -1127,7 +1288,7 @@ class RiskManager:
             """SELECT net_pnl_pct, is_win FROM trade_outcomes
                WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
                ORDER BY entry_time DESC LIMIT ?""",
-            (lookback_trades,)
+            (lookback_trades,),
         ).fetchall()
 
         if not rows or len(rows) < 5:
@@ -1144,7 +1305,7 @@ class RiskManager:
         losses = [abs(r[0]) for r in rows if r[0] < 0]
 
         p = len(wins) / len(rows)  # win rate
-        q = 1 - p                  # loss rate
+        q = 1 - p  # loss rate
 
         avg_win = sum(wins) / len(wins) if wins else 0
         avg_loss = sum(losses) / len(losses) if losses else 1

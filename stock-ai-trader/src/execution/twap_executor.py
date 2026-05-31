@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
-from shared.core.state_db import get_state_db
 from shared.risk.risk_manager import RiskManager
 from src.brokers.broker_protocol import BrokerProtocol
 from src.execution.order_executor import OrderExecutor, OrderResult
@@ -24,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TWAPResult:
     """Aggregated result of a TWAP execution."""
+
     success: bool
     symbol: str
     side: str
@@ -52,14 +52,16 @@ class TWAPExecutor:
     - Situations where urgency is moderate
     """
 
-    def __init__(self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None):
+    def __init__(
+        self, broker: BrokerProtocol, risk_manager: Optional[RiskManager] = None
+    ):
         self.order_executor = OrderExecutor(broker, risk_manager)
 
     # NOTE: This method uses blocking time.sleep() and synchronous broker calls.
     # In the future, this should be refactored to an async method (async def)
     # and called from an async context, using asyncio.sleep() and await on
     # broker calls. The parent caller is now async.
-    def execute_twap(
+    async def execute_twap(
         self,
         symbol: str,
         side: str,
@@ -90,7 +92,13 @@ class TWAPExecutor:
 
         logger.info(
             "TWAP start: %s %s %.0f shares over %d min in %d slices (%.0f shares every %.0fs)",
-            side, symbol, quantity, duration_minutes, num_slices, slice_qty, interval_seconds,
+            side,
+            symbol,
+            quantity,
+            duration_minutes,
+            num_slices,
+            slice_qty,
+            interval_seconds,
         )
 
         start_time = datetime.utcnow()
@@ -110,9 +118,11 @@ class TWAPExecutor:
             if this_qty <= 0:
                 continue
 
-            logger.info("TWAP slice %d/%d: %s %s x%d", i + 1, num_slices, side, symbol, this_qty)
+            logger.info(
+                "TWAP slice %d/%d: %s %s x%d", i + 1, num_slices, side, symbol, this_qty
+            )
 
-            result = self.order_executor.place_order(
+            result = await self.order_executor.place_order(
                 symbol=symbol,
                 side=side,
                 quantity=this_qty,
@@ -156,9 +166,13 @@ class TWAPExecutor:
 
         logger.info(
             "TWAP done: %s %s — filled %.0f/%.0f (%.1f%%) avg $%.2f in %d slices",
-            side, symbol, total_filled, quantity,
+            side,
+            symbol,
+            total_filled,
+            quantity,
             (total_filled / quantity * 100) if quantity else 0,
-            avg_price, len(results),
+            avg_price,
+            len(results),
         )
 
         return twap_result

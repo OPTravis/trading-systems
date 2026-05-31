@@ -5,7 +5,7 @@ Technical Indicators Calculator
 # Python 3.11.15 (uv build) removed random.randbits; numpy expects it
 import random as _random
 if not hasattr(_random, 'randbits'):
-    _random.randbits = _random.getrandbits
+    _random.randbits = _random.getrandbits  # type: ignore[attr-defined]
 
 import pandas as pd
 import numpy as np
@@ -131,7 +131,7 @@ class Indicators:
             return {"vpn": [price_min], "bin_size": 0}
         bin_size = (price_max - price_min) / bins
         
-        profile = {}
+        profile: Dict[int, float] = {}
         for p, v in zip(prices, volumes):
             bin_idx = int((p - price_min) / bin_size)
             bin_idx = min(bin_idx, bins - 1)
@@ -227,7 +227,7 @@ class Indicators:
     def trend_strength(klines: List[Dict]) -> Dict[str, float]:
         """Calculate overall trend strength"""
         if len(klines) < 50:
-            return {"trend": "unknown", "strength": 0}
+            return {"trend": 0.0, "strength": 0.0}
         
         prices = [k["close"] for k in klines]
         
@@ -534,15 +534,15 @@ class Indicators:
         rsi_14 = Indicators.rsi(closes, 14)
         # RSI 30-70 range maps to 0-100; <30 oversold (contrarian bullish), >70 overbought
         if rsi_14 <= 30:
-            rsi_score = 60  # oversold = potential bounce
+            rsi_score = 60.0  # oversold = potential bounce
         elif rsi_14 <= 45:
-            rsi_score = 35 + (rsi_14 - 30) / 15 * 15  # 35-50
+            rsi_score = 35.0 + (rsi_14 - 30) / 15 * 15  # 35-50
         elif rsi_14 <= 55:
-            rsi_score = 50  # neutral
+            rsi_score = 50.0  # neutral
         elif rsi_14 <= 70:
-            rsi_score = 50 + (rsi_14 - 55) / 15 * 30  # 50-80
+            rsi_score = 50.0 + (rsi_14 - 55) / 15 * 30  # 50-80
         else:
-            rsi_score = 70  # overbought = risk of pullback
+            rsi_score = 70.0  # overbought = risk of pullback
 
         # --- Factor 3: MACD Histogram (20%) ---
         macd_data = Indicators.macd(closes)

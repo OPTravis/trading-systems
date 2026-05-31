@@ -18,8 +18,8 @@ that can be adapted into the existing RiskManager class.
 
 import logging
 import time
-from datetime import datetime, timedelta, UTC
-from typing import Optional, Dict, List, Any
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,14 @@ logger = logging.getLogger(__name__)
 # This is the gold standard for risk-based position sizing.
 # =============================================================================
 
+
 def calculate_risk_per_trade_position_size(
     portfolio_value: float,
-    risk_pct: float,           # e.g., 0.02 = 2% max loss per trade
+    risk_pct: float,  # e.g., 0.02 = 2% max loss per trade
     entry_price: float,
-    stoploss_price: float,     # absolute price where SL is set
+    stoploss_price: float,  # absolute price where SL is set
     max_position_pct: float = 0.15,  # hard cap: never risk more than 15% on one trade
-    min_stake: float = 10.0,   # minimum trade size in USDT
+    min_stake: float = 10.0,  # minimum trade size in USDT
 ) -> float:
     """
     Calculate position size so that if stop-loss is hit, you only lose
@@ -164,6 +165,7 @@ def get_available_stake_amount(
 #   4. Stop losses ONLY walk up (for longs), never down — this is critical
 # =============================================================================
 
+
 class FreqtradeStyleTrailingStop:
     """
     A trailing stop-loss implementation inspired by freqtrade's strategy/interface.py
@@ -178,8 +180,8 @@ class FreqtradeStyleTrailingStop:
 
     def __init__(
         self,
-        initial_stoploss_pct: float = -0.05,    # -5% initial stop
-        trailing_stop_positive: float = -0.02,    # -2% trailing when in profit
+        initial_stoploss_pct: float = -0.05,  # -5% initial stop
+        trailing_stop_positive: float = -0.02,  # -2% trailing when in profit
         trailing_stop_positive_offset: float = 0.03,  # trigger at +3% profit
         trailing_only_offset_is_reached: bool = True,
     ):
@@ -235,13 +237,18 @@ class FreqtradeStyleTrailingStop:
 
         # Determine if we should apply trailing
         should_trail = True
-        if self.trailing_only_offset_is_reached and current_profit < self.trailing_stop_positive_offset:
+        if (
+            self.trailing_only_offset_is_reached
+            and current_profit < self.trailing_stop_positive_offset
+        ):
             should_trail = False
 
         if should_trail:
             # If profit exceeds offset, use the tighter positive trailing stop
-            if (self.trailing_stop_positive is not None and
-                    current_profit > self.trailing_stop_positive_offset):
+            if (
+                self.trailing_stop_positive is not None
+                and current_profit > self.trailing_stop_positive_offset
+            ):
                 new_stoploss_pct = self.trailing_stop_positive
 
         # Calculate absolute stop price
@@ -291,6 +298,7 @@ class FreqtradeStyleTrailingStop:
 # custom_stoploss callback in strategies.
 # =============================================================================
 
+
 def dynamic_breakeven_stoploss(
     entry_price: float,
     current_price: float,
@@ -322,7 +330,7 @@ def dynamic_breakeven_stoploss(
         current_profit = (current_price - entry_price) / entry_price
 
     # Default: keep current stoploss
-    result = {
+    result: Dict[str, Any] = {
         "suggested_stoploss": current_stoploss,
         "moved_to_breakeven": False,
         "current_profit_pct": round(current_profit * 100, 2),
@@ -337,14 +345,18 @@ def dynamic_breakeven_stoploss(
             if breakeven_price > current_stoploss or current_stoploss == 0:
                 result["suggested_stoploss"] = breakeven_price
                 result["moved_to_breakeven"] = True
-                result["reason"] = f"breakeven_at_{breakeven_offset_pct:.1%}_above_entry"
+                result["reason"] = (
+                    f"breakeven_at_{breakeven_offset_pct:.1%}_above_entry"
+                )
         else:
             breakeven_price = entry_price * (1 + breakeven_offset_pct)
             # For longs, breakeven stop should be BELOW entry (higher = better, ratchet up)
             if breakeven_price > current_stoploss or current_stoploss == 0:
                 result["suggested_stoploss"] = breakeven_price
                 result["moved_to_breakeven"] = True
-                result["reason"] = f"breakeven_at_{breakeven_offset_pct:.1%}_above_entry"
+                result["reason"] = (
+                    f"breakeven_at_{breakeven_offset_pct:.1%}_above_entry"
+                )
 
     # Move to take-profit bracket when profit >= 5%
     if current_profit >= 0.05:
@@ -370,6 +382,7 @@ def dynamic_breakeven_stoploss(
 # Freqtrade also extends the whitelist with pairs of open trades to ensure
 # candle data is always downloaded for open positions.
 # =============================================================================
+
 
 def get_free_open_trade_slots(
     open_trade_count: int,
@@ -453,6 +466,7 @@ def should_allow_new_trade(
 # Freqtrade stores locks in a PairLocks table with expiry timestamps.
 # =============================================================================
 
+
 class CooldownAfterLoss:
     """
     Per-pair cooldown after trade closure.
@@ -493,7 +507,9 @@ class CooldownAfterLoss:
         unlock_at = self._locks.get(pair, 0)
         if time.time() < unlock_at:
             remaining = (unlock_at - time.time()) / 60
-            logger.debug(f"CooldownAfterLoss: {pair} locked for {remaining:.1f} more min")
+            logger.debug(
+                f"CooldownAfterLoss: {pair} locked for {remaining:.1f} more min"
+            )
             return True
         # Clean up expired locks
         if pair in self._locks:
@@ -522,6 +538,7 @@ class CooldownAfterLoss:
 # stoploss hit count rather than absolute loss amount.
 # =============================================================================
 
+
 class StoplossGuard:
     """
     Stop trading if too many stoplosses trigger within a time window.
@@ -535,11 +552,11 @@ class StoplossGuard:
 
     def __init__(
         self,
-        trade_limit: int = 3,              # max stoploss hits before guard triggers
+        trade_limit: int = 3,  # max stoploss hits before guard triggers
         lookback_period_minutes: int = 60,  # time window to check
-        stop_duration_minutes: int = 240,   # how long to pause trading
-        required_profit: float = 0.0,       # only count trades with profit < this
-        only_per_pair: bool = False,        # if True, only lock the offending pair
+        stop_duration_minutes: int = 240,  # how long to pause trading
+        required_profit: float = 0.0,  # only count trades with profit < this
+        only_per_pair: bool = False,  # if True, only lock the offending pair
     ):
         self.trade_limit = trade_limit
         self.lookback_minutes = lookback_period_minutes
@@ -551,14 +568,18 @@ class StoplossGuard:
         # Global lock expiry
         self._global_lock_until: float = 0
 
-    def record_stoploss_hit(self, pair: str, profit_pct: float, timestamp: Optional[float] = None) -> None:
+    def record_stoploss_hit(
+        self, pair: str, profit_pct: float, timestamp: Optional[float] = None
+    ) -> None:
         """Record a stoploss-triggered trade closure."""
         ts = timestamp or time.time()
-        self._trade_log.append({
-            "time": ts,
-            "pair": pair,
-            "profit_pct": profit_pct,
-        })
+        self._trade_log.append(
+            {
+                "time": ts,
+                "pair": pair,
+                "profit_pct": profit_pct,
+            }
+        )
         # Trim old entries
         cutoff = ts - (self.lookback_minutes * 60 * 2)  # keep 2x lookback
         self._trade_log = [t for t in self._trade_log if t["time"] > cutoff]
@@ -577,17 +598,23 @@ class StoplossGuard:
 
         # Count recent stoploss hits
         recent_stops = [
-            t for t in self._trade_log
+            t
+            for t in self._trade_log
             if t["time"] >= lookback_until and t["profit_pct"] < self.required_profit
         ]
 
         if len(recent_stops) < self.trade_limit:
-            return {"triggered": False, "count": len(recent_stops), "limit": self.trade_limit}
+            return {
+                "triggered": False,
+                "count": len(recent_stops),
+                "limit": self.trade_limit,
+            }
 
         # Guard triggered!
         if self.only_per_pair:
             # Only lock the pair with most stoplosses
             from collections import Counter
+
             pair_counts = Counter(t["pair"] for t in recent_stops)
             worst_pair = pair_counts.most_common(1)[0][0]
             locked = [worst_pair]
@@ -598,7 +625,9 @@ class StoplossGuard:
 
         lock_until = now + (self.stop_duration_minutes * 60)
 
-        logger.warning(f"StoplossGuard: {reason} → pausing until {datetime.fromtimestamp(lock_until).strftime('%H:%M')}")
+        logger.warning(
+            f"StoplossGuard: {reason} → pausing until {datetime.fromtimestamp(lock_until).strftime('%H:%M')}"
+        )
 
         return {
             "triggered": True,
@@ -621,6 +650,7 @@ class StoplossGuard:
 #   - "equity": drawdown based on actual account equity curve
 # =============================================================================
 
+
 class MaxDrawdownProtection:
     """
     Stop trading if drawdown exceeds threshold within a lookback window.
@@ -635,7 +665,7 @@ class MaxDrawdownProtection:
         self,
         max_allowed_drawdown: float = 0.10,  # 10% max drawdown
         lookback_period_minutes: int = 1440,  # 24 hours
-        stop_duration_minutes: int = 60,      # pause for 1 hour
+        stop_duration_minutes: int = 60,  # pause for 1 hour
         starting_balance: float = 10000.0,
     ):
         self.max_allowed_drawdown = max_allowed_drawdown
@@ -647,7 +677,9 @@ class MaxDrawdownProtection:
         self._peak_equity: float = starting_balance
         self._lock_until: float = 0
 
-    def record_trade(self, profit_abs: float, timestamp: Optional[float] = None) -> None:
+    def record_trade(
+        self, profit_abs: float, timestamp: Optional[float] = None
+    ) -> None:
         """Record a closed trade's absolute profit."""
         ts = timestamp or time.time()
         self._trade_log.append({"time": ts, "profit_abs": profit_abs})
@@ -725,6 +757,7 @@ class MaxDrawdownProtection:
 # Below is a clean daily loss limit implementation that tracks cumulative
 # daily PnL and stops trading when the limit is breached.
 # =============================================================================
+
 
 class DailyLossLimit:
     """
@@ -804,6 +837,7 @@ class DailyLossLimit:
 # to ensure fees and slippage are covered. This prevents over-leveraging.
 # =============================================================================
 
+
 def apply_tradable_balance_ratio(
     total_balance: float,
     tied_up_in_trades: float,
@@ -844,6 +878,7 @@ def apply_tradable_balance_ratio(
 #   3. Each protection returns a lock with expiry time
 #   4. Locks are stored in a PairLocks table
 # =============================================================================
+
 
 class ProtectionManager:
     """
@@ -917,7 +952,10 @@ class ProtectionManager:
         if self.cooldown.is_pair_locked(pair):
             allowed = False
             unlock = self.cooldown.get_lock_until(pair)
-            reasons.append(f"Pair {pair} in cooldown until {datetime.fromtimestamp(unlock).strftime('%H:%M')}")
+            if unlock is not None:
+                reasons.append(
+                    f"Pair {pair} in cooldown until {datetime.fromtimestamp(unlock).strftime('%H:%M')}"
+                )
 
         # 2. Stoploss guard check
         sl_check = self.stoploss_guard.check()
@@ -932,7 +970,9 @@ class ProtectionManager:
         if dd_check["triggered"]:
             allowed = False
             self._global_lock_until = dd_check["until"]
-            reasons.append(f"Drawdown {dd_check['drawdown_pct']:.1f}% > {dd_check['threshold_pct']:.1f}%")
+            reasons.append(
+                f"Drawdown {dd_check['drawdown_pct']:.1f}% > {dd_check['threshold_pct']:.1f}%"
+            )
 
         # 4. Daily loss check
         dl_check = self.daily_loss.check()

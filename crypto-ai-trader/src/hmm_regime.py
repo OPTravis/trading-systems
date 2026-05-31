@@ -20,8 +20,9 @@ strategy weights, position sizing, and risk parameters.
 import json
 import logging
 import time
+from typing import Dict, List, Optional
+
 import numpy as np
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +34,23 @@ REGIME_STRATEGY_MAP = {
     "BULL_TREND": {
         "preferred_strategies": ["trend", "vwap"],
         "avoid_strategies": ["grid"],
-        "position_scale": 1.2,      # Slightly more aggressive
-        "sl_multiplier": 1.0,       # Normal SL
-        "tp_multiplier": 1.2,       # Wider TP (ride the trend)
+        "position_scale": 1.2,  # Slightly more aggressive
+        "sl_multiplier": 1.0,  # Normal SL
+        "tp_multiplier": 1.2,  # Wider TP (ride the trend)
         "score_threshold_adj": -5,  # Lower threshold (more trades)
     },
     "BEAR_TREND": {
         "preferred_strategies": ["dca", "rsi"],
         "avoid_strategies": ["trend", "grid"],
-        "position_scale": 0.6,      # Reduce size
-        "sl_multiplier": 0.8,       # Tighter SL
-        "tp_multiplier": 0.8,       # Quicker TP (don't hold losers)
+        "position_scale": 0.6,  # Reduce size
+        "sl_multiplier": 0.8,  # Tighter SL
+        "tp_multiplier": 0.8,  # Quicker TP (don't hold losers)
         "score_threshold_adj": 10,  # Higher threshold (fewer trades)
     },
     "RANGE_BOUND": {
         "preferred_strategies": ["bollinger", "grid", "rsi"],
         "avoid_strategies": ["trend"],
-        "position_scale": 1.0,      # Normal size
+        "position_scale": 1.0,  # Normal size
         "sl_multiplier": 1.0,
         "tp_multiplier": 1.0,
         "score_threshold_adj": 0,
@@ -57,10 +58,10 @@ REGIME_STRATEGY_MAP = {
     "HIGH_VOL": {
         "preferred_strategies": ["dca"],
         "avoid_strategies": ["trend", "grid", "vwap"],
-        "position_scale": 0.5,      # Half size
-        "sl_multiplier": 1.5,       # Wider SL (whipsaw protection)
-        "tp_multiplier": 1.5,       # Wider TP (capture swings)
-        "score_threshold_adj": 5,   # Moderate bar (was +15, too aggressive with FEAR stacking)
+        "position_scale": 0.5,  # Half size
+        "sl_multiplier": 1.5,  # Wider SL (whipsaw protection)
+        "tp_multiplier": 1.5,  # Wider TP (capture swings)
+        "score_threshold_adj": 5,  # Moderate bar (was +15, too aggressive with FEAR stacking)
     },
 }
 
@@ -74,6 +75,7 @@ class HMMRegimeDetector:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
         self._model = None
@@ -96,7 +98,8 @@ class HMMRegimeDetector:
         # Parse klines to arrays (handle both dict and list formats)
         def _get(k, field, idx):
             if isinstance(k, dict):
-                return float(k.get(field, k.get(idx, 0)))
+                val = k.get(field, k.get(idx, 0))
+                return float(val if val is not None else 0)
             return float(k[idx])
 
         closes = np.array([_get(k, "close", 4) for k in klines_1h])
@@ -109,18 +112,20 @@ class HMMRegimeDetector:
             return None
 
         daily_closes = closes[::24][:n_days]
-        daily_highs = np.array([highs[i*24:(i+1)*24].max() for i in range(n_days)])
-        daily_lows = np.array([lows[i*24:(i+1)*24].min() for i in range(n_days)])
+        np.array([highs[i * 24 : (i + 1) * 24].max() for i in range(n_days)])
+        np.array([lows[i * 24 : (i + 1) * 24].min() for i in range(n_days)])
 
         # 1. Log returns
         log_returns = np.diff(np.log(daily_closes))
 
         # 2. Realized volatility (14-day rolling)
         vol_window = 14
-        realized_vol = np.array([
-            log_returns[max(0, i-vol_window+1):i+1].std() * np.sqrt(365)
-            for i in range(len(log_returns))
-        ])
+        realized_vol = np.array(
+            [
+                log_returns[max(0, i - vol_window + 1) : i + 1].std() * np.sqrt(365)
+                for i in range(len(log_returns))
+            ]
+        )
 
         # 3. RSI (14-period)
         rsi = self._compute_rsi(daily_closes, period=14)
@@ -130,12 +135,14 @@ class HMMRegimeDetector:
 
         # Align all features to same length
         min_len = min(len(log_returns), len(realized_vol), len(rsi), len(bb_pos))
-        features = np.column_stack([
-            log_returns[-min_len:],
-            realized_vol[-min_len:],
-            rsi[-min_len:],
-            bb_pos[-min_len:],
-        ])
+        features = np.column_stack(
+            [
+                log_returns[-min_len:],
+                realized_vol[-min_len:],
+                rsi[-min_len:],
+                bb_pos[-min_len:],
+            ]
+        )
 
         # Remove NaN rows
         valid = ~np.isnan(features).any(axis=1)
@@ -170,11 +177,13 @@ class HMMRegimeDetector:
         return rsi
 
     @staticmethod
-    def _compute_bb_position(prices: np.ndarray, period: int = 20, std_dev: float = 2.0) -> np.ndarray:
+    def _compute_bb_position(
+        prices: np.ndarray, period: int = 20, std_dev: float = 2.0
+    ) -> np.ndarray:
         """Compute price position within Bollinger Bands (-1 to +1)."""
         bb_pos = np.zeros(len(prices))
         for i in range(period, len(prices)):
-            window = prices[i-period:i]
+            window = prices[i - period : i]
             mean = window.mean()
             std = window.std()
             if std > 0:
@@ -239,12 +248,14 @@ class HMMRegimeDetector:
         # Use internal _covars_ to bypass property setter shape validation
         # (hmmlearn getter may return (n,n,f) but setter expects (n,f) for diag)
         try:
-            if hasattr(model, '_covars_') and model._covars_ is not None:
+            if hasattr(model, "_covars_") and model._covars_ is not None:
                 model._covars_ = model._covars_[sorted_indices]
-            elif hasattr(model, 'covars_') and model.covars_ is not None:
+            elif hasattr(model, "covars_") and model.covars_ is not None:
                 covars = model.covars_
                 if covars.ndim == 3:
-                    covars = np.array([np.diag(covars[i]) for i in range(covars.shape[0])])
+                    covars = np.array(
+                        [np.diag(covars[i]) for i in range(covars.shape[0])]
+                    )
                 model.covars_ = covars[sorted_indices]
         except Exception:
             logger.error("HMM covars reordering failed, skipping", exc_info=True)
@@ -253,23 +264,27 @@ class HMMRegimeDetector:
         # Use the FULL mapping, not just label_0, to detect actual flips.
         prev_mapping = self._load_label_mapping()
         if prev_mapping is not None:
-            new_means_sorted = model.means_[:, 0]  # already sorted ascending
+            model.means_[:, 0]  # already sorted ascending
             prev_label_0 = prev_mapping.get("label_0", "BEAR_TREND")
             prev_label_3 = prev_mapping.get("label_3", "BULL_TREND")
             # Only flip if the extremes are reversed: prev had state0=BULL but now state0=lowest mean
             if prev_label_0 == "BULL_TREND" and prev_label_3 == "BEAR_TREND":
-                logger.warning("HMM label flip detected — reversing state order for consistency")
+                logger.warning(
+                    "HMM label flip detected — reversing state order for consistency"
+                )
                 reverse = np.array([3, 2, 1, 0])
                 model.means_ = model.means_[reverse]
                 model.startprob_ = model.startprob_[reverse]
                 model.transmat_ = model.transmat_[reverse][:, reverse]
                 try:
-                    if hasattr(model, '_covars_') and model._covars_ is not None:
+                    if hasattr(model, "_covars_") and model._covars_ is not None:
                         model._covars_ = model._covars_[reverse]
-                    elif hasattr(model, 'covars_') and model.covars_ is not None:
+                    elif hasattr(model, "covars_") and model.covars_ is not None:
                         covars = model.covars_
                         if covars.ndim == 3:
-                            covars = np.array([np.diag(covars[i]) for i in range(covars.shape[0])])
+                            covars = np.array(
+                                [np.diag(covars[i]) for i in range(covars.shape[0])]
+                            )
                         model.covars_ = covars[reverse]
                 except Exception:
                     logger.error("HMM covars reverse reordering failed", exc_info=True)
@@ -315,6 +330,8 @@ class HMMRegimeDetector:
         features_norm = (features - self._mean) / self._std
 
         # Predict
+        if self._model is None:
+            return None
         try:
             probs = self._model.predict_proba(features_norm)
             last_probs = probs[-1]  # Most recent time step
@@ -324,8 +341,7 @@ class HMMRegimeDetector:
             confidence = float(last_probs[regime_idx])
 
             prob_dict = {
-                REGIME_LABELS[i]: round(float(last_probs[i]), 4)
-                for i in range(4)
+                REGIME_LABELS[i]: round(float(last_probs[i]), 4) for i in range(4)
             }
 
             # Current feature values
@@ -360,14 +376,15 @@ class HMMRegimeDetector:
     def get_cached_prediction(self) -> Optional[Dict]:
         """Get the most recent cached prediction from DB."""
         conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'hmm_regime'"
-        ).fetchone()
+        row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_regime'").fetchone()
         if row:
             try:
                 return json.loads(row["value"])
             except (json.JSONDecodeError, TypeError):
-                logger.error("Failed to parse cached HMM regime prediction from DB", exc_info=True)
+                logger.error(
+                    "Failed to parse cached HMM regime prediction from DB",
+                    exc_info=True,
+                )
         return None
 
     def _store_prediction(self, result: Dict):
@@ -382,12 +399,16 @@ class HMMRegimeDetector:
 
     def _store_training_state(self, features: np.ndarray):
         """Store model parameters in DB for persistence."""
+        if self._model is None:
+            return
         # hmmlearn diag covars_: .covars_ property returns full (n, n_feat, n_feat)
         # but GaussianHMM(covariance_type='diag') expects (n, n_feat) on load.
         # Extract diagonals for correct round-trip.
         covars_raw = self._model.covars_
         if covars_raw.ndim == 3:
-            covars_store = np.array([np.diag(covars_raw[i]) for i in range(covars_raw.shape[0])])
+            covars_store = np.array(
+                [np.diag(covars_raw[i]) for i in range(covars_raw.shape[0])]
+            )
         else:
             covars_store = covars_raw
 
@@ -470,7 +491,9 @@ class HMMRegimeDetector:
             covars_raw = np.array(state["covars"])
             if covars_raw.ndim == 3:
                 # Legacy: stored as full diagonal matrices (n, n_feat, n_feat)
-                covars_raw = np.array([np.diag(covars_raw[i]) for i in range(covars_raw.shape[0])])
+                covars_raw = np.array(
+                    [np.diag(covars_raw[i]) for i in range(covars_raw.shape[0])]
+                )
             model.covars_ = covars_raw
             model.startprob_ = np.array(state["startprob"])
             model.transmat_ = np.array(state["transmat"])
@@ -500,7 +523,7 @@ class HMMRegimeDetector:
         }
 
         lines = [
-            f"## HMM 市場體制",
+            "## HMM 市場體制",
             "",
             f"**當前體制**: {REGIME_NAMES.get(regime, regime)}",
             f"**置信度**: {conf:.1%}",
@@ -512,23 +535,27 @@ class HMMRegimeDetector:
             lines.append(f"- {indicator} {REGIME_NAMES.get(r, r)}: {p:.1%}")
 
         if feats:
-            lines.extend([
-                "",
-                "**特徵值**:",
-                f"- 收益率: {feats.get('return', 0):+.4f}",
-                f"- 波動率: {feats.get('volatility', 0):.4f}",
-                f"- RSI: {feats.get('rsi', 0):.1f}",
-                f"- BB 位置: {feats.get('bb_position', 0):.2f}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "**特徵值**:",
+                    f"- 收益率: {feats.get('return', 0):+.4f}",
+                    f"- 波動率: {feats.get('volatility', 0):.4f}",
+                    f"- RSI: {feats.get('rsi', 0):.1f}",
+                    f"- BB 位置: {feats.get('bb_position', 0):.2f}",
+                ]
+            )
 
         adj = self.get_strategy_adjustments(regime)
-        lines.extend([
-            "",
-            "**策略建議**:",
-            f"- 偏好: {', '.join(adj['preferred_strategies'])}",
-            f"- 避免: {', '.join(adj['avoid_strategies'])}",
-            f"- 倉位縮放: {adj['position_scale']:.1f}x",
-            f"- 閾值調整: {adj['score_threshold_adj']:+d}",
-        ])
+        lines.extend(
+            [
+                "",
+                "**策略建議**:",
+                f"- 偏好: {', '.join(adj['preferred_strategies'])}",
+                f"- 避免: {', '.join(adj['avoid_strategies'])}",
+                f"- 倉位縮放: {adj['position_scale']:.1f}x",
+                f"- 閾值調整: {adj['score_threshold_adj']:+d}",
+            ]
+        )
 
         return "\n".join(lines)

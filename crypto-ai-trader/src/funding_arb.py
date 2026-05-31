@@ -22,15 +22,12 @@ Usage (when futures enabled):
 
 import json
 import logging
-import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 from src.strategy_guard import strategy_guard
-
 from src.utils import get_project_root
 
 _DATA_DIR = get_project_root() / "data" / "funding_arb"
@@ -68,6 +65,7 @@ class FundingArbitrage:
     def _load_state(self) -> Dict:
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             state = db.dca_get("funding_arb")  # reuse dca table for key-value
             if state and isinstance(state, dict):
@@ -80,19 +78,22 @@ class FundingArbitrage:
                 with open(self._state_file, "r") as f:
                     return json.load(f)
         except Exception:
-            logger.error("Failed to load funding arb state from legacy JSON file", exc_info=True)
+            logger.error(
+                "Failed to load funding arb state from legacy JSON file", exc_info=True
+            )
         return {"positions": {}, "history": []}
 
     def _save_state(self):
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db.dca_set("funding_arb", self._state)
         except Exception as e:
             logger.error("Failed to save funding arb state: %s", e)
 
     @strategy_guard(max_failures=2, cooldown_sec=300, default_return=[])
-    def scan_opportunities(self, symbols: List[str] = None) -> List[Dict]:
+    def scan_opportunities(self, symbols: Optional[List[str]] = None) -> List[Dict]:
         """Scan for funding rate arbitrage opportunities.
 
         ⚠️  Uses public futures API for data only — no trading.
@@ -116,10 +117,13 @@ class FundingArbitrage:
         # Get all premium index data
         # FIX A6: Add environment variable gate for futures API calls
         import os
+
         if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-            logger.debug("Futures API disabled (ENABLE_FUTURES not set). Skipping funding arb scan.")
+            logger.debug(
+                "Futures API disabled (ENABLE_FUTURES not set). Skipping funding arb scan."
+            )
             return []
-        
+
         try:
             resp = requests.get(
                 "https://fapi.binance.com/fapi/v1/premiumIndex",
@@ -163,17 +167,19 @@ class FundingArbitrage:
             score = min(100, annualized / 0.5)  # 50% annual = 100 score
             score = max(0, score - abs(basis_pct) * 20)  # penalize basis
 
-            opportunities.append({
-                "symbol": sym,
-                "funding_rate": fr,
-                "funding_rate_pct": fr * 100,
-                "annualized_pct": round(annualized, 1),
-                "basis_pct": round(basis_pct, 3),
-                "mark_price": mark,
-                "index_price": index,
-                "score": round(score, 1),
-                "next_funding_time": item.get("nextFundingTime"),
-            })
+            opportunities.append(
+                {
+                    "symbol": sym,
+                    "funding_rate": fr,
+                    "funding_rate_pct": fr * 100,
+                    "annualized_pct": round(annualized, 1),
+                    "basis_pct": round(basis_pct, 3),
+                    "mark_price": mark,
+                    "index_price": index,
+                    "score": round(score, 1),
+                    "next_funding_time": item.get("nextFundingTime"),
+                }
+            )
 
         # Sort by score
         opportunities.sort(key=lambda x: -x["score"])
@@ -187,7 +193,9 @@ class FundingArbitrage:
 
         Original strategy: Buy spot + Short perp (equal notional).
         """
-        logger.error("FundingArb: BLOCKED — SPOT ONLY system, futures API not available")
+        logger.error(
+            "FundingArb: BLOCKED — SPOT ONLY system, futures API not available"
+        )
         return None
 
     def check_positions(self) -> List[Dict]:
@@ -196,7 +204,9 @@ class FundingArbitrage:
         ⚠️  REQUIRES FUTURES API — currently disabled (SPOT ONLY system).
             Returns empty list unconditionally.
         """
-        logger.error("FundingArb: BLOCKED — SPOT ONLY system, futures API not available")
+        logger.error(
+            "FundingArb: BLOCKED — SPOT ONLY system, futures API not available"
+        )
         return []
 
     def _close_position(self, symbol: str, pos: Dict, reason: str):
@@ -242,7 +252,9 @@ class FundingArbitrage:
             lines.append("")
             lines.append(f"活躍套利持倉: {status['total_positions']}")
             for sym, p in pos.items():
-                lines.append(f"  {sym}: 資金=${p.get('capital',0):.2f} 累計收益=${p.get('earned',0):.4f}")
+                lines.append(
+                    f"  {sym}: 資金=${p.get('capital',0):.2f} 累計收益=${p.get('earned',0):.4f}"
+                )
 
         return "\n".join(lines)
 
@@ -250,20 +262,36 @@ class FundingArbitrage:
 if __name__ == "__main__":
     import argparse
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from src.binance_client import BinanceClient
 
     parser = argparse.ArgumentParser(description="Funding Arb CLI")
-    parser.add_argument("action", choices=["scan", "report", "status", "check"],
-                        help="scan: find opportunities, report: full report, status: brief status, check: check positions")
-    parser.add_argument("--symbols", default="BTC,ETH,BNB,SOL,AVAX,NEAR,SUI,SEI,BARD,XRP,ADA",
-                        help="Comma-separated symbols to scan")
-    parser.add_argument("--min-score", type=int, default=70,
-                        help="Minimum opportunity score to auto-open (default: 70)")
-    parser.add_argument("--capital", type=float, default=1000,
-                        help="Capital per position in USDT (default: 1000)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Scan only, do not open positions")
+    parser.add_argument(
+        "action",
+        choices=["scan", "report", "status", "check"],
+        help="scan: find opportunities, report: full report, status: brief status, check: check positions",
+    )
+    parser.add_argument(
+        "--symbols",
+        default="BTC,ETH,BNB,SOL,AVAX,NEAR,SUI,SEI,BARD,XRP,ADA",
+        help="Comma-separated symbols to scan",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=int,
+        default=70,
+        help="Minimum opportunity score to auto-open (default: 70)",
+    )
+    parser.add_argument(
+        "--capital",
+        type=float,
+        default=1000,
+        help="Capital per position in USDT (default: 1000)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Scan only, do not open positions"
+    )
     args = parser.parse_args()
 
     client = BinanceClient()
@@ -278,16 +306,18 @@ if __name__ == "__main__":
         else:
             print(f"\nFound {len(opps)} opportunities:")
             for o in sorted(opps, key=lambda x: x["score"], reverse=True):
-                print(f"  {o['symbol']}: FR={o['funding_rate']*100:.4f}%/8h "
-                      f"({o['annualized_pct']:.0f}% annualized) score={o['score']:.0f} "
-                      f"basis={o['basis_pct']:+.3f}%")
+                print(
+                    f"  {o['symbol']}: FR={o['funding_rate']*100:.4f}%/8h "
+                    f"({o['annualized_pct']:.0f}% annualized) score={o['score']:.0f} "
+                    f"basis={o['basis_pct']:+.3f}%"
+                )
                 if not args.dry_run and o["score"] >= args.min_score:
                     print(f"    -> Opening position with ${args.capital}...")
                     result = arb.open_position(o["symbol"], capital_usdt=args.capital)
                     if result:
                         print(f"    -> SUCCESS: {result}")
                     else:
-                        print(f"    -> FAILED")
+                        print("    -> FAILED")
                     print()
     elif args.action == "report":
         print(arb.format_report())
@@ -295,7 +325,9 @@ if __name__ == "__main__":
         status = arb.get_status()
         print(f"Active positions: {status['total_positions']}")
         for sym, p in status["positions"].items():
-            print(f"  {sym}: capital=${p.get('capital',0):.2f}, earned=${p.get('earned',0):.4f}")
+            print(
+                f"  {sym}: capital=${p.get('capital',0):.2f}, earned=${p.get('earned',0):.4f}"
+            )
     elif args.action == "check":
         arb.check_positions()
         print("Position check complete.")

@@ -2,21 +2,24 @@
 Feishu Notifier - Send trade notifications via Feishu Webhook
 """
 
-import os
 import logging
-import yaml
-import requests
-from typing import Dict, List, Optional
+import os
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from src.app_secrets import GENERAL_SECRETS, CRYPTO_SECRETS, load_secret_file
+import requests
+import yaml
+
+from src.app_secrets import CRYPTO_SECRETS, GENERAL_SECRETS, load_secret_file
 
 logger = logging.getLogger(__name__)
 
 
 def load_config():
     """Load trading config"""
-    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "risk_limits.yaml")
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "risk_limits.yaml"
+    )
     if os.path.exists(config_path):
         with open(config_path) as f:
             return yaml.safe_load(f)
@@ -26,7 +29,7 @@ def load_config():
 class FeishuNotifier:
     """Send notifications to Feishu via Webhook"""
 
-    def __init__(self, webhook_url: str = None):
+    def __init__(self, webhook_url: Optional[str] = None):
         self.webhook_url = webhook_url or os.environ.get("FEISHU_WEBHOOK_URL", "")
         self._load_from_secrets()
         self.config = load_config()
@@ -36,7 +39,11 @@ class FeishuNotifier:
         if self.webhook_url:
             return
 
-        for path in [CRYPTO_SECRETS, GENERAL_SECRETS, os.path.expanduser("~/.hermes/.env")]:
+        for path in [
+            CRYPTO_SECRETS,
+            GENERAL_SECRETS,
+            os.path.expanduser("~/.hermes/.env"),
+        ]:
             secrets = load_secret_file(path)
             if not secrets:
                 continue
@@ -51,39 +58,20 @@ class FeishuNotifier:
             return False
 
         try:
-            payload = {
+            payload: Dict[str, Any] = {
                 "msg_type": "text",
                 "content": {"text": text},
             }
             resp = requests.post(self.webhook_url, json=payload, timeout=10)
             if resp.status_code != 200:
-                logger.error(f"Feishu webhook error: {resp.status_code} {resp.text[:200]}")
+                logger.error(
+                    f"Feishu webhook error: {resp.status_code} {resp.text[:200]}"
+                )
                 return False
             return True
         except Exception as e:
             logger.error(f"Failed to send Feishu message: {e}")
             return False
-
-    def send_market_scan(self, opportunities: List[Dict], gainers: List[Dict], losers: List[Dict]) -> bool:
-        """Send market scan summary"""
-        lines = ["📊 市場掃描結果\n"]
-
-        if gainers:
-            lines.append("📈 Top Gainers:")
-            for g in gainers[:3]:
-                lines.append(f"  {g['symbol']}: +{g['change_pct']:.2f}%")
-
-        if losers:
-            lines.append("\n📉 Top Losers:")
-            for l in losers[:3]:
-                lines.append(f"  {l['symbol']}: {l['change_pct']:.2f}%")
-
-        if opportunities:
-            lines.append(f"\n🎯 Opportunities ({len(opportunities)}):")
-            for o in opportunities[:5]:
-                lines.append(f"  {o['symbol']}: Score {o['score']:.0f}")
-
-        return self.send_text("\n".join(lines))
 
     def get_strategy_config(self, strategy: str) -> Dict:
         """Get stop loss and take profit config for a strategy"""
@@ -97,7 +85,7 @@ class FeishuNotifier:
         strategy: str,
         score: int,
         signals: List[str],
-        reason: str
+        reason: str,
     ) -> bool:
         """Send opportunity with confirmation request"""
 
@@ -116,7 +104,9 @@ class FeishuNotifier:
             tp_size = tp["size_pct"]
             tp_price = current_price * (1 + tp_pct / 100)
             prefix = "├" if i < len(tp_levels) - 1 else "└"
-            tp_lines.append(f"{prefix} TP{i+1}: +{tp_pct}% @ ${tp_price:.6f} (卖出 {tp_size}%)")
+            tp_lines.append(
+                f"{prefix} TP{i+1}: +{tp_pct}% @ ${tp_price:.6f} (卖出 {tp_size}%)"
+            )
             total_tp_size += tp_size
 
         # Pad if needed
@@ -130,30 +120,34 @@ class FeishuNotifier:
             f"策略: {strategy.upper()}",
             f"当前价格: ${current_price:.6f}",
             "",
-            "📊 建议止盈:"
+            "📊 建议止盈:",
         ]
         lines.extend(tp_lines)
 
-        lines.extend([
-            "",
-            f"🛡 止损: -{stop_loss_pct}% @ ${stop_price:.6f}",
-            f"⏱ 最大持仓: {max_hold}小时",
-            "",
-            f"💡 信号: {reason}",
-            "",
-            "───" * 4,
-            '回复 "YES [Symbol]" 确认下单',
-            f"例如: YES {symbol}",
-            "",
-            "─" * 20,
-            "⚠️ 自动止损触发时立即执行，无需确认",
-            "⚠️ Testnet 测试中，请知悉"
-        ])
+        lines.extend(
+            [
+                "",
+                f"🛡 止损: -{stop_loss_pct}% @ ${stop_price:.6f}",
+                f"⏱ 最大持仓: {max_hold}小时",
+                "",
+                f"💡 信号: {reason}",
+                "",
+                "───" * 4,
+                '回复 "YES [Symbol]" 确认下单',
+                f"例如: YES {symbol}",
+                "",
+                "─" * 20,
+                "⚠️ 自动止损触发时立即执行，无需确认",
+                "⚠️ Testnet 测试中，请知悉",
+            ]
+        )
 
         text = "\n".join(lines)
         return self.send_text(text)
 
-    def send_market_scan(self, opportunities: List[Dict], gainers: List, losers: List) -> bool:
+    def send_market_scan(
+        self, opportunities: List[Dict], gainers: List, losers: List
+    ) -> bool:
         """Send market scan results"""
         if not opportunities and not gainers and not losers:
             return False
@@ -163,14 +157,22 @@ class FeishuNotifier:
         if gainers:
             lines.append("📈 涨幅榜:")
             for g in gainers[:5]:
-                vol = f"${g.get('quote_volume', 0)/1e6:.1f}M" if g.get('quote_volume', 0) > 0 else "N/A"
+                vol = (
+                    f"${g.get('quote_volume', 0)/1e6:.1f}M"
+                    if g.get("quote_volume", 0) > 0
+                    else "N/A"
+                )
                 lines.append(f"  {g['symbol']}: +{g['change_pct']:.2f}% ({vol})")
             lines.append("")
 
         if losers:
             lines.append("📉 跌幅榜:")
             for l in losers[:5]:
-                vol = f"${l.get('quote_volume', 0)/1e6:.1f}M" if l.get('quote_volume', 0) > 0 else "N/A"
+                vol = (
+                    f"${l.get('quote_volume', 0)/1e6:.1f}M"
+                    if l.get("quote_volume", 0) > 0
+                    else "N/A"
+                )
                 lines.append(f"  {l['symbol']}: {l['change_pct']:.2f}% ({vol})")
             lines.append("")
 
@@ -178,7 +180,7 @@ class FeishuNotifier:
             lines.append(f"🎯 发现 {len(opportunities)} 个机会 (Top 5):")
             for opp in opportunities[:5]:
                 lines.append(f"  {opp['symbol']} (Score: {opp['score']:.0f})")
-                signals = opp.get('signals', [])[:2]
+                signals = opp.get("signals", [])[:2]
                 if signals:
                     lines.append(f"    {' / '.join(signals)}")
 
@@ -192,16 +194,16 @@ class FeishuNotifier:
         price: float,
         quantity: float,
         strategy: str,
-        order_id: str = None
+        order_id: Optional[str] = None,
     ) -> bool:
         """Send trade execution alert"""
         lines = [
-            f"🚀 订单已执行",
+            "🚀 订单已执行",
             f"操作: {action}",
             f"币种: {symbol}",
             f"价格: ${price:.6f}",
             f"数量: {quantity:.4f}",
-            f"策略: {strategy.upper()}"
+            f"策略: {strategy.upper()}",
         ]
         if order_id:
             lines.append(f"订单ID: {order_id}")
@@ -216,7 +218,7 @@ class FeishuNotifier:
         price: float,
         stop_loss: float,
         tp_levels: List[Dict],
-        strategy: str
+        strategy: str,
     ) -> bool:
         """Send trade confirmation with SL/TP levels"""
         lines = [
@@ -224,7 +226,7 @@ class FeishuNotifier:
             f"操作: {action}",
             f"开仓价: ${price:.6f}",
             "",
-            "🛡 止损:"
+            "🛡 止损:",
         ]
 
         cfg = self.get_strategy_config(strategy)
@@ -233,17 +235,15 @@ class FeishuNotifier:
 
         lines.extend(["", "📊 止盈:"])
         for i, tp in enumerate(tp_levels):
-            lines.append(f"  TP{i+1}: +{tp['pct']}% @ ${tp['price']:.6f} (卖出 {tp['size_pct']}%)")
+            lines.append(
+                f"  TP{i+1}: +{tp['pct']}% @ ${tp['price']:.6f} (卖出 {tp['size_pct']}%)"
+            )
 
         text = "\n".join(lines)
         return self.send_text(text)
 
     def send_stop_loss_triggered(
-        self,
-        symbol: str,
-        exit_price: float,
-        pnl_pct: float,
-        reason: str = "止损触发"
+        self, symbol: str, exit_price: float, pnl_pct: float, reason: str = "止损触发"
     ) -> bool:
         """Send stop loss triggered alert"""
         emoji = "🔴" if pnl_pct < 0 else "🟢"
@@ -251,7 +251,7 @@ class FeishuNotifier:
             f"{emoji} 仓位平仓 - {symbol}",
             f"原因: {reason}",
             f"出场价: ${exit_price:.6f}",
-            f"盈亏: {pnl_pct:.2f}%"
+            f"盈亏: {pnl_pct:.2f}%",
         ]
         text = "\n".join(lines)
         return self.send_text(text)
@@ -262,7 +262,7 @@ class FeishuNotifier:
         tp_level: int,
         exit_price: float,
         remaining_size_pct: int,
-        total_pnl_pct: float
+        total_pnl_pct: float,
     ) -> bool:
         """Send take profit triggered alert"""
         lines = [
@@ -270,7 +270,7 @@ class FeishuNotifier:
             f"TP{tp_level} 执行",
             f"出场价: ${exit_price:.6f}",
             f"剩余仓位: {remaining_size_pct}%",
-            f"累计盈亏: {total_pnl_pct:.2f}%"
+            f"累计盈亏: {total_pnl_pct:.2f}%",
         ]
         text = "\n".join(lines)
         return self.send_text(text)
@@ -283,7 +283,7 @@ class FeishuNotifier:
             f"现金: ${portfolio_summary.get('cash', 0):.2f}",
             f"敞口: ${portfolio_summary.get('total_exposure', 0):.2f}",
             f"PnL: ${portfolio_summary.get('total_pnl', 0):.2f}",
-            f"持仓数: {portfolio_summary.get('positions_count', 0)}"
+            f"持仓数: {portfolio_summary.get('positions_count', 0)}",
         ]
 
         positions = portfolio_summary.get("positions", [])
@@ -305,7 +305,7 @@ class FeishuNotifier:
             f"总收益: {report.get('total_return_pct', 0):.2f}%",
             f"交易次数: {report.get('total_trades', 0)}",
             f"胜率: {report.get('win_rate', 0):.1f}%",
-            f"最佳策略: {report.get('best_strategy', 'N/A')}"
+            f"最佳策略: {report.get('best_strategy', 'N/A')}",
         ]
 
         return self.send_text("\n".join(lines))

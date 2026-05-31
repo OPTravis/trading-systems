@@ -10,15 +10,15 @@ Drop-in replacement for binance_client.py using ccxt for:
   • Structured exception hierarchy (NetworkError / ExchangeError)
 """
 
-import os
-import math
-import time
 import logging
+import math
+import os
 import re
+import time
 import uuid
-from decimal import Decimal, ROUND_DOWN, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import ccxt
 from dotenv import load_dotenv
@@ -26,8 +26,9 @@ from dotenv import load_dotenv
 try:
     from src.app_secrets import CRYPTO_SECRETS, GENERAL_SECRETS, load_secret_file
 except ImportError:
-    CRYPTO_SECRETS = GENERAL_SECRETS = None
-    load_secret_file = lambda x: {}
+    CRYPTO_SECRETS = None  # type: ignore[assignment]
+    GENERAL_SECRETS = None  # type: ignore[assignment]
+    load_secret_file = lambda x: {}  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +92,22 @@ class BinanceClient:
             base_url = os.environ.get("BINANCE_BASE_URL", "https://api3.binance.com")
 
         # --- Build ccxt exchange instance ---
-        self.exchange = ccxt.binance({
-            "apiKey": self.api_key,
-            "secret": self.api_secret,
-            "enableRateLimit": True,           # honour Binance rate limits
-            "options": {
-                "defaultType": "spot",         # SPOT ONLY
-                "fetchMarkets": ["spot"],       # Skip futures/options markets (dapi blocked)
-                "adjustForTimeDifference": True,
-                "recvWindow": int(os.environ.get("BINANCE_RECV_WINDOW", "10000")),
-                "warnOnFetchOpenOrdersWithoutSymbol": False,
-            },
-        })
+        self.exchange = ccxt.binance(
+            {
+                "apiKey": self.api_key,
+                "secret": self.api_secret,
+                "enableRateLimit": True,  # honour Binance rate limits
+                "options": {
+                    "defaultType": "spot",  # SPOT ONLY
+                    "fetchMarkets": [
+                        "spot"
+                    ],  # Skip futures/options markets (dapi blocked)
+                    "adjustForTimeDifference": True,
+                    "recvWindow": int(os.environ.get("BINANCE_RECV_WINDOW", "10000")),
+                    "warnOnFetchOpenOrdersWithoutSymbol": False,
+                },
+            }
+        )
 
         # ccxt uses api.binance.com by default (not api3) — no URL override needed
         # For testnet, set sandbox mode
@@ -116,14 +121,16 @@ class BinanceClient:
         try:
             self.exchange.load_markets()
         except Exception as e:
-            logger.warning("Failed to load markets on init (will retry on first call): %s", e)
+            logger.warning(
+                "Failed to load markets on init (will retry on first call): %s", e
+            )
 
         # ---- caches ----
-        self._balance_cache: Dict[str, tuple] = {}   # asset -> (value, timestamp)
-        self._balance_cache_ttl = 30                   # seconds
+        self._balance_cache: Dict[str, tuple] = {}  # asset -> (value, timestamp)
+        self._balance_cache_ttl = 30  # seconds
         self._exchange_info_cache: Optional[Dict] = None
         self._exchange_info_timestamp: float = 0.0
-        self._exchange_info_ttl = 3600                 # 1 hour
+        self._exchange_info_ttl = 3600  # 1 hour
 
         logger.info("BinanceClient initialised (ccxt-backed, testnet=%s)", testnet)
 
@@ -141,12 +148,12 @@ class BinanceClient:
 
         # 2. .env file
         if not self.api_key:
-            project_root = os.environ.get("PROJECT_ROOT")
-            if project_root:
-                project_root = Path(project_root)
+            _root = os.environ.get("PROJECT_ROOT")
+            if _root:
+                project_root = str(Path(_root))
             else:
-                project_root = Path(__file__).parent.parent
-            env_file = project_root / ".env"
+                project_root = str(Path(__file__).parent.parent)
+            env_file = Path(project_root) / ".env"
             if env_file.exists():
                 load_dotenv(env_file)
                 self.api_key = os.environ.get("BINANCE_API_KEY", "")
@@ -191,7 +198,10 @@ class BinanceClient:
     def _get_exchange_info(self) -> Dict:
         """Get cached exchange_info or fetch fresh if expired."""
         now = time.time()
-        if self._exchange_info_cache and (now - self._exchange_info_timestamp) < self._exchange_info_ttl:
+        if (
+            self._exchange_info_cache
+            and (now - self._exchange_info_timestamp) < self._exchange_info_ttl
+        ):
             return self._exchange_info_cache
         try:
             # Use ccxt's raw request to get the exact same JSON shape as python-binance
@@ -236,50 +246,63 @@ class BinanceClient:
                     params["endTime"] = end_time
 
                 # Use Binance raw API for full 12-field kline data (quote_volume, trades)
-                raw = self.exchange.publicGetKlines(params={
-                    "symbol": symbol.replace("/", ""),
-                    "interval": interval,
-                    "limit": limit,
-                    **({"startTime": start_time} if start_time else {}),
-                    **({"endTime": end_time} if end_time else {}),
-                })
+                raw = self.exchange.publicGetKlines(
+                    params={
+                        "symbol": symbol.replace("/", ""),
+                        "interval": interval,
+                        "limit": limit,
+                        **({"startTime": start_time} if start_time else {}),
+                        **({"endTime": end_time} if end_time else {}),
+                    }
+                )
 
                 result: List[Dict[str, Any]] = []
                 for k in raw:
-                    result.append({
-                        "open_time": int(k[0]),
-                        "open": float(k[1]),
-                        "high": float(k[2]),
-                        "low": float(k[3]),
-                        "close": float(k[4]),
-                        "volume": float(k[5]),
-                        "close_time": int(k[6]),
-                        "quote_volume": float(k[7]),
-                        "trades": int(k[8]),
-                        "is_closed": True,
-                    })
+                    result.append(
+                        {
+                            "open_time": int(k[0]),
+                            "open": float(k[1]),
+                            "high": float(k[2]),
+                            "low": float(k[3]),
+                            "close": float(k[4]),
+                            "volume": float(k[5]),
+                            "close_time": int(k[6]),
+                            "quote_volume": float(k[7]),
+                            "trades": int(k[8]),
+                            "is_closed": True,
+                        }
+                    )
                 return result
 
             except ccxt.NetworkError as e:
-                wait = min(2 ** attempt * 0.5, 8)
+                wait = min(2**attempt * 0.5, 8)
                 logger.warning(
                     "SSL/network error for %s (attempt %d/%d): %s. Retrying in %.1fs…",
-                    symbol, attempt + 1, max_retries, _sanitize_error(str(e)), wait,
+                    symbol,
+                    attempt + 1,
+                    max_retries,
+                    _sanitize_error(str(e)),
+                    wait,
                 )
                 if attempt < max_retries - 1:
                     time.sleep(wait)
                 else:
                     logger.error(
                         "Network error persists for %s after %d attempts: %s",
-                        symbol, max_retries, _sanitize_error(str(e)),
+                        symbol,
+                        max_retries,
+                        _sanitize_error(str(e)),
                     )
                     return []
 
-            except ccxt.RateLimitExceeded as e:
-                wait = min(2 ** attempt * 0.5, 8)
+            except ccxt.RateLimitExceeded:
+                wait = min(2**attempt * 0.5, 8)
                 logger.warning(
                     "Rate-limited fetching klines for %s (attempt %d/%d), waiting %.1fs",
-                    symbol, attempt + 1, max_retries, wait,
+                    symbol,
+                    attempt + 1,
+                    max_retries,
+                    wait,
                 )
                 if attempt < max_retries - 1:
                     time.sleep(wait)
@@ -287,21 +310,29 @@ class BinanceClient:
                     return []
 
             except ccxt.ExchangeError as e:
-                logger.error("Binance API error (klines %s): %s", symbol, _sanitize_error(str(e)))
+                logger.error(
+                    "Binance API error (klines %s): %s", symbol, _sanitize_error(str(e))
+                )
                 return []
 
             except Exception as e:
                 if attempt < max_retries - 1:
-                    wait = 2 ** attempt
+                    wait = 2**attempt
                     logger.warning(
                         "Unexpected error for %s (attempt %d/%d): %s. Retrying in %ds…",
-                        symbol, attempt + 1, max_retries, e, wait,
+                        symbol,
+                        attempt + 1,
+                        max_retries,
+                        e,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
                     logger.error(
                         "Failed to get klines for %s after %d attempts: %s",
-                        symbol, max_retries, _sanitize_error(str(e)),
+                        symbol,
+                        max_retries,
+                        _sanitize_error(str(e)),
                     )
                     return []
         return []
@@ -310,11 +341,21 @@ class BinanceClient:
     def _close_time_from_open(open_time_ms: int, interval: str) -> int:
         """Approximate close_time from open_time + interval – 1 ms."""
         _INTERVALS_MS = {
-            "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000,
-            "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000,
-            "4h": 14_400_000, "6h": 21_600_000, "8h": 28_800_000,
-            "12h": 43_200_000, "1d": 86_400_000, "3d": 259_200_000,
-            "1w": 604_800_000, "1M": 2_592_000_000,
+            "1m": 60_000,
+            "3m": 180_000,
+            "5m": 300_000,
+            "15m": 900_000,
+            "30m": 1_800_000,
+            "1h": 3_600_000,
+            "2h": 7_200_000,
+            "4h": 14_400_000,
+            "6h": 21_600_000,
+            "8h": 28_800_000,
+            "12h": 43_200_000,
+            "1d": 86_400_000,
+            "3d": 259_200_000,
+            "1w": 604_800_000,
+            "1M": 2_592_000_000,
         }
         ms = _INTERVALS_MS.get(interval, 3_600_000)
         return open_time_ms + ms - 1
@@ -322,7 +363,7 @@ class BinanceClient:
     # ---------------------------------------------------------- 24hr stats
 
     def get_24hr_stats(
-        self, symbol: str = None, max_retries: int = 3
+        self, symbol: Optional[str] = None, max_retries: int = 3
     ) -> "Dict[str, Any] | List[Dict[str, Any]]":
         """Get 24hr ticker statistics with retry."""
         for attempt in range(max_retries):
@@ -343,35 +384,45 @@ class BinanceClient:
                     tickers = self.exchange.fetch_tickers()
                     result = []
                     for sym, t in tickers.items():
-                        if t.get("quoteVolume") and (
-                            sym.endswith("USDT")
-                        ):
-                            result.append({
-                                "symbol": t.get("symbol", sym),
-                                "price_change_pct": float(t.get("percentage", 0) or 0),
-                                "volume": float(t.get("baseVolume", 0) or 0),
-                                "quote_volume": float(t.get("quoteVolume", 0) or 0),
-                                "last_price": float(t.get("last", 0) or 0),
-                            })
+                        if t.get("quoteVolume") and (sym.endswith("USDT")):
+                            result.append(
+                                {
+                                    "symbol": t.get("symbol", sym),
+                                    "price_change_pct": float(
+                                        t.get("percentage", 0) or 0
+                                    ),
+                                    "volume": float(t.get("baseVolume", 0) or 0),
+                                    "quote_volume": float(t.get("quoteVolume", 0) or 0),
+                                    "last_price": float(t.get("last", 0) or 0),
+                                }
+                            )
                     return result
 
             except (ccxt.NetworkError,) as e:
-                wait = 2 ** attempt
+                wait = 2**attempt
                 logger.warning(
                     "Network error getting 24hr stats (attempt %d/%d): %s. Retrying in %ds…",
-                    attempt + 1, max_retries, e, wait,
+                    attempt + 1,
+                    max_retries,
+                    e,
+                    wait,
                 )
                 if attempt < max_retries - 1:
                     time.sleep(wait)
                 else:
-                    logger.error("Network error persists for 24hr stats after %d attempts", max_retries)
+                    logger.error(
+                        "Network error persists for 24hr stats after %d attempts",
+                        max_retries,
+                    )
                     return {} if symbol else []
 
-            except (ccxt.RateLimitExceeded,) as e:
-                wait = min(2 ** attempt * 0.5, 8)
+            except (ccxt.RateLimitExceeded,):
+                wait = min(2**attempt * 0.5, 8)
                 logger.warning(
                     "Rate limited on 24hr stats (attempt %d/%d), waiting %.1fs",
-                    attempt + 1, max_retries, wait,
+                    attempt + 1,
+                    max_retries,
+                    wait,
                 )
                 if attempt < max_retries - 1:
                     time.sleep(wait)
@@ -407,17 +458,20 @@ class BinanceClient:
                 # the raw Binance response for backward compat.
                 raw = self.exchange.private_get_account()
                 return raw
-            except ccxt.RateLimitExceeded as e:
-                wait = min(2 ** attempt * 0.5, 60)
+            except ccxt.RateLimitExceeded:
+                wait = min(2**attempt * 0.5, 60)
                 logger.warning(
                     "Rate limited getting account (attempt %d), waiting %.1fs",
-                    attempt + 1, wait,
+                    attempt + 1,
+                    wait,
                 )
                 time.sleep(wait)
             except ccxt.NetworkError as e:
                 if attempt < 2:
-                    logger.warning("Network error getting account (attempt %d): %s", attempt + 1, e)
-                    time.sleep(2 ** attempt)
+                    logger.warning(
+                        "Network error getting account (attempt %d): %s", attempt + 1, e
+                    )
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Failed to get account after 3 attempts: %s", e)
                     return {}
@@ -508,9 +562,7 @@ class BinanceClient:
                     if f["filterType"] == "PRICE_FILTER":
                         return len(f["tickSize"].rstrip("0").split(".")[-1])
         except Exception:
-            logger.error(
-                "Failed to get price precision for %s", symbol, exc_info=True
-            )
+            logger.error("Failed to get price precision for %s", symbol, exc_info=True)
         return 4
 
     def get_quantity_precision(self, symbol: str) -> int:
@@ -530,9 +582,7 @@ class BinanceClient:
                 for f in sym_info.get("filters", []):
                     if f["filterType"] == "LOT_SIZE":
                         step_str = f["stepSize"].rstrip("0").rstrip(".")
-                        return (
-                            len(step_str.split(".")[-1]) if "." in step_str else 0
-                        )
+                        return len(step_str.split(".")[-1]) if "." in step_str else 0
         except Exception:
             logger.error(
                 "Failed to get quantity precision for %s", symbol, exc_info=True
@@ -570,7 +620,9 @@ class BinanceClient:
                     filters["minNotional"] = float(f["minNotional"])
             return filters
         except Exception:
-            logger.error("get_symbol_filters failed, returning empty filters dict", exc_info=True)
+            logger.error(
+                "get_symbol_filters failed, returning empty filters dict", exc_info=True
+            )
             return {}
 
     # --------------------------------------------------- Decimal utilities
@@ -604,9 +656,9 @@ class BinanceClient:
         symbol: str,
         side: str,
         order_type: str,
-        quantity: float = None,
-        price: float = None,
-        stop_price: float = None,
+        quantity: Optional[float] = None,
+        price: Optional[float] = None,
+        stop_price: Optional[float] = None,
         time_in_force: str = "GTC",
         retry: int = 3,
     ) -> Optional[Dict]:
@@ -659,19 +711,24 @@ class BinanceClient:
             if floored <= 0:
                 logger.error(
                     "Order rejected: quantity %s floored to 0 for %s",
-                    quantity, symbol,
+                    quantity,
+                    symbol,
                 )
                 return None
             if floored < min_qty:
                 logger.error(
                     "Order rejected: quantity %s < minQty %s for %s",
-                    f"{floored:.{qty_decimals}f}", min_qty, symbol,
+                    f"{floored:.{qty_decimals}f}",
+                    min_qty,
+                    symbol,
                 )
                 return None
             if floored > max_qty:
                 logger.error(
                     "Order rejected: quantity %s > maxQty %s for %s",
-                    f"{floored:.{qty_decimals}f}", max_qty, symbol,
+                    f"{floored:.{qty_decimals}f}",
+                    max_qty,
+                    symbol,
                 )
                 return None
             qty_str = f"{floored:.{qty_decimals}f}"
@@ -687,7 +744,9 @@ class BinanceClient:
                 if notional < min_notional:
                     logger.error(
                         "Order rejected: notional %.2f < minNotional %s for %s",
-                        notional, min_notional, symbol,
+                        notional,
+                        min_notional,
+                        symbol,
                     )
                     return None
 
@@ -701,13 +760,17 @@ class BinanceClient:
                 if price < min_price:
                     logger.error(
                         "Order rejected: price %s < minPrice %s for %s",
-                        price, min_price, symbol,
+                        price,
+                        min_price,
+                        symbol,
                     )
                     return None
                 if price > max_price:
                     logger.error(
                         "Order rejected: price %s > max_price %s for %s",
-                        price, max_price, symbol,
+                        price,
+                        max_price,
+                        symbol,
                     )
                     return None
             price_val = f"{price:.{price_decimals}f}"
@@ -743,7 +806,7 @@ class BinanceClient:
         _hex = uuid.uuid4().hex[:6]
         client_order_id = f"cat_{symbol}_{side}_{_ts}_{_hex}"[:36]
         # Sanitize: remove any non-alphanumeric/underscore/hyphen chars
-        client_order_id = re.sub(r'[^A-Za-z0-9_-]', '', client_order_id)
+        client_order_id = re.sub(r"[^A-Za-z0-9_-]", "", client_order_id)
         if not client_order_id:
             client_order_id = f"cat_{_ts}_{_hex}"
         params["newClientOrderId"] = client_order_id
@@ -782,11 +845,19 @@ class BinanceClient:
                         price=float(price_val) if price_val else None,
                         params={
                             **params,
-                            **({"stopPrice": float(stop_price_val)} if stop_price_val else {}),
+                            **(
+                                {"stopPrice": float(stop_price_val)}
+                                if stop_price_val
+                                else {}
+                            ),
                         },
                     )
                 logger.info(
-                    "Order placed: %s %s %s (id=%s)", side, symbol, order_type, client_order_id,
+                    "Order placed: %s %s %s (id=%s)",
+                    side,
+                    symbol,
+                    order_type,
+                    client_order_id,
                 )
                 return result
 
@@ -794,25 +865,34 @@ class BinanceClient:
                 if attempt < retry - 1:
                     wait = min(2 ** (attempt + 1), 60)
                     logger.warning(
-                        "Rate limited on order (attempt %d), waiting %ds", attempt + 1, wait,
+                        "Rate limited on order (attempt %d), waiting %ds",
+                        attempt + 1,
+                        wait,
                     )
                     time.sleep(wait)
                     continue
-                logger.error("Order failed (rate limit exhausted): %s", _sanitize_error(str(e)))
+                logger.error(
+                    "Order failed (rate limit exhausted): %s", _sanitize_error(str(e))
+                )
                 return None
 
             except ccxt.NetworkError as e:
                 logger.warning(
-                    "Order network error (attempt %d/%d): %s", attempt + 1, retry, e,
+                    "Order network error (attempt %d/%d): %s",
+                    attempt + 1,
+                    retry,
+                    e,
                 )
                 if attempt < retry - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Order failed after %d attempts: %s", retry, e)
                     return None
 
             except ccxt.InsufficientFunds as e:
-                logger.error("Order rejected (insufficient funds): %s", _sanitize_error(str(e)))
+                logger.error(
+                    "Order rejected (insufficient funds): %s", _sanitize_error(str(e))
+                )
                 return None
 
             except ccxt.InvalidOrder as e:
@@ -852,7 +932,7 @@ class BinanceClient:
         symbol: str,
         quantity: float,
         stop_price: float,
-        limit_price: float = None,
+        limit_price: Optional[float] = None,
     ) -> Optional[Dict]:
         """Place stop loss as STOP_LOSS_LIMIT (Binance spot requires limit)."""
         if limit_price is None:
@@ -891,7 +971,7 @@ class BinanceClient:
         quantity: float,
         tp_price: float,
         sl_price: float,
-        sl_limit_price: float = None,
+        sl_limit_price: Optional[float] = None,
     ) -> Optional[Dict]:
         """Place OCO (One-Cancels-Other) order: TP limit + SL stop-limit."""
         if not self.validate_symbol(symbol):
@@ -939,18 +1019,24 @@ class BinanceClient:
             max_qty = float("inf")
 
         if oco_floored <= 0:
-            logger.error("OCO rejected: quantity %s floored to 0 for %s", quantity, symbol)
+            logger.error(
+                "OCO rejected: quantity %s floored to 0 for %s", quantity, symbol
+            )
             return None
         if oco_floored < min_qty:
             logger.error(
                 "OCO rejected: quantity %s < minQty %s for %s",
-                f"{oco_floored:.{qty_decimals}f}", min_qty, symbol,
+                f"{oco_floored:.{qty_decimals}f}",
+                min_qty,
+                symbol,
             )
             return None
         if oco_floored > max_qty:
             logger.error(
                 "OCO rejected: quantity %s > maxQty %s for %s",
-                f"{oco_floored:.{qty_decimals}f}", max_qty, symbol,
+                f"{oco_floored:.{qty_decimals}f}",
+                max_qty,
+                symbol,
             )
             return None
 
@@ -958,7 +1044,9 @@ class BinanceClient:
         if price_filter:
             tp_price = self._floor_to_step(tp_price, price_filter["tickSize"])
             sl_price = self._floor_to_step(sl_price, price_filter["tickSize"])
-            sl_limit_price = self._floor_to_step(sl_limit_price, price_filter["tickSize"])
+            sl_limit_price = self._floor_to_step(
+                sl_limit_price, price_filter["tickSize"]
+            )
 
         oco_params = {
             "symbol": symbol,
@@ -985,22 +1073,26 @@ class BinanceClient:
             except ccxt.RateLimitExceeded as e:
                 logger.warning("OCO attempt %d rate limited: %s", attempt + 1, e)
                 if attempt < 2:
-                    wait = min(2 ** attempt, 60)
+                    wait = min(2**attempt, 60)
                     time.sleep(wait)
                     continue
 
             except (ccxt.InvalidOrder, ccxt.InsufficientFunds) as e:
-                logger.error("OCO business error (no retry): %s", _sanitize_error(str(e)))
+                logger.error(
+                    "OCO business error (no retry): %s", _sanitize_error(str(e))
+                )
                 return None
 
             except ccxt.ExchangeError as e:
-                logger.error("OCO business error (no retry): %s", _sanitize_error(str(e)))
+                logger.error(
+                    "OCO business error (no retry): %s", _sanitize_error(str(e))
+                )
                 return None
 
             except ccxt.NetworkError as e:
                 logger.warning("OCO attempt %d network error: %s", attempt + 1, e)
                 if attempt < 2:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
 
             except Exception as e:
@@ -1017,17 +1109,22 @@ class BinanceClient:
         for attempt in range(3):
             try:
                 return self.exchange.cancel_order(str(order_id), symbol)
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 wait = min(2 ** (attempt + 1), 60)
                 logger.warning(
                     "Rate limited cancelling order (attempt %d), waiting %ds",
-                    attempt + 1, wait,
+                    attempt + 1,
+                    wait,
                 )
                 time.sleep(wait)
             except ccxt.NetworkError as e:
                 if attempt < 2:
-                    logger.warning("Network error cancelling order (attempt %d): %s", attempt + 1, e)
-                    time.sleep(2 ** attempt)
+                    logger.warning(
+                        "Network error cancelling order (attempt %d): %s",
+                        attempt + 1,
+                        e,
+                    )
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Failed to cancel order after 3 attempts: %s", e)
                     return None
@@ -1036,7 +1133,7 @@ class BinanceClient:
                 return None
         return None
 
-    def get_open_orders(self, symbol: str = None) -> List[Dict]:
+    def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """Get all open orders with retry."""
         for attempt in range(3):
             try:
@@ -1044,17 +1141,22 @@ class BinanceClient:
                     return self.exchange.fetch_open_orders(symbol)
                 # Without symbol — return all open orders
                 return self.exchange.fetch_open_orders()
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 wait = min(2 ** (attempt + 1), 60)
                 logger.warning(
                     "Rate limited getting open orders (attempt %d), waiting %ds",
-                    attempt + 1, wait,
+                    attempt + 1,
+                    wait,
                 )
                 time.sleep(wait)
             except ccxt.NetworkError as e:
                 if attempt < 2:
-                    logger.warning("Network error getting open orders (attempt %d): %s", attempt + 1, e)
-                    time.sleep(2 ** attempt)
+                    logger.warning(
+                        "Network error getting open orders (attempt %d): %s",
+                        attempt + 1,
+                        e,
+                    )
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Failed to get open orders after 3 attempts: %s", e)
                     return []
@@ -1069,17 +1171,22 @@ class BinanceClient:
             try:
                 self.exchange.private_delete_open_orders({"symbol": symbol})
                 return True
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 wait = min(2 ** (attempt + 1), 60)
                 logger.warning(
                     "Rate limited cancelling all orders (attempt %d), waiting %ds",
-                    attempt + 1, wait,
+                    attempt + 1,
+                    wait,
                 )
                 time.sleep(wait)
             except ccxt.NetworkError as e:
                 if attempt < 2:
-                    logger.warning("Network error cancelling all orders (attempt %d): %s", attempt + 1, e)
-                    time.sleep(2 ** attempt)
+                    logger.warning(
+                        "Network error cancelling all orders (attempt %d): %s",
+                        attempt + 1,
+                        e,
+                    )
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Failed to cancel all orders after 3 attempts: %s", e)
                     return False
@@ -1093,17 +1200,20 @@ class BinanceClient:
         for attempt in range(3):
             try:
                 return self.exchange.fetch_order(str(order_id), symbol)
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 wait = min(2 ** (attempt + 1), 60)
                 logger.warning(
                     "Rate limited getting order (attempt %d), waiting %ds",
-                    attempt + 1, wait,
+                    attempt + 1,
+                    wait,
                 )
                 time.sleep(wait)
             except ccxt.NetworkError as e:
                 if attempt < 2:
-                    logger.warning("Network error getting order (attempt %d): %s", attempt + 1, e)
-                    time.sleep(2 ** attempt)
+                    logger.warning(
+                        "Network error getting order (attempt %d): %s", attempt + 1, e
+                    )
+                    time.sleep(2**attempt)
                 else:
                     logger.error("Failed to get order after 3 attempts: %s", e)
                     return None
@@ -1118,20 +1228,25 @@ class BinanceClient:
         """Get recent public trades. SDK-compatible format (price, qty, time, id, isBuyerMaker)."""
         try:
             raw = self.exchange.fetch_trades(symbol, limit=limit)
-            return [{
-                "id": t.get("id", ""),
-                "price": t.get("price", ""),
-                "qty": t.get("amount", ""),
-                "time": t.get("timestamp", 0),
-                "isBuyerMaker": t.get("side", "") == "sell",
-            } for t in raw]
+            return [
+                {
+                    "id": t.get("id", ""),
+                    "price": t.get("price", ""),
+                    "qty": t.get("amount", ""),
+                    "time": t.get("timestamp", 0),
+                    "isBuyerMaker": t.get("side", "") == "sell",
+                }
+                for t in raw
+            ]
         except Exception as e:
             logger.error("Failed to get trades for %s: %s", symbol, e)
             return []
 
     # ------------------------------------------------------ Trades (private)
 
-    def get_my_trades(self, symbol: str, limit: int = 100, from_id: int = None) -> List[Dict]:
+    def get_my_trades(
+        self, symbol: str, limit: int = 100, from_id: Optional[int] = None
+    ) -> List[Dict]:
         """Get account trades. SDK-compatible format (id, price, qty, time, isBuyer, commission, commissionAsset, orderId)."""
         try:
             params = {}
@@ -1141,19 +1256,21 @@ class BinanceClient:
             result = []
             for t in raw:
                 info = t.get("info", {})
-                result.append({
-                    "id": int(info.get("id", 0)),
-                    "price": info.get("price", ""),
-                    "qty": info.get("qty", ""),
-                    "quoteQty": info.get("quoteQty", ""),
-                    "commission": info.get("commission", ""),
-                    "commissionAsset": info.get("commissionAsset", ""),
-                    "time": int(info.get("time", 0)),
-                    "isBuyer": info.get("isBuyer", False),
-                    "isMaker": info.get("isMaker", False),
-                    "orderId": int(info.get("orderId", 0)),
-                    "symbol": info.get("symbol", symbol),
-                })
+                result.append(
+                    {
+                        "id": int(info.get("id", 0)),
+                        "price": info.get("price", ""),
+                        "qty": info.get("qty", ""),
+                        "quoteQty": info.get("quoteQty", ""),
+                        "commission": info.get("commission", ""),
+                        "commissionAsset": info.get("commissionAsset", ""),
+                        "time": int(info.get("time", 0)),
+                        "isBuyer": info.get("isBuyer", False),
+                        "isMaker": info.get("isMaker", False),
+                        "orderId": int(info.get("orderId", 0)),
+                        "symbol": info.get("symbol", symbol),
+                    }
+                )
             return result
         except Exception as e:
             logger.error("Failed to get my trades for %s: %s", symbol, e)
@@ -1180,7 +1297,9 @@ class BinanceClient:
                 return int(raw.get("serverTime", time.time() * 1000))
             return int(raw)
         except Exception:
-            logger.warning("get_server_time failed, falling back to local time", exc_info=True)
+            logger.warning(
+                "get_server_time failed, falling back to local time", exc_info=True
+            )
             return int(time.time() * 1000)
 
     # --------------------------------------------------------- Formatting
@@ -1199,7 +1318,7 @@ class BinanceClient:
         """Convert dust assets to BNB.
         Binance endpoint: POST /sapi/v1/asset/dust
         Rate limit: 1 request/hour.
-        
+
         Args:
             asset: List of asset symbols to convert (e.g. ['ADA', 'XRP'])
         Returns:
@@ -1237,7 +1356,11 @@ class BinanceClient:
         Binance endpoint: POST /sapi/v1/convert/getQuote
         """
         try:
-            params = {"fromAsset": fromAsset, "toAsset": toAsset, "fromAmount": fromAmount}
+            params = {
+                "fromAsset": fromAsset,
+                "toAsset": toAsset,
+                "fromAmount": fromAmount,
+            }
             return self.exchange.sapiPostConvertGetQuote(params)
         except Exception as e:
             logger.error("Failed to get convert quote: %s", e)

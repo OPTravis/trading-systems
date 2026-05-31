@@ -6,10 +6,11 @@ Fetches Open Interest data from Binance Futures (public, no auth).
 
 from __future__ import annotations
 
-import os
 import logging
-import requests
+import os
 from typing import Any, Dict, List, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,9 @@ class OpenInterest:
             {symbol, open_interest: float, time: str} or None on failure.
         """
         if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-            logger.debug("Futures API disabled (ENABLE_FUTURES not set). Skipping OI fetch.")
+            logger.debug(
+                "Futures API disabled (ENABLE_FUTURES not set). Skipping OI fetch."
+            )
             return None
         try:
             resp = self._session.get(
@@ -78,12 +81,14 @@ class OpenInterest:
             List of {symbol, sum_open_interest, sum_open_value, timestamp}.
         """
         if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-            logger.debug("Futures API disabled (ENABLE_FUTURES not set). Skipping OI history fetch.")
+            logger.debug(
+                "Futures API disabled (ENABLE_FUTURES not set). Skipping OI history fetch."
+            )
             return []
         try:
             resp = self._session.get(
                 f"{self.FUTURES_BASE}/futures/data/openInterestHist",
-                params={
+                params={  # type: ignore[arg-type]
                     "symbol": symbol.upper(),
                     "period": period,
                     "limit": limit,
@@ -95,7 +100,9 @@ class OpenInterest:
                 {
                     "symbol": symbol.upper(),
                     "sum_open_interest": float(d.get("sumOpenInterest", 0)),
-                    "sum_open_value": float(d.get("sumOpenInterestValue", d.get("sumOpenValue", 0))),
+                    "sum_open_value": float(
+                        d.get("sumOpenInterestValue", d.get("sumOpenValue", 0))
+                    ),
                     "timestamp": d["timestamp"],
                 }
                 for d in resp.json()
@@ -151,7 +158,9 @@ class OpenInterest:
             List of {symbol, open_interest, notional_value, price_change_pct}.
         """
         if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-            logger.debug("Futures API disabled (ENABLE_FUTURES not set). Skipping top OI fetch.")
+            logger.debug(
+                "Futures API disabled (ENABLE_FUTURES not set). Skipping top OI fetch."
+            )
             return []
         try:
             resp = self._session.get(
@@ -163,7 +172,8 @@ class OpenInterest:
 
             # Filter USDT-margined perpetual pairs and sort by OI descending
             usdt_tickers = [
-                t for t in tickers
+                t
+                for t in tickers
                 if t.get("symbol", "").endswith("USDT")
                 and float(t.get("openInterest", 0)) > 0
             ]
@@ -173,12 +183,14 @@ class OpenInterest:
             for t in usdt_tickers[:limit]:
                 oi_amount = float(t["openInterest"])
                 last_price = float(t.get("lastPrice", 0))
-                results.append({
-                    "symbol": t["symbol"],
-                    "open_interest": oi_amount,
-                    "notional_value": oi_amount * last_price,
-                    "price_change_pct": float(t.get("priceChangePercent", 0)),
-                })
+                results.append(
+                    {
+                        "symbol": t["symbol"],
+                        "open_interest": oi_amount,
+                        "notional_value": oi_amount * last_price,
+                        "price_change_pct": float(t.get("priceChangePercent", 0)),
+                    }
+                )
 
             return results
         except Exception as e:

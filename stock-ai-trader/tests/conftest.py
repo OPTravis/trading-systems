@@ -3,36 +3,29 @@ Test Configuration - Fixtures and mocks for stock-ai-trader tests.
 """
 
 import asyncio
-import pytest
-import pytest_asyncio
-from datetime import datetime, date
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
-
-import pandas as pd
-import numpy as np
 
 # Add project root to path
 import sys
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import numpy as np
+import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.brokers.broker_protocol import (
     AccountSummary,
-    Bar,
     Contract,
-    ContractDetails,
     Order,
     OrderSide,
-    OrderStatus,
     OrderType,
     Position,
-    Tick,
     TimeInForce,
 )
 from src.brokers.paper_client import PaperClient
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -176,6 +169,7 @@ def sample_positions():
 def market_calendar():
     """Create a MarketCalendar instance."""
     from src.market.market_calendar import MarketCalendar
+
     return MarketCalendar(year=2026)
 
 
@@ -183,4 +177,5 @@ def market_calendar():
 def market_hours():
     """Create a MarketHours instance."""
     from src.market.market_hours import MarketHours
+
     return MarketHours()

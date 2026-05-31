@@ -17,7 +17,7 @@ import json
 import logging
 import time
 from itertools import product
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,10 @@ SEARCH_SPACE = {
 }
 
 # Validation thresholds
-MIN_SHARPE = 0.5          # Minimum Sharpe ratio to accept
-MIN_OOS_WIN_RATE = 40.0   # Minimum OOS win rate %
-MIN_OOS_ROBUSTNESS = 33.0 # Minimum % of OOS splits with positive return
-MIN_TRADES = 5            # Minimum number of trades in backtest
+MIN_SHARPE = 0.5  # Minimum Sharpe ratio to accept
+MIN_OOS_WIN_RATE = 40.0  # Minimum OOS win rate %
+MIN_OOS_ROBUSTNESS = 33.0  # Minimum % of OOS splits with positive return
+MIN_TRADES = 5  # Minimum number of trades in backtest
 
 # Symbols to backtest on (diverse set for robustness)
 DEFAULT_SYMBOLS = ["SOL", "ETH", "AVAX", "BNB", "LINK"]
@@ -62,6 +62,7 @@ class ParamOptimizer:
     def __init__(self, db=None, binance_client=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
         self._client = binance_client
@@ -70,6 +71,7 @@ class ParamOptimizer:
         """Lazy-init Binance client."""
         if self._client is None:
             from src.binance_client import BinanceClient
+
             self._client = BinanceClient(testnet=False)
         return self._client
 
@@ -86,7 +88,9 @@ class ParamOptimizer:
                 if all(k in params for k in DEFAULT_PARAMS):
                     return params
             except (json.JSONDecodeError, TypeError):
-                logger.warning("Failed to parse optimized params JSON from StateDB", exc_info=True)
+                logger.warning(
+                    "Failed to parse optimized params JSON from StateDB", exc_info=True
+                )
 
         return dict(DEFAULT_PARAMS)
 
@@ -181,8 +185,8 @@ class ParamOptimizer:
 
     def grid_search(
         self,
-        symbols: List[str] = None,
-        search_space: Dict = None,
+        symbols: Optional[List[str]] = None,
+        search_space: Optional[Dict] = None,
         days: int = BACKTEST_DAYS,
         max_combos: int = 50,
     ) -> List[Dict]:
@@ -209,10 +213,13 @@ class ParamOptimizer:
         # Sample if too many
         if len(all_combos) > max_combos:
             import random
+
             random.seed(42)  # Reproducible
             all_combos = random.sample(all_combos, max_combos)
 
-        logger.info(f"Grid search: {len(all_combos)} combinations × {len(symbols)} symbols")
+        logger.info(
+            f"Grid search: {len(all_combos)} combinations × {len(symbols)} symbols"
+        )
 
         results = []
         for i, combo in enumerate(all_combos):
@@ -243,7 +250,7 @@ class ParamOptimizer:
     def validate_best(
         self,
         params: Dict,
-        symbols: List[str] = None,
+        symbols: Optional[List[str]] = None,
     ) -> Dict:
         """Validate best parameters with walk-forward OOS testing.
 
@@ -283,7 +290,9 @@ class ParamOptimizer:
         if avg_sharpe < MIN_SHARPE:
             reasons.append(f"OOS Sharpe {avg_sharpe:.2f} < {MIN_SHARPE}")
         if avg_robustness < MIN_OOS_ROBUSTNESS:
-            reasons.append(f"OOS robustness {avg_robustness:.0f}% < {MIN_OOS_ROBUSTNESS}%")
+            reasons.append(
+                f"OOS robustness {avg_robustness:.0f}% < {MIN_OOS_ROBUSTNESS}%"
+            )
         if total_trades < MIN_TRADES:
             reasons.append(f"Too few trades: {total_trades} < {MIN_TRADES}")
 
@@ -301,8 +310,8 @@ class ParamOptimizer:
 
     def optimize_and_store(
         self,
-        symbols: List[str] = None,
-        search_space: Dict = None,
+        symbols: Optional[List[str]] = None,
+        search_space: Optional[Dict] = None,
     ) -> Optional[Dict]:
         """Run full optimization pipeline: grid search → validate → store.
 
@@ -381,10 +390,10 @@ class ParamOptimizer:
 
         status = result.get("status", "unknown")
         if status == "validation_failed":
-            lines.append(f"**狀態**: ❌ 驗證失敗")
+            lines.append("**狀態**: ❌ 驗證失敗")
             lines.append(f"**原因**: {result['validation']['reason']}")
         elif status == "optimized":
-            lines.append(f"**狀態**: ✅ 已優化並存儲")
+            lines.append("**狀態**: ✅ 已優化並存儲")
         else:
             lines.append(f"**狀態**: {status}")
 

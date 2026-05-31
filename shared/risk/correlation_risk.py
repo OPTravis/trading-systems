@@ -95,7 +95,7 @@ class CorrelationRiskManager:
                 histories[sym] = hist
 
         # Compute pairwise correlations
-        corr_matrix = {}
+        corr_matrix: Dict[str, Dict[str, float]] = {}
         symbols_with_data = list(histories.keys())
         for i, sym_a in enumerate(symbols_with_data):
             corr_matrix[sym_a] = {}

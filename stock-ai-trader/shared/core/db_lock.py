@@ -13,6 +13,7 @@ import fcntl
 import logging
 import time
 from pathlib import Path
+from typing import IO, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class DuckDBLock:
 
     def __init__(self, db_path: str | Path, timeout: float = 30.0, retry_interval: float = 0.5):
         self.lock_path = Path(db_path).with_suffix(".duckdb.lock")
-        self._lock_file = None
+        self._lock_file: Optional[IO[str]] = None
         self._timeout = timeout
         self._retry_interval = retry_interval
 

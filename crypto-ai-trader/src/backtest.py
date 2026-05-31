@@ -4,12 +4,11 @@ Backtest Engine — 完整的回測框架
 支持 BTC 趨勢過濾、追蹤止損、多幣種同時回測
 """
 
-import argparse
 import logging
 import math
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,23 +21,25 @@ logger = logging.getLogger(__name__)
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Position:
     """模擬倉位"""
+
     symbol: str
     entry_price: float
-    entry_bar: int            # 入場的 K 線 index
-    entry_time: int           # open_time (ms)
-    quantity: float           # 買入數量
-    usdt_cost: float          # 買入成本 (USDT)
+    entry_bar: int  # 入場的 K 線 index
+    entry_time: int  # open_time (ms)
+    quantity: float  # 買入數量
+    usdt_cost: float  # 買入成本 (USDT)
     atr: float
     sl_price: float
     tp1_price: float
-    tp1_size: float           # TP1 平倉數量 (40%)
+    tp1_size: float  # TP1 平倉數量 (40%)
     tp2_price: float
-    tp2_size: float           # TP2 平倉數量 (40%)
+    tp2_size: float  # TP2 平倉數量 (40%)
     tp3_price: float
-    tp3_size: float           # TP3 平倉數量 (20%)
+    tp3_size: float  # TP3 平倉數量 (20%)
     # 追蹤止損狀態
     trailing_activated: bool = False
     trailing_sl: float = 0.0
@@ -52,12 +53,13 @@ class Position:
 @dataclass
 class ClosedTrade:
     """已平倉交易紀錄"""
+
     symbol: str
     entry_price: float
     exit_price: float
     pnl_pct: float
     pnl_usdt: float
-    reason: str               # 'sl', 'tp1', 'tp2', 'tp3', 'trailing', 'end_of_data'
+    reason: str  # 'sl', 'tp1', 'tp2', 'tp3', 'trailing', 'end_of_data'
     holding_bars: int
     entry_time: int
     exit_time: int
@@ -67,6 +69,7 @@ class ClosedTrade:
 # ---------------------------------------------------------------------------
 # Scoring — 複製 MarketScanner._calculate_opportunity_score 的邏輯
 # ---------------------------------------------------------------------------
+
 
 def calculate_score(
     a_1h: Dict,
@@ -119,8 +122,8 @@ def calculate_score(
     # === BOLLINGER BAND ===
     current_price = a_1h.get("current_price", 0)
     bb_lower = a_1h.get("bb_lower", 0)
-    bb_upper = a_1h.get("bb_upper", 0)
-    bb_position = a_1h.get("bb_position", 0.5)
+    a_1h.get("bb_upper", 0)
+    a_1h.get("bb_position", 0.5)
     if current_price and bb_lower:
         if current_price < bb_lower:
             score += 20
@@ -163,13 +166,14 @@ def _detect_volume_surge(klines: List[Dict]) -> bool:
 # BacktestEngine
 # ---------------------------------------------------------------------------
 
+
 class BacktestEngine:
     """回測引擎：模擬完整交易循環"""
 
     # 倉位限制 (與 SmartOrder 一致)
     MAX_POSITIONS = 5
-    MAX_SINGLE_POSITION_PCT = 15   # 單筆最多 15%
-    MAX_TOTAL_EXPOSURE_PCT = 70    # 總敞口上限 70%
+    MAX_SINGLE_POSITION_PCT = 15  # 單筆最多 15%
+    MAX_TOTAL_EXPOSURE_PCT = 70  # 總敞口上限 70%
 
     # ATR SL/TP 乘數 (與 SmartOrder 一致)
     SL_ATR_MULT = 2.0
@@ -187,7 +191,7 @@ class BacktestEngine:
     MAX_TP_PCT = 25.0
 
     # 手續費
-    TAKER_FEE = 0.001   # Binance Spot 0.1%
+    TAKER_FEE = 0.001  # Binance Spot 0.1%
 
     # 追蹤止損參數 (與 TrailingStop 一致)
     TRAILING_ACTIVATION_ATR = 1.5
@@ -239,15 +243,24 @@ class BacktestEngine:
         if not start_date:
             end_dt = datetime.now(timezone.utc)
             if end_date:
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
+                    tzinfo=timezone.utc
+                )
             start_dt = end_dt - timedelta(days=days)
         else:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc) if end_date else datetime.now(timezone.utc)
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            end_dt = (
+                datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                if end_date
+                else datetime.now(timezone.utc)
+            )
 
         logger.info(
             "Backtest %s %s  %s → %s  trend=%s trailing=%s",
-            symbol, interval,
+            symbol,
+            interval,
             start_dt.strftime("%Y-%m-%d"),
             end_dt.strftime("%Y-%m-%d"),
             enable_trend_filter,
@@ -256,7 +269,9 @@ class BacktestEngine:
 
         # 1. 拉取 K 線資料
         # Extend fetch start to include warmup bars so simulation can begin at start_dt
-        warmup_td = timedelta(seconds=self.WARMUP_BARS * self._interval_to_ms(interval) / 1000)
+        warmup_td = timedelta(
+            seconds=self.WARMUP_BARS * self._interval_to_ms(interval) / 1000
+        )
         fetch_start_dt = start_dt - warmup_td
         klines = self._fetch_klines(symbol, interval, fetch_start_dt, end_dt)
         if len(klines) < self.WARMUP_BARS + 10:
@@ -267,7 +282,6 @@ class BacktestEngine:
         btc_daily: Optional[List[Dict]] = None
         btc_sma_200_cache: Dict[int, float] = {}  # open_time -> sma_200
         if enable_trend_filter:
-            btcsym = "BTCUSDT"
             # Need at least 200 daily candles BEFORE the backtest start date
             # to compute SMA200 from day 1 of the backtest
             btc_start = start_dt - timedelta(days=300) if start_dt else None
@@ -277,10 +291,17 @@ class BacktestEngine:
                 # 預計算每根 K 線時間點的 BTC SMA200
                 closes = [k["close"] for k in btc_daily]
                 for i in range(199, len(closes)):
-                    btc_sma_200_cache[btc_daily[i]["open_time"]] = Indicators.sma(closes[:i + 1], 200)
-                logger.info("BTC daily data loaded: %d bars (SMA200 calculated)", len(btc_daily))
+                    btc_sma_200_cache[btc_daily[i]["open_time"]] = Indicators.sma(
+                        closes[: i + 1], 200
+                    )
+                logger.info(
+                    "BTC daily data loaded: %d bars (SMA200 calculated)", len(btc_daily)
+                )
             else:
-                logger.warning("BTC daily data insufficient (%d), trend filter disabled", len(btc_klines))
+                logger.warning(
+                    "BTC daily data insufficient (%d), trend filter disabled",
+                    len(btc_klines),
+                )
 
         # 3. (可選) 拉取 4h 和 1d 用於多時間框架評分
         klines_4h: Optional[List[Dict]] = None
@@ -288,7 +309,11 @@ class BacktestEngine:
         if interval == "1h":
             klines_4h = self._fetch_klines(symbol, "4h", fetch_start_dt, end_dt)
             klines_1d = self._fetch_klines(symbol, "1d", fetch_start_dt, end_dt)
-            logger.info("Multi-TF data: 4h=%d, 1d=%d", len(klines_4h or []), len(klines_1d or []))
+            logger.info(
+                "Multi-TF data: 4h=%d, 1d=%d",
+                len(klines_4h or []),
+                len(klines_1d or []),
+            )
 
         # 4. 執行回測模擬
         return self._simulate(
@@ -369,9 +394,9 @@ class BacktestEngine:
         total_td = timedelta(days=total_days)
         split_td = total_td / n_splits
         train_td = split_td * train_pct
-        test_td = split_td * (1 - train_pct)
+        split_td * (1 - train_pct)
 
-        splits = []
+        splits: List[Dict[str, Any]] = []
         for i in range(n_splits):
             split_start = end_dt - total_td + split_td * i
             train_start = split_start
@@ -381,9 +406,12 @@ class BacktestEngine:
 
             logger.info(
                 "Walk-forward split %d/%d: train %s→%s  test %s→%s",
-                i + 1, n_splits,
-                train_start.strftime("%Y-%m-%d"), train_end.strftime("%Y-%m-%d"),
-                test_start.strftime("%Y-%m-%d"), test_end.strftime("%Y-%m-%d"),
+                i + 1,
+                n_splits,
+                train_start.strftime("%Y-%m-%d"),
+                train_end.strftime("%Y-%m-%d"),
+                test_start.strftime("%Y-%m-%d"),
+                test_end.strftime("%Y-%m-%d"),
             )
 
             # Train phase (for reference — not used for optimization here,
@@ -407,30 +435,32 @@ class BacktestEngine:
                 enable_trailing_stop=enable_trailing_stop,
             )
 
-            splits.append({
-                "split": i + 1,
-                "train": {
-                    "start": train_start.strftime("%Y-%m-%d"),
-                    "end": train_end.strftime("%Y-%m-%d"),
-                    "return_pct": train_result.get("total_return_pct", 0),
-                    "sharpe": train_result.get("sharpe_ratio", 0),
-                    "win_rate": train_result.get("win_rate", 0),
-                    "trades": train_result.get("total_trades", 0),
-                    "max_dd": train_result.get("max_drawdown_pct", 0),
-                },
-                "test": {
-                    "start": test_start.strftime("%Y-%m-%d"),
-                    "end": test_end.strftime("%Y-%m-%d"),
-                    "return_pct": test_result.get("total_return_pct", 0),
-                    "sharpe": test_result.get("sharpe_ratio", 0),
-                    "sortino": test_result.get("sortino_ratio", 0),
-                    "calmar": test_result.get("calmar_ratio", 0),
-                    "win_rate": test_result.get("win_rate", 0),
-                    "trades": test_result.get("total_trades", 0),
-                    "max_dd": test_result.get("max_drawdown_pct", 0),
-                    "profit_factor": test_result.get("profit_factor", 0),
-                },
-            })
+            splits.append(
+                {
+                    "split": i + 1,
+                    "train": {
+                        "start": train_start.strftime("%Y-%m-%d"),
+                        "end": train_end.strftime("%Y-%m-%d"),
+                        "return_pct": train_result.get("total_return_pct", 0),
+                        "sharpe": train_result.get("sharpe_ratio", 0),
+                        "win_rate": train_result.get("win_rate", 0),
+                        "trades": train_result.get("total_trades", 0),
+                        "max_dd": train_result.get("max_drawdown_pct", 0),
+                    },
+                    "test": {
+                        "start": test_start.strftime("%Y-%m-%d"),
+                        "end": test_end.strftime("%Y-%m-%d"),
+                        "return_pct": test_result.get("total_return_pct", 0),
+                        "sharpe": test_result.get("sharpe_ratio", 0),
+                        "sortino": test_result.get("sortino_ratio", 0),
+                        "calmar": test_result.get("calmar_ratio", 0),
+                        "win_rate": test_result.get("win_rate", 0),
+                        "trades": test_result.get("total_trades", 0),
+                        "max_dd": test_result.get("max_drawdown_pct", 0),
+                        "profit_factor": test_result.get("profit_factor", 0),
+                    },
+                }
+            )
 
         # Aggregate OOS metrics
         oos_returns = [s["test"]["return_pct"] for s in splits]
@@ -440,6 +470,7 @@ class BacktestEngine:
         oos_win_rates = [s["test"]["win_rate"] for s in splits]
 
         import numpy as np
+
         avg_oos_return = np.mean(oos_returns) if oos_returns else 0
         avg_oos_sharpe = np.mean(oos_sharpes) if oos_sharpes else 0
         avg_oos_dd = np.mean(oos_dds) if oos_dds else 0
@@ -475,8 +506,8 @@ class BacktestEngine:
         self,
         symbol: str,
         interval: str,
-        start_dt: datetime,
-        end_dt: datetime,
+        start_dt: Optional[datetime],
+        end_dt: Optional[datetime],
     ) -> List[Dict]:
         """
         拉取指定時間範圍的 K 線。
@@ -485,8 +516,12 @@ class BacktestEngine:
         all_klines: List[Dict] = []
         # 預估需要的 K 線數量
         interval_ms = self._interval_to_ms(interval)
+
+        if start_dt is None or end_dt is None:
+            return all_klines
+
         total_ms = int((end_dt - start_dt).total_seconds() * 1000)
-        estimated_bars = total_ms // interval_ms + 1
+        total_ms // interval_ms + 1
 
         batch_size = 1500
         # 每批重疊 10 根以防時間 gap
@@ -498,8 +533,11 @@ class BacktestEngine:
             try:
                 end_ts = int(end_dt.timestamp() * 1000)
                 batch = self.client.get_klines(
-                    symbol, interval, limit=batch_size,
-                    start_time=current_start, end_time=end_ts
+                    symbol,
+                    interval,
+                    limit=batch_size,
+                    start_time=current_start,
+                    end_time=end_ts,
                 )
                 if not batch:
                     break
@@ -529,6 +567,7 @@ class BacktestEngine:
                 break
 
         # 截斷到 end_dt
+        assert end_dt is not None
         end_ts = int(end_dt.timestamp() * 1000)
         all_klines = [k for k in all_klines if k["open_time"] <= end_ts]
 
@@ -602,21 +641,25 @@ class BacktestEngine:
         tf_1d_by_time = {k["open_time"]: k for k in (klines_1d or [])}
 
         # 找到最近的 4h / 1d 分析（用於 1h 模式）
-        def _get_latest_tf_analysis(current_time: int) -> Tuple[Optional[Dict], Optional[Dict]]:
+        def _get_latest_tf_analysis(
+            current_time: int,
+        ) -> Tuple[Optional[Dict], Optional[Dict]]:
             a_4h = None
             a_1d = None
-            if tf_4h_by_time:
+            if tf_4h_by_time and klines_4h:
                 # 找 <= current_time 的最新 4h K 線
                 times_4h = [t for t in tf_4h_by_time if t <= current_time]
                 if times_4h:
                     latest_4h_idx = max(
-                        i for i, k in enumerate(klines_4h) if k["open_time"] <= current_time
-                    ) if klines_4h else 0
+                        i
+                        for i, k in enumerate(klines_4h)
+                        if k["open_time"] <= current_time
+                    )
                     a_4h = Indicators.analyze_symbol(klines_4h[: latest_4h_idx + 1])
-            if tf_1d_by_time:
+            if tf_1d_by_time and klines_1d:
                 latest_1d_idx = max(
                     i for i, k in enumerate(klines_1d) if k["open_time"] <= current_time
-                ) if klines_1d else 0
+                )
                 a_1d = Indicators.analyze_symbol(klines_1d[: latest_1d_idx + 1])
             return a_4h, a_1d
 
@@ -688,11 +731,12 @@ class BacktestEngine:
                         positions.append(position)
 
             # ---- 處理持倉：檢查 SL/TP 觸發 ----
-            trades_to_close: List[Tuple[int, Position, str, float]] = []  # (pos_idx, pos, reason, exit_price)
+            trades_to_close: List[Tuple[int, Position, str, float]] = (
+                []
+            )  # (pos_idx, pos, reason, exit_price)
 
             for pos_idx, pos in enumerate(positions):
                 exit_reason = None
-                exit_price = 0.0
 
                 # When both SL and TP could trigger on the same candle,
                 # randomize the check order to eliminate systematic pessimistic bias
@@ -703,24 +747,68 @@ class BacktestEngine:
                     # Both possible — randomize to eliminate SL-first bias
                     check_sl_first = random.random() < 0.5
                 else:
-                    check_sl_first = True  # only one or neither triggers; order irrelevant
+                    check_sl_first = (
+                        True  # only one or neither triggers; order irrelevant
+                    )
 
                 if check_sl_first:
                     # 1. Stop Loss (original order)
                     if _sl_triggered:
                         exit_reason = "sl"
-                        exit_price = pos.sl_price
 
                     # 2. TP1 (skip if SL already triggered on this candle)
                 else:
                     # Check TP first, then SL
                     if _tp1_triggered:
                         pos.tp1_hit = True
-                        tp1_pnl_pct = ((pos.tp1_price - pos.entry_price) / pos.entry_price) * 100
-                        tp1_pnl_usdt = pos.tp1_size * pos.tp1_price - pos.tp1_size * pos.entry_price
+                        tp1_pnl_pct = (
+                            (pos.tp1_price - pos.entry_price) / pos.entry_price
+                        ) * 100
+                        tp1_pnl_usdt = (
+                            pos.tp1_size * pos.tp1_price
+                            - pos.tp1_size * pos.entry_price
+                        )
                         tp1_fee = pos.tp1_size * pos.tp1_price * self.TAKER_FEE
                         tp1_pnl_usdt -= tp1_fee
-                        closed_trades.append(ClosedTrade(
+                        closed_trades.append(
+                            ClosedTrade(
+                                symbol=pos.symbol,
+                                entry_price=pos.entry_price,
+                                exit_price=pos.tp1_price,
+                                pnl_pct=tp1_pnl_pct,
+                                pnl_usdt=tp1_pnl_usdt,
+                                reason="tp1",
+                                holding_bars=bar_idx - pos.entry_bar,
+                                entry_time=pos.entry_time,
+                                exit_time=current_time,
+                                score=0,
+                            )
+                        )
+                        pos.quantity -= pos.tp1_size
+                        pos.usdt_cost *= 1 - self.TP1_SIZE_PCT / 100
+
+                    if _sl_triggered and exit_reason is None:
+                        exit_reason = "sl"
+
+                # 2. TP1 (skip if SL already triggered, and not already handled in TP-first branch)
+                if (
+                    check_sl_first
+                    and exit_reason is None
+                    and not pos.tp1_hit
+                    and current_high >= pos.tp1_price
+                ):
+                    pos.tp1_hit = True
+                    # 模擬 TP1 平倉 40%
+                    tp1_pnl_pct = (
+                        (pos.tp1_price - pos.entry_price) / pos.entry_price
+                    ) * 100
+                    tp1_pnl_usdt = (
+                        pos.tp1_size * pos.tp1_price - pos.tp1_size * pos.entry_price
+                    )
+                    tp1_fee = pos.tp1_size * pos.tp1_price * self.TAKER_FEE
+                    tp1_pnl_usdt -= tp1_fee
+                    closed_trades.append(
+                        ClosedTrade(
                             symbol=pos.symbol,
                             entry_price=pos.entry_price,
                             exit_price=pos.tp1_price,
@@ -731,103 +819,104 @@ class BacktestEngine:
                             entry_time=pos.entry_time,
                             exit_time=current_time,
                             score=0,
-                        ))
-                        pos.quantity -= pos.tp1_size
-                        pos.usdt_cost *= (1 - self.TP1_SIZE_PCT / 100)
-
-                    if _sl_triggered and exit_reason is None:
-                        exit_reason = "sl"
-                        exit_price = pos.sl_price
-
-                # 2. TP1 (skip if SL already triggered, and not already handled in TP-first branch)
-                if check_sl_first and exit_reason is None and not pos.tp1_hit and current_high >= pos.tp1_price:
-                    pos.tp1_hit = True
-                    # 模擬 TP1 平倉 40%
-                    tp1_pnl_pct = ((pos.tp1_price - pos.entry_price) / pos.entry_price) * 100
-                    tp1_pnl_usdt = pos.tp1_size * pos.tp1_price - pos.tp1_size * pos.entry_price
-                    tp1_fee = pos.tp1_size * pos.tp1_price * self.TAKER_FEE
-                    tp1_pnl_usdt -= tp1_fee
-                    closed_trades.append(ClosedTrade(
-                        symbol=pos.symbol,
-                        entry_price=pos.entry_price,
-                        exit_price=pos.tp1_price,
-                        pnl_pct=tp1_pnl_pct,
-                        pnl_usdt=tp1_pnl_usdt,
-                        reason="tp1",
-                        holding_bars=bar_idx - pos.entry_bar,
-                        entry_time=pos.entry_time,
-                        exit_time=current_time,
-                        score=0,
-                    ))
+                        )
+                    )
                     # 更新剩余持倉
                     pos.quantity -= pos.tp1_size
-                    pos.usdt_cost *= (1 - self.TP1_SIZE_PCT / 100)
+                    pos.usdt_cost *= 1 - self.TP1_SIZE_PCT / 100
 
                 # 3. TP2 (skip if SL already triggered on this candle)
-                if exit_reason is None and pos.tp1_hit and not pos.tp2_hit and current_high >= pos.tp2_price:
+                if (
+                    exit_reason is None
+                    and pos.tp1_hit
+                    and not pos.tp2_hit
+                    and current_high >= pos.tp2_price
+                ):
                     pos.tp2_hit = True
-                    tp2_pnl_pct = ((pos.tp2_price - pos.entry_price) / pos.entry_price) * 100
-                    tp2_pnl_usdt = pos.tp2_size * pos.tp2_price - pos.tp2_size * pos.entry_price
+                    tp2_pnl_pct = (
+                        (pos.tp2_price - pos.entry_price) / pos.entry_price
+                    ) * 100
+                    tp2_pnl_usdt = (
+                        pos.tp2_size * pos.tp2_price - pos.tp2_size * pos.entry_price
+                    )
                     tp2_fee = pos.tp2_size * pos.tp2_price * self.TAKER_FEE
                     tp2_pnl_usdt -= tp2_fee
-                    closed_trades.append(ClosedTrade(
-                        symbol=pos.symbol,
-                        entry_price=pos.entry_price,
-                        exit_price=pos.tp2_price,
-                        pnl_pct=tp2_pnl_pct,
-                        pnl_usdt=tp2_pnl_usdt,
-                        reason="tp2",
-                        holding_bars=bar_idx - pos.entry_bar,
-                        entry_time=pos.entry_time,
-                        exit_time=current_time,
-                        score=0,
-                    ))
+                    closed_trades.append(
+                        ClosedTrade(
+                            symbol=pos.symbol,
+                            entry_price=pos.entry_price,
+                            exit_price=pos.tp2_price,
+                            pnl_pct=tp2_pnl_pct,
+                            pnl_usdt=tp2_pnl_usdt,
+                            reason="tp2",
+                            holding_bars=bar_idx - pos.entry_bar,
+                            entry_time=pos.entry_time,
+                            exit_time=current_time,
+                            score=0,
+                        )
+                    )
                     pos.quantity -= pos.tp2_size
-                    pos.usdt_cost *= (1 - self.TP2_SIZE_PCT / 100)
+                    pos.usdt_cost *= 1 - self.TP2_SIZE_PCT / 100
 
                 # 4. TP3 (skip if SL already triggered on this candle)
-                if exit_reason is None and pos.tp2_hit and not pos.tp3_hit and current_high >= pos.tp3_price:
+                if (
+                    exit_reason is None
+                    and pos.tp2_hit
+                    and not pos.tp3_hit
+                    and current_high >= pos.tp3_price
+                ):
                     pos.tp3_hit = True
-                    tp3_pnl_pct = ((pos.tp3_price - pos.entry_price) / pos.entry_price) * 100
-                    tp3_pnl_usdt = pos.tp3_size * pos.tp3_price - pos.tp3_size * pos.entry_price
+                    tp3_pnl_pct = (
+                        (pos.tp3_price - pos.entry_price) / pos.entry_price
+                    ) * 100
+                    tp3_pnl_usdt = (
+                        pos.tp3_size * pos.tp3_price - pos.tp3_size * pos.entry_price
+                    )
                     tp3_fee = pos.tp3_size * pos.tp3_price * self.TAKER_FEE
                     tp3_pnl_usdt -= tp3_fee
-                    closed_trades.append(ClosedTrade(
-                        symbol=pos.symbol,
-                        entry_price=pos.entry_price,
-                        exit_price=pos.tp3_price,
-                        pnl_pct=tp3_pnl_pct,
-                        pnl_usdt=tp3_pnl_usdt,
-                        reason="tp3",
-                        holding_bars=bar_idx - pos.entry_bar,
-                        entry_time=pos.entry_time,
-                        exit_time=current_time,
-                        score=0,
-                    ))
+                    closed_trades.append(
+                        ClosedTrade(
+                            symbol=pos.symbol,
+                            entry_price=pos.entry_price,
+                            exit_price=pos.tp3_price,
+                            pnl_pct=tp3_pnl_pct,
+                            pnl_usdt=tp3_pnl_usdt,
+                            reason="tp3",
+                            holding_bars=bar_idx - pos.entry_bar,
+                            entry_time=pos.entry_time,
+                            exit_time=current_time,
+                            score=0,
+                        )
+                    )
                     pos.quantity -= pos.tp3_size
                     pos.usdt_cost = 0
                     exit_reason = "tp3_full"
-                    exit_price = pos.tp3_price
 
                 # 5. SL on remaining position (after partial TP)
                 if exit_reason == "sl" and pos.quantity > 0:
                     remaining_qty = pos.quantity
-                    sl_pnl_pct = ((pos.sl_price - pos.entry_price) / pos.entry_price) * 100
-                    sl_pnl_usdt = remaining_qty * pos.sl_price - remaining_qty * pos.entry_price
+                    sl_pnl_pct = (
+                        (pos.sl_price - pos.entry_price) / pos.entry_price
+                    ) * 100
+                    sl_pnl_usdt = (
+                        remaining_qty * pos.sl_price - remaining_qty * pos.entry_price
+                    )
                     sl_fee = remaining_qty * pos.sl_price * self.TAKER_FEE
                     sl_pnl_usdt -= sl_fee
-                    closed_trades.append(ClosedTrade(
-                        symbol=pos.symbol,
-                        entry_price=pos.entry_price,
-                        exit_price=pos.sl_price,
-                        pnl_pct=sl_pnl_pct,
-                        pnl_usdt=sl_pnl_usdt,
-                        reason="sl",
-                        holding_bars=bar_idx - pos.entry_bar,
-                        entry_time=pos.entry_time,
-                        exit_time=current_time,
-                        score=0,
-                    ))
+                    closed_trades.append(
+                        ClosedTrade(
+                            symbol=pos.symbol,
+                            entry_price=pos.entry_price,
+                            exit_price=pos.sl_price,
+                            pnl_pct=sl_pnl_pct,
+                            pnl_usdt=sl_pnl_usdt,
+                            reason="sl",
+                            holding_bars=bar_idx - pos.entry_bar,
+                            entry_time=pos.entry_time,
+                            exit_time=current_time,
+                            score=0,
+                        )
+                    )
                     pos.quantity = 0
 
                 # 標記需要移除的倉位
@@ -835,7 +924,12 @@ class BacktestEngine:
                     trades_to_close.append((pos_idx, pos, "closed", 0))
 
                 # ---- 追蹤止損 (skip if SL already triggered on this candle) ----
-                if exit_reason is None and enable_trailing_stop and pos.quantity > 0 and not pos.tp1_hit:
+                if (
+                    exit_reason is None
+                    and enable_trailing_stop
+                    and pos.quantity > 0
+                    and not pos.tp1_hit
+                ):
                     if current_high > pos.highest_price:
                         pos.highest_price = current_high
 
@@ -843,9 +937,13 @@ class BacktestEngine:
                     if profit >= self.TRAILING_ACTIVATION_ATR * pos.atr:
                         if not pos.trailing_activated:
                             pos.trailing_activated = True
-                            pos.trailing_sl = pos.highest_price - self.TRAILING_DISTANCE_ATR * pos.atr
+                            pos.trailing_sl = (
+                                pos.highest_price - self.TRAILING_DISTANCE_ATR * pos.atr
+                            )
                         else:
-                            new_sl = pos.highest_price - self.TRAILING_DISTANCE_ATR * pos.atr
+                            new_sl = (
+                                pos.highest_price - self.TRAILING_DISTANCE_ATR * pos.atr
+                            )
                             if new_sl > pos.trailing_sl:
                                 pos.trailing_sl = new_sl
 
@@ -853,22 +951,32 @@ class BacktestEngine:
                         if pos.trailing_sl > pos.sl_price:
                             # 檢查觸發
                             if current_low <= pos.trailing_sl:
-                                trail_pnl_pct = ((pos.trailing_sl - pos.entry_price) / pos.entry_price) * 100
-                                trail_pnl_usdt = pos.quantity * pos.trailing_sl - pos.quantity * pos.entry_price
-                                trail_fee = pos.quantity * pos.trailing_sl * self.TAKER_FEE
+                                trail_pnl_pct = (
+                                    (pos.trailing_sl - pos.entry_price)
+                                    / pos.entry_price
+                                ) * 100
+                                trail_pnl_usdt = (
+                                    pos.quantity * pos.trailing_sl
+                                    - pos.quantity * pos.entry_price
+                                )
+                                trail_fee = (
+                                    pos.quantity * pos.trailing_sl * self.TAKER_FEE
+                                )
                                 trail_pnl_usdt -= trail_fee
-                                closed_trades.append(ClosedTrade(
-                                    symbol=pos.symbol,
-                                    entry_price=pos.entry_price,
-                                    exit_price=pos.trailing_sl,
-                                    pnl_pct=trail_pnl_pct,
-                                    pnl_usdt=trail_pnl_usdt,
-                                    reason="trailing",
-                                    holding_bars=bar_idx - pos.entry_bar,
-                                    entry_time=pos.entry_time,
-                                    exit_time=current_time,
-                                    score=0,
-                                ))
+                                closed_trades.append(
+                                    ClosedTrade(
+                                        symbol=pos.symbol,
+                                        entry_price=pos.entry_price,
+                                        exit_price=pos.trailing_sl,
+                                        pnl_pct=trail_pnl_pct,
+                                        pnl_usdt=trail_pnl_usdt,
+                                        reason="trailing",
+                                        holding_bars=bar_idx - pos.entry_bar,
+                                        entry_time=pos.entry_time,
+                                        exit_time=current_time,
+                                        score=0,
+                                    )
+                                )
                                 pos.quantity = 0
                                 trades_to_close.append((pos_idx, pos, "trailing", 0))
 
@@ -882,20 +990,26 @@ class BacktestEngine:
                 slice_klines = klines[: bar_idx + 1]
                 analysis_1h = Indicators.analyze_symbol(slice_klines)
                 if analysis_1h:
-                    a_4h, a_1d = _get_latest_tf_analysis(current_time) if interval == "1h" else (None, None)
+                    a_4h, a_1d = (
+                        _get_latest_tf_analysis(current_time)
+                        if interval == "1h"
+                        else (None, None)
+                    )
                     vol_surge = _detect_volume_surge(slice_klines)
                     score = calculate_score(analysis_1h, a_4h, a_1d, vol_surge)
 
                     # ---- BTC 趨勢過濾 ----
                     if enable_trend_filter and btc_sma_200_cache:
                         # 找 <= current_time 的最新 BTC SMA200
-                        trend_times = [t for t in btc_sma_200_cache if t <= current_time]
+                        trend_times = [
+                            t for t in btc_sma_200_cache if t <= current_time
+                        ]
                         if trend_times:
                             latest_btc_time = max(trend_times)
                             sma_200 = btc_sma_200_cache[latest_btc_time]
                             # 找對應的 BTC close
                             btc_close = 0
-                            for bk in (btc_daily or []):
+                            for bk in btc_daily or []:
                                 if bk["open_time"] == latest_btc_time:
                                     btc_close = bk["close"]
                                     break
@@ -922,7 +1036,12 @@ class BacktestEngine:
                 pos.quantity * kline["close"] for pos in positions if pos.quantity > 0
             )
             closed_pnl = sum(t.pnl_usdt for t in closed_trades)
-            equity = capital - sum(p.usdt_cost for p in positions) + open_positions_value + closed_pnl
+            equity = (
+                capital
+                - sum(p.usdt_cost for p in positions)
+                + open_positions_value
+                + closed_pnl
+            )
             equity_curve.append(equity)
 
         # ---- 強制平倉所有剩余持倉 ----
@@ -931,21 +1050,25 @@ class BacktestEngine:
             for pos in positions:
                 if pos.quantity > 0:
                     pnl_pct = ((last_close - pos.entry_price) / pos.entry_price) * 100
-                    pnl_usdt = pos.quantity * last_close - pos.quantity * pos.entry_price
+                    pnl_usdt = (
+                        pos.quantity * last_close - pos.quantity * pos.entry_price
+                    )
                     fee = pos.quantity * last_close * self.TAKER_FEE
                     pnl_usdt -= fee
-                    closed_trades.append(ClosedTrade(
-                        symbol=pos.symbol,
-                        entry_price=pos.entry_price,
-                        exit_price=last_close,
-                        pnl_pct=pnl_pct,
-                        pnl_usdt=pnl_usdt,
-                        reason="end_of_data",
-                        holding_bars=len(klines) - 1 - pos.entry_bar,
-                        entry_time=pos.entry_time,
-                        exit_time=klines[-1]["open_time"],
-                        score=0,
-                    ))
+                    closed_trades.append(
+                        ClosedTrade(
+                            symbol=pos.symbol,
+                            entry_price=pos.entry_price,
+                            exit_price=last_close,
+                            pnl_pct=pnl_pct,
+                            pnl_usdt=pnl_usdt,
+                            reason="end_of_data",
+                            holding_bars=len(klines) - 1 - pos.entry_bar,
+                            entry_time=pos.entry_time,
+                            exit_time=klines[-1]["open_time"],
+                            score=0,
+                        )
+                    )
 
         # ---- 計算統計 ----
         return self._compute_stats(
@@ -971,9 +1094,15 @@ class BacktestEngine:
         sl_pct = max(self.MIN_SL_PCT, min(self.MAX_SL_PCT, sl_pct))
         sl_price = price * (1 - sl_pct / 100)
 
-        tp1_pct = max(self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP1_ATR_MULT * atr_pct))
-        tp2_pct = max(self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP2_ATR_MULT * atr_pct))
-        tp3_pct = max(self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP3_ATR_MULT * atr_pct))
+        tp1_pct = max(
+            self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP1_ATR_MULT * atr_pct)
+        )
+        tp2_pct = max(
+            self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP2_ATR_MULT * atr_pct)
+        )
+        tp3_pct = max(
+            self.MIN_TP_PCT, min(self.MAX_TP_PCT, self.TP3_ATR_MULT * atr_pct)
+        )
 
         return {
             "sl_price": round(sl_price, 6),
@@ -1008,7 +1137,11 @@ class BacktestEngine:
 
         # 年化收益率
         trading_days = max(len(equity_curve) / 24, 1)  # 假設 1h K 線
-        annualized_return_pct = ((final_equity / initial_capital) ** (365 / trading_days) - 1) * 100 if trading_days > 0 else 0
+        annualized_return_pct = (
+            ((final_equity / initial_capital) ** (365 / trading_days) - 1) * 100
+            if trading_days > 0
+            else 0
+        )
 
         # Max drawdown
         max_drawdown_pct = self._calc_max_drawdown(equity_curve)
@@ -1017,7 +1150,9 @@ class BacktestEngine:
         returns = self._calc_bar_returns(equity_curve)
         sharpe_ratio = self._calc_sharpe(returns)
         sortino_ratio = self._calc_sortino(returns)
-        calmar_ratio = annualized_return_pct / max_drawdown_pct if max_drawdown_pct > 0 else 0
+        calmar_ratio = (
+            annualized_return_pct / max_drawdown_pct if max_drawdown_pct > 0 else 0
+        )
 
         # Win/Loss stats
         wins = [t for t in closed_trades if t.pnl_usdt > 0]
@@ -1030,15 +1165,21 @@ class BacktestEngine:
 
         gross_profit = sum(t.pnl_usdt for t in wins)
         gross_loss = abs(sum(t.pnl_usdt for t in losses))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
+        profit_factor = (
+            gross_profit / gross_loss
+            if gross_loss > 0
+            else float("inf") if gross_profit > 0 else 0
+        )
 
         # Max consecutive losses
         max_consecutive_losses = self._calc_max_consecutive(closed_trades)
 
         # Avg holding bars
         avg_holding_bars = (
-            sum(t.holding_bars for t in closed_trades) / total_trades
-        ) if total_trades > 0 else 0
+            (sum(t.holding_bars for t in closed_trades) / total_trades)
+            if total_trades > 0
+            else 0
+        )
 
         # Trade list
         trade_list = [
@@ -1050,10 +1191,20 @@ class BacktestEngine:
                 "pnl_usdt": round(t.pnl_usdt, 4),
                 "reason": t.reason,
                 "holding_bars": t.holding_bars,
-                "entry_time": datetime.fromtimestamp(t.entry_time / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-                if t.entry_time else "",
-                "exit_time": datetime.fromtimestamp(t.exit_time / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-                if t.exit_time else "",
+                "entry_time": (
+                    datetime.fromtimestamp(
+                        t.entry_time / 1000, tz=timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M")
+                    if t.entry_time
+                    else ""
+                ),
+                "exit_time": (
+                    datetime.fromtimestamp(
+                        t.exit_time / 1000, tz=timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M")
+                    if t.exit_time
+                    else ""
+                ),
             }
             for t in closed_trades
         ]
@@ -1075,7 +1226,9 @@ class BacktestEngine:
             "win_rate": round(win_rate, 1),
             "avg_win_pct": round(avg_win_pct, 2),
             "avg_loss_pct": round(avg_loss_pct, 2),
-            "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else "∞",
+            "profit_factor": (
+                round(profit_factor, 2) if profit_factor != float("inf") else "∞"
+            ),
             "max_consecutive_losses": max_consecutive_losses,
             "total_trades": total_trades,
             "avg_holding_bars": round(avg_holding_bars, 1),
@@ -1123,8 +1276,9 @@ class BacktestEngine:
         if len(returns) < 2:
             return 0.0
         import numpy as np
-        avg_ret = np.mean(returns)
-        std_ret = np.std(returns)
+
+        avg_ret = float(np.mean(returns))
+        std_ret = float(np.std(returns))
         if std_ret == 0:
             return 0.0
         # 年化：每小時 → 每年 (8760 hours)
@@ -1137,12 +1291,13 @@ class BacktestEngine:
         if len(returns) < 2:
             return 0.0
         import numpy as np
-        avg_ret = np.mean(returns)
+
+        avg_ret = float(np.mean(returns))
         # 下行偏差
         downside = [r for r in returns if r < 0]
         if not downside:
             return float("inf")
-        downside_std = np.std(downside)
+        downside_std = float(np.std(downside))
         if downside_std == 0:
             return 0.0
         hourly_rf = risk_free_rate / 100 / 8760 * 100
@@ -1189,10 +1344,9 @@ class BacktestEngine:
     @staticmethod
     def _aggregate_results(results: Dict[str, Dict]) -> Dict:
         """聚合多幣種回測結果"""
-        all_trades = []
-        all_equities = []
-        total_initial = 0
-        total_final = 0
+        all_trades: List[Dict[str, Any]] = []
+        total_initial = 0.0
+        total_final = 0.0
 
         for sym, r in results.items():
             if "error" in r:
@@ -1201,13 +1355,17 @@ class BacktestEngine:
             total_initial += r.get("initial_capital", 10000)
             total_final += r.get("final_equity", r.get("initial_capital", 10000))
 
-        total_return_pct = ((total_final - total_initial) / total_initial * 100) if total_initial > 0 else 0
+        total_return_pct = (
+            ((total_final - total_initial) / total_initial * 100)
+            if total_initial > 0
+            else 0
+        )
         total_trades = len(all_trades)
 
         wins = sum(1 for t in all_trades if t.get("pnl_pct", 0) > 0)
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
 
-        profit_factor = 0
+        profit_factor = 0.0
         if all_trades:
             gp = sum(t["pnl_usdt"] for t in all_trades if t["pnl_usdt"] > 0)
             gl = abs(sum(t["pnl_usdt"] for t in all_trades if t["pnl_usdt"] <= 0))
@@ -1215,14 +1373,18 @@ class BacktestEngine:
 
         return {
             "symbols_tested": len(results),
-            "symbols_with_trades": sum(1 for r in results.values() if r.get("total_trades", 0) > 0),
+            "symbols_with_trades": sum(
+                1 for r in results.values() if r.get("total_trades", 0) > 0
+            ),
             "total_trades": total_trades,
             "total_initial_capital": total_initial,
             "total_final_equity": round(total_final, 2),
             "total_pnl_usdt": round(total_final - total_initial, 2),
             "total_return_pct": round(total_return_pct, 2),
             "win_rate": round(win_rate, 1),
-            "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else "∞",
+            "profit_factor": (
+                round(profit_factor, 2) if profit_factor != float("inf") else "∞"
+            ),
             "per_symbol": {
                 sym: {
                     "total_return_pct": r.get("total_return_pct", 0),
@@ -1260,37 +1422,63 @@ class BacktestEngine:
 
         lines.append(f"  Symbol:          {result.get('symbol', 'N/A')}")
         lines.append(f"  Interval:        {result.get('interval', 'N/A')}")
-        lines.append(f"  Period:          {result.get('start_date', '')} → {result.get('end_date', '')}")
+        lines.append(
+            f"  Period:          {result.get('start_date', '')} → {result.get('end_date', '')}"
+        )
         lines.append(f"  Initial Capital: ${result.get('initial_capital', 0):,.2f}")
-        lines.append(f"  Trend Filter:    {'ON' if result.get('enable_trend_filter') else 'OFF'}")
-        lines.append(f"  Trailing Stop:   {'ON' if result.get('enable_trailing_stop') else 'OFF'}")
+        lines.append(
+            f"  Trend Filter:    {'ON' if result.get('enable_trend_filter') else 'OFF'}"
+        )
+        lines.append(
+            f"  Trailing Stop:   {'ON' if result.get('enable_trailing_stop') else 'OFF'}"
+        )
         lines.append("")
         lines.append(hr("─"))
         lines.append("  PERFORMANCE SUMMARY".center(w))
         lines.append(hr("─"))
         lines.append("")
-        lines.append(f"  Final Equity:         ${result.get('final_equity', 0):>12,.2f}")
-        lines.append(f"  Total PnL:            ${result.get('total_pnl_usdt', 0):>12,.2f}")
-        lines.append(f"  Total Return:         {result.get('total_return_pct', 0):>11.2f}%")
-        lines.append(f"  Annualized Return:    {result.get('annualized_return_pct', 0):>11.2f}%")
-        lines.append(f"  Max Drawdown:         {result.get('max_drawdown_pct', 0):>11.2f}%")
+        lines.append(
+            f"  Final Equity:         ${result.get('final_equity', 0):>12,.2f}"
+        )
+        lines.append(
+            f"  Total PnL:            ${result.get('total_pnl_usdt', 0):>12,.2f}"
+        )
+        lines.append(
+            f"  Total Return:         {result.get('total_return_pct', 0):>11.2f}%"
+        )
+        lines.append(
+            f"  Annualized Return:    {result.get('annualized_return_pct', 0):>11.2f}%"
+        )
+        lines.append(
+            f"  Max Drawdown:         {result.get('max_drawdown_pct', 0):>11.2f}%"
+        )
         lines.append(f"  Sharpe Ratio:         {result.get('sharpe_ratio', 0):>12.2f}")
         lines.append(f"  Sortino Ratio:        {result.get('sortino_ratio', 0):>12.2f}")
-        calmar = result.get('calmar_ratio', 0)
-        lines.append(f"  Calmar Ratio:         {calmar:>12.2f}" if isinstance(calmar, (int, float)) else f"  Calmar Ratio:         {calmar:>12}")
+        calmar = result.get("calmar_ratio", 0)
+        lines.append(
+            f"  Calmar Ratio:         {calmar:>12.2f}"
+            if isinstance(calmar, (int, float))
+            else f"  Calmar Ratio:         {calmar:>12}"
+        )
         lines.append("")
         lines.append(hr("─"))
         lines.append("  TRADE STATISTICS".center(w))
         lines.append(hr("─"))
         lines.append("")
         lines.append(f"  Total Trades:         {result.get('total_trades', 0):>12}")
-        lines.append(f"  Wins / Losses:        {result.get('wins', 0):>5} / {result.get('losses', 0):<5}")
+        lines.append(
+            f"  Wins / Losses:        {result.get('wins', 0):>5} / {result.get('losses', 0):<5}"
+        )
         lines.append(f"  Win Rate:             {result.get('win_rate', 0):>11.1f}%")
         lines.append(f"  Avg Win:              {result.get('avg_win_pct', 0):>11.2f}%")
         lines.append(f"  Avg Loss:             {result.get('avg_loss_pct', 0):>11.2f}%")
         lines.append(f"  Profit Factor:        {result.get('profit_factor', 0):>12}")
-        lines.append(f"  Max Consecutive Loss: {result.get('max_consecutive_losses', 0):>12}")
-        lines.append(f"  Avg Holding Bars:     {result.get('avg_holding_bars', 0):>12.1f}")
+        lines.append(
+            f"  Max Consecutive Loss: {result.get('max_consecutive_losses', 0):>12}"
+        )
+        lines.append(
+            f"  Avg Holding Bars:     {result.get('avg_holding_bars', 0):>12.1f}"
+        )
         lines.append("")
 
         # Trade list
@@ -1323,7 +1511,9 @@ class BacktestEngine:
             lines.append("  PER-SYMBOL SUMMARY".center(w))
             lines.append(hr("─"))
             lines.append("")
-            lines.append(f"  {'Symbol':<12}  {'Return':>8}  {'Trades':>6}  {'WinRate':>7}  {'MaxDD':>7}")
+            lines.append(
+                f"  {'Symbol':<12}  {'Return':>8}  {'Trades':>6}  {'WinRate':>7}  {'MaxDD':>7}"
+            )
             lines.append("  " + "─" * 46)
             for sym, s in result.get("per_symbol", {}).items():
                 lines.append(

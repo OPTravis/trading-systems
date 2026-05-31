@@ -7,8 +7,8 @@ Provides utilities to fetch corporate action data and adjust price/volume data.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Optional
 
@@ -27,6 +27,7 @@ class ActionType(str, Enum):
 @dataclass
 class Dividend:
     """Represents a dividend event."""
+
     symbol: str
     ex_date: date
     pay_date: Optional[date]
@@ -38,10 +39,11 @@ class Dividend:
 @dataclass
 class Split:
     """Represents a stock split event."""
+
     symbol: str
     ex_date: date
     ratio_from: int  # e.g., 1 in a 1:4 split
-    ratio_to: int    # e.g., 4 in a 1:4 split
+    ratio_to: int  # e.g., 4 in a 1:4 split
 
     @property
     def split_factor(self) -> float:
@@ -57,6 +59,7 @@ class Split:
 @dataclass
 class Merger:
     """Represents a merger/acquisition event."""
+
     acquirer: str
     target: str
     announce_date: date
@@ -181,7 +184,9 @@ class CorporateActions:
         result = result.sort_index()
 
         # Ensure numeric columns are float to avoid int64 cast issues
-        numeric_cols = [c for c in ["open", "high", "low", "close", "volume"] if c in result.columns]
+        numeric_cols = [
+            c for c in ["open", "high", "low", "close", "volume"] if c in result.columns
+        ]
         for col in numeric_cols:
             result[col] = result[col].astype(float)
 
@@ -225,7 +230,9 @@ class CorporateActions:
 
         result = result.sort_index()
 
-        price_cols = [c for c in ["open", "high", "low", "close"] if c in result.columns]
+        price_cols = [
+            c for c in ["open", "high", "low", "close"] if c in result.columns
+        ]
 
         # Iterate dividends sorted by ex_date DESCENDING (most recent first) for backward adjustment
         for div in sorted(divs, key=lambda d: d.ex_date, reverse=True):

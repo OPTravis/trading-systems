@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..core.exchange_client import ExchangeClient
 from typing import Any, Dict, List, Optional, Set
@@ -32,7 +32,7 @@ def _ensure_data_dir() -> Path:
     return _DATA_DIR
 
 
-def _load_json(filepath: Path, default: Any = None) -> Any:
+def _load_json(filepath: Path, default: Optional[Any] = None) -> Any:
     """Load JSON from file, returning default on any error."""
     try:
         if filepath.exists():
@@ -227,7 +227,7 @@ class TrailingStop:
             logger.error(f"TrailingStop: SQLite save failed: {e}")
             return False
 
-    def update(self, symbol: str, current_price: float, atr: float, entry_price: float = None) -> Dict:
+    def update(self, symbol: str, current_price: float, atr: float, entry_price: Optional[float] = None) -> Dict:
         """Update trailing stop for a symbol.
 
         Returns:
@@ -788,7 +788,7 @@ class RiskManager:
     Orchestrates TrendFilter, TrailingStop, ConsecutiveLossGuard, and SectorExposure.
     """
 
-    def __init__(self, binance_client: 'ExchangeClient' = None):
+    def __init__(self, binance_client: Optional['ExchangeClient'] = None):
         self.client = binance_client
         self.trend_filter = TrendFilter()
         self.trailing_stop = TrailingStop()
@@ -1088,7 +1088,7 @@ class RiskManager:
             "trend_filter": trend,
             "trailing_stops": self.trailing_stop.get_all(),
             "loss_guard": self.loss_guard.get_status(),
-            "drawdown_breaker": self.drawdown_breaker.get_status() if getattr(self, "drawdown_breaker", None) else None,
+            "drawdown_breaker": self.drawdown_breaker.get_status() if self.drawdown_breaker is not None else None,
             "sector_exposure": {
                 "max_sector_pct": self.sector_exposure.MAX_SECTOR_PCT,
                 "sectors": list(self.sector_exposure.SECTORS.keys()),

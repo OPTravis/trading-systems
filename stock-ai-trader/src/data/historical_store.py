@@ -2,10 +2,11 @@
 Historical OHLCV data store in DuckDB.
 Ingests from yfinance, stores for backtesting and factor computation.
 """
+
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -26,7 +27,7 @@ class HistoricalStore:
     def __init__(self, db_path: Optional[str | Path] = None):
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = None
+        self._conn: Optional[Any] = None
         self._write_lock = threading.Lock()
         self._init_tables()
 
@@ -34,6 +35,7 @@ class HistoricalStore:
     def conn(self):
         if self._conn is None:
             import duckdb
+
             self._conn = duckdb.connect(str(self.db_path))
         return self._conn
 
@@ -123,7 +125,9 @@ class HistoricalStore:
 
         for sym in symbols:
             try:
-                df = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=False)
+                df = yf.Ticker(sym).history(
+                    period=period, interval="1d", auto_adjust=False
+                )
                 if df.empty:
                     logger.warning("No data for %s", sym)
                     results[sym] = 0
@@ -137,7 +141,16 @@ class HistoricalStore:
                 if "adj_close" not in df.columns:
                     df["adj_close"] = df["close"]
 
-                cols = ["date", "symbol", "open", "high", "low", "close", "volume", "adj_close"]
+                cols = [
+                    "date",
+                    "symbol",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "adj_close",
+                ]
                 df = df[[c for c in cols if c in df.columns]]
                 df = df.dropna(subset=["close"])
 
@@ -161,7 +174,9 @@ class HistoricalStore:
                 results[sym] = 0
 
         total = sum(results.values())
-        logger.info("Batch ingest complete: %d rows across %d symbols", total, len(symbols))
+        logger.info(
+            "Batch ingest complete: %d rows across %d symbols", total, len(symbols)
+        )
         return results
 
     def get_ohlcv(

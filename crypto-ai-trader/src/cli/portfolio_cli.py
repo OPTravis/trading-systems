@@ -16,18 +16,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.portfolio import PortfolioManager
 from src.binance_client import BinanceClient
+from src.portfolio import PortfolioManager
 
 logger = logging.getLogger(__name__)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Portfolio Manager CLI")
-    parser.add_argument("--sync", action="store_true", help="Sync positions from Binance")
+    parser.add_argument(
+        "--sync", action="store_true", help="Sync positions from Binance"
+    )
     parser.add_argument("--list", action="store_true", help="List all positions")
     parser.add_argument("--summary", action="store_true", help="Show portfolio summary")
-    parser.add_argument("--add", nargs=3, metavar=("SYMBOL", "QTY", "PRICE"), help="Add position")
+    parser.add_argument(
+        "--add", nargs=3, metavar=("SYMBOL", "QTY", "PRICE"), help="Add position"
+    )
     parser.add_argument("--remove", metavar="SYMBOL", help="Remove position")
     parser.add_argument("--verbose", "-v", action="store_true")
 
@@ -52,10 +56,12 @@ def main():
             if not positions:
                 print("No positions")
             for p in positions:
-                pnl_val = p.get('pnl_value', p.get('unrealized_pnl', 0))
-                pnl_pct = p.get('pnl_pct', p.get('unrealized_pct', 0))
-                print(f"{p['symbol']}: {p['quantity']} @ ${p['entry_price']:.4f} "
-                      f"PnL: ${pnl_val:.2f} ({pnl_pct:.2f}%)")
+                pnl_val = p.get("pnl_value", p.get("unrealized_pnl", 0))
+                pnl_pct = p.get("pnl_pct", p.get("unrealized_pct", 0))
+                print(
+                    f"{p['symbol']}: {p['quantity']} @ ${p['entry_price']:.4f} "
+                    f"PnL: ${pnl_val:.2f} ({pnl_pct:.2f}%)"
+                )
 
         elif args.summary:
             summary = portfolio.get_summary()
@@ -65,15 +71,33 @@ def main():
             symbol, qty, price = args.add
             portfolio.add_position(symbol, float(qty), float(price))
             pos = portfolio.get_position(symbol)
-            print(json.dumps({"success": True, "symbol": symbol,
-                              "quantity": pos["quantity"],
-                              "entry_price": pos["entry_price"]}, indent=2, default=str))
+            print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "symbol": symbol,
+                        "quantity": pos["quantity"] if pos else 0,
+                        "entry_price": pos["entry_price"] if pos else 0,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
 
         elif args.remove:
             result = portfolio.close_position(args.remove)
             if result:
-                print(json.dumps({"success": True, "symbol": args.remove,
-                                  "pnl": result.get("pnl", 0)}, indent=2, default=str))
+                print(
+                    json.dumps(
+                        {
+                            "success": True,
+                            "symbol": args.remove,
+                            "pnl": result.get("pnl", 0),
+                        },
+                        indent=2,
+                        default=str,
+                    )
+                )
             else:
                 print(json.dumps({"error": f"No position for {args.remove}"}, indent=2))
 

@@ -6,7 +6,7 @@ Provides:
 - MacroAnalyzer: Macro-economic state analysis (Fed rate, VIX, yield curve, etc.)
 """
 
-from .stock_researcher import StockResearcher, ResearchReport
 from .macro_analyzer import MacroAnalyzer, MacroState
+from .stock_researcher import ResearchReport, StockResearcher
 
 __all__ = ["StockResearcher", "ResearchReport", "MacroAnalyzer", "MacroState"]

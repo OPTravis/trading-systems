@@ -10,6 +10,7 @@ this module transparently returns the right implementation.
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load .env early so USE_CCXT is available
@@ -21,6 +22,6 @@ if _env_file.exists():
 _use_ccxt = os.environ.get("USE_CCXT", "").strip().lower() in ("1", "true", "yes")
 
 if _use_ccxt:
-    from src.ccxt_client import BinanceClient  # noqa: F401
+    from src.ccxt_client import BinanceClient  # type: ignore[assignment]  # noqa: F401
 else:
-    from src._binance_sdk_client import BinanceClient  # noqa: F401
+    from src._binance_sdk_client import BinanceClient  # type: ignore[assignment]  # noqa: F401

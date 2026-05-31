@@ -32,7 +32,9 @@ class TrendAgent:
         """
         # Early return for empty/missing data
         if not mtf_data:
-            return SpecialistResult(score=50.0, signals=['⚠️ No data available'], data={}, confidence='none')
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data available"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -58,13 +60,15 @@ class TrendAgent:
             signals.append(f"📈 Moderate Trend Score: {trend_score:.0f}")
 
         # --- data ------------------------------------------------------------
-        data['trend_score'] = round(trend_score, 2)
-        data['trend_alignment'] = trend_alignment
-        data['entry_signal'] = entry_signal
+        data["trend_score"] = round(trend_score, 2)
+        data["trend_alignment"] = trend_alignment
+        data["entry_signal"] = entry_signal
 
-        confidence = 'high' if trend_score >= 70 or trend_score <= 30 else 'medium'
+        confidence = "high" if trend_score >= 70 or trend_score <= 30 else "medium"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Factor 2: Multi-TF Trend (direct passthrough of trend_score)

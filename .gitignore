@@ -33,3 +33,8 @@ crypto-secrets.env
 
 # Logs
 *.log
+
+# SQLite WAL runtime files
+*.db-shm
+*.db-wal
+*.db-journal

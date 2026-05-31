@@ -50,8 +50,15 @@ class PrePumpAgent:
             SpecialistResult with score 0-100.
         """
         # Early return for empty/missing data
-        if not obv_div_data and not consolidation_data and not klines_1h and not klines_4h:
-            return SpecialistResult(score=50.0, signals=['⚠️ No data available'], data={}, confidence='none')
+        if (
+            not obv_div_data
+            and not consolidation_data
+            and not klines_1h
+            and not klines_4h
+        ):
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data available"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -59,10 +66,16 @@ class PrePumpAgent:
         # --- compute from klines if not provided ----------------------------
         if obv_div_data is None and klines_1h is not None and len(klines_1h) >= 35:
             from ..indicators import Indicators
+
             obv_div_data = Indicators.obv_divergence(klines_1h, lookback=20)
 
-        if consolidation_data is None and klines_4h is not None and len(klines_4h) >= 35:
+        if (
+            consolidation_data is None
+            and klines_4h is not None
+            and len(klines_4h) >= 35
+        ):
             from ..indicators import Indicators
+
             consolidation_data = Indicators.consolidation_breakout(klines_4h)
 
         # --- sub-factor scores (each 0-100) --------------------------------
@@ -83,7 +96,9 @@ class PrePumpAgent:
 
         if consolidation_data:
             if consolidation_data.get("breaking_out"):
-                vol_tag = " + Volume" if consolidation_data.get("volume_confirmed") else ""
+                vol_tag = (
+                    " + Volume" if consolidation_data.get("volume_confirmed") else ""
+                )
                 signals.append(
                     f"🚀 Consolidation Breakout ({consolidation_data['days_in_range']}d range{vol_tag})"
                 )
@@ -94,18 +109,20 @@ class PrePumpAgent:
                 )
 
         # --- data ------------------------------------------------------------
-        data['f_obv_divergence'] = round(f_obv, 2)
-        data['f_consolidation'] = round(f_consolidation, 2)
+        data["f_obv_divergence"] = round(f_obv, 2)
+        data["f_consolidation"] = round(f_consolidation, 2)
         if obv_div_data:
-            data['obv_detected'] = obv_div_data.get("detected", False)
-            data['obv_trend'] = obv_div_data.get("obv_trend", "unknown")
+            data["obv_detected"] = obv_div_data.get("detected", False)
+            data["obv_trend"] = obv_div_data.get("obv_trend", "unknown")
         if consolidation_data:
-            data['breaking_out'] = consolidation_data.get("breaking_out", False)
-            data['in_consolidation'] = consolidation_data.get("in_consolidation", False)
+            data["breaking_out"] = consolidation_data.get("breaking_out", False)
+            data["in_consolidation"] = consolidation_data.get("in_consolidation", False)
 
-        confidence = 'high' if score >= 65 else 'medium' if score >= 45 else 'low'
+        confidence = "high" if score >= 65 else "medium" if score >= 45 else "low"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )
 
     # ------------------------------------------------------------------
     # Factor 6: OBV Divergence

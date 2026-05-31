@@ -7,11 +7,12 @@ Fetches and caches the Crypto Fear & Greed Index from alternative.me API.
 from __future__ import annotations
 
 import logging
-import requests
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from src.data_feed_base import _get_conn, FNG_TTL, FNG_URL
+import requests
+
+from src.data_feed_base import FNG_TTL, FNG_URL, _get_conn
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class FearGreedIndex:
     def _fetch_and_cache(self) -> None:
         """Fetch latest F&G data from API and upsert into SQLite."""
         try:
-            resp = requests.get(self._url, params={"limit": 30, "format": "json"}, timeout=10)
+            resp = requests.get(self._url, params={"limit": 30, "format": "json"}, timeout=10)  # type: ignore[arg-type]
             resp.raise_for_status()
             data = resp.json().get("data", [])
             if not data:
@@ -87,7 +88,9 @@ class FearGreedIndex:
             conn = _get_conn()
             try:
                 for item in data:
-                    date_str = datetime.fromtimestamp(int(item["timestamp"]), tz=timezone.utc).strftime("%Y-%m-%d")
+                    date_str = datetime.fromtimestamp(
+                        int(item["timestamp"]), tz=timezone.utc
+                    ).strftime("%Y-%m-%d")
                     conn.execute(
                         """INSERT INTO fng_history (date, value, classification, fetched_at)
                            VALUES (?, ?, ?, ?)
@@ -95,7 +98,12 @@ class FearGreedIndex:
                                value = excluded.value,
                                classification = excluded.classification,
                                fetched_at = excluded.fetched_at""",
-                        (date_str, int(item["value"]), item["value_classification"], now),
+                        (
+                            date_str,
+                            int(item["value"]),
+                            item["value_classification"],
+                            now,
+                        ),
                     )
                 conn.commit()
                 logger.debug("FNG cache updated with %d entries", len(data))

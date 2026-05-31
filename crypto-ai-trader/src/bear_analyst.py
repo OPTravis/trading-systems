@@ -12,10 +12,7 @@ Bear score > 70 AND bear_score > opportunity_score  →  trade vetoed.
 
 import json
 import logging
-import os
 from typing import Dict, List, Optional
-
-import requests
 
 from src.llm_client import get_llm_client
 
@@ -66,21 +63,23 @@ class BearAnalyst:
     """
 
     # --- Inverted factor thresholds / weights ---
-    RSI_OVERBOUGHT_HIGH = 70       # +25 bear pts
-    RSI_OVERBOUGHT_MID = 60        # +15 bear pts
+    RSI_OVERBOUGHT_HIGH = 70  # +25 bear pts
+    RSI_OVERBOUGHT_MID = 60  # +15 bear pts
     FUNDING_CROWDED_THRESHOLD = 0.01  # +20 bear pts (fraction, e.g. 0.0001 = 0.01%)
-    FUNDING_EXTREME_THRESHOLD = 0.05  # +30 bear pts (extreme funding = forced liquidations likely)
-    TAKER_RATIO_HIGH = 1.5         # +15 bear pts (taker buy/sell ratio imbalance)
-    TAKER_RATIO_EXTREME = 2.0      # +25 bear pts (extreme taker imbalance)
-    FNG_EUPHORIA_HIGH = 70         # +20 bear pts
-    FNG_EUPHORIA_MID = 60          # +10 bear pts
-    TVL_DROP_THRESHOLD = -3.0      # +15 bear pts
-    VOLUME_DECLINING_BONUS = 10    # +10 bear pts
+    FUNDING_EXTREME_THRESHOLD = (
+        0.05  # +30 bear pts (extreme funding = forced liquidations likely)
+    )
+    TAKER_RATIO_HIGH = 1.5  # +15 bear pts (taker buy/sell ratio imbalance)
+    TAKER_RATIO_EXTREME = 2.0  # +25 bear pts (extreme taker imbalance)
+    FNG_EUPHORIA_HIGH = 70  # +20 bear pts
+    FNG_EUPHORIA_MID = 60  # +10 bear pts
+    TVL_DROP_THRESHOLD = -3.0  # +15 bear pts
+    VOLUME_DECLINING_BONUS = 10  # +10 bear pts
     MAX_BEAR_SCORE = 100
 
     # Veto thresholds
-    VETO_ABSOLUTE_THRESHOLD = 70   # bear_score must exceed this
-    LLM_CALLOUT_THRESHOLD = 50    # only call LLM if bear_score >= this
+    VETO_ABSOLUTE_THRESHOLD = 70  # bear_score must exceed this
+    LLM_CALLOUT_THRESHOLD = 50  # only call LLM if bear_score >= this
 
     def analyze(
         self,
@@ -122,8 +121,7 @@ class BearAnalyst:
         # 4. Determine veto
         opportunity_score = metrics.get("score", 0)
         veto = (
-            bear_score > self.VETO_ABSOLUTE_THRESHOLD
-            and bear_score > opportunity_score
+            bear_score > self.VETO_ABSOLUTE_THRESHOLD and bear_score > opportunity_score
         )
 
         if veto:
@@ -189,12 +187,21 @@ class BearAnalyst:
         # On-chain indicators
         m["taker_buy_sell_ratio"] = opportunity_data.get(
             "taker_buy_sell_ratio",
-            research_data.get("taker_buy_sell_ratio",
-                opportunity_data.get("taker_ratio", research_data.get("taker_ratio", 1.0)))
+            research_data.get(
+                "taker_buy_sell_ratio",
+                opportunity_data.get(
+                    "taker_ratio", research_data.get("taker_ratio", 1.0)
+                ),
+            ),
         )
         m["funding_rate_8h"] = opportunity_data.get(
-            "funding_rate_8h", research_data.get("funding_rate_8h",
-                opportunity_data.get("funding_rate", research_data.get("funding_rate", 0)))
+            "funding_rate_8h",
+            research_data.get(
+                "funding_rate_8h",
+                opportunity_data.get(
+                    "funding_rate", research_data.get("funding_rate", 0)
+                ),
+            ),
         )
 
         return m
@@ -225,7 +232,9 @@ class BearAnalyst:
         funding = float(metrics.get("funding_rate", 0))
         if funding > self.FUNDING_EXTREME_THRESHOLD:
             score += 30
-            reasons.append(f"Extreme funding rate {funding * 100:.3f}% — high liquidation risk")
+            reasons.append(
+                f"Extreme funding rate {funding * 100:.3f}% — high liquidation risk"
+            )
         elif funding > self.FUNDING_CROWDED_THRESHOLD:
             score += 20
             reasons.append(f"Funding rate elevated at {funding * 100:.2f}%")
@@ -233,13 +242,17 @@ class BearAnalyst:
         # --- Bullish offset: extremely negative funding (short squeeze setup) ---
         if funding < -0.01:
             score -= 10
-            reasons.append(f"Negative funding {funding * 100:.3f}% (short squeeze potential)")
+            reasons.append(
+                f"Negative funding {funding * 100:.3f}% (short squeeze potential)"
+            )
 
         # --- On-chain: Taker buy/sell ratio ---
         taker_ratio = float(metrics.get("taker_buy_sell_ratio", 1.0))
         if taker_ratio > self.TAKER_RATIO_EXTREME:
             score += 25
-            reasons.append(f"Extreme taker buy/sell ratio {taker_ratio:.2f} — aggressive long chasing")
+            reasons.append(
+                f"Extreme taker buy/sell ratio {taker_ratio:.2f} — aggressive long chasing"
+            )
         elif taker_ratio > self.TAKER_RATIO_HIGH:
             score += 15
             reasons.append(f"Taker buy/sell ratio elevated at {taker_ratio:.2f}")
@@ -304,7 +317,7 @@ class BearAnalyst:
             f"Provide exactly 3-5 specific bearish risk factors for this coin. "
             f"Be concrete and data-driven. Return them as a JSON array of strings. "
             f"Also state your confidence as HIGH, MEDIUM, or LOW.\n"
-            f"Respond ONLY with JSON: {{\"risk_factors\": [...], \"confidence\": \"...\"}}"
+            f'Respond ONLY with JSON: {{"risk_factors": [...], "confidence": "..."}}'
         )
 
         result = llm.chat(

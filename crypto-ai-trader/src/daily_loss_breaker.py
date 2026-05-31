@@ -18,6 +18,7 @@ Usage:
         return
     multiplier = dlb.get_position_size_multiplier()
 """
+
 import logging
 import time
 from datetime import datetime, timezone
@@ -26,9 +27,9 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 # ── Tier thresholds (daily loss percentage) ──
-TIER_1_LOSS_PCT = 1.0   # ≥ 1% loss → defensive mode
-TIER_2_LOSS_PCT = 2.0   # ≥ 2% loss → block new trades
-TIER_3_LOSS_PCT = 3.0   # ≥ 3% loss → close all, halt 24h
+TIER_1_LOSS_PCT = 1.0  # ≥ 1% loss → defensive mode
+TIER_2_LOSS_PCT = 2.0  # ≥ 2% loss → block new trades
+TIER_3_LOSS_PCT = 3.0  # ≥ 3% loss → close all, halt 24h
 
 # ── Persistence key ──
 STATE_KEY = "daily_loss_breaker:state"
@@ -51,6 +52,7 @@ class DailyLossBreaker:
         """Load state from StateDB kv store."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             state = db.kv_get(STATE_KEY, {})
             if state:
@@ -66,14 +68,18 @@ class DailyLossBreaker:
         """Persist state to StateDB kv store."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
-            db.kv_set(STATE_KEY, {
-                "daily_start_balance": self._daily_start_balance,
-                "current_tier": self._current_tier,
-                "last_reset_date": self._last_reset_date,
-                "trip_history": self._trip_history[-50:],  # keep last 50 entries
-                "halt_until": self._halt_until,
-            })
+            db.kv_set(
+                STATE_KEY,
+                {
+                    "daily_start_balance": self._daily_start_balance,
+                    "current_tier": self._current_tier,
+                    "last_reset_date": self._last_reset_date,
+                    "trip_history": self._trip_history[-50:],  # keep last 50 entries
+                    "halt_until": self._halt_until,
+                },
+            )
         except Exception as e:
             logger.warning(f"DailyLossBreaker: failed to save state: {e}")
 
@@ -158,14 +164,16 @@ class DailyLossBreaker:
         if new_tier > self._current_tier:
             old_tier = self._current_tier
             self._current_tier = new_tier
-            self._trip_history.append({
-                "date": today,
-                "time": time.time(),
-                "from_tier": old_tier,
-                "to_tier": new_tier,
-                "daily_pnl_pct": round(daily_pnl_pct, 4),
-                "portfolio_value": round(portfolio_value, 2),
-            })
+            self._trip_history.append(
+                {
+                    "date": today,
+                    "time": time.time(),
+                    "from_tier": old_tier,
+                    "to_tier": new_tier,
+                    "daily_pnl_pct": round(daily_pnl_pct, 4),
+                    "portfolio_value": round(portfolio_value, 2),
+                }
+            )
 
             # Tier 3: set 24h halt
             if new_tier == 3:
@@ -183,7 +191,9 @@ class DailyLossBreaker:
 
         # Check if 24h halt has expired
         if self._current_tier == 3 and time.time() >= self._halt_until:
-            logger.info("DailyLossBreaker: 24h tier-3 halt expired, resetting to tier 0")
+            logger.info(
+                "DailyLossBreaker: 24h tier-3 halt expired, resetting to tier 0"
+            )
             self._current_tier = 0
             self._halt_until = 0.0
             self._save_state()

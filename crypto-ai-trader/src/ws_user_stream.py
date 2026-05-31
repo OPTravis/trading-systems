@@ -21,6 +21,7 @@ Usage:
     # ... later ...
     stream.stop()
 """
+
 import json
 import logging
 import threading
@@ -35,13 +36,13 @@ logger = logging.getLogger(__name__)
 SPOT_WS_BASE = "wss://stream.binance.com:9443/ws"
 
 # Reconnection constants
-RECONNECT_INITIAL_DELAY = 1.0   # Start with 1 second
-RECONNECT_MAX_DELAY = 60.0      # Cap at 60 seconds
-RECONNECT_MULTIPLIER = 2.0      # Double each time
+RECONNECT_INITIAL_DELAY = 1.0  # Start with 1 second
+RECONNECT_MAX_DELAY = 60.0  # Cap at 60 seconds
+RECONNECT_MULTIPLIER = 2.0  # Double each time
 
 # Health monitoring constants
-HEALTH_CHECK_INTERVAL = 30      # Check connection health every 30s
-STALE_CONNECTION_TIMEOUT = 120   # 2 minutes without data = stale
+HEALTH_CHECK_INTERVAL = 30  # Check connection health every 30s
+STALE_CONNECTION_TIMEOUT = 120  # 2 minutes without data = stale
 
 
 class ConnectionStats:
@@ -66,8 +67,7 @@ class ConnectionStats:
         """Increment backoff delay and return new value."""
         self.consecutive_failures += 1
         self.current_backoff_delay = min(
-            self.current_backoff_delay * RECONNECT_MULTIPLIER,
-            RECONNECT_MAX_DELAY
+            self.current_backoff_delay * RECONNECT_MULTIPLIER, RECONNECT_MAX_DELAY
         )
         return self.current_backoff_delay
 
@@ -134,7 +134,12 @@ class UserDataStream:
     def _get_listen_key(self) -> Optional[str]:
         """Get a listen key from Binance REST API."""
         import requests
-        url = "https://testnet.binance.vision/api/v3/userDataStream" if self.testnet else "https://api3.binance.com/api/v3/userDataStream"
+
+        url = (
+            "https://testnet.binance.vision/api/v3/userDataStream"
+            if self.testnet
+            else "https://api3.binance.com/api/v3/userDataStream"
+        )
         try:
             resp = requests.post(
                 url,
@@ -147,7 +152,10 @@ class UserDataStream:
                 logger.info("UserDataStream: got listen key")
                 return key
             else:
-                logger.error("UserDataStream: failed to get listen key: HTTP %d", resp.status_code)
+                logger.error(
+                    "UserDataStream: failed to get listen key: HTTP %d",
+                    resp.status_code,
+                )
         except Exception as e:
             logger.error("UserDataStream: error getting listen key: %s", e)
         return None
@@ -155,7 +163,12 @@ class UserDataStream:
     def _keepalive_listen_key(self):
         """Keep the listen key alive (expires after 60 minutes)."""
         import requests
-        url = "https://testnet.binance.vision/api/v3/userDataStream" if self.testnet else "https://api3.binance.com/api/v3/userDataStream"
+
+        url = (
+            "https://testnet.binance.vision/api/v3/userDataStream"
+            if self.testnet
+            else "https://api3.binance.com/api/v3/userDataStream"
+        )
         try:
             resp = requests.put(
                 url,
@@ -166,11 +179,13 @@ class UserDataStream:
             if resp.status_code == 200:
                 logger.debug("UserDataStream: listen key keepalive OK")
             else:
-                logger.warning("UserDataStream: keepalive failed: HTTP %d", resp.status_code)
+                logger.warning(
+                    "UserDataStream: keepalive failed: HTTP %d", resp.status_code
+                )
         except Exception as e:
             logger.warning("UserDataStream: keepalive error: %s", e)
 
-    def _on_message(self, ws, message: str):
+    def _on_message(self, _ws, message: str):
         """Handle incoming WebSocket message."""
         try:
             data = json.loads(message)
@@ -183,16 +198,23 @@ class UserDataStream:
             # Route by event type
             if event_type == "outboundAccountPosition":
                 # Balance update
-                logger.debug("UserDataStream: balance update for %d assets", len(data.get("B", [])))
+                logger.debug(
+                    "UserDataStream: balance update for %d assets",
+                    len(data.get("B", [])),
+                )
             elif event_type == "executionReport":
                 # Order update
                 logger.debug(
                     "UserDataStream: order %s %s (status=%s)",
-                    data.get("s"), data.get("c"), data.get("X"),
+                    data.get("s"),
+                    data.get("c"),
+                    data.get("X"),
                 )
             elif event_type == "balanceUpdate":
                 # Single balance change
-                logger.debug("UserDataStream: balance update %s %s", data.get("a"), data.get("d"))
+                logger.debug(
+                    "UserDataStream: balance update %s %s", data.get("a"), data.get("d")
+                )
 
             # Forward to callback
             if self._callback:
@@ -203,18 +225,20 @@ class UserDataStream:
         except Exception as e:
             logger.error("UserDataStream: message handling error: %s", e)
 
-    def _on_error(self, ws, error):
+    def _on_error(self, _ws, error):
         """Handle WebSocket error."""
         logger.error("UserDataStream: WebSocket error: %s", error)
         with self._health_lock:
             self._stats.record_error()
 
-    def _on_close(self, ws, close_status_code, close_msg):
+    def _on_close(self, _ws, close_status_code, close_msg):
         """Handle WebSocket close."""
-        logger.warning("UserDataStream: connection closed: %s %s", close_status_code, close_msg)
+        logger.warning(
+            "UserDataStream: connection closed: %s %s", close_status_code, close_msg
+        )
         self._running = False
 
-    def _on_open(self, ws):
+    def _on_open(self, _ws):
         """Handle WebSocket open."""
         logger.info("UserDataStream: connection opened")
         with self._health_lock:
@@ -239,7 +263,10 @@ class UserDataStream:
                 if not self._listen_key:
                     self._listen_key = self._get_listen_key()
                     if not self._listen_key:
-                        logger.warning("UserDataStream: failed to get listen key, retrying in %.1fs", backoff_delay)
+                        logger.warning(
+                            "UserDataStream: failed to get listen key, retrying in %.1fs",
+                            backoff_delay,
+                        )
                         time.sleep(backoff_delay)
                         with self._health_lock:
                             backoff_delay = self._stats.increment_backoff()
@@ -357,11 +384,15 @@ class UserDataStream:
         self._thread.start()
 
         # Start keepalive thread
-        self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+        self._keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True
+        )
         self._keepalive_thread.start()
 
         # Start health monitor thread
-        self._health_thread = threading.Thread(target=self._health_monitor_loop, daemon=True)
+        self._health_thread = threading.Thread(
+            target=self._health_monitor_loop, daemon=True
+        )
         self._health_thread.start()
 
         logger.info("UserDataStream: started")
@@ -417,7 +448,9 @@ class BalanceChangeHandler:
                 prev = self._last_balances.get(asset, 0)
                 if abs(total - prev) > 0.0001:
                     change = total - prev
-                    logger.info("BalanceChange: %s %.6f (change: %+.6f)", asset, total, change)
+                    logger.info(
+                        "BalanceChange: %s %.6f (change: %+.6f)", asset, total, change
+                    )
                     self._last_balances[asset] = total
 
         elif event_type == "balanceUpdate":

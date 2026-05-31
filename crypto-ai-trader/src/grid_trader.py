@@ -8,22 +8,20 @@ when a sell fills, a buy is placed at the next level down.
 
 import json
 import logging
-import os
-import time
-import statistics
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 
 # Python 3.11.15 (uv build) removed random.randbits
 import random as _r
-if not hasattr(_r, 'randbits'):
-    _r.randbits = _r.getrandbits
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+if not hasattr(_r, "randbits"):
+    _r.randbits = _r.getrandbits  # type: ignore[attr-defined]
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
-from src.binance_client import BinanceClient  # runtime fallback
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,7 @@ class GridBot:
 
     DB_KEY = "grid_state"
 
-    def __init__(self, client: 'ExchangeClient'):
+    def __init__(self, client: "ExchangeClient"):
         self.client = client
         self.state: Dict[str, Any] = {}
         self._load_state()
@@ -55,6 +53,7 @@ class GridBot:
         # --- Try dedicated grid_state table first ---
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db_state = db.grid_get_all()
             # grid_get_all returns {symbol: {...}}, we need to find the active one
@@ -63,24 +62,31 @@ class GridBot:
                 # Take the first one (legacy: only one grid at a time)
                 symbol = list(db_state.keys())[0]
                 self.state = db_state[symbol]
-                logger.info(f"Grid state loaded from grid_state table: {self.state.get('symbol')} status={self.state.get('status')}")
+                logger.info(
+                    f"Grid state loaded from grid_state table: {self.state.get('symbol')} status={self.state.get('status')}"
+                )
                 return
         except Exception as e:
             logger.warning(f"GridBot: failed to load from grid_state table: {e}")
         # --- Fallback to legacy kv store ---
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             db_state = db.kv_get(self.DB_KEY)
             if db_state:
                 self.state = db_state
-                logger.info(f"Grid state loaded from kv store: {self.state.get('symbol')} status={self.state.get('status')}")
+                logger.info(
+                    f"Grid state loaded from kv store: {self.state.get('symbol')} status={self.state.get('status')}"
+                )
                 # Migrate to new table
                 try:
-                    db.grid_set(self.state.get('symbol', 'UNKNOWN'), self.state)
+                    db.grid_set(self.state.get("symbol", "UNKNOWN"), self.state)
                     logger.info("Grid state migrated from kv to grid_state table")
                 except Exception as e:
-                    logger.warning(f"GridBot: migration to grid_state table failed: {e}")
+                    logger.warning(
+                        f"GridBot: migration to grid_state table failed: {e}"
+                    )
                 return
         except Exception as e:
             logger.warning(f"GridBot: failed to load from kv store: {e}")
@@ -88,12 +94,15 @@ class GridBot:
         if STATE_FILE.exists():
             with open(STATE_FILE) as f:
                 self.state = json.load(f)
-            logger.info(f"Grid state loaded from JSON: {self.state.get('symbol')} status={self.state.get('status')}")
+            logger.info(
+                f"Grid state loaded from JSON: {self.state.get('symbol')} status={self.state.get('status')}"
+            )
             # Migrate to SQLite
             try:
                 from src.state_db import get_state_db
+
                 db = get_state_db()
-                db.grid_set(self.state.get('symbol', 'UNKNOWN'), self.state)
+                db.grid_set(self.state.get("symbol", "UNKNOWN"), self.state)
                 logger.info("Grid state migrated from JSON to SQLite grid_state table")
             except Exception as e:
                 logger.warning(f"GridBot: migration to SQLite failed: {e}")
@@ -103,6 +112,7 @@ class GridBot:
         # --- SQLite sole source of truth (grid_state table) ---
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             symbol = self.state.get("symbol", "UNKNOWN")
             db.grid_set(symbol, self.state)
@@ -122,7 +132,7 @@ class GridBot:
         adaptive: bool = True,
     ) -> Dict:
         """Configure grid levels around current price. Does NOT place orders.
-        
+
         When adaptive=True, uses ATR to dynamically set range_pct and grid_count.
         High ATR → wider range, fewer grids (less whipsaw).
         Low ATR → tighter range, more grids (more fills).
@@ -142,7 +152,6 @@ class GridBot:
         atr_pct = 0.0
         if adaptive:
             try:
-                from src.indicators import Indicators
                 klines = self.client.get_klines(symbol, "1h", 24)
                 if klines and len(klines) >= 14:
                     closes = [k["close"] for k in klines]
@@ -152,8 +161,8 @@ class GridBot:
                     for i in range(1, len(closes)):
                         tr = max(
                             highs[i] - lows[i],
-                            abs(highs[i] - closes[i-1]),
-                            abs(lows[i] - closes[i-1]),
+                            abs(highs[i] - closes[i - 1]),
+                            abs(lows[i] - closes[i - 1]),
                         )
                         trs.append(tr)
                     atr = sum(trs[-14:]) / min(len(trs), 14) if trs else 0
@@ -172,7 +181,10 @@ class GridBot:
 
                     logger.info(
                         "Adaptive grid: ATR=%.4f (%.2f%%) → range=%.1f%% grids=%d",
-                        atr, atr_pct, range_pct, grid_count,
+                        atr,
+                        atr_pct,
+                        range_pct,
+                        grid_count,
                     )
             except Exception as e:
                 logger.warning("ATR calculation failed, using defaults: %s", e)
@@ -185,24 +197,30 @@ class GridBot:
 
         # Validate
         if capital_per_grid < MIN_NOTIONAL:
-            return {"error": f"Capital per grid ${capital_per_grid:.2f} < min notional ${MIN_NOTIONAL}"}
+            return {
+                "error": f"Capital per grid ${capital_per_grid:.2f} < min notional ${MIN_NOTIONAL}"
+            }
 
         min_profitable_spacing = 2 * FEE_RATE * current_price
         if spacing < min_profitable_spacing:
-            return {"error": f"Grid spacing ${spacing:.6f} too small for fees (need >${min_profitable_spacing:.6f})"}
+            return {
+                "error": f"Grid spacing ${spacing:.6f} too small for fees (need >${min_profitable_spacing:.6f})"
+            }
 
         # Generate grid levels
         grid_levels = []
         for i in range(grid_count + 1):
             price = grid_lower + i * spacing
-            grid_levels.append({
-                "index": i,
-                "price": round(price, 8),
-                "buy_order_id": None,
-                "sell_order_id": None,
-                "coin_qty": 0.0,
-                "status": "empty",  # empty, bought, sold
-            })
+            grid_levels.append(
+                {
+                    "index": i,
+                    "price": round(price, 8),
+                    "buy_order_id": None,
+                    "sell_order_id": None,
+                    "coin_qty": 0.0,
+                    "status": "empty",  # empty, bought, sold
+                }
+            )
 
         self.state = {
             "symbol": symbol,
@@ -362,7 +380,11 @@ class GridBot:
 
     # ────────────────────── Core Loop: Tick ──────────────────────
 
-    @strategy_guard(max_failures=3, cooldown_sec=60, default_return={"status": "error", "action": "skip"})
+    @strategy_guard(
+        max_failures=3,
+        cooldown_sec=60,
+        default_return={"status": "error", "action": "skip"},
+    )
     def tick(self) -> Dict:
         """Main loop — detect fills, place counter orders, check rebalance."""
         if self.state.get("status") != "running":
@@ -402,7 +424,9 @@ class GridBot:
                     precision = self._get_symbol_precision(symbol)
                     sell_qty = self._round_qty(qty, precision["qty_decimals"])
                     if sell_qty * sell_price >= MIN_NOTIONAL:
-                        result = self.client.place_limit_sell(symbol, sell_qty, sell_price)
+                        result = self.client.place_limit_sell(
+                            symbol, sell_qty, sell_price
+                        )
                         if result:
                             sell_level["sell_order_id"] = result["orderId"]
                             sell_level["status"] = "pending_sell"
@@ -420,7 +444,10 @@ class GridBot:
                 buy_level_idx = level_idx - 1
                 if buy_level_idx >= 0:
                     buy_price = self.state["grid_levels"][buy_level_idx]["price"]
-                    profit = qty * (level["price"] - buy_price) - qty * level["price"] * config["fee_rate"] * 2
+                    profit = (
+                        qty * (level["price"] - buy_price)
+                        - qty * level["price"] * config["fee_rate"] * 2
+                    )
                     self.state["stats"]["realized_pnl"] += profit
 
                 fee = qty * level["price"] * config["fee_rate"]
@@ -481,24 +508,28 @@ class GridBot:
                 # Verify fill via order history
                 fill_info = self._verify_fill(symbol, buy_id)
                 if fill_info:
-                    fills.append({
-                        "level_index": level["index"],
-                        "side": "buy",
-                        "qty": fill_info["qty"],
-                        "price": fill_info["price"],
-                    })
+                    fills.append(
+                        {
+                            "level_index": level["index"],
+                            "side": "buy",
+                            "qty": fill_info["qty"],
+                            "price": fill_info["price"],
+                        }
+                    )
 
             # Check sell orders
             sell_id = level.get("sell_order_id")
             if sell_id and sell_id not in open_order_ids and isinstance(sell_id, int):
                 fill_info = self._verify_fill(symbol, sell_id)
                 if fill_info:
-                    fills.append({
-                        "level_index": level["index"],
-                        "side": "sell",
-                        "qty": fill_info["qty"],
-                        "price": fill_info["price"],
-                    })
+                    fills.append(
+                        {
+                            "level_index": level["index"],
+                            "side": "sell",
+                            "qty": fill_info["qty"],
+                            "price": fill_info["price"],
+                        }
+                    )
 
         return fills
 
@@ -508,7 +539,7 @@ class GridBot:
             # Use get_open_orders to check — if not found, it's filled or cancelled
             # More reliable: query order directly
             order = self.client.get_order(symbol=symbol, order_id=order_id)
-            if order.get("status") == "FILLED":
+            if order and order.get("status") == "FILLED":
                 return {
                     "qty": float(order["executedQty"]),
                     "price": float(order.get("avgPrice") or order.get("price", 0)),
@@ -521,12 +552,12 @@ class GridBot:
 
     def _check_breakout(self, symbol: str, current_price: float) -> Optional[str]:
         """Detect if price is trending strongly and grid should pause.
-        
+
         Uses 4h klines + SMA to detect trend:
         - Price above SMA20 + rising → upside breakout → pause grid (ride the trend)
         - Price below SMA20 - falling → downside breakout → pause grid (avoid catching knives)
         - Range-bound → continue grid
-        
+
         Returns: "paused_up", "paused_down", "resumed", or None
         """
         try:
@@ -545,23 +576,35 @@ class GridBot:
 
             prev_status = self.state.get("status")
 
-            if above_sma and rising and current_price > self.state["config"]["grid_upper"]:
+            if (
+                above_sma
+                and rising
+                and current_price > self.state["config"]["grid_upper"]
+            ):
                 # Strong upside breakout — pause to ride trend
                 if prev_status == "running":
                     self.pause()
                     logger.info(
                         "Breakout UP detected: price=%.4f > grid_upper=%.4f, SMA20=%.4f → paused",
-                        current_price, self.state["config"]["grid_upper"], sma20,
+                        current_price,
+                        self.state["config"]["grid_upper"],
+                        sma20,
                     )
                     return "paused_up"
 
-            elif below_sma and falling and current_price < self.state["config"]["grid_lower"]:
+            elif (
+                below_sma
+                and falling
+                and current_price < self.state["config"]["grid_lower"]
+            ):
                 # Strong downside breakout — pause to avoid catching falling knife
                 if prev_status == "running":
                     self.pause()
                     logger.info(
                         "Breakout DOWN detected: price=%.4f < grid_lower=%.4f, SMA20=%.4f → paused",
-                        current_price, self.state["config"]["grid_lower"], sma20,
+                        current_price,
+                        self.state["config"]["grid_lower"],
+                        sma20,
                     )
                     return "paused_down"
 
@@ -590,7 +633,9 @@ class GridBot:
         max_range = config["max_range_pct"] / 100
 
         # Price broke out of range
-        if current_price > grid_upper * (1 + max_range) or current_price < grid_lower * (1 - max_range):
+        if current_price > grid_upper * (
+            1 + max_range
+        ) or current_price < grid_lower * (1 - max_range):
             return True
 
         # Time-based rebalance
@@ -669,7 +714,9 @@ class GridBot:
             Dict with trades_count, total_profit, max_drawdown, etc.
         """
         range_pct = ((upper - lower) / ((upper + lower) / 2)) * 100
-        result = self.backtest(symbol, investment, grid_count=grids, range_pct=range_pct, days=days)
+        result = self.backtest(
+            symbol, investment, grid_count=grids, range_pct=range_pct, days=days
+        )
         # Normalize output format
         if "error" in result:
             return {"trades_count": 0, "total_profit": 0, "error": result["error"]}
@@ -718,7 +765,7 @@ class GridBot:
         max_drawdown = 0.0
 
         pending_buys = set()  # grid indices with pending buys
-        pending_sells = {}  # grid_index -> qty
+        pending_sells: Dict[int, float] = {}  # grid_index -> qty
 
         # Initialize buys below current price
         for i, gp in enumerate(grid_prices[:-1]):
@@ -735,7 +782,7 @@ class GridBot:
                 if low <= gp and cash >= capital_per_grid:
                     qty = capital_per_grid / gp
                     fee = qty * gp * FEE_RATE
-                    cash -= (qty * gp + fee)
+                    cash -= qty * gp + fee
                     coin += qty
                     pending_buys.discard(i)
                     # Place sell at next level
@@ -749,12 +796,15 @@ class GridBot:
                 sell_qty = pending_sells[i]
                 if high >= gp and sell_qty > 0 and coin >= sell_qty:
                     fee = sell_qty * gp * FEE_RATE
-                    cash += (sell_qty * gp - fee)
+                    cash += sell_qty * gp - fee
                     coin -= sell_qty
                     # Calculate profit
                     buy_level = i - 1
                     if buy_level >= 0:
-                        profit = sell_qty * (gp - grid_prices[buy_level]) - sell_qty * gp * FEE_RATE * 2
+                        profit = (
+                            sell_qty * (gp - grid_prices[buy_level])
+                            - sell_qty * gp * FEE_RATE * 2
+                        )
                         realized_pnl += profit
                     pending_sells.pop(i)
                     pending_buys.add(i - 1)
@@ -805,7 +855,9 @@ class GridBot:
             "total_capital": config["total_capital"],
             "equity": equity,
             "stats": self.state["stats"],
-            "active_levels": sum(1 for l in self.state["grid_levels"] if l["status"] not in ("empty",)),
+            "active_levels": sum(
+                1 for l in self.state["grid_levels"] if l["status"] not in ("empty",)
+            ),
         }
 
     # ────────────────────── Helpers ──────────────────────
@@ -821,26 +873,33 @@ class GridBot:
     def _get_symbol_precision(self, symbol: str) -> Dict:
         try:
             exchange_info = self.client.get_exchange_info()
-            sym_info = next((s for s in exchange_info['symbols'] if s['symbol'] == symbol), None)
+            sym_info = next(
+                (s for s in exchange_info["symbols"] if s["symbol"] == symbol), None
+            )
             if sym_info:
                 price_dec = 8
                 qty_dec = 4
-                for f in sym_info.get('filters', []):
-                    if f['filterType'] == 'PRICE_FILTER':
-                        price_dec = len(f['tickSize'].rstrip('0').split('.')[-1])
-                    elif f['filterType'] == 'LOT_SIZE':
-                        qty_dec = len(f['stepSize'].rstrip('0').split('.')[-1])
+                for f in sym_info.get("filters", []):
+                    if f["filterType"] == "PRICE_FILTER":
+                        price_dec = len(f["tickSize"].rstrip("0").split(".")[-1])
+                    elif f["filterType"] == "LOT_SIZE":
+                        qty_dec = len(f["stepSize"].rstrip("0").split(".")[-1])
                 return {"price_decimals": price_dec, "qty_decimals": qty_dec}
         except Exception:
-            logger.error("Failed to get symbol precision for %s from exchange info", symbol, exc_info=True)
+            logger.error(
+                "Failed to get symbol precision for %s from exchange info",
+                symbol,
+                exc_info=True,
+            )
         return {"price_decimals": 4, "qty_decimals": 4}
 
     def _round_qty(self, qty: float, decimals: int) -> float:
         """Floor quantity to avoid exceeding actual balance (Binance rejects oversell)."""
         import math
+
         if decimals <= 0:
             return float(math.floor(qty))
-        step = 10 ** -decimals
+        step = 10**-decimals
         return math.floor(qty / step) * step
 
     def _calculate_equity(self) -> Dict:
@@ -848,7 +907,7 @@ class GridBot:
         if not symbol:
             return {"cash": 0, "coin_value": 0, "total": 0}
 
-        config = self.state["config"]
+        self.state["config"]
         cash = self.client.get_free_balance("USDT") or 0
         coin_qty = self._get_coin_balance(symbol)
         price = self._get_current_price(symbol) or 0

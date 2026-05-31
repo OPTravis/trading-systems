@@ -8,18 +8,25 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
+from concurrent.futures import (
+    Future,
+    ThreadPoolExecutor,
+    as_completed,
+)
+from concurrent.futures import (
+    TimeoutError as FuturesTimeout,
+)
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.connection import create_connection as _orig_create_connection
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
 
 from src.llm_client import get_llm_client
 
@@ -30,13 +37,17 @@ class _IPv4HTTPAdapter(HTTPAdapter):
     def send(self, *args, **kwargs):
         # Monkey-patch urllib3 to force IPv4 for this request
         import urllib3.util.connection as uc
+
         orig = uc.create_connection
 
         def _ipv4_create_connection(address, *a, **kw):
             host, port = address
             # Force getaddrinfo to return only AF_INET (IPv4)
             import socket
-            for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+
+            for res in socket.getaddrinfo(
+                host, port, socket.AF_INET, socket.SOCK_STREAM
+            ):
                 af, socktype, proto, canonname, sa = res
                 sock = socket.socket(af, socktype, proto)
                 try:
@@ -73,7 +84,7 @@ def _ensure_data_dir() -> Path:
     return _DATA_DIR
 
 
-def _load_json(filepath: Path, default: Any = None) -> Any:
+def _load_json(filepath: Path, default: Optional[Any] = None) -> Any:
     try:
         if filepath.exists():
             with open(filepath, "r", encoding="utf-8") as f:
@@ -109,7 +120,7 @@ class MarketResearcher:
     """
 
     # Score adjustment bounds
-    MAX_ADJUSTMENT = 15.0   # max points added
+    MAX_ADJUSTMENT = 15.0  # max points added
     MIN_ADJUSTMENT = -15.0  # max points subtracted
 
     # Research cache TTL (avoid re-researching same coin within window)
@@ -143,14 +154,18 @@ class MarketResearcher:
                 except Exception:
                     continue
             if self._cache:
-                logger.info(f"Loaded {len(self._cache)} cached research results from disk")
+                logger.info(
+                    f"Loaded {len(self._cache)} cached research results from disk"
+                )
         except Exception:
             logger.debug("Failed to load research cache from disk")
 
     # Total research timeout (seconds) — prevents scan from exceeding cron limit
     RESEARCH_TIMEOUT = 60  # Raised from 45: Jina retry+LLM dual-model needs headroom
 
-    def research(self, symbol: str, binance_client: 'ExchangeClient' = None) -> Dict:
+    def research(
+        self, symbol: str, binance_client: Optional["ExchangeClient"] = None
+    ) -> Dict:
         """Run full research pipeline on a symbol.
 
         All three research stages run in parallel with a hard timeout.
@@ -172,7 +187,10 @@ class MarketResearcher:
         # Check cache
         cache_key = coin
         now = time.time()
-        if cache_key in self._cache and (now - self._cache_ts.get(cache_key, 0)) < self.CACHE_TTL:
+        if (
+            cache_key in self._cache
+            and (now - self._cache_ts.get(cache_key, 0)) < self.CACHE_TTL
+        ):
             logger.info(f"MarketResearcher: returning cached research for {coin}")
             return self._cache[cache_key]
 
@@ -184,7 +202,7 @@ class MarketResearcher:
         catalysts = []
 
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {
+            futures: Dict[Future[Any], str] = {
                 pool.submit(self._research_news, coin): "news",
                 pool.submit(self._research_onchain, coin, binance_client): "onchain",
             }
@@ -197,9 +215,13 @@ class MarketResearcher:
                         elif key == "onchain":
                             onchain = fut.result()
                     except Exception as e:
-                        logger.warning(f"MarketResearcher: {key} failed for {coin}: {e}")
+                        logger.warning(
+                            f"MarketResearcher: {key} failed for {coin}: {e}"
+                        )
             except FuturesTimeout:
-                logger.warning(f"MarketResearcher: research timeout ({self.RESEARCH_TIMEOUT}s) for {coin}")
+                logger.warning(
+                    f"MarketResearcher: research timeout ({self.RESEARCH_TIMEOUT}s) for {coin}"
+                )
                 for fut in futures:
                     fut.cancel()
 
@@ -245,10 +267,13 @@ class MarketResearcher:
         # FIX-10: Retry up to 3 times with exponential backoff (2s, 4s, 8s = 14s total)
         # Reduced from 5 retries (60s worst-case) — 3 retries fits within RESEARCH_TIMEOUT
         import time as _time
+
         for attempt in range(3):
             try:
                 if attempt > 0:
-                    _time.sleep(min(2 ** attempt, 30))  # exponential: 2s, 4s, 8s, 16s (cap 30s)
+                    _time.sleep(
+                        min(2**attempt, 30)
+                    )  # exponential: 2s, 4s, 8s, 16s (cap 30s)
                 resp = _jina_session.get(
                     f"https://s.jina.ai/{coin}+crypto+latest+news",
                     headers={
@@ -262,13 +287,19 @@ class MarketResearcher:
                 articles = []
                 for r in data.get("data", [])[:5]:  # Cap at 5 articles
                     text = r.get("description", "") or r.get("content", "")
-                    articles.append({
-                        "title": r.get("title", ""),
-                        "summary": text[:300],
-                        "sentiment": 0.0,  # placeholder — filled by batch LLM below
-                        "source": r.get("url", "").split("/")[2] if "/" in r.get("url", "") else "",
-                        "url": r.get("url", ""),
-                    })
+                    articles.append(
+                        {
+                            "title": r.get("title", ""),
+                            "summary": text[:300],
+                            "sentiment": 0.0,  # placeholder — filled by batch LLM below
+                            "source": (
+                                r.get("url", "").split("/")[2]
+                                if "/" in r.get("url", "")
+                                else ""
+                            ),
+                            "url": r.get("url", ""),
+                        }
+                    )
 
                 # Batch sentiment: one LLM call for all articles instead of per-article
                 if articles:
@@ -277,11 +308,17 @@ class MarketResearcher:
                         if i < len(articles):
                             if isinstance(s, dict):
                                 # New structured format
-                                articles[i]["sentiment"] = round(s.get("sentiment", 0.0), 2)
+                                articles[i]["sentiment"] = round(
+                                    s.get("sentiment", 0.0), 2
+                                )
                                 articles[i]["sentiment_score"] = s.get("score", 5)
-                                articles[i]["sentiment_confidence"] = s.get("confidence", 0.5)
+                                articles[i]["sentiment_confidence"] = s.get(
+                                    "confidence", 0.5
+                                )
                                 articles[i]["primary_score"] = s.get("primary_score")
-                                articles[i]["secondary_score"] = s.get("secondary_score")
+                                articles[i]["secondary_score"] = s.get(
+                                    "secondary_score"
+                                )
                             else:
                                 # Backward compatibility: old float format
                                 articles[i]["sentiment"] = round(s, 2)
@@ -292,31 +329,42 @@ class MarketResearcher:
 
             except Exception as e:
                 if attempt == 1:
-                    logger.error(f"MarketResearcher: news search failed for {coin}: {e}")
+                    logger.error(
+                        f"MarketResearcher: news search failed for {coin}: {e}"
+                    )
                 continue
 
         # Jina failed after 3 retries — fall back to DDGS
-        logger.warning(f"MarketResearcher: Jina search exhausted for {coin}, trying DDGS fallback")
+        logger.warning(
+            f"MarketResearcher: Jina search exhausted for {coin}, trying DDGS fallback"
+        )
         return self._research_news_ddgs(coin)
 
     def _research_news_ddgs(self, coin: str) -> List[Dict]:
         """Fallback news search using DuckDuckGo when Jina is unavailable."""
         try:
             from ddgs import DDGS
+
             ddgs = DDGS()
-            raw = list(ddgs.text(f'{coin} crypto news', max_results=5))
+            raw = list(ddgs.text(f"{coin} crypto news", max_results=5))
             if not raw:
                 return []
 
             articles = []
             for r in raw:
-                articles.append({
-                    "title": r.get("title", ""),
-                    "summary": (r.get("body", "") or "")[:300],
-                    "sentiment": 0.0,
-                    "source": r.get("href", "").split("/")[2] if "/" in r.get("href", "") else "",
-                    "url": r.get("href", ""),
-                })
+                articles.append(
+                    {
+                        "title": r.get("title", ""),
+                        "summary": (r.get("body", "") or "")[:300],
+                        "sentiment": 0.0,
+                        "source": (
+                            r.get("href", "").split("/")[2]
+                            if "/" in r.get("href", "")
+                            else ""
+                        ),
+                        "url": r.get("href", ""),
+                    }
+                )
 
             # Batch sentiment analysis on DDGS results
             if articles:
@@ -329,15 +377,21 @@ class MarketResearcher:
                             articles[i]["sentiment"] = round(s, 2)
 
             articles.sort(key=lambda x: abs(x["sentiment"]), reverse=True)
-            logger.info(f"MarketResearcher: DDGS fallback returned {len(articles)} articles for {coin}")
+            logger.info(
+                f"MarketResearcher: DDGS fallback returned {len(articles)} articles for {coin}"
+            )
             return articles
         except Exception as e:
-            logger.warning(f"MarketResearcher: DDGS fallback also failed for {coin}: {e}")
+            logger.warning(
+                f"MarketResearcher: DDGS fallback also failed for {coin}: {e}"
+            )
             return []
 
-    def _research_onchain(self, coin: str, binance_client: 'ExchangeClient' = None) -> Dict:
+    def _research_onchain(
+        self, coin: str, binance_client: Optional["ExchangeClient"] = None
+    ) -> Dict:
         """Gather on-chain/exchange metrics from Binance API."""
-        result = {
+        result: Dict[str, Any] = {
             "whale_activity": "UNKNOWN",
             "exchange_flow": "UNKNOWN",
             "volume_trend": "UNKNOWN",
@@ -354,10 +408,10 @@ class MarketResearcher:
             # 24h stats for volume trend
             stats = binance_client.get_24hr_stats(symbol)
             if stats:
-                vol = float(stats.get("volume", 0))
+                float(stats.get("volume", 0))
                 quote_vol = float(stats.get("quote_volume", 0))
                 price_change = float(stats.get("price_change_percent", 0))
-                trades = int(stats.get("count", 0))
+                int(stats.get("count", 0))
 
                 # Volume trend heuristic
                 if quote_vol > 50_000_000 and price_change > 3:
@@ -372,8 +426,8 @@ class MarketResearcher:
             # Check if futures available for funding/OI
             try:
                 funding_resp = requests.get(
-                    f"https://fapi.binance.com/fapi/v1/fundingRate",
-                    params={"symbol": f"{coin}USDT", "limit": 3},
+                    "https://fapi.binance.com/fapi/v1/fundingRate",
+                    params={"symbol": f"{coin}USDT", "limit": 3},  # type: ignore[arg-type]
                     timeout=3,
                 )
                 if funding_resp.status_code == 200:
@@ -397,7 +451,7 @@ class MarketResearcher:
                 # Top trader long/short ratio — real whale positioning
                 top_resp = requests.get(
                     "https://fapi.binance.com/futures/data/topLongShortPositionRatio",
-                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},
+                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},  # type: ignore[arg-type]
                     timeout=3,
                 )
                 if top_resp.status_code == 200 and top_resp.json():
@@ -415,7 +469,7 @@ class MarketResearcher:
                 # Taker buy/sell ratio — aggressive buying/selling
                 taker_resp = requests.get(
                     "https://fapi.binance.com/futures/data/takerlongshortRatio",
-                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},
+                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},  # type: ignore[arg-type]
                     timeout=3,
                 )
                 if taker_resp.status_code == 200 and taker_resp.json():
@@ -432,13 +486,15 @@ class MarketResearcher:
                         result["exchange_flow"] = "NET_SELL"
 
             except Exception:
-                logger.error("Exchange flow research failed for %s", coin, exc_info=True)
+                logger.error(
+                    "Exchange flow research failed for %s", coin, exc_info=True
+                )
 
             # Open Interest change
             try:
                 oi_resp = requests.get(
-                    f"https://fapi.binance.com/fapi/v1/openInterest",
-                    params={"symbol": f"{coin}USDT"},
+                    "https://fapi.binance.com/fapi/v1/openInterest",
+                    params={"symbol": f"{coin}USDT"},  # type: ignore[arg-type]
                     timeout=3,
                 )
                 if oi_resp.status_code == 200:
@@ -448,14 +504,18 @@ class MarketResearcher:
                         "symbol": oi_data.get("symbol", ""),
                     }
             except Exception:
-                logger.error("Open Interest research failed for %s", coin, exc_info=True)
+                logger.error(
+                    "Open Interest research failed for %s", coin, exc_info=True
+                )
 
         except Exception as e:
             logger.error(f"MarketResearcher: onchain research failed for {coin}: {e}")
 
         return result
 
-    def _research_catalysts(self, coin: str, news_articles: List[Dict] = None) -> List[Dict]:
+    def _research_catalysts(
+        self, coin: str, news_articles: Optional[List[Dict]] = None
+    ) -> List[Dict]:
         """Extract catalyst signals from news articles (no external API call).
 
         Reuses news results instead of making a flaky separate Jina search.
@@ -463,10 +523,30 @@ class MarketResearcher:
         if not news_articles:
             return []
 
-        positive_kw = ["launch", "upgrade", "partnership", "mainnet", "listing",
-                       "adoption", "bullish", "growth", "breakout", "rally"]
-        negative_kw = ["hack", "exploit", "ban", "regulation", "delist",
-                       "lawsuit", "crash", "bearish", "warning", "risk"]
+        positive_kw = [
+            "launch",
+            "upgrade",
+            "partnership",
+            "mainnet",
+            "listing",
+            "adoption",
+            "bullish",
+            "growth",
+            "breakout",
+            "rally",
+        ]
+        negative_kw = [
+            "hack",
+            "exploit",
+            "ban",
+            "regulation",
+            "delist",
+            "lawsuit",
+            "crash",
+            "bearish",
+            "warning",
+            "risk",
+        ]
 
         catalysts = []
         for r in news_articles:
@@ -484,17 +564,19 @@ class MarketResearcher:
                 impact = "NEGATIVE"
 
             if impact != "NEUTRAL":
-                catalysts.append({
-                    "event": r.get("title", ""),
-                    "source": r.get("source", ""),
-                    "impact": impact,
-                })
+                catalysts.append(
+                    {
+                        "event": r.get("title", ""),
+                        "source": r.get("source", ""),
+                        "impact": impact,
+                    }
+                )
 
         return catalysts[:3]
 
     def _score_text_sentiment(self, text: str) -> float:
         """Score text sentiment: returns -1 to +1.
-        
+
         Uses LLM for deep analysis when available, falls back to keyword matching.
         """
         if not text:
@@ -512,14 +594,41 @@ class MarketResearcher:
         text_lower = text.lower()
 
         positive = [
-            "bullish", "buy", "surge", "pump", "rally", "breakout",
-            "growth", "adoption", "partnership", "launch", "upgrade",
-            "all-time high", "ath", "moon", "gain", "positive",
+            "bullish",
+            "buy",
+            "surge",
+            "pump",
+            "rally",
+            "breakout",
+            "growth",
+            "adoption",
+            "partnership",
+            "launch",
+            "upgrade",
+            "all-time high",
+            "ath",
+            "moon",
+            "gain",
+            "positive",
         ]
         negative = [
-            "bearish", "sell", "crash", "dump", "decline", "hack",
-            "exploit", "ban", "regulation", "delist", "lawsuit",
-            "fraud", "scam", "risk", "warning", "drop", "fall",
+            "bearish",
+            "sell",
+            "crash",
+            "dump",
+            "decline",
+            "hack",
+            "exploit",
+            "ban",
+            "regulation",
+            "delist",
+            "lawsuit",
+            "fraud",
+            "scam",
+            "risk",
+            "warning",
+            "drop",
+            "fall",
         ]
 
         score = 0.0
@@ -547,7 +656,10 @@ class MarketResearcher:
 
         ds_key = os.environ.get("DEEPSEEK_API_KEY")
         if not ds_key:
-            return [self._keyword_sentiment_structured(a.get("summary", "")) for a in articles]
+            return [
+                self._keyword_sentiment_structured(a.get("summary", ""))
+                for a in articles
+            ]
 
         # Build batch prompt — numbered list of article texts
         numbered = []
@@ -558,41 +670,59 @@ class MarketResearcher:
         prompt = (
             "Rate each crypto news sentiment on a scale of 1-10 (1=extremely bearish, 5=neutral, 10=extremely bullish). "
             "Return ONLY a JSON array of objects with 'score' (1-10) and 'confidence' (0.0-1.0). "
-            "Example: [{\"score\": 7, \"confidence\": 0.8}, {\"score\": 3, \"confidence\": 0.6}]\n\n"
+            'Example: [{"score": 7, "confidence": 0.8}, {"score": 3, "confidence": 0.6}]\n\n'
             + "\n".join(numbered)
         )
 
         # --- Primary model (DeepSeek) ---
-        primary_scores = self._call_llm_for_sentiment(prompt, articles, "deepseek-chat", "primary")
+        primary_scores = self._call_llm_for_sentiment(
+            prompt, articles, "deepseek-chat", "primary"
+        )
 
         # --- Second opinion (mimo-v2.5) — non-blocking, best-effort ---
         second_scores = None
         try:
-            second_scores = self._call_llm_for_sentiment(prompt, articles, "mimo-v2.5", "second")
+            second_scores = self._call_llm_for_sentiment(
+                prompt, articles, "mimo-v2.5", "second"
+            )
         except Exception as e:
-            logger.info(f"MarketResearcher: second opinion unavailable ({e}), using primary only")
+            logger.info(
+                f"MarketResearcher: second opinion unavailable ({e}), using primary only"
+            )
 
         # --- Cross-verify ---
         if primary_scores and second_scores:
             return self._cross_verify_sentiment(primary_scores, second_scores, articles)
         elif primary_scores:
-            logger.info("MarketResearcher: second opinion unavailable, using primary only")
+            logger.info(
+                "MarketResearcher: second opinion unavailable, using primary only"
+            )
             return primary_scores
         else:
-            logger.warning("MarketResearcher: both LLMs failed, falling back to keywords")
-            return [self._keyword_sentiment_structured(a.get("summary", "")) for a in articles]
+            logger.warning(
+                "MarketResearcher: both LLMs failed, falling back to keywords"
+            )
+            return [
+                self._keyword_sentiment_structured(a.get("summary", ""))
+                for a in articles
+            ]
 
-    def _call_llm_for_sentiment(self, prompt: str, articles: List[Dict], model: str, client_type: str) -> Optional[List[Dict]]:
+    def _call_llm_for_sentiment(
+        self, prompt: str, articles: List[Dict], model: str, client_type: str
+    ) -> Optional[List[Dict]]:
         """Call a single LLM for sentiment analysis."""
         try:
+            llm: Any = None
             if client_type == "primary":
                 llm = get_llm_client()
             else:
                 from src.llm_client import get_second_opinion_client
+
                 llm = get_second_opinion_client()
                 if llm is None:
                     return None
 
+            assert llm is not None
             result = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 model=model,
@@ -603,22 +733,28 @@ class MarketResearcher:
 
             if result is not None:
                 content = result.get("content", "")
-                
+
                 # mimo-v2.5-pro uses reasoning_content — if content is empty, check reasoning
                 if not content and result.get("reasoning_content"):
-                    logger.info("MarketResearcher: mimo-v2.5-pro returned reasoning only, extracting from reasoning_content")
+                    logger.info(
+                        "MarketResearcher: mimo-v2.5-pro returned reasoning only, extracting from reasoning_content"
+                    )
                     reasoning = result["reasoning_content"]
                     import re
-                    match = re.search(r'\[.*?\]', reasoning, re.DOTALL)
+
+                    match = re.search(r"\[.*?\]", reasoning, re.DOTALL)
                     if match:
                         content = match.group()
-                
+
                 if not content:
-                    logger.warning(f"MarketResearcher: {client_type} returned empty content")
+                    logger.warning(
+                        f"MarketResearcher: {client_type} returned empty content"
+                    )
                     return None
-                
+
                 import re
-                match = re.search(r'\[.*?\]', content, re.DOTALL)
+
+                match = re.search(r"\[.*?\]", content, re.DOTALL)
                 if match:
                     scores = json.loads(match.group())
                     result_list = []
@@ -630,17 +766,29 @@ class MarketResearcher:
                             # Backward compatibility: if LLM returns floats
                             score = max(1, min(10, int((float(s) + 1) * 4.5 + 1)))
                             conf = 0.5
-                        result_list.append({"score": score, "confidence": conf, "sentiment": (score - 5) / 5.0})
+                        result_list.append(
+                            {
+                                "score": score,
+                                "confidence": conf,
+                                "sentiment": (score - 5) / 5.0,
+                            }
+                        )
                     # Pad with keyword fallback if LLM returned fewer scores
                     while len(result_list) < len(articles):
                         idx = len(result_list)
-                        result_list.append(self._keyword_sentiment_structured(articles[idx].get("summary", "")))
-                    return result_list[:len(articles)]
+                        result_list.append(
+                            self._keyword_sentiment_structured(
+                                articles[idx].get("summary", "")
+                            )
+                        )
+                    return result_list[: len(articles)]
         except Exception as e:
             logger.warning(f"MarketResearcher: {client_type} LLM sentiment failed: {e}")
         return None
 
-    def _cross_verify_sentiment(self, primary: List[Dict], secondary: List[Dict], articles: List[Dict]) -> List[Dict]:
+    def _cross_verify_sentiment(
+        self, primary: List[Dict], secondary: List[Dict], articles: List[Dict]
+    ) -> List[Dict]:
         """Cross-verify sentiment from two models.
 
         If scores agree within 2 points: HIGH confidence (0.9)
@@ -649,8 +797,16 @@ class MarketResearcher:
         """
         result = []
         for i in range(len(articles)):
-            p = primary[i] if i < len(primary) else self._keyword_sentiment_structured(articles[i].get("summary", ""))
-            s = secondary[i] if i < len(secondary) else self._keyword_sentiment_structured(articles[i].get("summary", ""))
+            p = (
+                primary[i]
+                if i < len(primary)
+                else self._keyword_sentiment_structured(articles[i].get("summary", ""))
+            )
+            s = (
+                secondary[i]
+                if i < len(secondary)
+                else self._keyword_sentiment_structured(articles[i].get("summary", ""))
+            )
 
             score_diff = abs(p["score"] - s["score"])
             avg_score = (p["score"] + s["score"]) / 2
@@ -664,15 +820,19 @@ class MarketResearcher:
             else:
                 # Models disagree — LOW confidence
                 confidence = 0.5
-                logger.info(f"MarketResearcher: sentiment disagreement article {i+1}: primary={p['score']}, secondary={s['score']}")
+                logger.info(
+                    f"MarketResearcher: sentiment disagreement article {i+1}: primary={p['score']}, secondary={s['score']}"
+                )
 
-            result.append({
-                "score": round(avg_score),
-                "confidence": confidence,
-                "sentiment": (avg_score - 5) / 5.0,
-                "primary_score": p["score"],
-                "secondary_score": s["score"],
-            })
+            result.append(
+                {
+                    "score": round(avg_score),
+                    "confidence": confidence,
+                    "sentiment": (avg_score - 5) / 5.0,
+                    "primary_score": p["score"],
+                    "secondary_score": s["score"],
+                }
+            )
         return result
 
     def _keyword_sentiment_structured(self, text: str) -> Dict:
@@ -681,14 +841,41 @@ class MarketResearcher:
             return {"score": 5, "confidence": 0.3, "sentiment": 0.0}
         text_lower = text.lower()
         positive = [
-            "bullish", "buy", "surge", "pump", "rally", "breakout",
-            "growth", "adoption", "partnership", "launch", "upgrade",
-            "all-time high", "ath", "moon", "gain", "positive",
+            "bullish",
+            "buy",
+            "surge",
+            "pump",
+            "rally",
+            "breakout",
+            "growth",
+            "adoption",
+            "partnership",
+            "launch",
+            "upgrade",
+            "all-time high",
+            "ath",
+            "moon",
+            "gain",
+            "positive",
         ]
         negative = [
-            "bearish", "sell", "crash", "dump", "decline", "hack",
-            "exploit", "ban", "regulation", "delist", "lawsuit",
-            "fraud", "scam", "risk", "warning", "drop", "fall",
+            "bearish",
+            "sell",
+            "crash",
+            "dump",
+            "decline",
+            "hack",
+            "exploit",
+            "ban",
+            "regulation",
+            "delist",
+            "lawsuit",
+            "fraud",
+            "scam",
+            "risk",
+            "warning",
+            "drop",
+            "fall",
         ]
         score = 0.0
         for word in positive:
@@ -707,14 +894,41 @@ class MarketResearcher:
             return 0.0
         text_lower = text.lower()
         positive = [
-            "bullish", "buy", "surge", "pump", "rally", "breakout",
-            "growth", "adoption", "partnership", "launch", "upgrade",
-            "all-time high", "ath", "moon", "gain", "positive",
+            "bullish",
+            "buy",
+            "surge",
+            "pump",
+            "rally",
+            "breakout",
+            "growth",
+            "adoption",
+            "partnership",
+            "launch",
+            "upgrade",
+            "all-time high",
+            "ath",
+            "moon",
+            "gain",
+            "positive",
         ]
         negative = [
-            "bearish", "sell", "crash", "dump", "decline", "hack",
-            "exploit", "ban", "regulation", "delist", "lawsuit",
-            "fraud", "scam", "risk", "warning", "drop", "fall",
+            "bearish",
+            "sell",
+            "crash",
+            "dump",
+            "decline",
+            "hack",
+            "exploit",
+            "ban",
+            "regulation",
+            "delist",
+            "lawsuit",
+            "fraud",
+            "scam",
+            "risk",
+            "warning",
+            "drop",
+            "fall",
         ]
         score = 0.0
         for word in positive:
@@ -780,7 +994,7 @@ class MarketResearcher:
                 "NEUTRAL": 0.0,
                 "SLIGHT_SHORT": -2.0,
                 "SHORT_HEAVY": -3.0,
-                "WHALE_LONG": 4.5,    # Top trader long positioning (highest-quality signal)
+                "WHALE_LONG": 4.5,  # Top trader long positioning (highest-quality signal)
                 "WHALE_SHORT": -4.5,  # Top trader short positioning
             }
             whale_adj = whale_map.get(whale, 0.0)
@@ -895,7 +1109,9 @@ class MarketResearcher:
 
         return " | ".join(parts) if parts else "數據不足"
 
-    def get_research_history(self, coin: str = None, days: int = 7) -> List[Dict]:
+    def get_research_history(
+        self, coin: Optional[str] = None, days: int = 7
+    ) -> List[Dict]:
         """Load past research for a coin or all coins."""
         results = []
         for f in sorted(self._research_dir.glob("*.json"), reverse=True):
@@ -904,14 +1120,13 @@ class MarketResearcher:
                 if coin and data.get("coin") != coin.upper():
                     continue
                 results.append(data)
-        return results[:days * 5]  # max 5 per day
+        return results[: days * 5]  # max 5 per day
 
     def _llm_sentiment(self, text: str, max_length: int = 500) -> Optional[float]:
         """Use LLM (DeepSeek primary, auto-fallback to OpenAI) for deep sentiment analysis.
 
         Returns float -1 to +1, or None if all LLM providers unavailable.
         """
-        import os
 
         # Truncate long text
         text = text[:max_length]
@@ -920,7 +1135,10 @@ class MarketResearcher:
             llm = get_llm_client()
             result = llm.chat(
                 messages=[
-                    {"role": "user", "content": f"Analyze this crypto news sentiment:\n\n{text}"}
+                    {
+                        "role": "user",
+                        "content": f"Analyze this crypto news sentiment:\n\n{text}",
+                    }
                 ],
                 model="deepseek-chat",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",

@@ -16,7 +16,8 @@ class SpecialistResult:
         data: Arbitrary sub-scores and diagnostics for downstream consumers.
         confidence: Qualitative confidence label ('high', 'medium', 'low').
     """
+
     score: float = 0.0
     signals: List[str] = field(default_factory=list)
     data: Dict = field(default_factory=dict)
-    confidence: str = 'medium'
+    confidence: str = "medium"

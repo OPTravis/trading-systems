@@ -7,7 +7,7 @@ click>=8.0
 
 # === Broker APIs ===
 ib-async>=1.0.0              # IBKR TWS/Gateway (official ib_insync successor)
-alpaca-trade-api>=3.0.0      # Alpaca backup broker
+alpaca-py>=0.30.0             # Alpaca backup broker (replaces deprecated alpaca-trade-api)
 
 # === Data ===
 yfinance>=0.2.40             # Yahoo Finance historical data

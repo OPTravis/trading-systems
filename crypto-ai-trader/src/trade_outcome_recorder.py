@@ -28,6 +28,7 @@ class TradeOutcomeRecorder:
     def __init__(self, db=None):
         if db is None:
             from src.state_db import get_state_db
+
             db = get_state_db()
         self._db = db
 
@@ -77,51 +78,68 @@ class TradeOutcomeRecorder:
         now = time.time()
         date_str = datetime.now().strftime("%Y-%m-%d")
 
-        factors_json = json.dumps({
-            "technical": f_technical,
-            "trend": f_trend,
-            "volume": f_volume,
-            "sentiment": f_sentiment,
-            "price_action": f_price_action,
-            "obv_divergence": f_obv_divergence,
-            "consolidation": f_consolidation,
-            "bb_squeeze": f_bb_squeeze,
-            "rsi_divergence": f_rsi_divergence,
-            "onchain": f_onchain,
-            "market_sentiment": f_market_sentiment,
-        })
+        factors_json = json.dumps(
+            {
+                "technical": f_technical,
+                "trend": f_trend,
+                "volume": f_volume,
+                "sentiment": f_sentiment,
+                "price_action": f_price_action,
+                "obv_divergence": f_obv_divergence,
+                "consolidation": f_consolidation,
+                "bb_squeeze": f_bb_squeeze,
+                "rsi_divergence": f_rsi_divergence,
+                "onchain": f_onchain,
+                "market_sentiment": f_market_sentiment,
+            }
+        )
 
-        context_json = json.dumps({
-            "regime": regime,
-            "fng_score": fng_score,
-            "fng_label": fng_label,
-            "btc_trend": btc_trend,
-            "kelly_pct": kelly_pct,
-            "kelly_win_rate": kelly_win_rate,
-            "kelly_confidence": kelly_confidence,
-            "stop_loss_pct": stop_loss_pct,
-            "tp1_pct": tp1_pct,
-            "tp2_pct": tp2_pct,
-            "tp3_pct": tp3_pct,
-            "max_hold_hours": max_hold_hours,
-            "research_adj": research_adj,
-            "bear_score": bear_score,
-            "bear_veto": bear_veto,
-        })
+        context_json = json.dumps(
+            {
+                "regime": regime,
+                "fng_score": fng_score,
+                "fng_label": fng_label,
+                "btc_trend": btc_trend,
+                "kelly_pct": kelly_pct,
+                "kelly_win_rate": kelly_win_rate,
+                "kelly_confidence": kelly_confidence,
+                "stop_loss_pct": stop_loss_pct,
+                "tp1_pct": tp1_pct,
+                "tp2_pct": tp2_pct,
+                "tp3_pct": tp3_pct,
+                "max_hold_hours": max_hold_hours,
+                "research_adj": research_adj,
+                "bear_score": bear_score,
+                "bear_veto": bear_veto,
+            }
+        )
 
-        rowid = self._db._get_conn().execute(
-            """INSERT INTO trade_outcomes
+        rowid = (
+            self._db._get_conn()
+            .execute(
+                """INSERT INTO trade_outcomes
             (symbol, entry_time, entry_date, entry_price, qty, score, strategy,
              factors_json, context_json, status,
              peak_price, trough_price, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
-            (
-                symbol, now, date_str, entry_price, qty, score, strategy,
-                factors_json, context_json,
-                entry_price, entry_price,  # peak = trough = entry initially
-                now, now,
-            ),
-        ).lastrowid
+                (
+                    symbol,
+                    now,
+                    date_str,
+                    entry_price,
+                    qty,
+                    score,
+                    strategy,
+                    factors_json,
+                    context_json,
+                    entry_price,
+                    entry_price,  # peak = trough = entry initially
+                    now,
+                    now,
+                ),
+            )
+            .lastrowid
+        )
         self._db._get_conn().commit()
 
         logger.info(
@@ -202,17 +220,25 @@ class TradeOutcomeRecorder:
         trough = min(row["trough_price"], exit_price)
 
         # Derived metrics
-        pnl_pct = (exit_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+        pnl_pct = (
+            (exit_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+        )
         pnl_absolute = (exit_price - entry_price) * qty if entry_price > 0 else 0
         time_held_hours = (now - entry_time) / 3600
-        max_profit_pct = (peak - entry_price) / entry_price * 100 if entry_price > 0 else 0
-        max_drawdown_pct = (trough - entry_price) / entry_price * 100 if entry_price > 0 else 0
+        max_profit_pct = (
+            (peak - entry_price) / entry_price * 100 if entry_price > 0 else 0
+        )
+        max_drawdown_pct = (
+            (trough - entry_price) / entry_price * 100 if entry_price > 0 else 0
+        )
 
         # Fees (Binance spot: 0.1% taker, 0.075% with BNB)
         fee_rate = 0.001
         fees_absolute = entry_price * qty * fee_rate * 2  # buy + sell
         net_pnl_absolute = pnl_absolute - fees_absolute
-        net_pnl_pct = net_pnl_absolute / (entry_price * qty) * 100 if entry_price * qty > 0 else 0
+        net_pnl_pct = (
+            net_pnl_absolute / (entry_price * qty) * 100 if entry_price * qty > 0 else 0
+        )
 
         # Win/loss classification
         is_win = net_pnl_pct > 0
@@ -229,13 +255,21 @@ class TradeOutcomeRecorder:
                 updated_at = ?
             WHERE id = ?""",
             (
-                now, exit_price, exit_reason,
-                round(pnl_pct, 4), round(pnl_absolute, 6),
-                round(net_pnl_pct, 4), round(net_pnl_absolute, 6),
+                now,
+                exit_price,
+                exit_reason,
+                round(pnl_pct, 4),
+                round(pnl_absolute, 6),
+                round(net_pnl_pct, 4),
+                round(net_pnl_absolute, 6),
                 round(time_held_hours, 2),
-                round(max_profit_pct, 4), round(max_drawdown_pct, 4),
-                peak, trough,
-                is_win, now, row["id"],
+                round(max_profit_pct, 4),
+                round(max_drawdown_pct, 4),
+                peak,
+                trough,
+                is_win,
+                now,
+                row["id"],
             ),
         )
         conn.commit()
@@ -264,27 +298,41 @@ class TradeOutcomeRecorder:
 
     def get_open_entries(self) -> List[Dict]:
         """Get all open (unclosed) trade entries."""
-        rows = self._db._get_conn().execute(
-            "SELECT * FROM trade_outcomes WHERE status = 'open' ORDER BY entry_time DESC"
-        ).fetchall()
+        rows = (
+            self._db._get_conn()
+            .execute(
+                "SELECT * FROM trade_outcomes WHERE status = 'open' ORDER BY entry_time DESC"
+            )
+            .fetchall()
+        )
         return [dict(r) for r in rows]
 
-    def get_closed_outcomes(self, limit: int = 50, strategy: str = None) -> List[Dict]:
+    def get_closed_outcomes(
+        self, limit: int = 50, strategy: Optional[str] = None
+    ) -> List[Dict]:
         """Get closed trade outcomes for analysis."""
         if strategy:
-            rows = self._db._get_conn().execute(
-                """SELECT * FROM trade_outcomes
+            rows = (
+                self._db._get_conn()
+                .execute(
+                    """SELECT * FROM trade_outcomes
                 WHERE status = 'closed' AND strategy = ?
                 ORDER BY exit_time DESC LIMIT ?""",
-                (strategy, limit),
-            ).fetchall()
+                    (strategy, limit),
+                )
+                .fetchall()
+            )
         else:
-            rows = self._db._get_conn().execute(
-                """SELECT * FROM trade_outcomes
+            rows = (
+                self._db._get_conn()
+                .execute(
+                    """SELECT * FROM trade_outcomes
                 WHERE status = 'closed'
                 ORDER BY exit_time DESC LIMIT ?""",
-                (limit,),
-            ).fetchall()
+                    (limit,),
+                )
+                .fetchall()
+            )
         return [dict(r) for r in rows]
 
     def get_factor_stats(self, min_trades: int = 5) -> Optional[Dict]:
@@ -293,9 +341,11 @@ class TradeOutcomeRecorder:
         Returns per-factor correlation with PnL, and avg score for winners vs losers.
         Used by the learning layer to adjust factor weights.
         """
-        rows = self._db._get_conn().execute(
-            "SELECT * FROM trade_outcomes WHERE status = 'closed'"
-        ).fetchall()
+        rows = (
+            self._db._get_conn()
+            .execute("SELECT * FROM trade_outcomes WHERE status = 'closed'")
+            .fetchall()
+        )
 
         if len(rows) < min_trades:
             return None
@@ -307,9 +357,17 @@ class TradeOutcomeRecorder:
         losers = [r for r in rows if not r["is_win"]]
 
         factors = [
-            "technical", "trend", "volume", "sentiment", "price_action",
-            "obv_divergence", "consolidation", "bb_squeeze", "rsi_divergence",
-            "onchain", "market_sentiment",
+            "technical",
+            "trend",
+            "volume",
+            "sentiment",
+            "price_action",
+            "obv_divergence",
+            "consolidation",
+            "bb_squeeze",
+            "rsi_divergence",
+            "onchain",
+            "market_sentiment",
         ]
 
         stats = {}
@@ -321,7 +379,9 @@ class TradeOutcomeRecorder:
             all_pnl = []
 
             for r in rows:
-                factors_data = json.loads(r["factors_json"]) if r["factors_json"] else {}
+                factors_data = (
+                    json.loads(r["factors_json"]) if r["factors_json"] else {}
+                )
                 score = factors_data.get(factor, 0)
                 all_scores.append(score)
                 all_pnl.append(r.get("net_pnl_pct", 0))
@@ -338,7 +398,12 @@ class TradeOutcomeRecorder:
             if n > 2:
                 mean_x = sum(all_scores) / n
                 mean_y = sum(all_pnl) / n
-                cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(all_scores, all_pnl)) / n
+                cov = (
+                    sum(
+                        (x - mean_x) * (y - mean_y) for x, y in zip(all_scores, all_pnl)
+                    )
+                    / n
+                )
                 std_x = (sum((x - mean_x) ** 2 for x in all_scores) / n) ** 0.5
                 std_y = (sum((y - mean_y) ** 2 for y in all_pnl) / n) ** 0.5
                 correlation = cov / (std_x * std_y) if std_x > 0 and std_y > 0 else 0

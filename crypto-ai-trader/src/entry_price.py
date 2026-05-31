@@ -6,7 +6,9 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def get_avg_entry_price(client, symbol: str, current_qty: float = None) -> Optional[float]:
+def get_avg_entry_price(
+    client, symbol: str, current_qty: Optional[float] = None
+) -> Optional[float]:
     """Calculate weighted average buy price from trade history.
 
     Iterates through all trades, tracking net position from buys/sells.
@@ -47,15 +49,15 @@ def get_avg_entry_price(client, symbol: str, current_qty: float = None) -> Optio
         return None
 
     # Process trades chronologically (oldest first)
-    trades.sort(key=lambda t: t.get('time', 0))
+    trades.sort(key=lambda t: t.get("time", 0))
 
     # Track running position: list of (qty, price) lots
     lots = []
 
     for t in trades:
-        qty = float(t.get('qty', 0))
-        price = float(t.get('price', 0))
-        is_buyer = t.get('isBuyer', False)
+        qty = float(t.get("qty", 0))
+        price = float(t.get("price", 0))
+        is_buyer = t.get("isBuyer", False)
 
         if qty <= 0 or price <= 0:
             continue
@@ -99,5 +101,7 @@ def get_avg_entry_price(client, symbol: str, current_qty: float = None) -> Optio
             return None
 
     avg_price = total_cost / total_qty
-    logger.info(f"Entry price for {symbol}: ${avg_price:.6f} ({total_qty:.4f} units from {len(lots)} lots)")
+    logger.info(
+        f"Entry price for {symbol}: ${avg_price:.6f} ({total_qty:.4f} units from {len(lots)} lots)"
+    )
     return round(avg_price, 8)

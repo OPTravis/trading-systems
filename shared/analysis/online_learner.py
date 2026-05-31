@@ -83,7 +83,7 @@ class OnlineLearner:
 
         return dict(DEFAULT_WEIGHTS)
 
-    def _compute_optimal_weights(self, min_trades: int = 5, max_trades: int = None) -> Optional[Dict]:
+    def _compute_optimal_weights(self, min_trades: int = 5, max_trades: Optional[int] = None) -> Optional[Dict]:
         """Compute optimal factor weights from closed trade outcomes.
 
         Args:
@@ -113,7 +113,7 @@ class OnlineLearner:
         rows = [dict(r) for r in rows]
 
         # Extract factor scores and PnL
-        factor_scores = {f: [] for f in FACTOR_NAMES}
+        factor_scores: Dict[str, list] = {f: [] for f in FACTOR_NAMES}
         pnl_values = []
 
         for row in rows:
@@ -197,7 +197,7 @@ class OnlineLearner:
         diff = 100.0 - sum(weights.values())
         if abs(diff) > 0.01:
             # Adjust the largest weight to absorb rounding error
-            max_factor = max(weights, key=weights.get)
+            max_factor = max(weights, key=lambda k: weights[k])
             weights[max_factor] = round(weights[max_factor] + diff, 2)
 
         return {

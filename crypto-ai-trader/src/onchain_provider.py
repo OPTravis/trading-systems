@@ -22,6 +22,7 @@ class OnChainDataProvider:
     def __init__(self, binance_client=None):
         if binance_client is None:
             from src.binance_client import BinanceClient
+
             binance_client = BinanceClient(testnet=False)
         self._client = binance_client
         self._cache = {}
@@ -41,13 +42,15 @@ class OnChainDataProvider:
                 qty = float(t.get("qty", 0))
                 value = price * qty
                 if value >= min_usdt:
-                    whale_trades.append({
-                        "price": price,
-                        "qty": qty,
-                        "value_usdt": round(value, 2),
-                        "is_buyer_maker": t.get("isBuyerMaker", False),
-                        "time": t.get("time", 0),
-                    })
+                    whale_trades.append(
+                        {
+                            "price": price,
+                            "qty": qty,
+                            "value_usdt": round(value, 2),
+                            "is_buyer_maker": t.get("isBuyerMaker", False),
+                            "time": t.get("time", 0),
+                        }
+                    )
             return whale_trades
         except Exception as e:
             logger.debug(f"Whale trade detection failed for {symbol}: {e}")
@@ -148,10 +151,6 @@ class OnChainDataProvider:
         else:
             vol_score = 50
 
-        score = (
-            0.50 * flow_score
-            + 0.30 * count_score
-            + 0.20 * vol_score
-        )
+        score = 0.50 * flow_score + 0.30 * count_score + 0.20 * vol_score
 
         return max(0, min(100, score))

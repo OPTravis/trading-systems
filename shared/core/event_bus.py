@@ -106,12 +106,12 @@ class EventBus:
                 except ValueError:
                     logger.debug("Callback already removed from event_type=%s (not subscribed)", event_type)
 
-    def get_events(self, event_type: str = None, since: float = None, limit: int = 100) -> List[Dict]:
+    def get_events(self, event_type: Optional[str] = None, since: Optional[float] = None, limit: int = 100) -> List[Dict]:
         with self._db_lock:
             conn = self._conn()
             try:
                 query = "SELECT id, event_type, data, timestamp, processed FROM events WHERE 1=1"
-                params: list = []
+                params: list[Any] = []
                 if event_type:
                     query += " AND event_type = ?"
                     params.append(event_type)

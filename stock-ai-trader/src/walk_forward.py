@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -23,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 # ─── Data Models ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class WindowResult:
     """Result for a single walk-forward window."""
+
     window_id: int
     train_start: str
     train_end: str
@@ -49,6 +50,7 @@ class WindowResult:
 @dataclass
 class WalkForwardReport:
     """Aggregated walk-forward validation report."""
+
     strategy: str
     symbol: str
     total_windows: int
@@ -83,6 +85,7 @@ class WalkForwardReport:
 
 
 # ─── Walk-Forward Engine ────────────────────────────────────────────────────
+
 
 class WalkForwardValidator:
     """
@@ -128,7 +131,7 @@ class WalkForwardValidator:
         data: pd.DataFrame,
         symbol: str = "UNKNOWN",
         strategy_name: str = "strategy",
-        param_grid: Dict[str, list] = None,
+        param_grid: Optional[Dict[str, list]] = None,
     ) -> WalkForwardReport:
         """
         Run walk-forward validation.
@@ -148,18 +151,28 @@ class WalkForwardValidator:
         """
         if data.empty or len(data) < self.train_days + self.test_days:
             logger.warning("Insufficient data for walk-forward: %d rows", len(data))
-            return WalkForwardReport(strategy=strategy_name, symbol=symbol, total_windows=0)
+            return WalkForwardReport(
+                strategy=strategy_name, symbol=symbol, total_windows=0
+            )
 
         # NaN protection: warn if data contains NaN values
-        nan_count = int(data.isna().sum().sum()) if hasattr(data, 'isna') else 0
+        nan_count = int(data.isna().sum().sum()) if hasattr(data, "isna") else 0
         if nan_count > 0:
-            logger.warning("Data contains %d NaN values — forward-filling before validation", nan_count)
+            logger.warning(
+                "Data contains %d NaN values — forward-filling before validation",
+                nan_count,
+            )
             data = data.ffill().bfill()
 
         # Generate windows
         windows = self._generate_windows(data)
-        logger.info("Walk-forward: %d windows (%d train, %d test, %d step)",
-                     len(windows), self.train_days, self.test_days, self.step_days)
+        logger.info(
+            "Walk-forward: %d windows (%d train, %d test, %d step)",
+            len(windows),
+            self.train_days,
+            self.test_days,
+            self.step_days,
+        )
 
         results = []
         all_params = []
@@ -201,8 +214,12 @@ class WalkForwardValidator:
             if window_result.total_trades >= self.min_trades:
                 results.append(window_result)
             else:
-                logger.debug("Window %d skipped: only %d trades (min %d)",
-                             i, window_result.total_trades, self.min_trades)
+                logger.debug(
+                    "Window %d skipped: only %d trades (min %d)",
+                    i,
+                    window_result.total_trades,
+                    self.min_trades,
+                )
 
         # Aggregate results
         report = self._aggregate(results, all_params, symbol, strategy_name)
@@ -210,9 +227,7 @@ class WalkForwardValidator:
 
     # ── Window Generation ───────────────────────────────────────────────
 
-    def _generate_windows(
-        self, data: pd.DataFrame
-    ) -> List[tuple]:
+    def _generate_windows(self, data: pd.DataFrame) -> List[tuple]:
         """Generate (train_start, train_end, test_start, test_end) tuples."""
         dates = data.index
         n = len(dates)
@@ -282,14 +297,18 @@ class WalkForwardValidator:
     ) -> WindowResult:
         """Calculate performance metrics for a single window."""
         pnls = [t.get("pnl", 0) for t in trades]
-        returns = [t.get("return_pct", 0) / 100 for t in trades]
+        [t.get("return_pct", 0) / 100 for t in trades]
 
         # total_return: sum of PnLs divided by initial capital
         initial_capital = 100000.0
         total_return = sum(pnls) / initial_capital if pnls else 0
         sharpe = self._compute_sharpe(pnls) if pnls else 0
         sortino = self._compute_sortino(pnls) if pnls else 0
-        max_dd = self._compute_max_drawdown(equity_curve) if equity_curve is not None and len(equity_curve) >= 2 else 0
+        max_dd = (
+            self._compute_max_drawdown(equity_curve)
+            if equity_curve is not None and len(equity_curve) >= 2
+            else 0
+        )
         win_rate = sum(1 for p in pnls if p > 0) / len(pnls) if pnls else 0
         profit_factor = self._compute_profit_factor(pnls)
 
@@ -367,7 +386,9 @@ class WalkForwardValidator:
         """Aggregate window results into a final report."""
         if not results:
             return WalkForwardReport(
-                strategy=strategy_name, symbol=symbol, total_windows=0,
+                strategy=strategy_name,
+                symbol=symbol,
+                total_windows=0,
             )
 
         sharpes = [r.sharpe_ratio for r in results]
@@ -379,7 +400,7 @@ class WalkForwardValidator:
         # Compound total return across windows
         total_return = 1.0
         for r in results:
-            total_return *= (1 + r.total_return)
+            total_return *= 1 + r.total_return
         total_return -= 1.0
 
         # Parameter stability: how consistent are the optimal params across windows?
@@ -390,11 +411,11 @@ class WalkForwardValidator:
             strategy=strategy_name,
             symbol=symbol,
             total_windows=len(results),
-            avg_sharpe=np.mean(sharpes),
-            avg_sortino=np.mean(sortinos),
-            avg_max_drawdown=np.mean(drawdowns),
-            avg_win_rate=np.mean(win_rates),
-            avg_profit_factor=np.mean(profit_factors),
+            avg_sharpe=float(np.mean(sharpes)),
+            avg_sortino=float(np.mean(sortinos)),
+            avg_max_drawdown=float(np.mean(drawdowns)),
+            avg_win_rate=float(np.mean(win_rates)),
+            avg_profit_factor=float(np.mean(profit_factors)),
             median_sharpe=np.median(sharpes),
             total_return=total_return,
             param_stability=param_stability,
@@ -411,14 +432,14 @@ class WalkForwardValidator:
             return 1.0
 
         # For each parameter, compute coefficient of variation
-        key_set = set()
+        key_set: set[str] = set()
         for p in all_params:
             key_set.update(p.keys())
 
         if not key_set:
             return 1.0
 
-        stabilities = []
+        stabilities: list[float] = []
         for key in key_set:
             values = [p.get(key, 0) for p in all_params if key in p]
             numeric_values = []
@@ -431,21 +452,21 @@ class WalkForwardValidator:
             if not numeric_values or len(numeric_values) < 2:
                 continue
 
-            mean = np.mean(numeric_values)
-            std = np.std(numeric_values)
+            mean = float(np.mean(numeric_values))
+            std = float(np.std(numeric_values))
             cv = std / abs(mean) if mean != 0 else 0
             # Stability = 1 - normalized CV (clamped to [0, 1])
-            stability = max(0, min(1, 1 - cv))
+            stability = max(0.0, min(1.0, 1 - cv))
             stabilities.append(stability)
 
-        return np.mean(stabilities) if stabilities else 1.0
+        return float(np.mean(stabilities)) if stabilities else 1.0
 
     def _compute_param_ranges(self, all_params: List[Dict]) -> Dict[str, tuple]:
         """Get (min, max) range for each numeric parameter."""
         if not all_params:
             return {}
 
-        key_set = set()
+        key_set: set[str] = set()
         for p in all_params:
             key_set.update(p.keys())
 
@@ -466,13 +487,14 @@ class WalkForwardValidator:
 
 # ─── Convenience: Quick Validation ──────────────────────────────────────────
 
+
 def quick_walk_forward(
     data: pd.DataFrame,
     strategy_fn: Callable,
     symbol: str = "SPY",
     train_days: int = 252,
     test_days: int = 63,
-    param_grid: Dict[str, list] = None,
+    param_grid: Optional[Dict[str, list]] = None,
 ) -> WalkForwardReport:
     """
     Convenience function for quick walk-forward validation.

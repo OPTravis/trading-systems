@@ -2,6 +2,7 @@
 Volatility Target Sizer - Position sizing based on volatility targeting.
 Targets 15% annualized portfolio volatility.
 """
+
 import logging
 import math
 from typing import Dict, Optional
@@ -19,20 +20,25 @@ class VolTargetSizer:
     def __init__(self, target_vol: float = TARGET_VOL):
         self.target_vol = target_vol
 
-    def calculate(self, symbol: str, portfolio: Dict = None, current_vol: float = None) -> float:
+    def calculate(
+        self,
+        symbol: str,
+        portfolio: Optional[Dict] = None,
+        current_vol: Optional[float] = None,
+    ) -> float:
         """Calculate position size as fraction of portfolio.
-        
+
         Args:
             symbol: Stock symbol
             portfolio: Portfolio context {total_value, current_positions, ...}
             current_vol: Current realized volatility (annualized)
-            
+
         Returns:
             Position size as fraction of portfolio (0.0 to max_allocation)
         """
         portfolio = portfolio or {}
-        total_value = portfolio.get('total_value', 100000.0)
-        n_positions = max(1, portfolio.get('n_positions', 10))
+        total_value = portfolio.get("total_value", 100000.0)
+        n_positions = max(1, portfolio.get("n_positions", 10))
 
         vol = current_vol or DEFAULT_VOL
         if vol <= 0:
@@ -53,14 +59,21 @@ class VolTargetSizer:
         )
         return position_frac
 
-    def calculate_dollar(self, symbol: str, portfolio: Dict = None, current_vol: float = None) -> float:
+    def calculate_dollar(
+        self,
+        symbol: str,
+        portfolio: Optional[Dict] = None,
+        current_vol: Optional[float] = None,
+    ) -> float:
         """Calculate position size in dollars."""
         portfolio = portfolio or {}
-        total_value = portfolio.get('total_value', 100000.0)
+        total_value = portfolio.get("total_value", 100000.0)
         frac = self.calculate(symbol, portfolio, current_vol)
         return total_value * frac
 
-    def get_portfolio_vol_estimate(self, positions: Dict[str, float], vols: Dict[str, float]) -> float:
+    def get_portfolio_vol_estimate(
+        self, positions: Dict[str, float], vols: Dict[str, float]
+    ) -> float:
         """Estimate portfolio volatility (simplified, assumes zero correlation)."""
         if not positions or not vols:
             return 0.0

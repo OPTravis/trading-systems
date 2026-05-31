@@ -2,10 +2,11 @@
 Feature store for factor values and IC history using DuckDB.
 Provides efficient columnar storage for quantitative factor data.
 """
+
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -30,7 +31,7 @@ class FeatureStore:
         """
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = None
+        self._conn: Optional[Any] = None
         self._write_lock = threading.Lock()
         self._init_tables()
 
@@ -38,6 +39,7 @@ class FeatureStore:
     def conn(self):
         if self._conn is None:
             import duckdb
+
             self._conn = duckdb.connect(str(self.db_path))
         return self._conn
 
@@ -81,13 +83,19 @@ class FeatureStore:
         # Melt from wide to long format
         id_vars = ["symbol"]
         value_vars = [c for c in factor_df.columns if c != "symbol"]
-        melted = factor_df.melt(id_vars=id_vars, value_vars=value_vars,
-                                var_name="factor_name", value_name="value")
+        melted = factor_df.melt(
+            id_vars=id_vars,
+            value_vars=value_vars,
+            var_name="factor_name",
+            value_name="value",
+        )
         melted["date"] = date
         melted = melted.dropna(subset=["value"])
 
         # Upsert using INSERT OR REPLACE
-        records = melted[["date", "symbol", "factor_name", "value"]].to_records(index=False)
+        records = melted[["date", "symbol", "factor_name", "value"]].to_records(
+            index=False
+        )
         record_list = [tuple(r) for r in records]
         if not record_list:
             return 0
@@ -205,10 +213,14 @@ class FeatureStore:
 
     def get_all_factors(self) -> list[str]:
         """Get a list of all stored factor names."""
-        df = self.conn.execute("SELECT DISTINCT factor_name FROM factor_values ORDER BY factor_name").fetchdf()
+        df = self.conn.execute(
+            "SELECT DISTINCT factor_name FROM factor_values ORDER BY factor_name"
+        ).fetchdf()
         return df["factor_name"].tolist() if not df.empty else []
 
-    def get_factor_stats(self, factor_name: str, start_date: str, end_date: str) -> dict:
+    def get_factor_stats(
+        self, factor_name: str, start_date: str, end_date: str
+    ) -> dict:
         """
         Get summary statistics for a factor over a date range.
 

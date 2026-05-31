@@ -2,6 +2,7 @@
 Fundamental data feed using Financial Modeling Prep API.
 Free tier: 250 calls/day.
 """
+
 import logging
 import os
 import time
@@ -62,7 +63,9 @@ class FundamentalFeed:
 
     # -- public API ----------------------------------------------------------
 
-    def get_key_metrics(self, symbol: str, period: str = "annual", limit: int = 4) -> list[dict]:
+    def get_key_metrics(
+        self, symbol: str, period: str = "annual", limit: int = 4
+    ) -> list[dict]:
         """
         Get key financial metrics (PE, PB, ROE, EV/EBITDA, etc.).
 
@@ -84,7 +87,9 @@ class FundamentalFeed:
         self._set_cached(cache_key, data)
         return data
 
-    def get_financial_ratios(self, symbol: str, period: str = "annual", limit: int = 4) -> list[dict]:
+    def get_financial_ratios(
+        self, symbol: str, period: str = "annual", limit: int = 4
+    ) -> list[dict]:
         """
         Get financial ratios (profitability, liquidity, leverage, efficiency).
 
@@ -119,32 +124,44 @@ class FundamentalFeed:
         self._set_cached(cache_key, result)
         return result
 
-    def get_income_statement(self, symbol: str, period: str = "annual", limit: int = 4) -> list[dict]:
+    def get_income_statement(
+        self, symbol: str, period: str = "annual", limit: int = 4
+    ) -> list[dict]:
         """Get income statement data."""
         cache_key = f"income|{symbol}|{period}|{limit}"
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
-        data = self._get(f"income-statement/{symbol}", {"period": period, "limit": limit})
+        data = self._get(
+            f"income-statement/{symbol}", {"period": period, "limit": limit}
+        )
         self._set_cached(cache_key, data)
         return data
 
-    def get_balance_sheet(self, symbol: str, period: str = "annual", limit: int = 4) -> list[dict]:
+    def get_balance_sheet(
+        self, symbol: str, period: str = "annual", limit: int = 4
+    ) -> list[dict]:
         """Get balance sheet data."""
         cache_key = f"balance|{symbol}|{period}|{limit}"
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
-        data = self._get(f"balance-sheet-statement/{symbol}", {"period": period, "limit": limit})
+        data = self._get(
+            f"balance-sheet-statement/{symbol}", {"period": period, "limit": limit}
+        )
         self._set_cached(cache_key, data)
         return data
 
-    def get_cash_flow(self, symbol: str, period: str = "annual", limit: int = 4) -> list[dict]:
+    def get_cash_flow(
+        self, symbol: str, period: str = "annual", limit: int = 4
+    ) -> list[dict]:
         """Get cash flow statement data."""
         cache_key = f"cashflow|{symbol}|{period}|{limit}"
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
-        data = self._get(f"cash-flow-statement/{symbol}", {"period": period, "limit": limit})
+        data = self._get(
+            f"cash-flow-statement/{symbol}", {"period": period, "limit": limit}
+        )
         self._set_cached(cache_key, data)
         return data

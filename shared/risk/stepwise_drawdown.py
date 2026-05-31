@@ -17,12 +17,12 @@ STORAGE: StateDB kv store (key: 'stepwise_drawdown:state').
 import json
 import logging
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 # Drawdown level definitions
-LEVELS = {
+LEVELS: Dict[str, Dict[str, Any]] = {
     "normal": {
         "min_pct": 0.0,
         "max_pct": 3.0,
@@ -143,7 +143,7 @@ def _check_time_escalation(state: Dict, current_level: str, now: float) -> Optio
     return None
 
 
-def get_drawdown_action(drawdown_pct: float, db=None, now: float = None) -> Dict:
+def get_drawdown_action(drawdown_pct: float, db=None, now: Optional[float] = None) -> Dict:
     """Get the action to take based on current drawdown percentage.
 
     Args:
@@ -244,7 +244,7 @@ def get_position_size_multiplier(drawdown_pct: float) -> float:
         Float multiplier between 0.0 and 1.0.
     """
     level = _get_level_for_drawdown(drawdown_pct)
-    return LEVELS[level]["size_multiplier"]
+    return float(LEVELS[level]["size_multiplier"])
 
 
 def get_sl_tightening(drawdown_pct: float) -> float:
@@ -257,7 +257,7 @@ def get_sl_tightening(drawdown_pct: float) -> float:
         Float factor: 1.0 normally, 0.7 at 5-8%, 0.5 at 8-10%.
     """
     level = _get_level_for_drawdown(drawdown_pct)
-    return LEVELS[level]["sl_tightening"]
+    return float(LEVELS[level]["sl_tightening"])
 
 
 def should_close_all(drawdown_pct: float) -> bool:

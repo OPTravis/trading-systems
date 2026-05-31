@@ -7,12 +7,10 @@ and applies dynamic filters for price action and trade activity.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .exchange_client import ExchangeClient
-from .binance_client import BinanceClient  # runtime fallback
 from .risk_manager import SectorExposure
 
 logger = logging.getLogger(__name__)
@@ -20,7 +18,15 @@ logger = logging.getLogger(__name__)
 # Tokens to always exclude from the pool
 STABLECOINS = {"USDCUSDT", "TUSDUSDT", "BUSDUSDT", "FDUSDUSDT", "DAIUSDT", "USDPUSDT"}
 
-WRAPPED_TOKENS = {"WETHUSDT", "WBTCUSDT", "WBNBUSDT", "WMATICUSDT", "WAVAXUSDT", "WFTMUSDT", "WLINKUSDT"}
+WRAPPED_TOKENS = {
+    "WETHUSDT",
+    "WBTCUSDT",
+    "WBNBUSDT",
+    "WMATICUSDT",
+    "WAVAXUSDT",
+    "WFTMUSDT",
+    "WLINKUSDT",
+}
 
 # Leverage token suffixes/patterns
 _LEVERAGE_TOKEN_RE = re.compile(r"(UP|DOWN|BULL|BEAR)[0-9]*USDT$")
@@ -35,7 +41,7 @@ class DynamicCoinPool:
     further refine the pool for specific strategies.
     """
 
-    def __init__(self, client: 'ExchangeClient'):
+    def __init__(self, client: "ExchangeClient"):
         self.client = client
 
     # ------------------------------------------------------------------
@@ -115,13 +121,15 @@ class DynamicCoinPool:
             if trades is not None and trades <= min_trades:
                 continue
 
-            pool.append({
-                "symbol": symbol,
-                "volume_24h": volume,
-                "price": price,
-                "price_change_24h": price_change,
-                "trades": trades,
-            })
+            pool.append(
+                {
+                    "symbol": symbol,
+                    "volume_24h": volume,
+                    "price": price,
+                    "price_change_24h": price_change,
+                    "trades": trades,
+                }
+            )
 
         # Sort by volume descending and assign ranks
         pool.sort(key=lambda c: c["volume_24h"], reverse=True)
@@ -135,7 +143,9 @@ class DynamicCoinPool:
 
         logger.info(
             "DynamicCoinPool: built pool with %d coins (min_vol=$%.0f, max=%d)",
-            len(pool), min_volume_usd, max_coins,
+            len(pool),
+            min_volume_usd,
+            max_coins,
         )
         return pool
 
@@ -179,7 +189,9 @@ class DynamicCoinPool:
         blocked_sectors: set = set(check_result.get("blocked_sectors", []))
 
         for sector, info in details.items():
-            limit = default_limit.get(sector, info.get("limit_pct", SectorExposure.MAX_SECTOR_PCT))
+            limit = default_limit.get(
+                sector, info.get("limit_pct", SectorExposure.MAX_SECTOR_PCT)
+            )
             pct = info.get("pct", 0)
             if pct >= limit:
                 blocked_sectors.add(sector)
@@ -203,7 +215,8 @@ class DynamicCoinPool:
         if near_limit_sectors or blocked_sectors:
             logger.info(
                 "DynamicCoinPool: near-limit sectors=%s, blocked=%s",
-                near_limit_sectors, blocked_sectors,
+                near_limit_sectors,
+                blocked_sectors,
             )
 
         return pool
@@ -241,8 +254,7 @@ class DynamicCoinPool:
 
         # Pre-filter by 24h price change
         candidates = [
-            c for c in pool
-            if c.get("price_change_24h", -999) > price_change_floor
+            c for c in pool if c.get("price_change_24h", -999) > price_change_floor
         ]
 
         if not candidates:
@@ -250,7 +262,7 @@ class DynamicCoinPool:
             return []
 
         momentum_pool: List[Dict] = []
-        pool_symbols = {c["symbol"] for c in pool}
+        {c["symbol"] for c in pool}
         top_volume_threshold = pool[-1]["volume_24h"] if pool else 0
 
         for coin in candidates:
@@ -313,7 +325,8 @@ class DynamicCoinPool:
 
         logger.info(
             "DynamicCoinPool: momentum pool has %d coins (from %d candidates)",
-            len(momentum_pool), len(candidates),
+            len(momentum_pool),
+            len(candidates),
         )
         return momentum_pool
 
@@ -339,5 +352,7 @@ class DynamicCoinPool:
 
             return sum(volumes) / len(volumes)
         except Exception as e:
-            logger.debug("DynamicCoinPool: failed to get avg volume for %s: %s", symbol, e)
+            logger.debug(
+                "DynamicCoinPool: failed to get avg volume for %s: %s", symbol, e
+            )
             return None

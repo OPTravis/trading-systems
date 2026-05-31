@@ -1,6 +1,7 @@
 """
 SEC EDGAR filing retrieval and parsing (10-K, 10-Q, 8-K).
 """
+
 import logging
 import os
 import re
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 EDGAR_BASE = "https://efts.sec.gov/LATEST/search-index"
 EDGAR_FULL_TEXT = "https://efts.sec.gov/LATEST/search-index"
 EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions"
-EDGAR_USER_AGENT = os.environ.get("SEC_USER_AGENT", "stock-ai-trader research@example.com")
+EDGAR_USER_AGENT = os.environ.get(
+    "SEC_USER_AGENT", "stock-ai-trader research@example.com"
+)
 
 
 class SECFilings:
@@ -52,7 +55,9 @@ class SECFilings:
 
         return None
 
-    def get_latest_filing(self, symbol: str, filing_type: str = "10-K") -> Optional[dict]:
+    def get_latest_filing(
+        self, symbol: str, filing_type: str = "10-K"
+    ) -> Optional[dict]:
         """
         Get the latest filing of a given type for a symbol.
 
@@ -73,7 +78,9 @@ class SECFilings:
             logger.warning("Could not resolve CIK for %s", symbol)
             return None
 
-        logger.info("Fetching latest %s filing for %s (CIK: %s)", filing_type, symbol, cik)
+        logger.info(
+            "Fetching latest %s filing for %s (CIK: %s)", filing_type, symbol, cik
+        )
 
         try:
             resp = self.session.get(
@@ -155,7 +162,9 @@ class SECFilings:
             logger.error("Failed to parse filing at %s: %s", url, exc)
             return ""
 
-    def get_filings(self, symbol: str, filing_type: str = "10-K", limit: int = 5) -> list[dict]:
+    def get_filings(
+        self, symbol: str, filing_type: str = "10-K", limit: int = 5
+    ) -> list[dict]:
         """
         Get multiple recent filings of a given type.
 
@@ -188,14 +197,18 @@ class SECFilings:
                         f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
                         f"{acc_no}/{primary_docs[i]}"
                     )
-                    filings.append({
-                        "filing_type": filing_type,
-                        "form": form,
-                        "date": dates[i],
-                        "url": doc_url,
-                        "accession_number": accessions[i],
-                        "description": descriptions[i] if i < len(descriptions) else "",
-                    })
+                    filings.append(
+                        {
+                            "filing_type": filing_type,
+                            "form": form,
+                            "date": dates[i],
+                            "url": doc_url,
+                            "accession_number": accessions[i],
+                            "description": (
+                                descriptions[i] if i < len(descriptions) else ""
+                            ),
+                        }
+                    )
                     if len(filings) >= limit:
                         break
 

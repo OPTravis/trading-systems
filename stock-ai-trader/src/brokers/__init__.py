@@ -8,9 +8,9 @@ Provides:
 - AlpacaClient: Alpaca Markets backup client (stub)
 """
 
+from .alpaca_client import AlpacaClient
 from .broker_protocol import BrokerProtocol
 from .ibkr_client import IBKRClient
 from .paper_client import PaperClient
-from .alpaca_client import AlpacaClient
 
 __all__ = ["BrokerProtocol", "IBKRClient", "PaperClient", "AlpacaClient"]

@@ -5308,3 +5308,707 @@
 
 ## 2026-05-26 09:04 | WLDUSDT | BUY | score=78.5 | bear_score=15 veto=False
 - Research: {'symbol': 'WLDUSDT', 'coin': 'WLD', 'news': [{'title': '', 'summary': 'Max challenge attempts exceeded. Please refresh the page to try again!', 'sentiment': -0.8, 'source': 'www.binance.com', 'url': 
+
+## 2026-05-31 00:23 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 00:23 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:23 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 00:23 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='136954705270288'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='136956248949584'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:24 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:27 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 00:27 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:27 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 00:27 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:27 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 00:27 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:27 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 00:27 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='135358534869136'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='135360241483664'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:28 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 00:32 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:45 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 00:45 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:45 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 00:45 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:46 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 00:46 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 00:46 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 00:46 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:55 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 16:55 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:55 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 16:55 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:55 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 16:55 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:55 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 16:55 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:56 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:56 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:56 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:56 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:57 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 16:57 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:57 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 16:57 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:57 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='128335511744400'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='128337273101136'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 16:58 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='137420133588944'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:03 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:04 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='137420133824656'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:04 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:05 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 17:05 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:05 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 17:05 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:05 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 17:05 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:05 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 17:05 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='139199788566160'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='139199792829840'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:06 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | DOGEUSDT | BUY | score=63.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | DOGEUSDT | BUY | score=63.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='136277045631632'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: <MagicMock name='execute_auto_trade().__getitem__()' id='136277045064208'>
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-05-31 17:13 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}

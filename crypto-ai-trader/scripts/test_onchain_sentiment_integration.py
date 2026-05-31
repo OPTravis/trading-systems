@@ -53,12 +53,14 @@ def test_market_scanner_signature():
            "tf_4h": {"ma99": 95, "ma25": 98},
            "trend_score": 60}
     scanner = MarketScanner.__new__(MarketScanner)
-    score_default = scanner._calculate_weighted_score(mtf, None, {}, {})
+    scanner._learner_weights = None
+    scanner._learner_ts = 0.0
+    score_default, _ = scanner._calculate_weighted_score(mtf, None, {}, {})
     assert 0.0 <= score_default <= 100.0, f"Default score out of range: {score_default}"
     print(f"✅ Default call score = {score_default:.1f}")
 
     # 測試新參數調用
-    score_new = scanner._calculate_weighted_score(
+    score_new, _ = scanner._calculate_weighted_score(
         mtf, None, {}, {}, market_sentiment_score=80.0, onchain_score=70.0
     )
     assert 0.0 <= score_new <= 100.0, f"New params score out of range: {score_new}"

@@ -14,15 +14,15 @@ Time-based escalation: if in 5-8% zone for >2h, automatically escalate to next l
 
 STORAGE: StateDB kv store (key: 'stepwise_drawdown:state').
 """
-import json
+
 import logging
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 # Drawdown level definitions
-LEVELS = {
+LEVELS: Dict[str, Dict[str, Any]] = {
     "normal": {
         "min_pct": 0.0,
         "max_pct": 3.0,
@@ -122,7 +122,9 @@ def _save_state(db, state: Dict):
         logger.error("StepwiseDrawdown: failed to save state: %s", e)
 
 
-def _check_time_escalation(state: Dict, current_level: str, now: float) -> Optional[str]:
+def _check_time_escalation(
+    state: Dict, current_level: str, now: float
+) -> Optional[str]:
     """Check if we should escalate due to time in moderate zone.
 
     Returns the escalated level name, or None if no escalation needed.
@@ -143,7 +145,9 @@ def _check_time_escalation(state: Dict, current_level: str, now: float) -> Optio
     return None
 
 
-def get_drawdown_action(drawdown_pct: float, db=None, now: float = None) -> Dict:
+def get_drawdown_action(
+    drawdown_pct: float, db=None, now: Optional[float] = None
+) -> Dict:
     """Get the action to take based on current drawdown percentage.
 
     Args:
@@ -164,6 +168,7 @@ def get_drawdown_action(drawdown_pct: float, db=None, now: float = None) -> Dict
     """
     if db is None:
         from src.state_db import get_state_db
+
         db = get_state_db()
 
     if now is None:
@@ -194,8 +199,16 @@ def get_drawdown_action(drawdown_pct: float, db=None, now: float = None) -> Dict
         # "moderate" is the zone from which escalation originates
         if detected_level in ("moderate", "severe", "critical"):
             # Still in escalated territory — hold the escalated level
-            prev_idx = LEVEL_ORDER.index(previous_level) if previous_level in LEVEL_ORDER else 0
-            det_idx = LEVEL_ORDER.index(detected_level) if detected_level in LEVEL_ORDER else 0
+            prev_idx = (
+                LEVEL_ORDER.index(previous_level)
+                if previous_level in LEVEL_ORDER
+                else 0
+            )
+            det_idx = (
+                LEVEL_ORDER.index(detected_level)
+                if detected_level in LEVEL_ORDER
+                else 0
+            )
             if det_idx < prev_idx:
                 detected_level = previous_level
                 level_config = LEVELS[detected_level]

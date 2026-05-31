@@ -11,10 +11,10 @@ Persisted to StateDB so cron runs pick up the tripped state.
 Usage:
     from src.circuit_breaker import CircuitBreaker
     cb = CircuitBreaker()
-    
+
     if cb.is_tripped():
         return  # stop all trading
-    
+
     try:
         do_trade()
     except Exception:
@@ -22,6 +22,7 @@ Usage:
 
     cb.record_success()
 """
+
 import logging
 import time
 from typing import Dict, Optional
@@ -29,11 +30,11 @@ from typing import Dict, Optional
 logger = logging.getLogger(__name__)
 
 # Thresholds
-CONSECUTIVE_FAILURES_MAX = 5       # trips after 5 consecutive API failures
-FAILURE_WINDOW_SEC = 600           # 10 min window for counting failures
-TRIP_DURATION_SEC = 1800           # 30 min auto-reset after trip
-DRAWDOWN_TRIP_PCT = 20.0           # 20% drawdown from ATH
-MAX_GHOST_POSITIONS = 3            # unusual if >3 ghost positions detected
+CONSECUTIVE_FAILURES_MAX = 5  # trips after 5 consecutive API failures
+FAILURE_WINDOW_SEC = 600  # 10 min window for counting failures
+TRIP_DURATION_SEC = 1800  # 30 min auto-reset after trip
+DRAWDOWN_TRIP_PCT = 20.0  # 20% drawdown from ATH
+MAX_GHOST_POSITIONS = 3  # unusual if >3 ghost positions detected
 
 
 class CircuitBreaker:
@@ -53,6 +54,7 @@ class CircuitBreaker:
         """Load circuit breaker state from StateDB kv store."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             state = db.kv_get("circuit_breaker:state", {})
             if state:
@@ -67,13 +69,17 @@ class CircuitBreaker:
         """Persist circuit breaker state to StateDB."""
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
-            db.kv_set("circuit_breaker:state", {
-                "failure_count": self._failure_count,
-                "first_failure_ts": self._first_failure_ts,
-                "tripped_until": self._tripped_until,
-                "trip_reason": self._trip_reason,
-            })
+            db.kv_set(
+                "circuit_breaker:state",
+                {
+                    "failure_count": self._failure_count,
+                    "first_failure_ts": self._first_failure_ts,
+                    "tripped_until": self._tripped_until,
+                    "trip_reason": self._trip_reason,
+                },
+            )
         except Exception as e:
             logger.warning(f"CircuitBreaker: failed to save state: {e}")
 
@@ -113,7 +119,10 @@ class CircuitBreaker:
         now = time.time()
 
         # Reset failure window if expired
-        if self._first_failure_ts and (now - self._first_failure_ts) > FAILURE_WINDOW_SEC:
+        if (
+            self._first_failure_ts
+            and (now - self._first_failure_ts) > FAILURE_WINDOW_SEC
+        ):
             self._failure_count = 0
             self._first_failure_ts = None
 
@@ -128,7 +137,8 @@ class CircuitBreaker:
 
         if self._failure_count >= CONSECUTIVE_FAILURES_MAX:
             self._trip(
-                self._trip_reason or f"{self._failure_count} consecutive failures in {FAILURE_WINDOW_SEC}s"
+                self._trip_reason
+                or f"{self._failure_count} consecutive failures in {FAILURE_WINDOW_SEC}s"
             )
 
         self._save_state()
@@ -136,21 +146,24 @@ class CircuitBreaker:
     def record_success(self):
         """Reset failure counter on successful operation."""
         if self._failure_count > 0:
-            logger.info(f"CircuitBreaker: success — resetting failure counter ({self._failure_count}→0)")
+            logger.info(
+                f"CircuitBreaker: success — resetting failure counter ({self._failure_count}→0)"
+            )
         self._failure_count = 0
         self._first_failure_ts = None
         self._save_state()
 
     def check_drawdown(self, current_equity: float) -> bool:
         """Check for drawdown-based trip.
-        
+
         Args:
             current_equity: Total portfolio value in USDT
-            
+
         Returns True if trading is blocked by drawdown.
         """
         try:
             from src.state_db import get_state_db
+
             db = get_state_db()
             dd_state = db.drawdown_get()
             high_watermark = dd_state.get("high_watermark", 0)

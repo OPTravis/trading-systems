@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 def get_state_db():
     from src.state_db import get_state_db as _get
+
     return _get()
 
 
@@ -14,9 +15,9 @@ class AdaptiveTrailingStop:
     MIN_PROFIT_LOCK_PCT = 0.005  # 0.5% minimum profit lock
 
     STEPS = [
-        (0.01, 0.06, "step_1_6"),    # profit 1-3%: trail 6% below peak
-        (0.03, 0.05, "step_3_5"),    # profit 3-5%: trail 5% below peak
-        (0.05, 0.03, "step_5_10"),   # profit 5-10%: trail 3% below peak
+        (0.01, 0.06, "step_1_6"),  # profit 1-3%: trail 6% below peak
+        (0.03, 0.05, "step_3_5"),  # profit 3-5%: trail 5% below peak
+        (0.05, 0.03, "step_5_10"),  # profit 5-10%: trail 3% below peak
         (0.10, 0.02, "step_10_plus"),  # profit >10%: trail 2% below peak
     ]
 
@@ -93,13 +94,24 @@ class AdaptiveTrailingStop:
 # Module-level convenience functions
 _adaptive_instance = AdaptiveTrailingStop()
 
-def calculate_trailing_sl(entry_price: float, current_price: float, highest_price: float, initial_sl: float, volatility_adjustment: float = 1.0) -> Dict:
+
+def calculate_trailing_sl(
+    entry_price: float,
+    current_price: float,
+    highest_price: float,
+    initial_sl: float,
+    volatility_adjustment: float = 1.0,
+) -> Dict:
     """Convenience wrapper for AdaptiveTrailingStop.calculate_trailing_sl()."""
-    return _adaptive_instance.calculate_trailing_sl(entry_price, current_price, highest_price, initial_sl, volatility_adjustment)
+    return _adaptive_instance.calculate_trailing_sl(
+        entry_price, current_price, highest_price, initial_sl, volatility_adjustment
+    )
+
 
 def should_update_sl(current_sl: float, new_sl: float) -> bool:
     """Convenience wrapper for AdaptiveTrailingStop.should_update_sl()."""
     return AdaptiveTrailingStop.should_update_sl(current_sl, new_sl)
+
 
 def get_step_description(profit_pct: float) -> str:
     """Convenience wrapper for AdaptiveTrailingStop.get_step_description()."""

@@ -7,7 +7,8 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
 
@@ -16,6 +17,16 @@ logger = logging.getLogger(__name__)
 
 class StateMixin:
     """State persistence methods for PortfolioManager."""
+
+    DUST_THRESHOLD_USD: float
+    _db: Any
+    config: Dict[str, Any]
+    positions: Dict[str, Any]
+    cash_balance: float
+    _last_save_time: float
+    _save_debounce_sec: float
+
+    def add_position(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def _save_state(self, force=False):
         """Save state to SQLite (sole source of truth).
@@ -35,19 +46,24 @@ class StateMixin:
             return
 
         try:
-            with self._db.transaction() as conn:
+            with self._db.transaction():
                 # Save cash_balance FIRST (foreign-key-like dependency for audit)
                 self._db.portfolio_set_cash_balance(self.cash_balance)
                 # Save all positions
                 for sym, pos in self.positions.items():
-                    self._db.portfolio_set(sym, {
-                        "quantity": pos["quantity"],
-                        "entry_price": pos["entry_price"],
-                        "strategy": pos.get("strategy", ""),
-                        "opened_at": pos.get("created_at", datetime.now().isoformat()),
-                        "stop_loss": pos.get("stop_loss"),
-                        "take_profit": pos.get("take_profit"),
-                    })
+                    self._db.portfolio_set(
+                        sym,
+                        {
+                            "quantity": pos["quantity"],
+                            "entry_price": pos["entry_price"],
+                            "strategy": pos.get("strategy", ""),
+                            "opened_at": pos.get(
+                                "created_at", datetime.now().isoformat()
+                            ),
+                            "stop_loss": pos.get("stop_loss"),
+                            "take_profit": pos.get("take_profit"),
+                        },
+                    )
                 # Remove closed positions from DB
                 db_positions = self._db.portfolio_get_all()
                 for sym in db_positions:
@@ -70,8 +86,14 @@ class StateMixin:
                     entry_price = data["entry_price"]
                     db_sl = data.get("stop_loss")
                     db_tp = data.get("take_profit")
-                    default_sl = entry_price * (1 - self.config["stop_loss"]["default_pct"] / 100)
-                    default_tp = entry_price * (1 + self.config.get("take_profit", {}).get("default_pct", 6.0) / 100)
+                    default_sl = entry_price * (
+                        1 - self.config["stop_loss"]["default_pct"] / 100
+                    )
+                    default_tp = entry_price * (
+                        1
+                        + self.config.get("take_profit", {}).get("default_pct", 6.0)
+                        / 100
+                    )
                     self.positions[sym] = {
                         "symbol": sym,
                         "quantity": data["quantity"],
@@ -94,7 +116,7 @@ class StateMixin:
             logger.error(f"Failed to load from StateDB: {e}")
             raise
 
-    def sync_from_binance(self, binance_client: 'ExchangeClient'):
+    def sync_from_binance(self, binance_client: "ExchangeClient"):
         """Sync portfolio state from Binance API — THE SOURCE OF TRUTH.
 
         This method should be called on system startup to ensure local state
@@ -111,7 +133,9 @@ class StateMixin:
             logger.error("No Binance client provided for sync")
             return False
 
-        logger.info("\U0001f504 Syncing portfolio from Binance API (source of truth)...")
+        logger.info(
+            "\U0001f504 Syncing portfolio from Binance API (source of truth)..."
+        )
 
         try:
             account = binance_client.get_account()
@@ -142,9 +166,22 @@ class StateMixin:
 
         usdt_balance = 0.0
         new_positions = []
-        sync_success = False
 
-        STABLECOINS = {'USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD', 'USDP', 'EUR', 'RLUSD', 'EURT', 'AEUR', 'GBP', 'NTRN'}
+        STABLECOINS = {
+            "USDT",
+            "USDC",
+            "BUSD",
+            "DAI",
+            "TUSD",
+            "FDUSD",
+            "USDP",
+            "EUR",
+            "RLUSD",
+            "EURT",
+            "AEUR",
+            "GBP",
+            "NTRN",
+        }
 
         try:
             for balance in account.get("balances", []):
@@ -167,14 +204,18 @@ class StateMixin:
                     price = float(stats.get("last_price", 0))
                     # Fallback if get_24hr_stats returned empty (transient error)
                     if price <= 0:
-                        price = float(binance_client.get_ticker_price(f"{asset}USDT") or 0)
+                        price = float(
+                            binance_client.get_ticker_price(f"{asset}USDT") or 0
+                        )
                     if price <= 0:
                         logger.warning(f"Invalid price for {asset}, skipping")
                         continue
                     value = total * price
 
                     if value < self.DUST_THRESHOLD_USD:
-                        logger.info(f"Skipping dust position: {asset} {total} @ {price} = ${value:.4f}")
+                        logger.info(
+                            f"Skipping dust position: {asset} {total} @ {price} = ${value:.4f}"
+                        )
                         continue
 
                     existing_entry = None
@@ -184,42 +225,65 @@ class StateMixin:
                             existing_entry = float(db_pos["entry_price"])
                             entry_source = "db_existing"
                     except Exception:
-                        logger.error("Failed to read existing entry price from DB for %s", asset, exc_info=True)
+                        logger.error(
+                            "Failed to read existing entry price from DB for %s",
+                            asset,
+                            exc_info=True,
+                        )
 
                     if existing_entry and existing_entry > 0:
                         entry_price = existing_entry
                     else:
                         try:
                             from src.entry_price import get_avg_entry_price
-                            avg_entry = get_avg_entry_price(binance_client, f"{asset}USDT", total)
+
+                            avg_entry = get_avg_entry_price(
+                                binance_client, f"{asset}USDT", total
+                            )
                             if avg_entry and avg_entry > 0:
                                 entry_price = avg_entry
                                 entry_source = "trade_history"
                             else:
                                 entry_price = price
                                 entry_source = "market_estimate"
-                                logger.warning(f"Could not determine avg entry for {asset}, using market price ${price:.4f}")
+                                logger.warning(
+                                    f"Could not determine avg entry for {asset}, using market price ${price:.4f}"
+                                )
                         except Exception as e:
                             entry_price = price
                             entry_source = "market_estimate"
-                            logger.warning(f"entry_price calculation failed for {asset}: {e}, using market price")
+                            logger.warning(
+                                f"entry_price calculation failed for {asset}: {e}, using market price"
+                            )
 
                     # Check if position already exists in DB (avoid phantom BUY records)
                     sym_key = f"{asset}USDT"
                     already_in_db = False
                     try:
-                        existing_db = self._db.portfolio_get(sym_key) if self._db else None
+                        existing_db = (
+                            self._db.portfolio_get(sym_key) if self._db else None
+                        )
                         if existing_db:
                             already_in_db = True
                     except Exception:
-                        logger.error("Failed to check existing DB position for %s", asset, exc_info=True)
+                        logger.error(
+                            "Failed to check existing DB position for %s",
+                            asset,
+                            exc_info=True,
+                        )
 
                     if already_in_db:
                         # Existing position: update qty and price, preserve original SL/TP
                         db_sl = existing_db.get("stop_loss") if existing_db else None
                         db_tp = existing_db.get("take_profit") if existing_db else None
-                        default_sl = entry_price * (1 - self.config["stop_loss"]["default_pct"] / 100)
-                        default_tp = entry_price * (1 + self.config.get("take_profit", {}).get("default_pct", 6.0) / 100)
+                        default_sl = entry_price * (
+                            1 - self.config["stop_loss"]["default_pct"] / 100
+                        )
+                        default_tp = entry_price * (
+                            1
+                            + self.config.get("take_profit", {}).get("default_pct", 6.0)
+                            / 100
+                        )
                         self.positions[sym_key] = {
                             "symbol": sym_key,
                             "quantity": total,
@@ -237,16 +301,20 @@ class StateMixin:
                         # New position: use add_position with _from_sync to skip phantom BUY trade
                         self.add_position(
                             symbol=sym_key,
-                        quantity=total,
-                        entry_price=entry_price,
-                        strategy="synced",
-                        deduct_cash=False,
-                        _skip_validation=True,
-                        _from_sync=True,
-                    )
+                            quantity=total,
+                            entry_price=entry_price,
+                            strategy="synced",
+                            deduct_cash=False,
+                            _skip_validation=True,
+                            _from_sync=True,
+                        )
                     if f"{asset}USDT" in self.positions:
-                        self.positions[f"{asset}USDT"]["entry_price_source"] = entry_source
-                    new_positions.append(f"{asset}: {total} @ ${entry_price:.4f} ({entry_source}) = ${value:.2f}")
+                        self.positions[f"{asset}USDT"][
+                            "entry_price_source"
+                        ] = entry_source
+                    new_positions.append(
+                        f"{asset}: {total} @ ${entry_price:.4f} ({entry_source}) = ${value:.2f}"
+                    )
 
                 except Exception as e:
                     logger.warning(f"Could not price {asset}: {e}")
@@ -256,10 +324,11 @@ class StateMixin:
             self.cash_balance = usdt_balance
             self._last_save_time = 0
             self._save_state(force=True)
-            sync_success = True
 
         except Exception as e:
-            logger.error(f"Sync failed mid-process: {e}. Rolling back to previous state.")
+            logger.error(
+                f"Sync failed mid-process: {e}. Rolling back to previous state."
+            )
             self.positions = old_positions
             self.cash_balance = old_cash
             self._last_save_time = 0
@@ -272,18 +341,24 @@ class StateMixin:
                 self._db.audit_log(
                     action="PORTFOLIO_SYNC",
                     details=f"Synced {len(self.positions)} positions from Binance",
-                    old_value=json.dumps({"positions": list(old_positions.keys()), "cash": old_cash}),
-                    new_value=json.dumps({"positions": list(self.positions.keys()), "cash": usdt_balance}),
-                    source="binance_api"
+                    old_value=json.dumps(
+                        {"positions": list(old_positions.keys()), "cash": old_cash}
+                    ),
+                    new_value=json.dumps(
+                        {"positions": list(self.positions.keys()), "cash": usdt_balance}
+                    ),
+                    source="binance_api",
                 )
             except Exception as e:
                 logger.warning(f"Failed to write audit log: {e}")
 
-        logger.info(f"\u2705 Portfolio synced from Binance:")
+        logger.info("\u2705 Portfolio synced from Binance:")
         logger.info(f"   USDT: ${usdt_balance:.2f}")
         for pos in new_positions:
             logger.info(f"   {pos}")
-        logger.info(f"   Total: ${usdt_balance + sum(p['quantity'] * p['entry_price'] for p in self.positions.values()):.2f}")
+        logger.info(
+            f"   Total: ${usdt_balance + sum(p['quantity'] * p['entry_price'] for p in self.positions.values()):.2f}"
+        )
 
         if old_positions:
             logger.info(f"   Replaced {len(old_positions)} old positions")

@@ -9,9 +9,9 @@ Uses free public APIs:
 Provides a 0-100 score for social sentiment per symbol.
 """
 
+import json
 import logging
 import time
-import json
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -31,15 +31,32 @@ class SocialSentimentAnalyzer:
         """
         # Map common symbols to CoinGecko IDs
         SYMBOL_TO_ID = {
-            "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
-            "SOL": "solana", "AVAX": "avalanche-2", "LINK": "chainlink",
-            "DOT": "polkadot", "ADA": "cardano", "MATIC": "matic-network",
-            "OP": "optimism", "ARB": "arbitrum", "DOGE": "dogecoin",
-            "XRP": "ripple", "TON": "the-open-network", "NEAR": "near",
-            "FIL": "filecoin", "ATOM": "cosmos", "UNI": "uniswap",
-            "AAVE": "aave", "MKR": "maker", "LDO": "lido-dao",
-            "ENA": "ethena", "WLD": "worldcoin-wld", "TRX": "tron",
-            "TAO": "bittensor", "SAHARA": "sahara-ai",
+            "BTC": "bitcoin",
+            "ETH": "ethereum",
+            "BNB": "binancecoin",
+            "SOL": "solana",
+            "AVAX": "avalanche-2",
+            "LINK": "chainlink",
+            "DOT": "polkadot",
+            "ADA": "cardano",
+            "MATIC": "matic-network",
+            "OP": "optimism",
+            "ARB": "arbitrum",
+            "DOGE": "dogecoin",
+            "XRP": "ripple",
+            "TON": "the-open-network",
+            "NEAR": "near",
+            "FIL": "filecoin",
+            "ATOM": "cosmos",
+            "UNI": "uniswap",
+            "AAVE": "aave",
+            "MKR": "maker",
+            "LDO": "lido-dao",
+            "ENA": "ethena",
+            "WLD": "worldcoin-wld",
+            "TRX": "tron",
+            "TAO": "bittensor",
+            "SAHARA": "sahara-ai",
         }
 
         base = symbol.replace("USDT", "").replace("BUSD", "")
@@ -56,6 +73,7 @@ class SocialSentimentAnalyzer:
 
         try:
             import urllib.request
+
             url = f"https://api.coingecko.com/api/v3/coins/{coin_id}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=false"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -70,7 +88,9 @@ class SocialSentimentAnalyzer:
                 "sentiment_down_pct": sentiment_down,
                 "twitter_followers": community.get("twitter_followers", 0),
                 "reddit_subscribers": community.get("reddit_subscribers", 0),
-                "reddit_active_accounts": community.get("reddit_accounts_active_48h", 0),
+                "reddit_active_accounts": community.get(
+                    "reddit_accounts_active_48h", 0
+                ),
             }
 
             self._cache[cache_key] = (now, result)

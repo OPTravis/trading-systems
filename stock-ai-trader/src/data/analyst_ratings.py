@@ -1,9 +1,10 @@
 """
 Analyst ratings and price targets from Financial Modeling Prep.
 """
+
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -21,7 +22,7 @@ class AnalystRatings:
         self.api_key = api_key or os.environ.get("FMP_API_KEY", "")
         self._cache: dict = {}
 
-    def _get(self, endpoint: str, params: Optional[dict] = None) -> any:
+    def _get(self, endpoint: str, params: Optional[dict] = None) -> Any:
         p = params or {}
         p["apikey"] = self.api_key
         resp = requests.get(f"{FMP_BASE_URL}/{endpoint}", params=p, timeout=15)
@@ -43,13 +44,15 @@ class AnalystRatings:
         data = self._get(f"grade/{symbol}", {"limit": limit})
         ratings = []
         for item in data:
-            ratings.append({
-                "date": item.get("date", ""),
-                "analyst": item.get("gradingCompany", ""),
-                "rating": item.get("newGrade", ""),
-                "previous": item.get("previousGrade", ""),
-                "action": item.get("action", ""),
-            })
+            ratings.append(
+                {
+                    "date": item.get("date", ""),
+                    "analyst": item.get("gradingCompany", ""),
+                    "rating": item.get("newGrade", ""),
+                    "previous": item.get("previousGrade", ""),
+                    "action": item.get("action", ""),
+                }
+            )
         self._cache[cache_key] = ratings
         return ratings
 
@@ -85,7 +88,9 @@ class AnalystRatings:
                     "target_low": float(latest_pt.get("targetLow", 0) or 0),
                     "target_mean": float(latest_pt.get("targetMean", 0) or 0),
                     "target_median": float(latest_pt.get("targetMedian", 0) or 0),
-                    "number_of_analysts": int(latest_pt.get("numberOfAnalysts", 0) or 0),
+                    "number_of_analysts": int(
+                        latest_pt.get("numberOfAnalysts", 0) or 0
+                    ),
                 }
         except Exception:
             pass  # price-target endpoint may not be on free tier

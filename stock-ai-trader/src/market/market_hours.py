@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)

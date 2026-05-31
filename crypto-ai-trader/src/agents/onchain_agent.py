@@ -31,7 +31,9 @@ class OnChainAgent:
 
         # Early return for empty/missing data
         if onchain_score is None:
-            return SpecialistResult(score=50.0, signals=["⚠️ No data"], data={}, confidence="none")
+            return SpecialistResult(
+                score=50.0, signals=["⚠️ No data"], data={}, confidence="none"
+            )
 
         signals: List[str] = []
         data: Dict = {}
@@ -49,8 +51,10 @@ class OnChainAgent:
             signals.append("⚠️ Declining On-Chain Metrics")
 
         # --- data ------------------------------------------------------------
-        data['onchain_score_raw'] = round(onchain_score, 2)
+        data["onchain_score_raw"] = round(onchain_score, 2)
 
-        confidence = 'high' if abs(score - 50) > 25 else 'medium'
+        confidence = "high" if abs(score - 50) > 25 else "medium"
 
-        return SpecialistResult(score=round(score, 2), signals=signals, data=data, confidence=confidence)
+        return SpecialistResult(
+            score=round(score, 2), signals=signals, data=data, confidence=confidence
+        )

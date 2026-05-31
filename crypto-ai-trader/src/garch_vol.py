@@ -1,10 +1,10 @@
 """GARCH(1,1) Volatility Forecaster for crypto trading."""
 
 import logging
+import math
 import os
 import pickle
-import math
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -15,10 +15,30 @@ MIN_DATA_POINTS = 30
 ROLLING_WINDOW = 20
 
 VOL_REGIMES = {
-    "low":     {"sl_pct": -0.06, "tp_pct": 0.05, "trailing_activation": 0.02, "trailing_step": 0.015},
-    "normal":  {"sl_pct": -0.08, "tp_pct": 0.06, "trailing_activation": 0.03, "trailing_step": 0.02},
-    "high":    {"sl_pct": -0.10, "tp_pct": 0.08, "trailing_activation": 0.04, "trailing_step": 0.03},
-    "extreme": {"sl_pct": -0.12, "tp_pct": 0.10, "trailing_activation": 0.06, "trailing_step": 0.04},
+    "low": {
+        "sl_pct": -0.06,
+        "tp_pct": 0.05,
+        "trailing_activation": 0.02,
+        "trailing_step": 0.015,
+    },
+    "normal": {
+        "sl_pct": -0.08,
+        "tp_pct": 0.06,
+        "trailing_activation": 0.03,
+        "trailing_step": 0.02,
+    },
+    "high": {
+        "sl_pct": -0.10,
+        "tp_pct": 0.08,
+        "trailing_activation": 0.04,
+        "trailing_step": 0.03,
+    },
+    "extreme": {
+        "sl_pct": -0.12,
+        "tp_pct": 0.10,
+        "trailing_activation": 0.06,
+        "trailing_step": 0.04,
+    },
 }
 
 
@@ -55,14 +75,22 @@ def forecast_volatility(returns: List[float], horizon: int = 1) -> Dict:
     arr = np.array(returns) * 100  # scale for arch
     try:
         from arch import arch_model
+
         am = arch_model(arr, vol="Garch", p=1, q=1, mean="Constant")
         res = am.fit(disp="off")
         fcast = res.forecast(horizon=horizon)
         variance = fcast.variance
-        forecast_var = variance.iloc[-1].values[-1] if hasattr(variance, 'iloc') else variance[-1, -1]
+        forecast_var = (
+            variance.iloc[-1].values[-1]
+            if hasattr(variance, "iloc")
+            else variance[-1, -1]
+        )
         forecast_daily_vol = math.sqrt(forecast_var) / 100
         cond_vol = res.conditional_volatility
-        current_daily_vol = math.sqrt(cond_vol.iloc[-1] if hasattr(cond_vol, 'iloc') else cond_vol[-1]) / 100
+        current_daily_vol = (
+            math.sqrt(cond_vol.iloc[-1] if hasattr(cond_vol, "iloc") else cond_vol[-1])
+            / 100
+        )
         ann_vol = forecast_daily_vol * math.sqrt(365)
         return {
             "current_vol": current_daily_vol,
@@ -71,7 +99,9 @@ def forecast_volatility(returns: List[float], horizon: int = 1) -> Dict:
             "vol_regime": get_vol_regime(ann_vol),
         }
     except Exception:
-        logger.error("GARCH model forecast failed, falling back to rolling std", exc_info=True)
+        logger.error(
+            "GARCH model forecast failed, falling back to rolling std", exc_info=True
+        )
         ann_vol = _rolling_std_fallback(returns)
         return {
             "current_vol": ann_vol / math.sqrt(365),
@@ -102,6 +132,7 @@ def train_from_klines(symbol: str, klines: List[Dict]) -> bool:
         return False
     try:
         from arch import arch_model
+
         arr = np.array(log_returns) * 100
         am = arch_model(arr, vol="Garch", p=1, q=1, mean="Constant")
         res = am.fit(disp="off")

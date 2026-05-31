@@ -1,8 +1,10 @@
 """
 Composite Ranker - Factor orthogonalization and IC-weighted ranking.
 """
+
 import logging
 from typing import Dict, List
+
 import numpy as np
 import pandas as pd
 
@@ -13,30 +15,39 @@ class CompositeRanker:
     """Composite ranking with Gram-Schmidt orthogonalization and IC weighting."""
 
     # Factor priority for orthogonalization (highest priority first)
-    FACTOR_PRIORITY = ['momentum', 'value', 'quality', 'fundamental', 'technical', 'sentiment']
+    FACTOR_PRIORITY = [
+        "momentum",
+        "value",
+        "quality",
+        "fundamental",
+        "technical",
+        "sentiment",
+    ]
 
     def __init__(self, ic_tracker=None):
         self.ic_tracker = ic_tracker
 
-    def rank_universe(self, universe: List[str], factor_scores: Dict[str, Dict[str, float]]) -> pd.DataFrame:
+    def rank_universe(
+        self, universe: List[str], factor_scores: Dict[str, Dict[str, float]]
+    ) -> pd.DataFrame:
         """Rank universe using orthogonalized, IC-weighted composite scores.
-        
+
         Args:
             universe: List of symbols to rank
             factor_scores: {symbol: {factor: score}} nested dict
-            
+
         Returns:
             DataFrame with columns [symbol, composite_score, factors...] sorted descending
         """
         if not universe or not factor_scores:
-            return pd.DataFrame(columns=['symbol', 'composite_score'])
+            return pd.DataFrame(columns=["symbol", "composite_score"])
 
         # Build factor matrix
         factors = self.FACTOR_PRIORITY
         data = []
         for symbol in universe:
             scores = factor_scores.get(symbol, {})
-            row = {'symbol': symbol}
+            row: Dict[str, object] = {"symbol": symbol}
             for f in factors:
                 row[f] = scores.get(f, 50.0)
             data.append(row)
@@ -61,8 +72,8 @@ class CompositeRanker:
             composite = 50 + (composite - composite.mean()) / composite.std() * 15
         composite = np.clip(composite, 0, 100)
 
-        df['composite_score'] = composite
-        df = df.sort_values('composite_score', ascending=False).reset_index(drop=True)
+        df["composite_score"] = composite
+        df = df.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
         # Return top 20% (SPOT ONLY - long only)
         top_n = max(1, int(len(df) * 0.20))
@@ -92,7 +103,11 @@ class CompositeRanker:
                     "Gram-Schmidt produced zero-norm column at index %d — "
                     "collinear factors detected, factor '%s' is redundant",
                     i,
-                    self.FACTOR_PRIORITY[i] if i < len(self.FACTOR_PRIORITY) else f"col_{i}",
+                    (
+                        self.FACTOR_PRIORITY[i]
+                        if i < len(self.FACTOR_PRIORITY)
+                        else f"col_{i}"
+                    ),
                 )
 
         return orthogonal

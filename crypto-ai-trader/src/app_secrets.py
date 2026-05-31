@@ -4,8 +4,6 @@ All secrets file paths and loading logic in one place.
 """
 
 import os
-import warnings
-
 
 SECRETS_DIR = os.path.join(os.path.expanduser("~"), ".config", "crypto-ai-trader")
 CRYPTO_SECRETS = os.path.join(SECRETS_DIR, "crypto-secrets.env")

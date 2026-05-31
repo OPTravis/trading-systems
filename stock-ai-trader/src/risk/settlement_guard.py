@@ -1,10 +1,11 @@
 """
 Settlement Guard - T+1 (US) / T+2 (HK) settlement tracking.
 """
+
 import logging
-from datetime import date, datetime, timedelta
-from typing import Dict, List
 from dataclasses import dataclass, field
+from datetime import date
+from typing import Dict, List, Optional
 
 import pandas as pd
 from pandas.tseries.offsets import BDay
@@ -12,15 +13,16 @@ from pandas.tseries.offsets import BDay
 logger = logging.getLogger(__name__)
 
 SETTLEMENT_DAYS = {
-    'US': 1,  # T+1
-    'HK': 2,  # T+2
-    'DEFAULT': 2,
+    "US": 1,  # T+1
+    "HK": 2,  # T+2
+    "DEFAULT": 2,
 }
 
 
 @dataclass
 class UnsettledSale:
     """Record of an unsettled sale."""
+
     amount: float
     market: str
     sale_date: date
@@ -30,10 +32,11 @@ class UnsettledSale:
 @dataclass
 class SettlementGuard:
     """Tracks unsettled funds from sales."""
+
     unsettled: List[UnsettledSale] = field(default_factory=list)
     total_cash: float = 0.0
 
-    def get_available_cash(self, today: date = None) -> float:
+    def get_available_cash(self, today: Optional[date] = None) -> float:
         """Get cash available for trading (excludes unsettled funds)."""
         today = today or date.today()
         self._settle_past_sales(today)
@@ -42,10 +45,12 @@ class SettlementGuard:
             logger.warning(f"total_cash is negative: ${self.total_cash:.2f}")
         return max(0.0, self.total_cash - unsettled_total)
 
-    def record_sale(self, amount: float, market: str = 'US', sale_date: date = None):
+    def record_sale(
+        self, amount: float, market: str = "US", sale_date: Optional[date] = None
+    ):
         """Record a sale that needs to settle."""
         sale_date = sale_date or date.today()
-        settle_days = SETTLEMENT_DAYS.get(market.upper(), SETTLEMENT_DAYS['DEFAULT'])
+        settle_days = SETTLEMENT_DAYS.get(market.upper(), SETTLEMENT_DAYS["DEFAULT"])
         settle_date = (pd.Timestamp(sale_date) + BDay(settle_days)).date()
 
         sale = UnsettledSale(
@@ -74,11 +79,11 @@ class SettlementGuard:
         if settled:
             logger.info(f"Settled {settled} sales")
 
-    def get_unsettle_breakdown(self, today: date = None) -> Dict[str, float]:
+    def get_unsettle_breakdown(self, today: Optional[date] = None) -> Dict[str, float]:
         """Get unsettled amounts by market."""
         today = today or date.today()
         self._settle_past_sales(today)
-        breakdown = {}
+        breakdown: Dict[str, float] = {}
         for s in self.unsettled:
             breakdown[s.market] = breakdown.get(s.market, 0) + s.amount
         return breakdown

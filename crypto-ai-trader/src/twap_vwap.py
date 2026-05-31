@@ -9,9 +9,8 @@ Usage:
     from src.twap_vwap import plan_twap, execute_twap, plan_vwap, execute_vwap, should_use_twap
 """
 
-import time
-import math
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -31,6 +30,7 @@ PRICE_OFFSET_PCT = 0.0005
 # Public helpers
 # ---------------------------------------------------------------------------
 
+
 def should_use_twap(total_value_usdt: float, threshold: float = 100.0) -> bool:
     """Return True when order value exceeds *threshold* USDT (default $100)."""
     return total_value_usdt >= threshold
@@ -39,6 +39,7 @@ def should_use_twap(total_value_usdt: float, threshold: float = 100.0) -> bool:
 # ---------------------------------------------------------------------------
 # TWAP
 # ---------------------------------------------------------------------------
+
 
 def plan_twap(
     total_qty: float,
@@ -66,10 +67,12 @@ def plan_twap(
         else:
             qty = base_qty
             accumulated += base_qty
-        slices.append({
-            "qty": round(qty, 8),
-            "delay_seconds": interval * i,
-        })
+        slices.append(
+            {
+                "qty": round(qty, 8),
+                "delay_seconds": interval * i,
+            }
+        )
     return slices
 
 
@@ -77,11 +80,12 @@ def plan_twap(
 # VWAP
 # ---------------------------------------------------------------------------
 
+
 def plan_vwap(
     total_qty: float,
     symbol: str = "BTCUSDT",
     duration_minutes: int = 10,
-    client: Any = None,
+    client: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """Distribute *total_qty* proportional to historical hourly volume.
 
@@ -102,10 +106,12 @@ def plan_vwap(
     for i in range(num_slices):
         fraction = volumes[i] / total_vol
         qty = total_qty * fraction
-        slices.append({
-            "qty": round(qty, 8),
-            "delay_seconds": interval * i,
-        })
+        slices.append(
+            {
+                "qty": round(qty, 8),
+                "delay_seconds": interval * i,
+            }
+        )
     # Fix rounding: adjust last slice so total equals total_qty exactly
     current_total = round(sum(s["qty"] for s in slices), 8)
     if slices:
@@ -118,7 +124,9 @@ def _infer_num_slices(duration_minutes: int) -> int:
     return max(2, min(duration_minutes, 60))
 
 
-def _get_hourly_volumes(client: Any, symbol: str, count: int = 5) -> Optional[List[float]]:
+def _get_hourly_volumes(
+    client: Any, symbol: str, count: int = 5
+) -> Optional[List[float]]:
     """Fetch recent 1 h klines and return list of quote volumes."""
     if client is None:
         return None
@@ -127,7 +135,7 @@ def _get_hourly_volumes(client: Any, symbol: str, count: int = 5) -> Optional[Li
         if not klines:
             return None
         # quote_volume is the USDT-denominated volume (needed for VWAP)
-        volumes = [float(k['quote_volume']) for k in klines[-count:]]
+        volumes = [float(k["quote_volume"]) for k in klines[-count:]]
         return volumes
     except Exception:
         logger.error("Failed to fetch VWAP volumes for %s", symbol, exc_info=True)
@@ -137,6 +145,7 @@ def _get_hourly_volumes(client: Any, symbol: str, count: int = 5) -> Optional[Li
 # ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
+
 
 def _get_symbol_filters(client: Any, symbol: str) -> Dict[str, Any]:
     """Extract minQty and minNotional from exchange info."""
@@ -149,10 +158,16 @@ def _get_symbol_filters(client: Any, symbol: str) -> Dict[str, Any]:
                     if f["filterType"] == "LOT_SIZE":
                         filters["minQty"] = float(f["minQty"])
                     elif f["filterType"] == "NOTIONAL":
-                        filters["minNotional"] = float(f.get("minNotional", f.get("notional", DEFAULT_MIN_NOTIONAL)))
+                        filters["minNotional"] = float(
+                            f.get(
+                                "minNotional", f.get("notional", DEFAULT_MIN_NOTIONAL)
+                            )
+                        )
                 return filters
     except Exception:
-        logger.error("Failed to get exchange symbol filters for %s", symbol, exc_info=True)
+        logger.error(
+            "Failed to get exchange symbol filters for %s", symbol, exc_info=True
+        )
     return {"minQty": DEFAULT_MIN_QTY, "minNotional": DEFAULT_MIN_NOTIONAL}
 
 
@@ -214,14 +229,16 @@ def _execute_slices(
 
         # Min-order check
         if not _check_min_order(qty, price, filters):
-            results.append({
-                "slice": idx,
-                "qty": qty,
-                "expected_price": price,
-                "actual_price": None,
-                "slippage_pct": None,
-                "status": "SKIPPED_BELOW_MIN",
-            })
+            results.append(
+                {
+                    "slice": idx,
+                    "qty": qty,
+                    "expected_price": price,
+                    "actual_price": None,
+                    "slippage_pct": None,
+                    "status": "SKIPPED_BELOW_MIN",
+                }
+            )
             continue
 
         order = _place_limit_slice(client, symbol, side, qty, price, dry_run)
@@ -232,15 +249,17 @@ def _execute_slices(
 
         slippage = abs(actual_price - price) / price * 100
 
-        results.append({
-            "slice": idx,
-            "qty": qty,
-            "expected_price": price,
-            "actual_price": actual_price,
-            "slippage_pct": round(slippage, 6),
-            "status": order.get("status", "FILLED") if order else "FAILED",
-            "order_id": order.get("orderId") if order else None,
-        })
+        results.append(
+            {
+                "slice": idx,
+                "qty": qty,
+                "expected_price": price,
+                "actual_price": actual_price,
+                "slippage_pct": round(slippage, 6),
+                "status": order.get("status", "FILLED") if order else "FAILED",
+                "order_id": order.get("orderId") if order else None,
+            }
+        )
 
     # Cancel any remaining unfilled limit orders after all slices placed
     if not dry_run:
@@ -250,9 +269,17 @@ def _execute_slices(
                 try:
                     client.cancel_order(symbol, o["orderId"])
                 except Exception:
-                    logger.error("Failed to cancel unfilled limit order %s for %s", o["orderId"], symbol, exc_info=True)
+                    logger.error(
+                        "Failed to cancel unfilled limit order %s for %s",
+                        o["orderId"],
+                        symbol,
+                        exc_info=True,
+                    )
         except Exception:
-            logger.error("Failed to get open orders for cleanup after TWAP/VWAP execution", exc_info=True)
+            logger.error(
+                "Failed to get open orders for cleanup after TWAP/VWAP execution",
+                exc_info=True,
+            )
 
     return results
 

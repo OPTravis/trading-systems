@@ -8,28 +8,30 @@ Binance fee structure:
 
 Strategies:
 1. BNB discount: Use BNB for fee payment (25% savings)
-2. Maker orders: Place limit orders that add liquidity (same as taker on spot, 
+2. Maker orders: Place limit orders that add liquidity (same as taker on spot,
    but on futures maker is cheaper)
 3. Fee estimation: Accurate pre-trade cost calculation
 
 Usage:
     from src.fee_optimizer import FeeOptimizer
     opt = FeeOptimizer(client)
-    
+
     # Check if BNB discount is enabled
     status = opt.get_bnb_status()
-    
+
     # Estimate trade cost
     cost = opt.estimate_cost(symbol='BTCUSDT', quantity=0.1, price=65000, use_bnb=True)
-    
+
     # Get optimal order type (market vs limit)
     order_type = opt.recommend_order_type(urgency='low')  # 'LIMIT' for maker
 """
+
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ FUTURES_MAKER = 0.0002  # 0.02%
 class FeeOptimizer:
     """Optimize trading fees on Binance."""
 
-    def __init__(self, binance_client: 'ExchangeClient' = None):
+    def __init__(self, binance_client: Optional["ExchangeClient"] = None):
         self.client = binance_client
         self._fee_tier: Optional[Dict] = None
         self._bnb_balance: float = 0.0
@@ -77,7 +79,7 @@ class FeeOptimizer:
 
         try:
             # Get account info which includes fee tier
-            acct = self.client.get_account()
+            self.client.get_account()
             # Binance doesn't expose fee tier directly in standard API
             # We infer from commission rates or assume default
             return {
@@ -110,6 +112,8 @@ class FeeOptimizer:
 
     def _get_bnb_price(self):
         """Fetch live BNB price."""
+        if not self.client:
+            return 600
         try:
             price = self.client.get_ticker_price("BNBUSDT")
             if price and price > 0:
@@ -118,7 +122,7 @@ class FeeOptimizer:
             pass
         return 600  # fallback
 
-    def get_effective_fees(self, use_bnb: bool = None) -> Dict:
+    def get_effective_fees(self, use_bnb: Optional[bool] = None) -> Dict:
         """Get effective trading fees after discounts.
 
         Args:
@@ -162,7 +166,7 @@ class FeeOptimizer:
         price: float,
         side: str = "BUY",
         order_type: str = "MARKET",
-        use_bnb: bool = None,
+        use_bnb: Optional[bool] = None,
     ) -> Dict:
         """Estimate total trading cost for a planned trade.
 
@@ -215,10 +219,14 @@ class FeeOptimizer:
             "net_proceeds": round(net_proceeds, 2),
             "cost_pct": round(fee_rate * 100, 4),
             "bnb_discount": fees["bnb_discount_applied"],
-            "savings_vs_standard": round(notional * DEFAULT_TAKER_FEE * BNB_DISCOUNT_PCT, 4),
+            "savings_vs_standard": round(
+                notional * DEFAULT_TAKER_FEE * BNB_DISCOUNT_PCT, 4
+            ),
         }
 
-    def recommend_order_type(self, urgency: str = "normal", spread_pct: float = None) -> str:
+    def recommend_order_type(
+        self, urgency: str = "normal", spread_pct: Optional[float] = None
+    ) -> str:
         """Recommend MARKET vs LIMIT based on urgency and spread.
 
         Args:
@@ -250,7 +258,11 @@ class FeeOptimizer:
             "current_taker_fee": fees["taker_fee"],
             "current_maker_fee": fees["maker_fee"],
             "savings_vs_standard_pct": fees["savings_vs_standard_pct"],
-            "recommendation": "Hold >0.01 BNB for 25% fee discount" if not has_bnb else "BNB discount active",
+            "recommendation": (
+                "Hold >0.01 BNB for 25% fee discount"
+                if not has_bnb
+                else "BNB discount active"
+            ),
         }
 
     def calculate_break_even(
@@ -258,7 +270,7 @@ class FeeOptimizer:
         entry_price: float,
         quantity: float,
         side: str = "BUY",
-        use_bnb: bool = None,
+        use_bnb: Optional[bool] = None,
     ) -> Dict:
         """Calculate break-even price after accounting for fees.
 
@@ -274,17 +286,25 @@ class FeeOptimizer:
             }
         """
         entry = self.estimate_cost(
-            symbol="", quantity=quantity, price=entry_price,
-            side=side, order_type="MARKET", use_bnb=use_bnb,
+            symbol="",
+            quantity=quantity,
+            price=entry_price,
+            side=side,
+            order_type="MARKET",
+            use_bnb=use_bnb,
         )
         exit_side = "SELL" if side == "BUY" else "BUY"
         exit_ = self.estimate_cost(
-            symbol="", quantity=quantity, price=entry_price,
-            side=exit_side, order_type="MARKET", use_bnb=use_bnb,
+            symbol="",
+            quantity=quantity,
+            price=entry_price,
+            side=exit_side,
+            order_type="MARKET",
+            use_bnb=use_bnb,
         )
 
         total_fees = entry["fee_amount"] + exit_["fee_amount"]
-        notional = quantity * entry_price
+        quantity * entry_price
 
         # Break even: price needs to move enough to cover fees
         if side == "BUY":

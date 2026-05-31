@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
 import requests
-
-from shared.core.state_db import get_state_db
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +31,15 @@ class MacroPhase(str, Enum):
 @dataclass
 class MacroState:
     """Snapshot of current macro-economic conditions."""
+
     timestamp: datetime
     phase: MacroPhase
-    confidence: float                  # 0.0-1.0
+    confidence: float  # 0.0-1.0
     fed_funds_rate: Optional[float] = None
-    yield_spread_2y10y: Optional[float] = None   # basis points
-    gdp_growth_yoy: Optional[float] = None       # percent
+    yield_spread_2y10y: Optional[float] = None  # basis points
+    gdp_growth_yoy: Optional[float] = None  # percent
     vix_level: Optional[float] = None
-    credit_spread_hyg_lqd: Optional[float] = None # ratio
+    credit_spread_hyg_lqd: Optional[float] = None  # ratio
     unemployment_rate: Optional[float] = None
     cpi_yoy: Optional[float] = None
     summary: str = ""
@@ -48,12 +47,13 @@ class MacroState:
 
 # ─── FRED helpers ────────────────────────────────────────────────────────────
 
+
 def _fred_latest(series_id: str, api_key: str) -> Optional[float]:
     """Fetch the latest value for a FRED series."""
     try:
         resp = requests.get(
             FRED_BASE_URL,
-            params={
+            params={  # type: ignore[arg-type]
                 "series_id": series_id,
                 "api_key": api_key,
                 "file_type": "json",
@@ -76,11 +76,12 @@ def _fred_cpi_12m_ago(api_key: str) -> Optional[float]:
     """Fetch the CPI value from approximately 12 months ago."""
     try:
         from datetime import timedelta
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=365)
         cutoff_str = cutoff.strftime("%Y-%m-%d")
         resp = requests.get(
             FRED_BASE_URL,
-            params={
+            params={  # type: ignore[arg-type]
                 "series_id": "CPIAUCSL",
                 "api_key": api_key,
                 "file_type": "json",
@@ -101,6 +102,7 @@ def _fred_cpi_12m_ago(api_key: str) -> Optional[float]:
 
 
 # ─── MacroAnalyzer ───────────────────────────────────────────────────────────
+
 
 class MacroAnalyzer:
     """
@@ -139,7 +141,9 @@ class MacroAnalyzer:
         fed_rate = _fred_latest("FEDFUNDS", self.fred_key)
         t2y = _fred_latest("DGS2", self.fred_key)
         t10y = _fred_latest("DGS10", self.fred_key)
-        gdp = _fred_latest("A191RL1Q225SBEA", self.fred_key)  # real GDP growth QoQ annualized
+        gdp = _fred_latest(
+            "A191RL1Q225SBEA", self.fred_key
+        )  # real GDP growth QoQ annualized
         unrate = _fred_latest("UNRATE", self.fred_key)
 
         # VIX via yfinance (FRED has VIX as VIXCLS)
@@ -155,7 +159,9 @@ class MacroAnalyzer:
 
         # CPI YoY: fetch current and 12-month-ago CPI values to compute YoY
         cpi_yoy = None
-        cpi_yoy_val = _fred_latest("FPCPITOTLZGUSA", self.fred_key)  # annual CPI inflation
+        cpi_yoy_val = _fred_latest(
+            "FPCPITOTLZGUSA", self.fred_key
+        )  # annual CPI inflation
         if cpi_yoy_val is not None:
             cpi_yoy = cpi_yoy_val
         else:
@@ -229,12 +235,14 @@ class MacroAnalyzer:
                 scores["contraction"] += 1
 
         # Pick winner
-        phase_str = max(scores, key=scores.get)
+        phase_str = max(scores, key=lambda k: scores[k])
         phase = MacroPhase(phase_str)
         total = sum(scores.values()) or 1
         confidence = round(scores[phase_str] / total, 2)
 
-        summary = self._build_summary(phase, fed_rate, spread_2y10y, gdp, vix, credit_spread)
+        summary = self._build_summary(
+            phase, fed_rate, spread_2y10y, gdp, vix, credit_spread
+        )
 
         return MacroState(
             timestamp=now,
@@ -254,6 +262,7 @@ class MacroAnalyzer:
         """Fetch HYG/LQD price ratio as a credit spread proxy."""
         try:
             import yfinance as yf
+
             hyg = yf.Ticker("HYG").history(period="5d")
             lqd = yf.Ticker("LQD").history(period="5d")
             if not hyg.empty and not lqd.empty:

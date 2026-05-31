@@ -3,7 +3,7 @@ Portfolio PnL calculations — mixin for PortfolioManager.
 """
 
 import logging
-from typing import Dict
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,14 +11,22 @@ logger = logging.getLogger(__name__)
 class PnlMixin:
     """PnL calculation methods for PortfolioManager."""
 
-    def calculate_pnl(self, symbol: str, current_price_override: float = None) -> Dict:
+    positions: Dict[str, Any]
+
+    def calculate_pnl(
+        self, symbol: str, current_price_override: Optional[float] = None
+    ) -> Dict:
         """Calculate PnL for a position."""
         pos = self.positions.get(symbol)
         if not pos:
             return {}
 
         entry = pos["entry_price"]
-        current = current_price_override if current_price_override is not None else pos.get("current_price", entry)
+        current = (
+            current_price_override
+            if current_price_override is not None
+            else pos.get("current_price", entry)
+        )
         qty = pos["quantity"]
 
         pnl_value = (current - entry) * qty

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 import pandas as pd
 
@@ -21,11 +21,11 @@ from .base_strategy import BaseStrategy, Position, Signal, SignalAction
 logger = logging.getLogger(__name__)
 
 DEFAULT_PARAMS = {
-    "fast_period": 10,       # Fast MA period
-    "slow_period": 30,       # Slow MA period
-    "adx_period": 14,        # ADX calculation period
-    "adx_threshold": 25,     # Minimum ADX for trend confirmation
-    "atr_period": 14,        # ATR period for stop-loss
+    "fast_period": 10,  # Fast MA period
+    "slow_period": 30,  # Slow MA period
+    "adx_period": 14,  # ADX calculation period
+    "adx_threshold": 25,  # Minimum ADX for trend confirmation
+    "atr_period": 14,  # ATR period for stop-loss
     "atr_stop_multiplier": 2.0,  # Stop-loss = ATR * multiplier
     "min_holding_days": 5,
     "max_holding_days": 30,
@@ -96,7 +96,12 @@ class TrendStrategy(BaseStrategy):
         current_price = close.iloc[-1]
 
         # NaN guard on indicator values
-        if pd.isna(current_fast) or pd.isna(current_slow) or pd.isna(current_adx) or pd.isna(current_atr):
+        if (
+            pd.isna(current_fast)
+            or pd.isna(current_slow)
+            or pd.isna(current_adx)
+            or pd.isna(current_atr)
+        ):
             return None
 
         # BUY: Fast MA crosses above Slow MA + ADX > threshold

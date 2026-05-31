@@ -9,19 +9,22 @@ In trading context:
   - b = average win / average loss (reward-to-risk ratio)
   - f* = optimal fraction of bankroll to bet
 
-We use HALF-KELLY for safety (reduces volatility by 50%, 
+We use HALF-KELLY for safety (reduces volatility by 50%,
 only sacrifices 25% of expected growth).
 """
+
 import logging
-import time
 from typing import Dict, List, Optional
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # Kelly safety factor
 KELLY_FRACTION = 0.5  # Half-Kelly: safer, smoother equity curve
-MAX_POSITION_PCT = 0.12  # Hard cap: never bet more than 12% of balance (winners avg 6.3% Kelly)
+MAX_POSITION_PCT = (
+    0.12  # Hard cap: never bet more than 12% of balance (winners avg 6.3% Kelly)
+)
 MIN_POSITION_PCT = 0.05  # Minimum: at least 5% to make trade worthwhile
 
 
@@ -34,19 +37,20 @@ class KellyPositionSizer:
         self._cache_ts: float = 0
         self._cache_ttl = 300  # 5 minutes
 
-    def _get_trade_history(self, symbol: str = None, min_trades: int = 5) -> List[Dict]:
+    def _get_trade_history(
+        self, symbol: Optional[str] = None, min_trades: int = 5
+    ) -> List[Dict]:
         """Fetch recent trade history for win rate calculation."""
         if self.db:
             try:
                 # Read from trade_outcomes (has actual PnL data)
-                import sqlite3
                 conn = self.db._get_conn()
                 rows = conn.execute(
                     """SELECT symbol, net_pnl_pct, is_win, strategy
                        FROM trade_outcomes
                        WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
                        ORDER BY entry_time DESC LIMIT ?""",
-                    (100,)
+                    (100,),
                 ).fetchall()
                 trades = [
                     {"symbol": r[0], "pnl": r[1], "is_win": r[2], "strategy": r[3]}
@@ -130,7 +134,9 @@ class KellyPositionSizer:
         avg_loss = 0.0
         confidence = "LOW"
 
-        MIN_RELIABLE_TRADES = 30  # need this many for Kelly to be statistically reliable
+        MIN_RELIABLE_TRADES = (
+            30  # need this many for Kelly to be statistically reliable
+        )
 
         if use_historical:
             trades = self._get_trade_history(symbol)
@@ -142,7 +148,9 @@ class KellyPositionSizer:
                     win_rate = len(wins) / len(trades)
                     avg_win = np.mean(wins) if wins else 0
                     avg_loss = abs(np.mean(losses)) if losses else 0
-                    confidence = "HIGH" if len(trades) >= MIN_RELIABLE_TRADES else "MEDIUM"
+                    confidence = (
+                        "HIGH" if len(trades) >= MIN_RELIABLE_TRADES else "MEDIUM"
+                    )
 
         # Fallback: estimate win rate from signal score
         # Triggered when: no historical data, OR Kelly would be negative with insufficient sample
@@ -177,24 +185,32 @@ class KellyPositionSizer:
                 # Use higher minimum for high-confidence cold starts
                 if signal_score >= 80:
                     kelly = 0.10  # Higher minimum for high-confidence cold starts
-                    confidence = "LOW (cold start, high signal — using elevated min position)"
+                    confidence = (
+                        "LOW (cold start, high signal — using elevated min position)"
+                    )
                 else:
                     kelly = MIN_POSITION_PCT
                     confidence = "LOW (cold start, using min position to build history)"
                 reason = f"Kelly negative with {confidence}, using floor {kelly:.0%} to bootstrap"
                 logger.info(
                     "Kelly=%.1f%% with insufficient data — using min position %.0f%% for cold start (score=%d)",
-                    kelly * 100 if kelly > 0 else 0, kelly * 100, signal_score,
+                    kelly * 100 if kelly > 0 else 0,
+                    kelly * 100,
+                    signal_score,
                 )
 
         # Apply minimum threshold only for positive Kelly
         if kelly < MIN_POSITION_PCT:
             kelly = MIN_POSITION_PCT
-            reason = f"Kelly={kelly:.1%} below minimum, using floor {MIN_POSITION_PCT:.0%}"
+            reason = (
+                f"Kelly={kelly:.1%} below minimum, using floor {MIN_POSITION_PCT:.0%}"
+            )
         else:
-            reason = f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+            reason = (
+                f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+            )
 
-        position_usdt = balance * kelly
+        balance * kelly
 
         return {
             "position_pct": round(kelly, 4),
@@ -226,6 +242,8 @@ class KellyPositionSizer:
         adjusted = kelly * scale
         kelly_result["position_pct"] = round(adjusted, 4)
         kelly_result["portfolio_scale"] = scale
-        kelly_result["reason"] += f" | portfolio_scale={scale:.0%} ({current_positions}/{max_positions} positions)"
+        kelly_result[
+            "reason"
+        ] += f" | portfolio_scale={scale:.0%} ({current_positions}/{max_positions} positions)"
 
         return kelly_result

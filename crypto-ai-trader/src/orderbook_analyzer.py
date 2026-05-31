@@ -14,7 +14,7 @@ Rate limit: weight 1-5 per call depending on limit param
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class OrderBookAnalyzer:
     def __init__(self, binance_client=None):
         if binance_client is None:
             from src.binance_client import BinanceClient
+
             binance_client = BinanceClient(testnet=False)
         self._client = binance_client
 

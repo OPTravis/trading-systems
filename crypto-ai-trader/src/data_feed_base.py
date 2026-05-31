@@ -5,8 +5,8 @@ Provides SQLite connection helpers, cache paths, TTLs, and API constants
 used across all data feed sub-modules.
 """
 
-import sqlite3
 import logging
+import sqlite3
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -22,26 +22,36 @@ CACHE_DB = str(CACHE_DIR / "cache.db")
 # ---------------------------------------------------------------------------
 # Cache TTLs (seconds)
 # ---------------------------------------------------------------------------
-FNG_TTL = 3600       # 1 hour
-NEWS_TTL = 600       # 10 minutes
-FUNDING_TTL = 300    # 5 minutes
+FNG_TTL = 3600  # 1 hour
+NEWS_TTL = 600  # 10 minutes
+FUNDING_TTL = 300  # 5 minutes
 
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
 FNG_URL = "https://api.alternative.me/fng/"
-NEWS_URL = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&extraParams=CryptoAITrader"
+NEWS_URL = (
+    "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&extraParams=CryptoAITrader"
+)
 
 # P1 news keywords (high-impact events)
 P1_KEYWORDS = [
-    "regulation", "sec", "hack", "exploit", "whale",
-    "etf", "ban", "compliance", "enforcement",
+    "regulation",
+    "sec",
+    "hack",
+    "exploit",
+    "whale",
+    "etf",
+    "ban",
+    "compliance",
+    "enforcement",
 ]
 
 
 # ===================================================================
 # SQLite helper
 # ===================================================================
+
 
 def _get_conn(db_path: str = CACHE_DB) -> sqlite3.Connection:
     """Return a SQLite connection with WAL mode and row factory."""
