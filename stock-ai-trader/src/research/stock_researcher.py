@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ─── LLM endpoints ──────────────────────────────────────────────────────────
 
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_MODEL = "deepseek-chat"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
 
 XIAOMI_API_URL = (
     os.environ.get("XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
@@ -60,8 +60,8 @@ class ResearchReport:
     technical_summary: str = ""
     fundamental_summary: str = ""
     sentiment_score: float = 0.0  # -1 to +1
-    primary_model: str = "deepseek"
-    verification_model: str = "xiaomi"
+    primary_model: str = "xiaomi"
+    verification_model: str = "deepseek"
     models_agreed: bool = True  # Did both models agree on direction?
 
 
@@ -220,10 +220,10 @@ class StockResearcher:
         self.deepseek_key = deepseek_key or os.environ.get("DEEPSEEK_API_KEY", "")
         self.xiaomi_key = xiaomi_key or os.environ.get("XIAOMI_API_KEY", "")
 
-        if not self.deepseek_key:
-            logger.warning("No DEEPSEEK_API_KEY set — primary LLM calls will fail")
         if not self.xiaomi_key:
-            logger.warning("No XIAOMI_API_KEY set — verification calls will fail")
+            logger.warning("No XIAOMI_API_KEY set — primary LLM calls will fail")
+        if not self.deepseek_key:
+            logger.warning("No DEEPSEEK_API_KEY set — verification calls will fail")
 
     def analyze_stock(self, symbol: str) -> ResearchReport:
         """
@@ -262,7 +262,7 @@ class StockResearcher:
         )
 
         primary_text = _call_llm(
-            DEEPSEEK_API_URL, DEEPSEEK_MODEL, self.deepseek_key, prompt
+            XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, prompt
         )
         primary_json = _parse_json(primary_text) if primary_text else None
 
@@ -288,7 +288,7 @@ class StockResearcher:
                 original_analysis=json.dumps(primary_json, indent=2),
             )
             verify_text = _call_llm(
-                XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, verify_prompt
+                DEEPSEEK_API_URL, DEEPSEEK_MODEL, self.deepseek_key, verify_prompt
             )
             verify_json = _parse_json(verify_text) if verify_text else None
 
