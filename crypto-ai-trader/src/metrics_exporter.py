@@ -5,6 +5,7 @@ Exposes trading system metrics via HTTP for Prometheus scraping.
 Uses prometheus_client library with singleton pattern.
 """
 
+import os
 import threading
 from typing import Optional
 
@@ -121,7 +122,8 @@ class MetricsExporter:
         """Start the Prometheus HTTP metrics server in a background thread."""
         if self._server is not None:
             return  # already running
-        self._server = start_http_server(port, addr="0.0.0.0")
+        bind_addr = os.environ.get("METRICS_BIND_ADDR", "127.0.0.1")
+        self._server = start_http_server(port, addr=bind_addr)
 
     def stop_server(self) -> None:
         """Shutdown the metrics server if running."""

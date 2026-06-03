@@ -22,8 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Load .env from both locations
-from dotenv import load_dotenv
 import pytest
+from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 load_dotenv(Path.home() / ".hermes" / ".env")  # Fallback for shared keys

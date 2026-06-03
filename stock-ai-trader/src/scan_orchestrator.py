@@ -367,6 +367,11 @@ class ScanOrchestrator:
                 logger.warning(
                     "CompositeRanker failed, falling back to composite sort: %s", e
                 )
+                ranked_symbols = sorted(
+                    factor_scores.keys(),
+                    key=lambda s: factor_scores[s].get("composite", 0),
+                    reverse=True,
+                )
         else:
             # Fallback: sort by composite score
             ranked_symbols = sorted(

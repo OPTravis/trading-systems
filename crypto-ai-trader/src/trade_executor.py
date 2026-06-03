@@ -155,6 +155,39 @@ def execute_auto_trade(
     Returns dict with success status and order details.
     """
     import copy
+    import json
+    import os
+
+    from src.utils import get_project_root
+
+    # DCA exclusion: block auto-trade on coins managed by DCA monitor
+    # Skip when DCA_CHECK_DISABLED=1 (for testing) or when state file doesn't exist
+    _dca_coins: set = set()
+    if not os.environ.get("DCA_CHECK_DISABLED"):
+        _dca_state_file = str(get_project_root() / "data" / "dca_state.json")
+        try:
+            if os.path.exists(_dca_state_file):
+                with open(_dca_state_file) as _f:
+                    _dca = json.load(_f)
+                if not _dca.get("stop_loss", {}).get("triggered"):
+                    for _tier in ("tier1", "tier2", "tier3", "tier4"):
+                        if _dca.get(_tier, {}).get("executed") or _tier in (
+                            "tier3",
+                            "tier4",
+                        ):
+                            for _buy in _dca.get(_tier, {}).get("buys", []):
+                                _dca_coins.add(_buy.split("/")[0])
+                            if not _dca.get(_tier, {}).get("buys"):
+                                _dca_coins.update(["BTC", "ETH", "SOL"])
+        except Exception:
+            pass
+
+    _base = symbol.replace("/USDT", "").replace("USDT", "")
+    if _base in _dca_coins:
+        return {
+            "success": False,
+            "error": f"DCA-managed coin {_base}, skipped by auto-trade",
+        }
 
     tp_levels = copy.deepcopy(tp_levels)  # prevent mutation of cached strategy data
     client = get_trading_client()

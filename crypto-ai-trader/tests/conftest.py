@@ -35,6 +35,7 @@ def _set_env(monkeypatch, tmp_path):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-bot-token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "-1001234567890")
     monkeypatch.setenv("AUTO_EXECUTE", "true")
+    monkeypatch.setenv("DCA_CHECK_DISABLED", "1")
 
     # Redirect data dir to tmp_path for risk_manager persistence
     import src.risk_manager as rm

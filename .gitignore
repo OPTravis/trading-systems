@@ -38,3 +38,11 @@ crypto-secrets.env
 *.db-shm
 *.db-wal
 *.db-journal
+
+# Coverage
+.coverage
+htmlcov/
+
+# Corrupted state
+*.corrupted.*
+

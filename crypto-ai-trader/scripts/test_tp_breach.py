@@ -13,12 +13,17 @@ from scripts.ensure_tp_sl import get_positions_with_targets, get_order_coverage,
 from src.binance_client import BinanceClient
 from src.state_db import get_state_db
 
+import pytest
+
+@pytest.mark.integration
 def test_tp_breach_logic():
     """
     驗證：當現價 >= TP 時，腳本能正確識別並執行市價平倉。
-    
+
     由於當前市場價格未觸發 TP，我們用模擬數據驗證邏輯分支。
     """
+    if not os.environ.get("BINANCE_API_KEY") or os.environ.get("BINANCE_API_KEY") == "test-api-key":
+        pytest.skip("Real BINANCE_API_KEY not set — skipping live API test")
     client = BinanceClient(testnet=False)
     positions = get_positions_with_targets()
     

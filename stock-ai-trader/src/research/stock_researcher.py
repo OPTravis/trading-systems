@@ -261,9 +261,7 @@ class StockResearcher:
             sentiment_score=f"{sentiment_score:.2f}",
         )
 
-        primary_text = _call_llm(
-            XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, prompt
-        )
+        primary_text = _call_llm(XIAOMI_API_URL, XIAOMI_MODEL, self.xiaomi_key, prompt)
         primary_json = _parse_json(primary_text) if primary_text else None
 
         if primary_json is None:

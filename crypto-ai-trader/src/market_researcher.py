@@ -647,15 +647,15 @@ class MarketResearcher:
         Returns list of dicts with structured scoring:
         [{"score": 1-10, "confidence": 0.0-1.0, "sentiment": -1.0 to 1.0}, ...]
 
-        Uses DeepSeek as primary, mimo-v2.5-pro as second opinion.
+        Uses mimo-v2.5-pro as primary, DeepSeek as verification.
         Both models must agree (within 2 points) for HIGH confidence.
         Falls back to keyword matching on failure.
         """
         if not articles:
             return []
 
-        ds_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not ds_key:
+        xiaomi_key = os.environ.get("XIAOMI_API_KEY")
+        if not xiaomi_key:
             return [
                 self._keyword_sentiment_structured(a.get("summary", ""))
                 for a in articles
@@ -674,28 +674,30 @@ class MarketResearcher:
             + "\n".join(numbered)
         )
 
-        # --- Primary model (DeepSeek) ---
+        # --- Primary model (mimo-v2.5-pro) ---
         primary_scores = self._call_llm_for_sentiment(
-            prompt, articles, "deepseek-chat", "primary"
+            prompt, articles, "mimo-v2.5", "second"
         )
 
-        # --- Second opinion (mimo-v2.5) — non-blocking, best-effort ---
-        second_scores = None
+        # --- Verification (DeepSeek) — best-effort ---
+        verification_scores = None
         try:
-            second_scores = self._call_llm_for_sentiment(
-                prompt, articles, "mimo-v2.5", "second"
+            verification_scores = self._call_llm_for_sentiment(
+                prompt, articles, "deepseek-v4-pro", "primary"
             )
         except Exception as e:
             logger.info(
-                f"MarketResearcher: second opinion unavailable ({e}), using primary only"
+                f"MarketResearcher: DeepSeek verification unavailable ({e}), using primary only"
             )
 
         # --- Cross-verify ---
-        if primary_scores and second_scores:
-            return self._cross_verify_sentiment(primary_scores, second_scores, articles)
+        if primary_scores and verification_scores:
+            return self._cross_verify_sentiment(
+                primary_scores, verification_scores, articles
+            )
         elif primary_scores:
             logger.info(
-                "MarketResearcher: second opinion unavailable, using primary only"
+                "MarketResearcher: DeepSeek verification unavailable, using primary only"
             )
             return primary_scores
         else:
@@ -1123,7 +1125,7 @@ class MarketResearcher:
         return results[: days * 5]  # max 5 per day
 
     def _llm_sentiment(self, text: str, max_length: int = 500) -> Optional[float]:
-        """Use LLM (DeepSeek primary, auto-fallback to OpenAI) for deep sentiment analysis.
+        """Use LLM (mimo-v2.5-pro primary, auto-fallback to DeepSeek) for deep sentiment analysis.
 
         Returns float -1 to +1, or None if all LLM providers unavailable.
         """
@@ -1132,7 +1134,9 @@ class MarketResearcher:
         text = text[:max_length]
 
         try:
-            llm = get_llm_client()
+            from src.llm_client import get_second_opinion_client
+
+            llm = get_second_opinion_client() or get_llm_client()
             result = llm.chat(
                 messages=[
                     {
@@ -1140,7 +1144,7 @@ class MarketResearcher:
                         "content": f"Analyze this crypto news sentiment:\n\n{text}",
                     }
                 ],
-                model="deepseek-chat",
+                model="mimo-v2.5",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
                 max_tokens=10,
                 temperature=0.0,

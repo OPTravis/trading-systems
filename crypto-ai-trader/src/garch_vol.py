@@ -1,9 +1,9 @@
 """GARCH(1,1) Volatility Forecaster for crypto trading."""
 
+import json
 import logging
 import math
 import os
-import pickle
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -137,18 +137,27 @@ def train_from_klines(symbol: str, klines: List[Dict]) -> bool:
         am = arch_model(arr, vol="Garch", p=1, q=1, mean="Constant")
         res = am.fit(disp="off")
         os.makedirs(DATA_DIR, exist_ok=True)
-        path = os.path.join(DATA_DIR, f"garch_{symbol}.pkl")
-        with open(path, "wb") as f:
-            pickle.dump(res, f)
+        path = os.path.join(DATA_DIR, f"garch_{symbol}.json")
+        # Save model parameters as JSON (not the full model object)
+        params = {
+            "params": {k: float(v) for k, v in res.params.items()},
+            "volatility": (
+                float(res.conditional_volatility[-1])
+                if hasattr(res, "conditional_volatility")
+                else 0.0
+            ),
+        }
+        with open(path, "w") as f:
+            json.dump(params, f)
         return True
     except Exception:
         logger.error("GARCH model training failed for %s", symbol, exc_info=True)
         return False
 
 
-def load_model(symbol: str) -> Optional[object]:
-    path = os.path.join(DATA_DIR, f"garch_{symbol}.pkl")
+def load_model(symbol: str) -> Optional[dict]:
+    path = os.path.join(DATA_DIR, f"garch_{symbol}.json")
     if os.path.exists(path):
-        with open(path, "rb") as f:
-            return pickle.load(f)
+        with open(path, "r") as f:
+            return json.load(f)
     return None

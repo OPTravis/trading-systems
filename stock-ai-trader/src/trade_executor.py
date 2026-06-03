@@ -152,6 +152,44 @@ class HybridPositionSizer:
         self.cvar_confidence = cvar_confidence
         self.cvar_max_loss = cvar_max_loss
 
+    def calculate(
+        self,
+        symbol: str,
+        portfolio: Optional[Dict] = None,
+        current_vol: Optional[float] = None,
+        regime_multiplier: float = 1.0,
+        vix_multiplier: float = 1.0,
+    ) -> float:
+        """Calculate position size as fraction of portfolio.
+
+        Compatible API with VolTargetSizer.calculate() so scan_orchestrator
+        can use either sizer interchangeably.
+
+        Args:
+            symbol: Stock symbol.
+            portfolio: Portfolio context dict with 'total_value' and 'n_positions'.
+            current_vol: Current realized volatility (annualized).
+            regime_multiplier: Regime-based sizing adjustment.
+            vix_multiplier: VIX-based sizing adjustment.
+
+        Returns:
+            Position size as fraction of portfolio (0.0 to MAX_POSITION_PCT).
+        """
+        portfolio = portfolio or {}
+        nav = portfolio.get("total_value", 100_000.0)
+        n_positions = portfolio.get("n_positions", 10)
+        stock_vol = current_vol or 0.25
+
+        result = self.size_position(
+            symbol=symbol,
+            nav=nav,
+            stock_vol=stock_vol,
+            n_positions=n_positions,
+            regime_multiplier=regime_multiplier,
+            vix_multiplier=vix_multiplier,
+        )
+        return result["position_pct"]
+
     def size_position(
         self,
         symbol: str,
