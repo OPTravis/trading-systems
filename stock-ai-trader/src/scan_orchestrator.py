@@ -425,7 +425,7 @@ class ScanOrchestrator:
                 for sym in candidates
             }
             try:
-                for fut in as_completed(futures, timeout=120):
+                for fut in as_completed(futures, timeout=240):
                     sym = futures[fut]
                     try:
                         report = fut.result()  # ResearchReport dataclass
