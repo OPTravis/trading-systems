@@ -168,3 +168,7 @@ class SyncIBKRWrapper:
                 )
             )
         return result
+
+    def get_open_orders(self) -> list:
+        """Get list of open orders. Returns raw ib_async Trade objects."""
+        return self._ib.openOrders()

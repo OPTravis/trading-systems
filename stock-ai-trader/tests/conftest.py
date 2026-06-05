@@ -63,8 +63,6 @@ def mock_broker():
         )
     )
     broker.get_positions = AsyncMock(return_value=[])
-    broker.place_order = AsyncMock()
-    broker.cancel_order = AsyncMock()
     broker.get_open_orders = AsyncMock(return_value=[])
     return broker
 

@@ -8,9 +8,19 @@ import time
 from typing import Any, Optional
 
 import pandas as pd
-import yfinance as yf
 
 logger = logging.getLogger(__name__)
+
+
+def _get_yfinance():
+    """Lazy-import yfinance; raises clear error if not installed."""
+    try:
+        import yfinance as yf
+        return yf
+    except ImportError:
+        raise ImportError(
+            "yfinance is required for stock data. Install with: pip install yfinance"
+        )
 
 
 class CacheEntry:
@@ -126,6 +136,7 @@ class StockDataFeed:
         if cached is not None:
             return cached
 
+        yf = _get_yfinance()
         logger.info("Fetching historical data: %s (%s, %s)", symbol, period, interval)
         ticker = yf.Ticker(symbol)
         df = ticker.history(period=period, interval=interval)
@@ -163,6 +174,7 @@ class StockDataFeed:
                 )
 
         # Yahoo Finance fallback
+        yf = _get_yfinance()
         logger.info("Fetching realtime quote for %s via yfinance", symbol)
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
@@ -206,6 +218,7 @@ class StockDataFeed:
         if not uncached:
             return results
 
+        yf = _get_yfinance()
         logger.info("Fetching batch quotes for %d symbols via yfinance", len(uncached))
         tickers = yf.Tickers(" ".join(uncached))
         for sym in uncached:

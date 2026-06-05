@@ -4,8 +4,6 @@ Sector performance and rotation signals via FMP and Yahoo Finance.
 
 import logging
 
-import yfinance as yf
-
 logger = logging.getLogger(__name__)
 
 # SPDR sector ETFs for benchmarking
@@ -22,6 +20,17 @@ SECTOR_ETFS = {
     "Real Estate": "XLRE",
     "Communication Services": "XLC",
 }
+
+
+def _get_yfinance():
+    """Lazy-import yfinance; raises clear error if not installed."""
+    try:
+        import yfinance as yf
+        return yf
+    except ImportError:
+        raise ImportError(
+            "yfinance is required for sector data. Install with: pip install yfinance"
+        )
 
 
 class SectorData:
@@ -47,6 +56,8 @@ class SectorData:
         cache_key = f"sector_perf|{period}"
         if cache_key in self._cache:
             return self._cache[cache_key]
+
+        yf = _get_yfinance()
 
         logger.info("Fetching sector performance (%s)", period)
         results = {}

@@ -17,10 +17,10 @@ strategies:
     name: "Dollar Cost Averaging"
     enabled: true   # Best strategy for fear markets
     params:
-      interval_hours: 12
+      interval_hours: 24        # Bear market: slower averaging, preserve cash
       order_size_pct: 8
-      dip_threshold_pct: -3.0   # More sensitive, buy smaller dips
-      max_dca_rounds: 8         # More rounds allowed
+      dip_threshold_pct: -5.0   # 4h ATR 2.44%, need -5% for real dips
+      max_dca_rounds: 6         # Keep ~$112 cash buffer for deeper dips
 
   trend:
     name: "Trend Following"

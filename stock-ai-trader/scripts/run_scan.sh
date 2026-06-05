@@ -1,6 +1,9 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────────────
-# run_scan.sh - Cron entry point for market scanning
+# run_scan.sh - Cron entry point for market scanning & analysis
+#
+# Runs the analytical scan pipeline (research & opportunity discovery only).
+# No trade execution — analysis only.
 #
 # Usage:
 #   ./scripts/run_scan.sh                    # Default: scan sp500 US market

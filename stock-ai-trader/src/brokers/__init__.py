@@ -1,16 +1,16 @@
 """
-Broker client implementations for the stock AI trading system.
+Broker client implementations for the stock research & analysis tool.
 
 Provides:
 - BrokerProtocol: Abstract interface for all broker clients
 - IBKRClient: Interactive Brokers implementation via ib_async
-- PaperClient: Paper trading simulation client
-- AlpacaClient: Alpaca Markets backup client (stub)
+- PaperClient: Simulated market data client (analysis only, no order execution)
+- SyncIBKRWrapper: Synchronous wrapper for CLI use
+- CPGClient: Read-only live account status via IBKR Client Portal Gateway
 """
 
-from .alpaca_client import AlpacaClient
 from .broker_protocol import BrokerProtocol
 from .ibkr_client import IBKRClient
 from .paper_client import PaperClient
 
-__all__ = ["BrokerProtocol", "IBKRClient", "PaperClient", "AlpacaClient"]
+__all__ = ["BrokerProtocol", "IBKRClient", "PaperClient"]

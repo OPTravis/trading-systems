@@ -8,7 +8,7 @@ Covers:
 - _phase2_score_and_rank(): with/without scorer, scoring failure fallback
 - _phase3_research(): with/without researcher, timeout, parallel research
 - _phase4_risk_check(): score filter, risk rejection, position sizing
-- _phase5_execute(): with/without executor, zero position skip
+- Phase 4 (opportunity assessment): score filter, risk evaluation, position sizing
 - run(): full pipeline, empty universe, auto_execute
 - analyze_symbol(): single symbol analysis
 """
@@ -119,7 +119,6 @@ def _make_orchestrator(**overrides):
         regime_detector=MagicMock(),
         stock_researcher=MagicMock(),
         position_sizer=MagicMock(),
-        trade_executor=MagicMock(),
         feature_store=MagicMock(),
         config={"system": {"mode": "paper"}},
     )
@@ -206,7 +205,6 @@ class TestOrchestratorInit:
         assert orch.regime_detector is None
         assert orch.researcher is None
         assert orch.sizer is None
-        assert orch.executor is None
         assert orch.feature_store is None
         # config should be a dict (loaded from YAML or empty)
         assert isinstance(orch.config, dict)
@@ -733,144 +731,7 @@ class TestPhase4RiskCheck:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 7. _phase5_execute()
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestPhase5Execute:
-    """Tests for _phase5_execute()."""
-
-    def _make_signal(
-        self, symbol="AAPL", price=150.0, position_size_usd=3000.0, side="BUY"
-    ):
-        return TradeSignal(
-            symbol=symbol,
-            side=side,
-            price=price,
-            score=80.0,
-            position_size_usd=position_size_usd,
-            stop_loss=price * 0.95,
-            take_profit=price * 1.10,
-        )
-
-    def test_no_executor(self):
-        """Without executor, nothing happens (no crash)."""
-        orch = _make_orchestrator(trade_executor=None)
-        signals = [self._make_signal()]
-        orch._phase5_execute(signals)  # should not raise
-
-    def test_executor_called(self):
-        """Executor.execute is called with correct args for valid signals."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        signal = self._make_signal(price=100.0, position_size_usd=2000.0)
-        orch._phase5_execute([signal])
-
-        orch.executor.execute.assert_called_once()
-        call_kwargs = orch.executor.execute.call_args
-        assert call_kwargs[1]["symbol"] == "AAPL"
-        assert call_kwargs[1]["side"] == "BUY"
-        assert call_kwargs[1]["order_type"] == "LMT"
-        assert call_kwargs[1]["quantity"] == pytest.approx(20.0)
-
-    def test_zero_position_skipped(self):
-        """Signals with position_size_usd <= 0 are skipped."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock()
-
-        signal = self._make_signal(position_size_usd=0.0)
-        orch._phase5_execute([signal])
-
-        orch.executor.execute.assert_not_called()
-
-    def test_zero_price_skipped(self):
-        """Signals with price <= 0 result in quantity=0 and are skipped."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock()
-
-        signal = self._make_signal(price=0.0, position_size_usd=1000.0)
-        orch._phase5_execute([signal])
-
-        orch.executor.execute.assert_not_called()
-
-    def test_buy_slippage(self):
-        """BUY orders use limit_price = price * 1.002."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        signal = self._make_signal(price=100.0, side="BUY", position_size_usd=1000.0)
-        orch._phase5_execute([signal])
-
-        call_kwargs = orch.executor.execute.call_args[1]
-        assert call_kwargs["price"] == pytest.approx(100.2)
-
-    def test_sell_slippage(self):
-        """SELL orders use limit_price = price * 0.998."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        signal = self._make_signal(price=100.0, side="SELL", position_size_usd=1000.0)
-        orch._phase5_execute([signal])
-
-        call_kwargs = orch.executor.execute.call_args[1]
-        assert call_kwargs["price"] == pytest.approx(99.8)
-
-    def test_execution_failure_logged(self):
-        """Execution failure result doesn't raise."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(
-            return_value={"success": False, "error": "rejected"}
-        )
-
-        signal = self._make_signal(price=100.0, position_size_usd=1000.0)
-        orch._phase5_execute([signal])  # should not raise
-
-    def test_execution_exception(self):
-        """Exception in executor.execute is caught."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(side_effect=Exception("connection lost"))
-
-        signal = self._make_signal(price=100.0, position_size_usd=1000.0)
-        orch._phase5_execute([signal])  # should not raise
-
-    def test_empty_signals(self):
-        """Empty signals list does nothing."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock()
-        orch._phase5_execute([])
-        orch.executor.execute.assert_not_called()
-
-    def test_multiple_signals(self):
-        """Multiple signals are all executed."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        signals = [
-            self._make_signal(symbol="AAPL", position_size_usd=1000),
-            self._make_signal(symbol="MSFT", position_size_usd=2000),
-            self._make_signal(symbol="GOOGL", position_size_usd=3000),
-        ]
-        orch._phase5_execute(signals)
-        assert orch.executor.execute.call_count == 3
-
-    def test_slippage_and_stop_take_forwarded(self):
-        """stop_loss and take_profit are forwarded to executor."""
-        orch = _make_orchestrator()
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        signal = self._make_signal(price=100.0, position_size_usd=2000.0)
-        signal.stop_loss = 95.0
-        signal.take_profit = 110.0
-        orch._phase5_execute([signal])
-
-        call_kwargs = orch.executor.execute.call_args[1]
-        assert call_kwargs["stop_loss"] == 95.0
-        assert call_kwargs["take_profit"] == 110.0
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 8. run() — Full pipeline
+# 7. run() — Full pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -890,8 +751,8 @@ class TestRunPipeline:
         assert result.signals == []
         assert result.blocked == []
 
-    def test_full_pipeline_no_execute(self):
-        """Full pipeline with auto_execute=False doesn't call executor."""
+    def test_full_pipeline_analysis(self):
+        """Full pipeline runs analysis and produces signals without execution."""
         orch = _make_orchestrator()
         orch.regime_detector.detect_regime = MagicMock(return_value="BULL")
         orch.data_feed.get_multiple_quotes = MagicMock(
@@ -905,65 +766,13 @@ class TestRunPipeline:
         orch.risk_mgr.pre_trade_check = MagicMock(
             return_value=_make_risk_decision(approved=True)
         )
-        orch.executor.execute = MagicMock(return_value={"success": True})
 
         with patch("src.scan_orchestrator.load_universe", return_value=["AAPL"]):
-            result = orch.run(universe_name="sp500", auto_execute=False, min_score=60.0)
+            result = orch.run(universe_name="sp500", min_score=60.0)
 
         assert result.universe_size == 1
         assert result.candidates_scored == 1
         assert result.regime == "BULL"
-        orch.executor.execute.assert_not_called()
-
-    def test_full_pipeline_auto_execute(self):
-        """Full pipeline with auto_execute=True calls executor."""
-        orch = _make_orchestrator()
-        orch.regime_detector.detect_regime = MagicMock(return_value="BULL")
-        orch.data_feed.get_multiple_quotes = MagicMock(
-            return_value={"AAPL": {"price": 150}}
-        )
-        orch.data_feed.get_realtime_quote = MagicMock(return_value={"price": 150})
-        orch.scorer.score_stock = MagicMock(return_value=_make_score(composite=80))
-        orch.researcher.analyze_stock = MagicMock(
-            return_value=_make_research_report(recommendation="BUY")
-        )
-        orch.risk_mgr.pre_trade_check = MagicMock(
-            return_value=_make_risk_decision(approved=True)
-        )
-        orch.portfolio.get_nav = MagicMock(return_value=100_000.0)
-        orch.portfolio.position_count = 5
-        orch.sizer.calculate = MagicMock(return_value=0.02)
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        with patch("src.scan_orchestrator.load_universe", return_value=["AAPL"]):
-            result = orch.run(universe_name="sp500", auto_execute=True, min_score=60.0)
-
-        assert result.universe_size == 1
-        orch.executor.execute.assert_called_once()
-
-    def test_auto_execute_env_var(self):
-        """AUTO_EXECUTE=true env var triggers execution."""
-        orch = _make_orchestrator()
-        orch.regime_detector.detect_regime = MagicMock(return_value="BULL")
-        orch.data_feed.get_multiple_quotes = MagicMock(
-            return_value={"AAPL": {"price": 150}}
-        )
-        orch.data_feed.get_realtime_quote = MagicMock(return_value={"price": 150})
-        orch.scorer.score_stock = MagicMock(return_value=_make_score(composite=80))
-        orch.researcher.analyze_stock = MagicMock(return_value=_make_research_report())
-        orch.risk_mgr.pre_trade_check = MagicMock(
-            return_value=_make_risk_decision(approved=True)
-        )
-        orch.portfolio.get_nav = MagicMock(return_value=100_000.0)
-        orch.portfolio.position_count = 5
-        orch.sizer.calculate = MagicMock(return_value=0.02)
-        orch.executor.execute = MagicMock(return_value={"success": True})
-
-        with patch("src.scan_orchestrator.load_universe", return_value=["AAPL"]):
-            with patch.dict(os.environ, {"AUTO_EXECUTE": "true"}):
-                orch.run(universe_name="sp500", auto_execute=False)
-
-        orch.executor.execute.assert_called_once()
 
     def test_feature_store_cleanup(self):
         """feature_store.close() is called at the end of run()."""

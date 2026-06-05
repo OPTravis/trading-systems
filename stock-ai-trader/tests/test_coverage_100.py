@@ -1210,29 +1210,6 @@ class TestScanOrchestratorPaths:
         assert len(ranked) == 2
 
 
-# ── TradeExecutor: remaining paths ─────────────────────────────────────
-
-
-class TestTradeExecutorPaths:
-    @pytest.mark.asyncio
-    async def test_execute_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        result = await te.execute("AAPL", "BUY", 100)
-        assert result["success"] is False
-
-    def test_get_pending_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        assert te.get_pending_orders() == []
-
-    def test_cancel_all_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        te.cancel_all_orders()  # Should not crash
 
 
 # ── RegimeDetector: remaining paths ────────────────────────────────────

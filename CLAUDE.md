@@ -9,7 +9,7 @@ Monorepo with two independent AI trading systems and a shared module layer:
 ```
 trading-systems/
 ├── crypto-ai-trader/   # Binance SPOT crypto trading (~30k LOC, 95 .py files)
-├── stock-ai-trader/    # Global stock trading via IBKR (~10k LOC, 54 .py files)
+├── stock-ai-trader/    # Global stock research & analysis via IBKR (~10k LOC, 50+ .py files)
 └── shared/             # Reusable modules imported by both projects
     ├── core/           # StateDB (SQLite WAL), EventBus, LLM client, DuckDB lock
     ├── risk/           # Base RiskManager, CircuitBreaker, DailyLossBreaker, DrawdownBreaker, KellySizer, CVaR
@@ -60,7 +60,6 @@ docker-compose up -d              # Start IBKR Gateway
 python main.py scan [--universe global] [--market US]
 python main.py status [--detailed] [--live]
 python main.py analyze AAPL MSFT
-python main.py trade [--dry-run] [--confirm]
 python main.py backtest --strategy momentum --from 2024-01-01
 pytest                            # All tests
 pytest -x                         # Stop on first failure
@@ -76,7 +75,7 @@ Both systems follow the same high-level pattern — a multi-phase scan pipeline 
 2. **Score/Rank** — Multi-dimensional scoring of candidates
 3. **Research** — LLM-powered deep dive on top candidates (DeepSeek primary, GPT-4o-mini/mimo fallback)
 4. **Risk Checks** — Layered risk gates (circuit breaker, daily loss, drawdown, position limits)
-5. **Execute** — Position sizing (Kelly × CVaR) and order placement
+5. **Execute** — Position sizing (Kelly × CVaR) and order placement (crypto only; stock-ai-trader is analysis-only)
 
 ### Common Components (in `shared/`)
 
@@ -95,7 +94,7 @@ Both systems follow the same high-level pattern — a multi-phase scan pipeline 
 
 All configuration is YAML-driven with no hardcoded parameters. Secrets come from `.env` files (gitignored):
 - crypto: `crypto-secrets.env` → `BINANCE_API_KEY`, `BINANCE_API_SECRET`, `DEEPSEEK_API_KEY`, etc.
-- stock: `.env` → `IBKR_ACCOUNT_ID`, `FEISHU_WEBHOOK_URL`, `AUTO_EXECUTE`, etc.
+- stock: `.env` → `IBKR_ACCOUNT_ID`, `FEISHU_WEBHOOK_URL`, etc. (analysis-only, no auto-execute)
 
 ### SPOT ONLY
 

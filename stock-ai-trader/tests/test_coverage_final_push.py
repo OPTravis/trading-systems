@@ -357,67 +357,7 @@ class TestMacroFRED:
 
 
 class TestPaperLimits:
-    @pytest.mark.asyncio
-    async def test_limit_buy_fills(self):
-        from src.brokers.broker_protocol import (
-            Contract,
-            Order,
-            OrderSide,
-            OrderStatus,
-            OrderType,
-        )
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        # Limit buy AT market price should fill
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.LIMIT,
-            quantity=10,
-            limit_price=150.0,
-        )
-        result = await client.place_order(order)
-        assert result.status == OrderStatus.FILLED
-        await client.disconnect()
-
-    @pytest.mark.asyncio
-    async def test_limit_sell_fills(self):
-        from src.brokers.broker_protocol import (
-            Contract,
-            Order,
-            OrderSide,
-            OrderStatus,
-            OrderType,
-        )
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        # Buy first
-        buy = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=10,
-        )
-        await client.place_order(buy)
-        # Limit sell AT market price should fill
-        sell = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.SELL,
-            order_type=OrderType.LIMIT,
-            quantity=10,
-            limit_price=150.0,
-        )
-        result = await client.place_order(sell)
-        assert result.status == OrderStatus.FILLED
-        await client.disconnect()
-
-
+    pass
 # ── StockDataFeed: IBKR fallback ──────────────────────────────────────
 
 

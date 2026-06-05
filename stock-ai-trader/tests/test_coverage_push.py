@@ -16,7 +16,7 @@ from src.portfolio import PortfolioManager
 
 class TestAlpacaClient:
     def test_stub_methods(self):
-        from src.brokers.alpaca_client import AlpacaClient
+# [REMOVED] AlpacaClient deleted — analysis-only refactor
 
         assert hasattr(AlpacaClient, "connect")
         assert hasattr(AlpacaClient, "disconnect")
@@ -583,78 +583,7 @@ class TestStockScorer:
 
 
 class TestPaperClient:
-    @pytest.mark.asyncio
-    async def test_buy_sell_cycle(self):
-        from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        buy = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        await client.place_order(buy)
-        assert len(await client.get_positions()) == 1
-        sell = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.SELL,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        await client.place_order(sell)
-        assert len(await client.get_positions()) == 0
-        await client.disconnect()
-
-    @pytest.mark.asyncio
-    async def test_limit_order_pending(self):
-        from src.brokers.broker_protocol import (
-            Contract,
-            Order,
-            OrderSide,
-            OrderStatus,
-            OrderType,
-        )
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.LIMIT,
-            quantity=10,
-            limit_price=140.0,
-        )
-        result = await client.place_order(order)
-        assert result.status == OrderStatus.SUBMITTED
-        await client.disconnect()
-
-    @pytest.mark.asyncio
-    async def test_cancel(self):
-        from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.LIMIT,
-            quantity=10,
-            limit_price=140.0,
-        )
-        placed = await client.place_order(order)
-        await client.cancel_order(placed.order_id)
-        assert len(await client.get_open_orders()) == 0
-        await client.disconnect()
-
-
+    pass
 # ── SentimentFeed (86%) ───────────────────────────────────────────────
 
 

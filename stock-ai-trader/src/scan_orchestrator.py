@@ -1,12 +1,11 @@
 """
-Scan Orchestrator — Main pipeline: Scan → Score → Research → Risk → Execute.
+Scan Orchestrator — Analytical pipeline: Scan → Score → Research → Opportunity Assessment.
 
-5-phase pipeline:
+4-phase analytical pipeline (research & opportunity discovery only — no trade execution):
   Phase 1: Sync portfolio, detect market regime, screen universe
   Phase 2: Score stocks via StockScorer, rank via CompositeRanker
   Phase 3: Research top N candidates (news + sentiment + fundamentals)
-  Phase 4: Risk checks via StockRiskManager
-  Phase 5: Execute trades (if AUTO_EXECUTE=true)
+  Phase 4: Opportunity Assessment — risk evaluation + reference position sizing
 """
 
 from __future__ import annotations
@@ -106,14 +105,15 @@ def load_universe(name: str = "sp500", config_dir: Optional[str] = None) -> List
 
 class ScanOrchestrator:
     """
-    Main pipeline orchestrator for the stock AI trader.
+    Analytical pipeline orchestrator for stock research & opportunity discovery.
 
     Coordinates:
     - Market regime detection
     - Universe screening & factor scoring
     - Deep research on top candidates
-    - Pre-trade risk checks
-    - Trade execution
+    - Opportunity assessment with reference position sizing
+
+    No trade execution — analysis and research only.
     """
 
     def __init__(
@@ -127,22 +127,20 @@ class ScanOrchestrator:
         regime_detector=None,
         stock_researcher=None,
         position_sizer=None,
-        trade_executor=None,
         feature_store=None,
         config: Optional[dict] = None,
     ):
         """
         Args:
-            broker: BrokerProtocol instance for market data & orders.
+            broker: BrokerProtocol instance for market data.
             portfolio: PortfolioManager instance.
             stock_data_feed: StockDataFeed for OHLCV / quotes.
             stock_scorer: StockScorer for multi-factor scoring.
             composite_ranker: CompositeRanker for cross-sectional ranking.
-            risk_manager: StockRiskManager for pre-trade risk checks.
+            risk_manager: StockRiskManager for opportunity risk assessment.
             regime_detector: RegimeDetector for market regime.
             stock_researcher: StockResearcher for LLM-based deep research.
-            position_sizer: HybridPositionSizer for position sizing.
-            trade_executor: TradeExecutor for order placement.
+            position_sizer: HybridPositionSizer for reference position sizing.
             feature_store: FeatureStore for factor persistence.
             config: Override config dict.
         """
@@ -155,7 +153,6 @@ class ScanOrchestrator:
         self.regime_detector = regime_detector
         self.researcher = stock_researcher
         self.sizer = position_sizer
-        self.executor = trade_executor
         self.feature_store = feature_store
         self.config = config or self._load_config()
 
@@ -173,32 +170,26 @@ class ScanOrchestrator:
     def run(
         self,
         universe_name: str = "sp500",
-        auto_execute: bool = False,
         top_n_research: int = 5,
         min_score: float = 60.0,
     ) -> ScanResult:
         """
-        Run the full scan pipeline.
+        Run the full analytical scan pipeline.
 
         Args:
             universe_name: Universe to scan (default: sp500).
-            auto_execute: If True, execute trades automatically.
             top_n_research: Number of top candidates to deep-research.
             min_score: Minimum composite score to pass.
 
         Returns:
-            ScanResult with signals and metadata.
+            ScanResult with opportunity signals and metadata.
         """
         t_start = time.time()
-        auto_execute = (
-            auto_execute or os.environ.get("AUTO_EXECUTE", "").lower() == "true"
-        )
 
         logger.info("=" * 60)
         logger.info(
-            "SCAN PIPELINE START — universe=%s, auto_execute=%s",
+            "ANALYTICAL SCAN PIPELINE START — universe=%s",
             universe_name,
-            auto_execute,
         )
         logger.info("=" * 60)
 
@@ -228,20 +219,11 @@ class ScanOrchestrator:
         top_candidates = scored_candidates[:top_n_research]
         research_results = self._phase3_research(top_candidates, factor_scores)
 
-        # ── Phase 4: Risk Checks ───────────────────────────────────────
-        logger.info("Phase 4: Risk checks on %d candidates", len(research_results))
+        # ── Phase 4: Opportunity Assessment ────────────────────────────
+        logger.info("Phase 4: Opportunity assessment on %d candidates", len(research_results))
         approved_signals, blocked = self._phase4_risk_check(
             research_results, factor_scores, min_score
         )
-
-        # ── Phase 5: Execute ───────────────────────────────────────────
-        if auto_execute and approved_signals:
-            logger.info("Phase 5: Executing %d trades", len(approved_signals))
-            self._phase5_execute(approved_signals)
-        elif approved_signals:
-            logger.info(
-                "Phase 5: %d signals ready (auto_execute=false)", len(approved_signals)
-            )
 
         duration = time.time() - t_start
         result = ScanResult(
@@ -256,7 +238,7 @@ class ScanOrchestrator:
         )
 
         logger.info(
-            "SCAN PIPELINE COMPLETE in %.1fs — %d signals, %d blocked",
+            "ANALYTICAL SCAN COMPLETE in %.1fs — %d opportunities, %d filtered out",
             duration,
             len(approved_signals),
             len(blocked),
@@ -475,7 +457,7 @@ class ScanOrchestrator:
         )
         return results
 
-    # ── Phase 4 ────────────────────────────────────────────────────────
+    # ── Phase 4: Opportunity Assessment ─────────────────────────────────
 
     def _phase4_risk_check(
         self,
@@ -484,7 +466,10 @@ class ScanOrchestrator:
         min_score: float,
     ) -> tuple[List[TradeSignal], List[dict]]:
         """
-        Run pre-trade risk checks and generate final trade signals.
+        Run opportunity assessment and generate reference signals.
+
+        Evaluates risk, calculates reference position sizing, stop-loss and
+        take-profit levels. All output is FOR REFERENCE ONLY — no execution.
 
         Returns:
             (approved_signals, blocked_signals)
@@ -605,10 +590,12 @@ class ScanOrchestrator:
         # Sort by score descending
         approved.sort(key=lambda s: s.score, reverse=True)
 
-        logger.info("Risk check: %d approved, %d blocked", len(approved), len(blocked))
+        logger.info(
+            "Opportunity assessment: %d opportunities, %d filtered out",
+            len(approved),
+            len(blocked),
+        )
         return approved, blocked
-
-    # ── Phase 5 ────────────────────────────────────────────────────────
 
     def _build_sector_map(self) -> Dict[str, str]:
         """Build a symbol -> sector lookup from the universe config."""
@@ -627,58 +614,6 @@ class ScanOrchestrator:
         except Exception as e:
             logger.debug("Sector map build failed: %s", e)
         return sector_map
-
-    def _phase5_execute(self, signals: List[TradeSignal]):
-        """Execute approved trade signals."""
-        if not self.executor:
-            logger.warning("No TradeExecutor configured — signals not executed")
-            return
-
-        for signal in signals:
-            if signal.position_size_usd <= 0:
-                logger.info("Skipping %s — position size is zero", signal.symbol)
-                continue
-
-            try:
-                quantity = (
-                    signal.position_size_usd / signal.price if signal.price > 0 else 0
-                )
-                if quantity <= 0:
-                    continue
-
-                # Apply 0.2% slippage tolerance for LMT orders
-                if signal.side.upper() == "BUY":
-                    limit_price = signal.price * 1.002
-                else:
-                    limit_price = signal.price * 0.998
-
-                result = self.executor.execute(
-                    symbol=signal.symbol,
-                    side=signal.side,
-                    quantity=quantity,
-                    price=limit_price,
-                    order_type="LMT",
-                    stop_loss=signal.stop_loss,
-                    take_profit=signal.take_profit,
-                )
-
-                if result.get("success"):
-                    logger.info(
-                        "Executed: %s %s %.2f @ %.2f",
-                        signal.side,
-                        signal.symbol,
-                        quantity,
-                        signal.price,
-                    )
-                else:
-                    logger.warning(
-                        "Execution failed for %s: %s",
-                        signal.symbol,
-                        result.get("error"),
-                    )
-
-            except Exception as e:
-                logger.error("Execution error for %s: %s", signal.symbol, e)
 
     # ── Single Symbol Analysis ─────────────────────────────────────────
 

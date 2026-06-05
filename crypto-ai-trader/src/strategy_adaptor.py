@@ -56,6 +56,39 @@ class StrategyAdaptor:
             "enabled_by_default": False,  # FIX-4: Paused — 12 trades, -$10.53, 73% of losses. Needs redesign.
         },
     }
+    # DCA parameter mapping by regime
+    DCA_REGIME_PARAMS = {
+        "EXTREME_FEAR": {
+            "interval_hours": 24,
+            "dip_threshold_pct": -5.0,
+            "max_dca_rounds": 6,
+            "order_size_pct": 8,
+        },
+        "FEAR": {
+            "interval_hours": 18,
+            "dip_threshold_pct": -4.0,
+            "max_dca_rounds": 7,
+            "order_size_pct": 8,
+        },
+        "NEUTRAL": {
+            "interval_hours": 12,
+            "dip_threshold_pct": -3.0,
+            "max_dca_rounds": 8,
+            "order_size_pct": 8,
+        },
+        "GREED": {
+            "interval_hours": 8,
+            "dip_threshold_pct": -2.0,
+            "max_dca_rounds": 10,
+            "order_size_pct": 8,
+        },
+        "EXTREME_GREED": {
+            "interval_hours": 6,
+            "dip_threshold_pct": -1.5,
+            "max_dca_rounds": 12,
+            "order_size_pct": 6,
+        },
+    }
 
     def __init__(self):
         """Initialize StrategyAdaptor."""
@@ -372,6 +405,17 @@ class StrategyAdaptor:
                 "max_hold_hours": settings.get("max_hold_hours", 48),
             }
 
+            # DCA regime-adaptive stop_loss
+            if name == "dca":
+                dca_sl_map = {
+                    "EXTREME_FEAR": 12.0,
+                    "FEAR": 10.0,
+                    "NEUTRAL": 8.0,
+                    "GREED": 7.0,
+                    "EXTREME_GREED": 7.0,
+                }
+                strategies[name]["sl_pct"] = dca_sl_map.get(regime, 8.0)
+
         # Apply GARCH-based dynamic SL/TP (Phase 9 — replaces fixed SL/TP)
         # FIX-9: Use 30-day historical returns instead of single 24h data point
         try:
@@ -436,6 +480,9 @@ class StrategyAdaptor:
             "regime": regime,
             "hmm_regime": hmm_regime,
             "strategies": strategies,
+            "dca_params": self.DCA_REGIME_PARAMS.get(
+                regime, self.DCA_REGIME_PARAMS["NEUTRAL"]
+            ),
             "global": {
                 "score_threshold": settings["score_threshold"],
                 "max_position_pct": settings["max_position_pct"],

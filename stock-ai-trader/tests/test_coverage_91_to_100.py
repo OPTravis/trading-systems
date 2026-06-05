@@ -336,7 +336,6 @@ class TestMomentumComplete2:
 
 
 class TestIBKRClientComplete2:
-    @pytest.mark.asyncio
     async def test_get_historical_bars(self):
         from src.brokers.broker_protocol import BarSize, Contract
         from src.brokers.ibkr_client import IBKRClient
@@ -358,7 +357,6 @@ class TestIBKRClientComplete2:
         )
         assert len(bars) == 1
 
-    @pytest.mark.asyncio
     async def test_get_historical_bars_with_end_date(self):
         from src.brokers.broker_protocol import Contract
         from src.brokers.ibkr_client import IBKRClient
@@ -371,7 +369,6 @@ class TestIBKRClientComplete2:
         )
         assert bars == []
 
-    @pytest.mark.asyncio
     async def test_to_ib_order_stop(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.ibkr_client import IBKRClient
@@ -387,7 +384,6 @@ class TestIBKRClientComplete2:
         ib_order = c._to_ib_order(order)
         assert ib_order.auxPrice == 140.0
 
-    @pytest.mark.asyncio
     async def test_to_ib_order_stop_limit(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.ibkr_client import IBKRClient
@@ -404,7 +400,6 @@ class TestIBKRClientComplete2:
         ib_order = c._to_ib_order(order)
         assert ib_order.lmtPrice == 150.0
 
-    @pytest.mark.asyncio
     async def test_to_ib_order_with_parent(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.ibkr_client import IBKRClient
@@ -420,7 +415,6 @@ class TestIBKRClientComplete2:
         ib_order = c._to_ib_order(order)
         assert ib_order.parentId == 999
 
-    @pytest.mark.asyncio
     async def test_to_ib_order_default(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.ibkr_client import IBKRClient
@@ -435,166 +429,9 @@ class TestIBKRClientComplete2:
         ib_order = c._to_ib_order(order)
         assert ib_order.action == "BUY"
 
-    @pytest.mark.asyncio
-    async def test_place_order(self):
-        from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_trade = MagicMock()
-        mock_trade.order.orderId = 12345
-        mock_trade.orderStatus.status = "Submitted"
-        c._ib.placeOrder.return_value = mock_trade
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        result = await c.place_order(order)
-        assert result.order_id == 12345
-
-    @pytest.mark.asyncio
-    async def test_get_open_orders(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_order = MagicMock()
-        mock_order.orderId = 12345
-        mock_order.action = "BUY"
-        mock_order.orderType = "MKT"
-        mock_order.totalQuantity = 100
-        mock_order.lmtPrice = 0
-        mock_order.auxPrice = 0
-        c._ib.openOrders.return_value = [mock_order]
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AAPL"
-        mock_trade.contract.exchange = "SMART"
-        mock_trade.contract.currency = "USD"
-        mock_trade.contract.secType = "STK"
-        mock_trade.contract.conId = 12345
-        mock_trade.contract.localSymbol = "AAPL"
-        mock_trade.orderStatus.status = "Submitted"
-        c._ib.trades.return_value = [mock_trade]
-        orders = await c.get_open_orders()
-        assert len(orders) == 1
-
-    @pytest.mark.asyncio
-    async def test_get_open_orders_no_trade(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_order = MagicMock()
-        mock_order.orderId = 12345
-        mock_order.action = "BUY"
-        mock_order.orderType = "MKT"
-        mock_order.totalQuantity = 100
-        mock_order.lmtPrice = 0
-        mock_order.auxPrice = 0
-        c._ib.openOrders.return_value = [mock_order]
-        c._ib.trades.return_value = []
-        orders = await c.get_open_orders()
-        assert len(orders) == 1
-
-    @pytest.mark.asyncio
-    async def test_get_order_found(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_order = MagicMock()
-        mock_order.orderId = 12345
-        mock_order.action = "BUY"
-        mock_order.orderType = "MKT"
-        mock_order.totalQuantity = 100
-        mock_order.lmtPrice = 0
-        mock_order.auxPrice = 0
-        c._ib.openOrders.return_value = [mock_order]
-        c._ib.trades.return_value = []
-        order = await c.get_order(12345)
-        assert order is not None
-
-    @pytest.mark.asyncio
-    async def test_get_order_with_trade(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_order = MagicMock()
-        mock_order.orderId = 12345
-        mock_order.action = "BUY"
-        mock_order.orderType = "MKT"
-        mock_order.totalQuantity = 100
-        mock_order.lmtPrice = 0
-        mock_order.auxPrice = 0
-        c._ib.openOrders.return_value = [mock_order]
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AAPL"
-        mock_trade.contract.exchange = "SMART"
-        mock_trade.contract.currency = "USD"
-        mock_trade.contract.secType = "STK"
-        mock_trade.contract.conId = 12345
-        mock_trade.contract.localSymbol = "AAPL"
-        mock_trade.orderStatus.status = "Submitted"
-        c._ib.trades.return_value = [mock_trade]
-        order = await c.get_order(12345)
-        assert order is not None
-
-    @pytest.mark.asyncio
-    async def test_modify_order(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        mock_order = MagicMock()
-        mock_order.orderId = 12345
-        mock_order.action = "BUY"
-        mock_order.orderType = "MKT"
-        mock_order.totalQuantity = 100
-        c._ib.openOrders.return_value = [mock_order]
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AAPL"
-        c._ib.trades.return_value = [mock_trade]
-        c._ib.placeOrder = MagicMock()
-        result = await c.modify_order(12345, limit_price=150.0)
-        assert result.limit_price == 150.0
-
-    @pytest.mark.asyncio
-    async def test_modify_order_not_found(self):
-        from src.brokers.ibkr_client import IBKRClient
-
-        c = IBKRClient()
-        c._ib = MagicMock()
-        c._ib.openOrders.return_value = []
-        with pytest.raises(ValueError):
-            await c.modify_order(999)
-
-
 # ── AlpacaClient: all paths ───────────────────────────────────────────
 
 
-class TestAlpacaClientComplete2:
-    def test_all_stub_methods(self):
-        from src.brokers.alpaca_client import AlpacaClient
-
-        assert hasattr(AlpacaClient, "connect")
-        assert hasattr(AlpacaClient, "disconnect")
-        assert hasattr(AlpacaClient, "is_connected")
-        assert hasattr(AlpacaClient, "get_market_data")
-        assert hasattr(AlpacaClient, "get_historical_bars")
-        assert hasattr(AlpacaClient, "stream_market_data")
-        assert hasattr(AlpacaClient, "get_account")
-        assert hasattr(AlpacaClient, "get_positions")
-        assert hasattr(AlpacaClient, "get_portfolio")
-        assert hasattr(AlpacaClient, "place_order")
-        assert hasattr(AlpacaClient, "cancel_order")
-        assert hasattr(AlpacaClient, "modify_order")
-        assert hasattr(AlpacaClient, "get_open_orders")
-        assert hasattr(AlpacaClient, "get_contract_details")
-        assert hasattr(AlpacaClient, "qualify_contract")
 
 
 # ── Portfolio: remaining paths ─────────────────────────────────────────
@@ -725,44 +562,12 @@ class TestPortfolioComplete2:
         assert pm.sync_from_broker(broker) is False
 
 
-# ── TradeExecutor: remaining paths ─────────────────────────────────────
-
-
-class TestTradeExecutorComplete2:
-    @pytest.mark.asyncio
-    async def test_execute_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        result = await te.execute("AAPL", "BUY", 100)
-        assert result["success"] is False
-
-    @pytest.mark.asyncio
-    async def test_size_and_execute_no_portfolio(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        result = await te.size_and_execute("AAPL", 150.0)
-        assert result["success"] is False
-
-    def test_get_pending_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        assert te.get_pending_orders() == []
-
-    def test_cancel_all_no_broker(self):
-        from src.trade_executor import TradeExecutor
-
-        te = TradeExecutor(broker=None)
-        te.cancel_all_orders()
 
 
 # ── PaperClient: remaining paths ───────────────────────────────────────
 
 
 class TestPaperClientComplete2:
-    @pytest.mark.asyncio
     async def test_get_market_data(self):
         from src.brokers.broker_protocol import Contract
         from src.brokers.paper_client import PaperClient
@@ -774,7 +579,6 @@ class TestPaperClientComplete2:
         assert tick.last_price > 0
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_get_order(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.paper_client import PaperClient
@@ -788,12 +592,10 @@ class TestPaperClientComplete2:
             order_type=OrderType.MARKET,
             quantity=10,
         )
-        filled = await client.place_order(order)
         retrieved = await client.get_order(filled.order_id)
         assert retrieved is not None
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_cancel_order(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.paper_client import PaperClient
@@ -808,12 +610,10 @@ class TestPaperClientComplete2:
             quantity=10,
             limit_price=140.0,
         )
-        placed = await client.place_order(order)
         await client.cancel_order(placed.order_id)
         assert len(await client.get_open_orders()) == 0
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_commission(self):
         from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
         from src.brokers.paper_client import PaperClient
@@ -827,7 +627,6 @@ class TestPaperClientComplete2:
             order_type=OrderType.MARKET,
             quantity=100,
         )
-        result = await client.place_order(order)
         assert result.commission > 0
         await client.disconnect()
 

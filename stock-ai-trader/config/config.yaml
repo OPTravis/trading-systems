@@ -1,5 +1,5 @@
 # stock-ai-trader 主配置文件
-# 全球股票自動交易系統
+# 全球股票研究與分析工具（無自動交易）
 
 system:
   name: "stock-ai-trader"
@@ -61,9 +61,9 @@ ibkr:
   request_rate_limit: 50  # 條/秒
   active_streams_limit: 100
 
-# Alpaca 備用經紀商
+# Alpaca 備用數據源（不再用作經紀商）
 alpaca:
-  base_url: "https://paper-api.alpaca.markets"  # paper | live
+  base_url: "https://paper-api.alpaca.markets"  # paper | live (data only)
 
 # LLM 配置
 llm:

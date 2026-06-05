@@ -1144,7 +1144,7 @@ class TestIBKRClientExtended:
 
 class TestAlpacaClientExtended:
     def test_stub_connect(self):
-        from src.brokers.alpaca_client import AlpacaClient
+# [REMOVED] AlpacaClient deleted
 
         # Test via class methods (can't instantiate abstract class)
         assert hasattr(AlpacaClient, "connect")

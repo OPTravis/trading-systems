@@ -46,12 +46,13 @@ MIN_STRATEGY_TRADES = 5
 class StrategyRegistry:
     """Central registry for all trading strategies."""
 
-    def __init__(self, db=None):
+    def __init__(self, db=None, dca_params: Optional[Dict] = None):
         if db is None:
             from src.state_db import get_state_db
 
             db = get_state_db()
         self._db = db
+        self._dca_params = dca_params or {}
         self._strategies = {}
         self._init_strategies()
 
@@ -94,7 +95,7 @@ class StrategyRegistry:
                     "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
                 }
             ),
-            "dca": DCAStrategy({}),
+            "dca": DCAStrategy(self._dca_params),
             "grid": GridStrategy({}),
         }
 

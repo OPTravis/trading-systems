@@ -457,52 +457,7 @@ class TestHistoricalStoreLast2:
 
 
 class TestPaperClientLast2:
-    @pytest.mark.asyncio
-    async def test_place_order_buy_updates_position(self):
-        from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        await client.place_order(order)
-        positions = await client.get_positions()
-        assert len(positions) == 1
-        await client.disconnect()
-
-    @pytest.mark.asyncio
-    async def test_place_order_sell_updates_balance(self):
-        from src.brokers.broker_protocol import Contract, Order, OrderSide, OrderType
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient(starting_balance=100_000.0)
-        await client.connect()
-        client.set_market_price("AAPL", 150.0)
-        buy = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        await client.place_order(buy)
-        initial_balance = client._balance
-        sell = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.SELL,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        await client.place_order(sell)
-        assert client._balance > initial_balance
-        await client.disconnect()
-
-
+    pass
 # ── SectorData (87%) ──────────────────────────────────────────────────
 
 

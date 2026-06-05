@@ -187,10 +187,13 @@ class FeishuNotifier:
         )
         return self._send(text)
 
-    # ── Trade Signal ──────────────────────────────────────────────────
+    # ── Opportunity Signal (was Trade Signal) ────────────────────────────
 
     def send_trade_signal(self, signal: Dict) -> bool:
-        """Send a trade signal notification."""
+        """Send an opportunity/research signal (NOT an execution order).
+
+        This provides analysis results for reference only — no trades are executed.
+        """
         symbol = signal.get("symbol", "???")
         action = signal.get("action", "HOLD")
         price = signal.get("price", 0)
@@ -201,16 +204,16 @@ class FeishuNotifier:
         action_emoji = "📈" if action == "BUY" else "📉" if action == "SELL" else "➡️"
 
         lines = [
-            f"🎯 交易信號 - {symbol}",
+            f"🔍 研究機會 - {symbol}",
             "",
-            f"操作: {action_emoji} {action}",
+            f"方向: {action_emoji} {action}",
             f"價格: ${price:.2f}",
             f"策略: {strategy}",
             f"強度: {'█' * int(strength * 10)}{'░' * (10 - int(strength * 10))} {strength:.0%}",
         ]
 
         if stop_loss:
-            lines.append(f"止損: ${stop_loss:.2f}")
+            lines.append(f"參考止損: ${stop_loss:.2f}")
 
         metadata = signal.get("metadata", {})
         if metadata:
@@ -221,6 +224,7 @@ class FeishuNotifier:
         lines.extend(
             [
                 "",
+                "⚠️ 僅供參考 — 非交易指令",
                 "─" * 30,
                 f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             ]
@@ -317,43 +321,6 @@ class FeishuNotifier:
             ]
             if estimated_eps is not None:
                 lines.append(f"預估EPS: ${estimated_eps:.2f}")
-
-        lines.extend(
-            [
-                "",
-                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            ]
-        )
-
-        return self._send("\n".join(lines))
-
-    # ── Trade Execution ───────────────────────────────────────────────
-
-    def send_trade_executed(
-        self,
-        symbol: str,
-        action: str,
-        price: float,
-        quantity: int,
-        strategy: str,
-        order_id: Optional[str] = None,
-    ) -> bool:
-        """Send trade execution confirmation."""
-        action_emoji = "🟢" if action == "BUY" else "🔴"
-        total_cost = price * quantity
-
-        lines = [
-            "🚀 訂單已執行",
-            "",
-            f"操作: {action_emoji} {action}",
-            f"股票: {symbol}",
-            f"價格: ${price:.2f}",
-            f"數量: {quantity}股",
-            f"總額: ${total_cost:,.2f}",
-            f"策略: {strategy}",
-        ]
-        if order_id:
-            lines.append(f"訂單ID: {order_id}")
 
         lines.extend(
             [

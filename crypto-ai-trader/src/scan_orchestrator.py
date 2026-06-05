@@ -203,6 +203,9 @@ def _step_scan_opportunities():
             )
         else:
             print(f"  {sname}: {status} ({scfg['reason']})")
+    # DCA regime params
+    dca_p = adapted.get("dca_params", {})
+    print(f"  DCA params: interval={dca_p.get('interval_hours')}h dip={dca_p.get('dip_threshold_pct')}% rounds={dca_p.get('max_dca_rounds')}")
     # BTC factor breakdown
     if btc_factors:
         print(
@@ -239,33 +242,9 @@ def _step_scan_opportunities():
     scanner.get_top_movers(limit=5)
     opportunities = scanner.scan_all()
 
-    # Skip held positions (including dust > $1)
+    # held_symbols filter REMOVED — allow re-evaluation of held positions for DCA/加倉
+    # Previously skipped BTC/ETH/SOL because they were already in portfolio
     acct = client.get_account()
-    held_symbols = set()
-    for b in acct.get("balances", []):
-        total = float(b.get("free", 0)) + float(b.get("locked", 0))
-        if total <= 0:
-            continue
-        asset = b["asset"]
-        if asset == "USDT":
-            continue
-        # Only count as held if value >= $1 (dust filter)
-        try:
-            stats = client.get_24hr_stats(asset + "USDT")
-            price_val = float(stats.get("last_price", 0))
-            if total * price_val >= 1.0:
-                held_symbols.add(asset)
-        except Exception:
-            logger.error(
-                "Price check failed for held symbol %s, assuming real position",
-                asset,
-                exc_info=True,
-            )
-            # Can't get price — assume it's a real position
-            held_symbols.add(asset)
-    opportunities = [
-        o for o in opportunities if o["symbol"].replace("USDT", "") not in held_symbols
-    ]
 
     # Apply adapted threshold
     opportunities = [o for o in opportunities if o["score"] >= dynamic_threshold]
@@ -645,7 +624,8 @@ def _step_research_top_n(ctx):
     try:
         from src.strategy_registry import StrategyRegistry
 
-        registry = StrategyRegistry()
+        dca_params = adapted.get("dca_params", {})
+        registry = StrategyRegistry(dca_params=dca_params)
 
         # Get klines for the top coin (needed by strategy classes)
         try:

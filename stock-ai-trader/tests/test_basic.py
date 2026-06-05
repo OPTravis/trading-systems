@@ -2,7 +2,7 @@
 Basic Smoke Tests - Quick validation of core components.
 
 Tests:
-- Paper client buy/sell
+- Paper client market data
 - Market hours US
 - Market calendar holidays
 - Trend strategy signal generation
@@ -16,10 +16,6 @@ import pytest
 
 from src.brokers.broker_protocol import (
     Contract,
-    Order,
-    OrderSide,
-    OrderStatus,
-    OrderType,
 )
 from src.market.market_hours import Market, MarketState
 from src.risk.pdt_guard import PDTGuard
@@ -31,54 +27,22 @@ from src.strategies.trend_strategy import TrendStrategy
 
 
 class TestPaperClient:
-    """Test PaperClient buy/sell operations."""
+    """Test PaperClient market data and account operations (no trading)."""
 
     @pytest.mark.asyncio
-    async def test_paper_client_buy_sell(self, paper_client):
-        """Test buying and selling stocks on paper client."""
+    async def test_paper_client_market_data(self, paper_client):
+        """Test market data retrieval from paper client."""
         await paper_client.connect()
         assert await paper_client.is_connected()
 
-        # Set market price
+        # Set market price and verify tick data
         paper_client.set_market_price("AAPL", 150.0)
-
-        # Create buy order
         contract = Contract(symbol="AAPL", exchange="SMART")
-        buy_order = Order(
-            contract=contract,
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
 
-        # Execute buy
-        filled = await paper_client.place_order(buy_order)
-        assert filled.status == OrderStatus.FILLED
-        assert filled.filled_qty == 100
-        assert filled.avg_fill_price > 0
-
-        # Check position
-        positions = await paper_client.get_positions()
-        assert len(positions) == 1
-        assert positions[0].contract.symbol == "AAPL"
-        assert positions[0].quantity == 100
-
-        # Create sell order
-        sell_order = Order(
-            contract=contract,
-            side=OrderSide.SELL,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-
-        # Execute sell
-        filled = await paper_client.place_order(sell_order)
-        assert filled.status == OrderStatus.FILLED
-        assert filled.filled_qty == 100
-
-        # Check position closed
-        positions = await paper_client.get_positions()
-        assert len(positions) == 0
+        tick = await paper_client.get_market_data(contract)
+        assert tick.last_price == 150.0
+        assert tick.bid > 0
+        assert tick.ask > 0
 
         await paper_client.disconnect()
 
@@ -95,29 +59,17 @@ class TestPaperClient:
         await paper_client.disconnect()
 
     @pytest.mark.asyncio
-    async def test_paper_client_reset(self, paper_client):
-        """Test account reset."""
+    async def test_paper_client_historical_bars(self, paper_client):
+        """Test historical bars retrieval from paper client."""
         await paper_client.connect()
 
-        # Buy some stock
         paper_client.set_market_price("AAPL", 150.0)
         contract = Contract(symbol="AAPL")
-        await paper_client.place_order(
-            Order(
-                contract=contract,
-                side=OrderSide.BUY,
-                order_type=OrderType.MARKET,
-                quantity=100,
-            )
-        )
 
-        # Reset
-        paper_client.reset()
-        positions = await paper_client.get_positions()
-        assert len(positions) == 0
-
-        account = await paper_client.get_account()
-        assert account.net_liquidation == 100_000.0
+        bars = await paper_client.get_historical_bars(contract, duration="1 D")
+        assert len(bars) > 0
+        for bar in bars:
+            assert bar.close > 0
 
         await paper_client.disconnect()
 

@@ -2,21 +2,19 @@
 """
 stock-ai-trader CLI 入口
 
-全球股票自動交易系統 — 基於因子投資 + 截面排名
+全球股票研究與分析工具 — 基於因子投資 + 截面排名
 交易限制: SPOT ONLY（不做期貨、期權、杠杆）
 
 Commands:
-    scan       - 掃描全市場，生成交易信號
+    scan       - 掃描全市場，發現投資機會
     status     - 顯示持倉、P&L、風控狀態
     analyze    - 深度分析指定股票（基本面 + 技術面 + 情緒）
-    trade      - 執行交易（需確認）
     backtest   - 回測策略（Walk-forward 驗證）
 
 Usage:
     python main.py scan [--universe global] [--market US]
     python main.py status [--detailed]
     python main.py analyze AAPL MSFT
-    python main.py trade [--dry-run] [--confirm]
     python main.py backtest [--strategy momentum] [--from 2024-01-01] [--to 2026-01-01]
 """
 
@@ -95,7 +93,7 @@ def create_broker(config: dict, sync: bool = False):
 
 
 def build_orchestrator(config: dict, broker=None):
-    """Build ScanOrchestrator with all dependencies wired up."""
+    """Build ScanOrchestrator with all dependencies wired up (analysis only)."""
     from src.portfolio import PortfolioManager
     from src.data.stock_data_feed import StockDataFeed
     from src.scoring.stock_scorer import StockScorer
@@ -103,7 +101,7 @@ def build_orchestrator(config: dict, broker=None):
     from src.risk.stock_risk_manager import StockRiskManager
     from src.market.regime_detector import RegimeDetector
     from src.research.stock_researcher import StockResearcher
-    from src.trade_executor import TradeExecutor, HybridPositionSizer
+    from src.trade_executor import HybridPositionSizer
     from src.scan_orchestrator import ScanOrchestrator
     from src.notifier import FeishuNotifier
     from src.data.feature_store import FeatureStore
@@ -119,7 +117,6 @@ def build_orchestrator(config: dict, broker=None):
     regime_detector = RegimeDetector()
     researcher = StockResearcher(data_feed=data_feed)
     position_sizer = HybridPositionSizer()
-    trade_executor = TradeExecutor(broker=broker, position_sizer=position_sizer)
     notifier = FeishuNotifier()
 
     return ScanOrchestrator(
@@ -132,7 +129,6 @@ def build_orchestrator(config: dict, broker=None):
         regime_detector=regime_detector,
         stock_researcher=researcher,
         position_sizer=position_sizer,
-        trade_executor=trade_executor,
         config=config,
     )
 
@@ -151,7 +147,7 @@ async def connect_broker(broker) -> bool:
 # Command: scan
 # ============================================================
 def cmd_scan(args):
-    """掃描全市場，生成交易信號"""
+    """掃描全市場，發現投資機會"""
     print(f"[*] Scanning universe: {args.universe}, market: {args.market}")
     print(f"[*] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -164,14 +160,12 @@ def cmd_scan(args):
 
     orchestrator = build_orchestrator(config, broker)
 
-    # Run scan pipeline
-    auto_execute = os.environ.get("AUTO_EXECUTE", "").lower() == "true"
+    # Run analytical scan pipeline
     # signal_threshold in config is 0-1 range; convert to 0-100 scale
     raw_threshold = config.get("scanner", {}).get("signal_threshold", 0.6)
     min_score = raw_threshold * 100 if raw_threshold <= 1.0 else raw_threshold
     result = orchestrator.run(
         universe_name=args.universe,
-        auto_execute=auto_execute,
         top_n_research=5,
         min_score=min_score,
     )
@@ -184,29 +178,29 @@ def cmd_scan(args):
     print(f"  Universe size:     {result.universe_size}")
     print(f"  Candidates scored: {result.candidates_scored}")
     print(f"  Research done:     {result.research_completed}")
-    print(f"  Signals:           {len(result.signals)}")
-    print(f"  Blocked:           {len(result.blocked)}")
+    print(f"  Opportunities:     {len(result.signals)}")
+    print(f"  Filtered out:      {len(result.blocked)}")
     print(f"  Duration:          {result.duration_sec:.1f}s")
 
     if result.signals:
         print(f"\n{'='*60}")
-        print(f"  TRADE SIGNALS")
+        print(f"  OPPORTUNITY ANALYSIS (reference only — not for execution)")
         print(f"{'='*60}")
         for sig in result.signals:
             print(f"  {sig.side} {sig.symbol}")
             print(f"    Score: {sig.score:.1f} | Strategy: {sig.strategy}")
             print(f"    Price: {sig.price:.2f} {sig.currency}")
             if sig.stop_loss:
-                print(f"    Stop Loss: {sig.stop_loss:.2f}")
+                print(f"    Ref Stop Loss: {sig.stop_loss:.2f}")
             if sig.take_profit:
-                print(f"    Take Profit: {sig.take_profit:.2f}")
-            print(f"    Size: ${sig.position_size_usd:,.0f}")
+                print(f"    Ref Take Profit: {sig.take_profit:.2f}")
+            print(f"    Ref Size: ${sig.position_size_usd:,.0f}")
             if sig.research_summary:
                 print(f"    Research: {sig.research_summary[:100]}...")
             print()
 
     if result.blocked:
-        print(f"\n  BLOCKED ({len(result.blocked)}):")
+        print(f"\n  FILTERED OUT ({len(result.blocked)}):")
         for b in result.blocked:
             print(f"    {b.get('symbol', '?')}: {b.get('reason', 'unknown')}")
 
@@ -432,64 +426,6 @@ def cmd_analyze(args):
 
 
 # ============================================================
-# Command: trade
-# ============================================================
-def cmd_trade(args):
-    """執行交易"""
-    config = load_config("config")
-    risk_limits = load_config("risk_limits")
-    mode = config.get("system", {}).get("mode", "paper")
-
-    print(f"[*] Trade execution")
-    print(f"[*] Mode: {mode}")
-    print(f"[*] Dry run: {args.dry_run}")
-    print(f"[*] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    if mode == "live" and not args.confirm:
-        print("[!] Live mode requires --confirm flag")
-        sys.exit(1)
-
-    broker = create_broker(config, sync=True)
-    if not broker.is_connected():
-        print("[!] Failed to connect to broker. Cannot execute trades.")
-        sys.exit(1)
-
-    orchestrator = build_orchestrator(config, broker)
-
-    # Run scan to get signals
-    print("[*] Running scan to generate signals...")
-    raw_threshold = config.get("scanner", {}).get("signal_threshold", 0.6)
-    min_score = raw_threshold * 100 if raw_threshold <= 1.0 else raw_threshold
-    result = orchestrator.run(
-        universe_name=getattr(args, 'universe', 'global'),
-        auto_execute=False,
-        top_n_research=3,
-        min_score=min_score,
-    )
-
-    if not result.signals:
-        print("[*] No signals generated. Nothing to trade.")
-        if hasattr(broker, '_ib') and broker._ib.isConnected():
-            broker.disconnect()
-        return
-
-    print(f"\n[*] {len(result.signals)} signals ready:")
-    for sig in result.signals:
-        print(f"    {sig.side} {sig.symbol} — Score: {sig.score:.1f}, Size: ${sig.position_size_usd:,.0f}")
-
-    if args.dry_run:
-        print("\n[DRY RUN] No trades executed.")
-    else:
-        print(f"\n[*] Executing {len(result.signals)} trades...")
-        orchestrator._phase5_execute(result.signals)
-        print("[*] Execution complete.")
-
-    # Disconnect
-    if hasattr(broker, '_ib') and broker._ib.isConnected():
-        broker.disconnect()
-
-
-# ============================================================
 # Command: backtest
 # ============================================================
 def cmd_backtest(args):
@@ -597,21 +533,20 @@ def cmd_backtest(args):
 # ============================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="stock-ai-trader: 全球股票自動交易系統",
+        description="stock-ai-trader: 全球股票研究與分析工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python main.py scan --universe sp500 --market US
   python main.py status --detailed
   python main.py analyze AAPL MSFT NVDA
-  python main.py trade --dry-run
   python main.py backtest --strategy momentum --from 2024-01-01 --to 2026-01-01
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # scan
-    p_scan = subparsers.add_parser("scan", help="掃描全市場，生成交易信號")
+    p_scan = subparsers.add_parser("scan", help="掃描全市場，發現投資機會")
     p_scan.add_argument("--universe", default="global", help="Stock universe (default: global)")
     p_scan.add_argument("--market", default="US", help="Market: US/HK/CN (default: US)")
     p_scan.add_argument("--strategy", default="all", help="Strategy filter (default: all)")
@@ -624,12 +559,6 @@ Examples:
     # analyze
     p_analyze = subparsers.add_parser("analyze", help="深度分析指定股票")
     p_analyze.add_argument("symbols", nargs="+", help="Stock symbols to analyze")
-
-    # trade
-    p_trade = subparsers.add_parser("trade", help="執行交易")
-    p_trade.add_argument("--universe", default="global", help="Stock universe (default: global)")
-    p_trade.add_argument("--dry-run", action="store_true", help="Simulate without executing")
-    p_trade.add_argument("--confirm", action="store_true", help="Confirm live execution")
 
     # backtest
     p_backtest = subparsers.add_parser("backtest", help="回測策略")
@@ -652,7 +581,6 @@ Examples:
         "scan": cmd_scan,
         "status": cmd_status,
         "analyze": cmd_analyze,
-        "trade": cmd_trade,
         "backtest": cmd_backtest,
     }
 

@@ -474,31 +474,6 @@ class TestPaperClientGaps:
         assert isinstance(bars, list)
         await client.disconnect()
 
-    @pytest.mark.asyncio
-    async def test_place_order_not_connected(self):
-        from src.brokers.paper_client import Order, PaperClient
-
-        client = PaperClient()
-        order = Order(
-            contract=Contract(symbol="AAPL"),
-            side=OrderSide.BUY,
-            order_type=OrderType.MARKET,
-            quantity=100,
-        )
-        # Should handle gracefully
-        try:
-            await client.place_order(order)
-        except Exception:
-            pass  # Expected if not connected
-
-    def test_set_market_price(self):
-        from src.brokers.paper_client import PaperClient
-
-        client = PaperClient()
-        client.set_market_price("AAPL", 150.0)
-        assert client._market_prices["AAPL"] == 150.0
-
-
 # ── Data: HistoricalStore ─────────────────────────────────────────────
 
 

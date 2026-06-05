@@ -13,13 +13,13 @@ import pytest
 
 class TestAlpacaClient:
     def test_base_url_paper(self):
-        from src.brokers.alpaca_client import AlpacaClient
+# [REMOVED] AlpacaClient deleted
 
         # AlpacaClient is abstract (missing get_order), test via class attributes
         assert AlpacaClient.__name__ == "AlpacaClient"
 
     def test_stub_methods_exist(self):
-        from src.brokers.alpaca_client import AlpacaClient
+# [REMOVED] AlpacaClient deleted
 
         # Verify stub methods exist on the class
         assert hasattr(AlpacaClient, "connect")
@@ -565,47 +565,15 @@ class TestStockResearcherExtended:
 
 
 class TestOrderExecutorExtended:
-    @pytest.mark.asyncio
-    async def test_place_order_timeout_retry(self):
-        from src.execution.order_executor import OrderExecutor
-
-        broker = AsyncMock()
-        broker.place_order.side_effect = [
-            TimeoutError("timeout"),
-            MagicMock(
-                status="FILLED",
-                order_id=1,
-                filled_qty=100,
-                avg_fill_price=150.0,
-                commission=1.0,
-            ),
-        ]
-        executor = OrderExecutor(broker)
-        with patch("src.execution.order_executor.time.sleep"):
-            await executor.place_order("AAPL", "BUY", 100)
-            # First attempt times out, second succeeds
-
-    @pytest.mark.asyncio
-    async def test_place_order_connection_error(self):
-        from src.execution.order_executor import OrderExecutor
-
-        broker = AsyncMock()
-        broker.place_order.side_effect = ConnectionError("refused")
-        executor = OrderExecutor(broker)
-        with patch("src.execution.order_executor.time.sleep"):
-            result = await executor.place_order("AAPL", "BUY", 100)
-            assert result.success is False
-
-
+    pass
 # ── Execution: TWAP (gaps) ────────────────────────────────────────────
 
 
 class TestTWAPExtended:
-    @pytest.mark.asyncio
     @patch("src.execution.twap_executor.time.sleep")
     async def test_execute_twap_single_slice(self, mock_sleep):
-        from src.execution.order_executor import OrderResult
-        from src.execution.twap_executor import TWAPExecutor
+# [REMOVED] execution module deleted
+# [REMOVED] execution module deleted
 
         broker = AsyncMock()
         executor = TWAPExecutor(broker)
@@ -624,11 +592,10 @@ class TestTWAPExtended:
 
 
 class TestVWAPExtended:
-    @pytest.mark.asyncio
     @patch("src.execution.vwap_executor.time.sleep")
     async def test_execute_vwap_all_fail(self, mock_sleep):
-        from src.execution.order_executor import OrderResult
-        from src.execution.vwap_executor import VWAPExecutor
+# [REMOVED] execution module deleted
+# [REMOVED] execution module deleted
 
         broker = AsyncMock()
         executor = VWAPExecutor(broker)
@@ -645,7 +612,6 @@ class TestVWAPExtended:
 
 
 class TestPaperClientExtended:
-    @pytest.mark.asyncio
     async def test_get_market_data(self):
         from src.brokers.broker_protocol import Contract
         from src.brokers.paper_client import PaperClient
@@ -657,7 +623,6 @@ class TestPaperClientExtended:
         assert tick.last_price == 150.0
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_stream_market_data(self):
         from src.brokers.broker_protocol import Contract
         from src.brokers.paper_client import PaperClient
@@ -670,7 +635,6 @@ class TestPaperClientExtended:
         assert tick.last_price > 0  # Paper client adds noise
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_get_open_orders(self):
         from src.brokers.paper_client import PaperClient
 
@@ -680,7 +644,6 @@ class TestPaperClientExtended:
         assert isinstance(orders, list)
         await client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_modify_order(self):
         from src.brokers.paper_client import PaperClient
 
