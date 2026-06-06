@@ -1,82 +1,114 @@
 """
-Feishu Notifier - Send trade notifications via Feishu Webhook
+Feishu Notifier - Send trade notifications via Feishu IM API
+Upgraded from webhook to IM API (tenant_access_token + chat_id)
 """
 
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
 import yaml
 
-from src.app_secrets import CRYPTO_SECRETS, GENERAL_SECRETS, load_secret_file
-
 logger = logging.getLogger(__name__)
 
+# Token cache
+_token_cache: Dict[str, float | str] = {"token": "", "expires_at": 0.0}
 
-def load_config():
-    """Load trading config"""
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", "config", "risk_limits.yaml"
-    )
-    if os.path.exists(config_path):
-        with open(config_path) as f:
-            return yaml.safe_load(f)
-    return {}
+
+def _get_tenant_token(app_id: str, app_secret: str) -> str:
+    """Get Feishu tenant access token (cached, auto-refresh)."""
+    now = time.time()
+    if _token_cache["token"] and now < float(_token_cache["expires_at"]):
+        return str(_token_cache["token"])
+
+    try:
+        resp = requests.post(
+            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+            json={"app_id": app_id, "app_secret": app_secret},
+            timeout=10,
+        )
+        data = resp.json()
+        token = data.get("tenant_access_token", "")
+        expire = data.get("expire", 7200)
+        if token:
+            _token_cache["token"] = token
+            _token_cache["expires_at"] = now + expire - 300
+        return token
+    except Exception as e:
+        logger.error("Failed to get Feishu token: %s", e)
+        return ""
 
 
 class FeishuNotifier:
-    """Send notifications to Feishu via Webhook"""
+    """Send notifications to Feishu via IM API."""
 
     def __init__(self, webhook_url: Optional[str] = None):
+        self.chat_id = os.environ.get("FEISHU_CHAT_ID", "")
+        self.app_id = os.environ.get("FEISHU_APP_ID", "")
+        self.app_secret = os.environ.get("FEISHU_APP_SECRET", "")
+        # Fallback to old webhook if IM API not configured
         self.webhook_url = webhook_url or os.environ.get("FEISHU_WEBHOOK_URL", "")
-        self._load_from_secrets()
+        self._enabled = bool(self.chat_id and self.app_id and self.app_secret) or bool(self.webhook_url)
         self.config = load_config()
 
-    def _load_from_secrets(self):
-        """Load from secrets file if not set"""
+    def _send(self, text: str) -> bool:
+        """Send text via IM API (preferred) or webhook (fallback)."""
+        if not self._enabled:
+            logger.info("[Feishu DISABLED] %s", text[:200])
+            return False
+
+        # Try IM API first
+        if self.chat_id and self.app_id and self.app_secret:
+            token = _get_tenant_token(self.app_id, self.app_secret)
+            if not token:
+                logger.error("No Feishu token — falling back to webhook")
+            else:
+                try:
+                    import json as _json
+                    payload = {
+                        "receive_id": self.chat_id,
+                        "msg_type": "text",
+                        "content": _json.dumps({"text": text}),
+                    }
+                    resp = requests.post(
+                        "https://open.feishu.cn/open-apis/im/v1/messages",
+                        params={"receive_id_type": "chat_id"},
+                        headers={"Authorization": f"Bearer {token}"},
+                        json=payload,
+                        timeout=10,
+                    )
+                    data = resp.json()
+                    if data.get("code") == 0:
+                        return True
+                    logger.error("Feishu IM API error: %s", data.get("msg", resp.text[:200]))
+                    # Fall through to webhook
+                except Exception as e:
+                    logger.error("Feishu IM API exception: %s — falling back to webhook", e)
+
+        # Fallback to webhook
         if self.webhook_url:
-            return
+            try:
+                payload = {"msg_type": "text", "content": {"text": text}}
+                resp = requests.post(self.webhook_url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    return True
+                logger.error("Feishu webhook error: %s", resp.text[:200])
+            except Exception as e:
+                logger.error("Failed to send Feishu message: %s", e)
 
-        for path in [
-            CRYPTO_SECRETS,
-            GENERAL_SECRETS,
-            os.path.expanduser("~/.hermes/.env"),
-        ]:
-            secrets = load_secret_file(path)
-            if not secrets:
-                continue
-            if "FEISHU_WEBHOOK_URL" in secrets:
-                self.webhook_url = secrets["FEISHU_WEBHOOK_URL"]
-                break
-
-    def send_text(self, text: str, **kwargs) -> bool:
-        """Send text message to Feishu"""
-        if not self.webhook_url:
-            logger.warning("No FEISHU_WEBHOOK_URL configured")
-            return False
-
-        try:
-            payload: Dict[str, Any] = {
-                "msg_type": "text",
-                "content": {"text": text},
-            }
-            resp = requests.post(self.webhook_url, json=payload, timeout=10)
-            if resp.status_code != 200:
-                logger.error(
-                    f"Feishu webhook error: {resp.status_code} {resp.text[:200]}"
-                )
-                return False
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send Feishu message: {e}")
-            return False
+        return False
 
     def get_strategy_config(self, strategy: str) -> Dict:
-        """Get stop loss and take profit config for a strategy"""
+        """Get stop loss and take profit config for a strategy."""
         strategies = self.config.get("strategies", {})
         return strategies.get(strategy.lower(), self.config.get("default", {}))
+
+    def send_text(self, text: str, **kwargs) -> bool:
+        """Send text message to Feishu."""
+        return self._send(text)
 
     def send_opportunity_with_confirmation(
         self,
@@ -87,14 +119,13 @@ class FeishuNotifier:
         signals: List[str],
         reason: str,
     ) -> bool:
-        """Send opportunity with confirmation request"""
+        """Send opportunity with confirmation request."""
 
         cfg = self.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)  # FIX-11: Widened from 2.0→4.0%
+        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)
         tp_levels = cfg.get("take_profit_levels", [])
         max_hold = cfg.get("max_hold_hours", 24)
 
-        # Calculate prices
         stop_price = current_price * (1 - stop_loss_pct / 100)
 
         tp_lines = []
@@ -109,7 +140,6 @@ class FeishuNotifier:
             )
             total_tp_size += tp_size
 
-        # Pad if needed
         while total_tp_size < 100:
             tp_lines.append(f"  └ 剩余 {(100 - total_tp_size)}% 自动市价卖出")
             total_tp_size = 100
@@ -138,17 +168,15 @@ class FeishuNotifier:
                 "",
                 "─" * 20,
                 "⚠️ 自动止损触发时立即执行，无需确认",
-                "⚠️ Testnet 测试中，请知悉",
             ]
         )
 
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_market_scan(
         self, opportunities: List[Dict], gainers: List, losers: List
     ) -> bool:
-        """Send market scan results"""
+        """Send market scan results."""
         if not opportunities and not gainers and not losers:
             return False
 
@@ -157,22 +185,14 @@ class FeishuNotifier:
         if gainers:
             lines.append("📈 涨幅榜:")
             for g in gainers[:5]:
-                vol = (
-                    f"${g.get('quote_volume', 0)/1e6:.1f}M"
-                    if g.get("quote_volume", 0) > 0
-                    else "N/A"
-                )
+                vol = f"${g.get('quote_volume', 0)/1e6:.1f}M" if g.get("quote_volume", 0) > 0 else "N/A"
                 lines.append(f"  {g['symbol']}: +{g['change_pct']:.2f}% ({vol})")
             lines.append("")
 
         if losers:
             lines.append("📉 跌幅榜:")
             for l in losers[:5]:
-                vol = (
-                    f"${l.get('quote_volume', 0)/1e6:.1f}M"
-                    if l.get("quote_volume", 0) > 0
-                    else "N/A"
-                )
+                vol = f"${l.get('quote_volume', 0)/1e6:.1f}M" if l.get("quote_volume", 0) > 0 else "N/A"
                 lines.append(f"  {l['symbol']}: {l['change_pct']:.2f}% ({vol})")
             lines.append("")
 
@@ -184,8 +204,7 @@ class FeishuNotifier:
                 if signals:
                     lines.append(f"    {' / '.join(signals)}")
 
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_trade_alert(
         self,
@@ -196,7 +215,7 @@ class FeishuNotifier:
         strategy: str,
         order_id: Optional[str] = None,
     ) -> bool:
-        """Send trade execution alert"""
+        """Send trade execution alert."""
         lines = [
             "🚀 订单已执行",
             f"操作: {action}",
@@ -208,8 +227,7 @@ class FeishuNotifier:
         if order_id:
             lines.append(f"订单ID: {order_id}")
 
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_trade_confirmation(
         self,
@@ -220,7 +238,7 @@ class FeishuNotifier:
         tp_levels: List[Dict],
         strategy: str,
     ) -> bool:
-        """Send trade confirmation with SL/TP levels"""
+        """Send trade confirmation with SL/TP levels."""
         lines = [
             f"✅ 订单确认 - {symbol}",
             f"操作: {action}",
@@ -230,7 +248,7 @@ class FeishuNotifier:
         ]
 
         cfg = self.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)  # FIX-11: Widened from 2.0→4.0%
+        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)
         lines.append(f"  -{stop_loss_pct}% @ ${stop_loss:.6f}")
 
         lines.extend(["", "📊 止盈:"])
@@ -239,13 +257,12 @@ class FeishuNotifier:
                 f"  TP{i+1}: +{tp['pct']}% @ ${tp['price']:.6f} (卖出 {tp['size_pct']}%)"
             )
 
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_stop_loss_triggered(
         self, symbol: str, exit_price: float, pnl_pct: float, reason: str = "止损触发"
     ) -> bool:
-        """Send stop loss triggered alert"""
+        """Send stop loss triggered alert."""
         emoji = "🔴" if pnl_pct < 0 else "🟢"
         lines = [
             f"{emoji} 仓位平仓 - {symbol}",
@@ -253,8 +270,7 @@ class FeishuNotifier:
             f"出场价: ${exit_price:.6f}",
             f"盈亏: {pnl_pct:.2f}%",
         ]
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_take_profit_triggered(
         self,
@@ -264,7 +280,7 @@ class FeishuNotifier:
         remaining_size_pct: int,
         total_pnl_pct: float,
     ) -> bool:
-        """Send take profit triggered alert"""
+        """Send take profit triggered alert."""
         lines = [
             f"🎯 止盈触发 - {symbol}",
             f"TP{tp_level} 执行",
@@ -272,11 +288,10 @@ class FeishuNotifier:
             f"剩余仓位: {remaining_size_pct}%",
             f"累计盈亏: {total_pnl_pct:.2f}%",
         ]
-        text = "\n".join(lines)
-        return self.send_text(text)
+        return self._send("\n".join(lines))
 
     def send_portfolio_update(self, portfolio_summary: Dict) -> bool:
-        """Send portfolio update"""
+        """Send portfolio update."""
         lines = [
             "💼 持仓更新\n",
             f"总价值: ${portfolio_summary.get('total_value', 0):.2f}",
@@ -296,10 +311,10 @@ class FeishuNotifier:
                     f"(PnL: {pos.get('pnl_pct', 0):.2f}%)"
                 )
 
-        return self.send_text("\n".join(lines))
+        return self._send("\n".join(lines))
 
     def send_daily_report(self, report: Dict) -> bool:
-        """Send daily report"""
+        """Send daily report."""
         lines = [
             f"📈 每日报告 {report.get('date', datetime.now().strftime('%Y-%m-%d'))}\n",
             f"总收益: {report.get('total_return_pct', 0):.2f}%",
@@ -307,5 +322,15 @@ class FeishuNotifier:
             f"胜率: {report.get('win_rate', 0):.1f}%",
             f"最佳策略: {report.get('best_strategy', 'N/A')}",
         ]
+        return self._send("\n".join(lines))
 
-        return self.send_text("\n".join(lines))
+
+def load_config():
+    """Load trading config."""
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "risk_limits.yaml"
+    )
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+    return {}
