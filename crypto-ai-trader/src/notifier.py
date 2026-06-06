@@ -1,336 +1,83 @@
 """
-Feishu Notifier - Send trade notifications via Feishu IM API
-Upgraded from webhook to IM API (tenant_access_token + chat_id)
+Signal Notifier - writes signals to local JSON file for Travis to pick up
+Replaces Feishu/email notifier
 """
-
-import logging
+import json
 import os
-import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from pathlib import Path
 
-import requests
-import yaml
-
-logger = logging.getLogger(__name__)
-
-# Token cache
-_token_cache: Dict[str, float | str] = {"token": "", "expires_at": 0.0}
+SIGNALS_DIR = Path(__file__).parent.parent / "signals"
+SIGNALS_FILE = SIGNALS_DIR / "pending.json"
 
 
-def _get_tenant_token(app_id: str, app_secret: str) -> str:
-    """Get Feishu tenant access token (cached, auto-refresh)."""
-    now = time.time()
-    if _token_cache["token"] and now < float(_token_cache["expires_at"]):
-        return str(_token_cache["token"])
-
-    try:
-        resp = requests.post(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            json={"app_id": app_id, "app_secret": app_secret},
-            timeout=10,
-        )
-        data = resp.json()
-        token = data.get("tenant_access_token", "")
-        expire = data.get("expire", 7200)
-        if token:
-            _token_cache["token"] = token
-            _token_cache["expires_at"] = now + expire - 300
-        return token
-    except Exception as e:
-        logger.error("Failed to get Feishu token: %s", e)
-        return ""
+def _ensure_signals_dir():
+    SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-class FeishuNotifier:
-    """Send notifications to Feishu via IM API."""
+def send_signal(signal_type: str, symbol: str, action: str, price: float,
+                quantity: float = 0, reason: str = "", strategy: str = ""):
+    """
+    Write a signal to pending.json for Travis to pick up.
+    
+    Args:
+        signal_type: 'BUY' or 'SELL'
+        symbol: trading pair, e.g. 'BTCUSDT'
+        action: 'OPEN' or 'CLOSE'
+        price: entry/exit price
+        quantity: quantity (0 for close orders)
+        reason: signal trigger reason
+        strategy: strategy name
+    """
+    _ensure_signals_dir()
 
-    def __init__(self, webhook_url: Optional[str] = None):
-        self.chat_id = os.environ.get("FEISHU_CHAT_ID", "")
-        self.app_id = os.environ.get("FEISHU_APP_ID", "")
-        self.app_secret = os.environ.get("FEISHU_APP_SECRET", "")
-        # Fallback to old webhook if IM API not configured
-        self.webhook_url = webhook_url or os.environ.get("FEISHU_WEBHOOK_URL", "")
-        self._enabled = bool(self.chat_id and self.app_id and self.app_secret) or bool(self.webhook_url)
-        self.config = load_config()
+    signal = {
+        "id": f"{symbol}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "timestamp": datetime.now().isoformat(),
+        "type": signal_type,
+        "symbol": symbol,
+        "action": action,
+        "price": round(price, 4),
+        "quantity": quantity,
+        "reason": reason,
+        "strategy": strategy,
+        "notified": False
+    }
 
-    def _send(self, text: str) -> bool:
-        """Send text via IM API (preferred) or webhook (fallback)."""
-        if not self._enabled:
-            logger.info("[Feishu DISABLED] %s", text[:200])
-            return False
+    # Load existing signals
+    signals = []
+    if SIGNALS_FILE.exists():
+        with open(SIGNALS_FILE, "r") as f:
+            signals = json.load(f)
 
-        # Try IM API first
-        if self.chat_id and self.app_id and self.app_secret:
-            token = _get_tenant_token(self.app_id, self.app_secret)
-            if not token:
-                logger.error("No Feishu token — falling back to webhook")
-            else:
-                try:
-                    import json as _json
-                    payload = {
-                        "receive_id": self.chat_id,
-                        "msg_type": "text",
-                        "content": _json.dumps({"text": text}),
-                    }
-                    resp = requests.post(
-                        "https://open.feishu.cn/open-apis/im/v1/messages",
-                        params={"receive_id_type": "chat_id"},
-                        headers={"Authorization": f"Bearer {token}"},
-                        json=payload,
-                        timeout=10,
-                    )
-                    data = resp.json()
-                    if data.get("code") == 0:
-                        return True
-                    logger.error("Feishu IM API error: %s", data.get("msg", resp.text[:200]))
-                    # Fall through to webhook
-                except Exception as e:
-                    logger.error("Feishu IM API exception: %s — falling back to webhook", e)
+    signals.append(signal)
 
-        # Fallback to webhook
-        if self.webhook_url:
-            try:
-                payload = {"msg_type": "text", "content": {"text": text}}
-                resp = requests.post(self.webhook_url, json=payload, timeout=10)
-                if resp.status_code == 200:
-                    return True
-                logger.error("Feishu webhook error: %s", resp.text[:200])
-            except Exception as e:
-                logger.error("Failed to send Feishu message: %s", e)
+    with open(SIGNALS_FILE, "w") as f:
+        json.dump(signals, f, indent=2)
 
-        return False
-
-    def get_strategy_config(self, strategy: str) -> Dict:
-        """Get stop loss and take profit config for a strategy."""
-        strategies = self.config.get("strategies", {})
-        return strategies.get(strategy.lower(), self.config.get("default", {}))
-
-    def send_text(self, text: str, **kwargs) -> bool:
-        """Send text message to Feishu."""
-        return self._send(text)
-
-    def send_opportunity_with_confirmation(
-        self,
-        symbol: str,
-        current_price: float,
-        strategy: str,
-        score: int,
-        signals: List[str],
-        reason: str,
-    ) -> bool:
-        """Send opportunity with confirmation request."""
-
-        cfg = self.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)
-        tp_levels = cfg.get("take_profit_levels", [])
-        max_hold = cfg.get("max_hold_hours", 24)
-
-        stop_price = current_price * (1 - stop_loss_pct / 100)
-
-        tp_lines = []
-        total_tp_size = 0
-        for i, tp in enumerate(tp_levels):
-            tp_pct = tp["pct"]
-            tp_size = tp["size_pct"]
-            tp_price = current_price * (1 + tp_pct / 100)
-            prefix = "├" if i < len(tp_levels) - 1 else "└"
-            tp_lines.append(
-                f"{prefix} TP{i+1}: +{tp_pct}% @ ${tp_price:.6f} (卖出 {tp_size}%)"
-            )
-            total_tp_size += tp_size
-
-        while total_tp_size < 100:
-            tp_lines.append(f"  └ 剩余 {(100 - total_tp_size)}% 自动市价卖出")
-            total_tp_size = 100
-
-        lines = [
-            f"🎯 {symbol} (Score: {score})",
-            "",
-            f"策略: {strategy.upper()}",
-            f"当前价格: ${current_price:.6f}",
-            "",
-            "📊 建议止盈:",
-        ]
-        lines.extend(tp_lines)
-
-        lines.extend(
-            [
-                "",
-                f"🛡 止损: -{stop_loss_pct}% @ ${stop_price:.6f}",
-                f"⏱ 最大持仓: {max_hold}小时",
-                "",
-                f"💡 信号: {reason}",
-                "",
-                "───" * 4,
-                '回复 "YES [Symbol]" 确认下单',
-                f"例如: YES {symbol}",
-                "",
-                "─" * 20,
-                "⚠️ 自动止损触发时立即执行，无需确认",
-            ]
-        )
-
-        return self._send("\n".join(lines))
-
-    def send_market_scan(
-        self, opportunities: List[Dict], gainers: List, losers: List
-    ) -> bool:
-        """Send market scan results."""
-        if not opportunities and not gainers and not losers:
-            return False
-
-        lines = [f"📊 市场扫描报告 {datetime.now().strftime('%H:%M:%S')}\n"]
-
-        if gainers:
-            lines.append("📈 涨幅榜:")
-            for g in gainers[:5]:
-                vol = f"${g.get('quote_volume', 0)/1e6:.1f}M" if g.get("quote_volume", 0) > 0 else "N/A"
-                lines.append(f"  {g['symbol']}: +{g['change_pct']:.2f}% ({vol})")
-            lines.append("")
-
-        if losers:
-            lines.append("📉 跌幅榜:")
-            for l in losers[:5]:
-                vol = f"${l.get('quote_volume', 0)/1e6:.1f}M" if l.get("quote_volume", 0) > 0 else "N/A"
-                lines.append(f"  {l['symbol']}: {l['change_pct']:.2f}% ({vol})")
-            lines.append("")
-
-        if opportunities:
-            lines.append(f"🎯 发现 {len(opportunities)} 个机会 (Top 5):")
-            for opp in opportunities[:5]:
-                lines.append(f"  {opp['symbol']} (Score: {opp['score']:.0f})")
-                signals = opp.get("signals", [])[:2]
-                if signals:
-                    lines.append(f"    {' / '.join(signals)}")
-
-        return self._send("\n".join(lines))
-
-    def send_trade_alert(
-        self,
-        symbol: str,
-        action: str,
-        price: float,
-        quantity: float,
-        strategy: str,
-        order_id: Optional[str] = None,
-    ) -> bool:
-        """Send trade execution alert."""
-        lines = [
-            "🚀 订单已执行",
-            f"操作: {action}",
-            f"币种: {symbol}",
-            f"价格: ${price:.6f}",
-            f"数量: {quantity:.4f}",
-            f"策略: {strategy.upper()}",
-        ]
-        if order_id:
-            lines.append(f"订单ID: {order_id}")
-
-        return self._send("\n".join(lines))
-
-    def send_trade_confirmation(
-        self,
-        symbol: str,
-        action: str,
-        price: float,
-        stop_loss: float,
-        tp_levels: List[Dict],
-        strategy: str,
-    ) -> bool:
-        """Send trade confirmation with SL/TP levels."""
-        lines = [
-            f"✅ 订单确认 - {symbol}",
-            f"操作: {action}",
-            f"开仓价: ${price:.6f}",
-            "",
-            "🛡 止损:",
-        ]
-
-        cfg = self.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get("stop_loss_pct", 4.0)
-        lines.append(f"  -{stop_loss_pct}% @ ${stop_loss:.6f}")
-
-        lines.extend(["", "📊 止盈:"])
-        for i, tp in enumerate(tp_levels):
-            lines.append(
-                f"  TP{i+1}: +{tp['pct']}% @ ${tp['price']:.6f} (卖出 {tp['size_pct']}%)"
-            )
-
-        return self._send("\n".join(lines))
-
-    def send_stop_loss_triggered(
-        self, symbol: str, exit_price: float, pnl_pct: float, reason: str = "止损触发"
-    ) -> bool:
-        """Send stop loss triggered alert."""
-        emoji = "🔴" if pnl_pct < 0 else "🟢"
-        lines = [
-            f"{emoji} 仓位平仓 - {symbol}",
-            f"原因: {reason}",
-            f"出场价: ${exit_price:.6f}",
-            f"盈亏: {pnl_pct:.2f}%",
-        ]
-        return self._send("\n".join(lines))
-
-    def send_take_profit_triggered(
-        self,
-        symbol: str,
-        tp_level: int,
-        exit_price: float,
-        remaining_size_pct: int,
-        total_pnl_pct: float,
-    ) -> bool:
-        """Send take profit triggered alert."""
-        lines = [
-            f"🎯 止盈触发 - {symbol}",
-            f"TP{tp_level} 执行",
-            f"出场价: ${exit_price:.6f}",
-            f"剩余仓位: {remaining_size_pct}%",
-            f"累计盈亏: {total_pnl_pct:.2f}%",
-        ]
-        return self._send("\n".join(lines))
-
-    def send_portfolio_update(self, portfolio_summary: Dict) -> bool:
-        """Send portfolio update."""
-        lines = [
-            "💼 持仓更新\n",
-            f"总价值: ${portfolio_summary.get('total_value', 0):.2f}",
-            f"现金: ${portfolio_summary.get('cash', 0):.2f}",
-            f"敞口: ${portfolio_summary.get('total_exposure', 0):.2f}",
-            f"PnL: ${portfolio_summary.get('total_pnl', 0):.2f}",
-            f"持仓数: {portfolio_summary.get('positions_count', 0)}",
-        ]
-
-        positions = portfolio_summary.get("positions", [])
-        if positions:
-            lines.append("\n📊 持仓明细:")
-            for pos in positions:
-                lines.append(
-                    f"  {pos.get('symbol')}: {pos.get('quantity', 0):.4f} "
-                    f"@ ${pos.get('entry_price', 0):.4f} "
-                    f"(PnL: {pos.get('pnl_pct', 0):.2f}%)"
-                )
-
-        return self._send("\n".join(lines))
-
-    def send_daily_report(self, report: Dict) -> bool:
-        """Send daily report."""
-        lines = [
-            f"📈 每日报告 {report.get('date', datetime.now().strftime('%Y-%m-%d'))}\n",
-            f"总收益: {report.get('total_return_pct', 0):.2f}%",
-            f"交易次数: {report.get('total_trades', 0)}",
-            f"胜率: {report.get('win_rate', 0):.1f}%",
-            f"最佳策略: {report.get('best_strategy', 'N/A')}",
-        ]
-        return self._send("\n".join(lines))
+    print(f"[SignalNotifier] Signal written: {signal_type} {symbol} @ {price}")
 
 
-def load_config():
-    """Load trading config."""
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", "config", "risk_limits.yaml"
-    )
-    if os.path.exists(config_path):
-        with open(config_path) as f:
-            return yaml.safe_load(f)
-    return {}
+def send_message(title: str, body: str):
+    """Send a text message (written to a separate messages file)."""
+    _ensure_signals_dir()
+    msg_file = SIGNALS_DIR / "messages.json"
+    messages = []
+    if msg_file.exists():
+        with open(msg_file, "r") as f:
+            messages = json.load(f)
+    messages.append({
+        "id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "timestamp": datetime.now().isoformat(),
+        "title": title,
+        "body": body,
+        "notified": False
+    })
+    with open(msg_file, "w") as f:
+        json.dump(messages, f, indent=2)
+
+
+# Aliases for compatibility with existing code
+notify_trade = send_signal
+notify_signal = send_signal
+notify = send_message
