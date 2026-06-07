@@ -858,7 +858,11 @@ class RiskManager:
                         )
             except Exception as e:
                 logger.error(f"RiskManager: trend filter error: {e}")
-                # Fail-open for trend filter (don't block on error)
+                # Fail-open for trend filter but reduce size as safety measure
+                adjustments["size_multiplier"] = min(
+                    adjustments["size_multiplier"], 0.5
+                )
+                reasons.append("TrendFilter: API error — reducing size to 50% as safety")
         else:
             logger.debug("RiskManager: no binance_client, skipping trend filter")
 
@@ -951,6 +955,7 @@ class RiskManager:
             logger.error(f"RiskManager: pair cooldown check error: {e}")
 
         # 5. Drawdown breaker (10% hard stop)
+        dd_check = {}  # Initialize before try block — used by stepwise drawdown below
         if self.drawdown_breaker and self.client:
             try:
                 acct = self.client.get_account()
@@ -994,12 +999,15 @@ class RiskManager:
                     reasons.append(f"Drawdown: {dd_check['drawdown_pct']:.1f}%")
             except Exception as e:
                 logger.error(f"RiskManager: drawdown check error: {e}")
+                # Fail-closed: if we can't check drawdown, block trading for safety
+                allowed = False
+                reasons.append(f"DRAWDOWN CHECK FAILED: {e} — blocking trade for safety")
 
         # 6. Stepwise drawdown — graduated risk reduction (P1: integrate into pre_trade_check)
         if self.drawdown_breaker and self.client:
             try:
                 from .stepwise_drawdown import get_drawdown_action
-                dd_pct = dd_check.get("drawdown_pct", 0.0) if 'dd_check' in dir() else 0.0
+                dd_pct = dd_check.get("drawdown_pct", 0.0)
                 sd_action = get_drawdown_action(dd_pct)
                 sd_sm = sd_action.get("size_multiplier", 1.0)
                 if sd_sm < 1.0:

@@ -9,6 +9,7 @@ No JSON backup — Binance API is the external source of truth for recovery.
 """
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import yaml
@@ -59,6 +60,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         self.positions = {}  # symbol -> position data (in-memory cache)
         self.cash_balance = 0
         self.orders_log: List[Dict[str, Any]] = []
+        self._lock = threading.Lock()  # Thread safety for positions and cash_balance
 
         # Optional BinanceClient for real-time price fetch
         self._client = binance_client
@@ -229,77 +231,78 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
 
         now = datetime.now().isoformat()
 
-        if symbol in self.positions:
-            # Merge: weighted average entry price
-            old = self.positions[symbol]
-            old_qty = old["quantity"]
-            old_entry = old["entry_price"]
-            new_qty = old_qty + quantity
-            new_entry = (old_qty * old_entry + quantity * entry_price) / new_qty
-            self.positions[symbol] = {
-                "symbol": symbol,
-                "quantity": new_qty,
-                "entry_price": new_entry,
-                "current_price": old.get("current_price", entry_price),
-                "strategy": strategy,
-                "stop_loss": (
+        with self._lock:
+            if symbol in self.positions:
+                # Merge: weighted average entry price
+                old = self.positions[symbol]
+                old_qty = old["quantity"]
+                old_entry = old["entry_price"]
+                new_qty = old_qty + quantity
+                new_entry = (old_qty * old_entry + quantity * entry_price) / new_qty
+                self.positions[symbol] = {
+                    "symbol": symbol,
+                    "quantity": new_qty,
+                    "entry_price": new_entry,
+                    "current_price": old.get("current_price", entry_price),
+                    "strategy": strategy,
+                    "stop_loss": (
+                        stop_loss
+                        if stop_loss is not None
+                        else old.get(
+                            "stop_loss",
+                            new_entry * (1 - self.config["stop_loss"]["default_pct"] / 100),
+                        )
+                    ),
+                    "take_profit": (
+                        take_profit
+                        if take_profit is not None
+                        else old.get(
+                            "take_profit",
+                            new_entry
+                            * (
+                                1
+                                + self.config.get("take_profit", {}).get("default_pct", 6.0)
+                                / 100
+                            ),
+                        )
+                    ),
+                    "trailing_stop_pct": old.get("trailing_stop_pct", 1.5),
+                    "highest_price": max(
+                        old.get("highest_price", entry_price), entry_price
+                    ),
+                    "created_at": old.get("created_at", now),
+                    "updated_at": now,
+                }
+                logger.info(f"Merged position: {symbol} -> {new_qty} @ {new_entry:.6f}")
+            else:
+                sl = (
                     stop_loss
                     if stop_loss is not None
-                    else old.get(
-                        "stop_loss",
-                        new_entry * (1 - self.config["stop_loss"]["default_pct"] / 100),
-                    )
-                ),
-                "take_profit": (
+                    else entry_price * (1 - self.config["stop_loss"]["default_pct"] / 100)
+                )
+                tp = (
                     take_profit
                     if take_profit is not None
-                    else old.get(
-                        "take_profit",
-                        new_entry
-                        * (
-                            1
-                            + self.config.get("take_profit", {}).get("default_pct", 6.0)
-                            / 100
-                        ),
-                    )
-                ),
-                "trailing_stop_pct": old.get("trailing_stop_pct", 1.5),
-                "highest_price": max(
-                    old.get("highest_price", entry_price), entry_price
-                ),
-                "created_at": old.get("created_at", now),
-                "updated_at": now,
-            }
-            logger.info(f"Merged position: {symbol} -> {new_qty} @ {new_entry:.6f}")
-        else:
-            sl = (
-                stop_loss
-                if stop_loss is not None
-                else entry_price * (1 - self.config["stop_loss"]["default_pct"] / 100)
-            )
-            tp = (
-                take_profit
-                if take_profit is not None
-                else entry_price
-                * (1 + self.config.get("take_profit", {}).get("default_pct", 6.0) / 100)
-            )
-            self.positions[symbol] = {
-                "symbol": symbol,
-                "quantity": quantity,
-                "entry_price": entry_price,
-                "current_price": entry_price,
-                "strategy": strategy,
-                "stop_loss": sl,
-                "take_profit": tp,
-                "trailing_stop_pct": 1.5,
-                "highest_price": entry_price,
-                "created_at": now,
-                "updated_at": now,
-            }
-            logger.info(f"Added position: {symbol} {quantity} @ {entry_price}")
+                    else entry_price
+                    * (1 + self.config.get("take_profit", {}).get("default_pct", 6.0) / 100)
+                )
+                self.positions[symbol] = {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "entry_price": entry_price,
+                    "current_price": entry_price,
+                    "strategy": strategy,
+                    "stop_loss": sl,
+                    "take_profit": tp,
+                    "trailing_stop_pct": 1.5,
+                    "highest_price": entry_price,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                logger.info(f"Added position: {symbol} {quantity} @ {entry_price}")
 
-        if deduct_cash:
-            self.cash_balance -= quantity * entry_price
+            if deduct_cash:
+                self.cash_balance -= quantity * entry_price
 
         # Record BUY trade to StateDB (skip during sync to avoid phantom records)
         if self._db is not None and not _from_sync:
@@ -335,119 +338,122 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             symbol: Position symbol to close.
             close_price: Override price for closing. If None, uses pos["current_price"].
         """
-        if symbol in self.positions:
+        with self._lock:
+            if symbol not in self.positions:
+                return {"success": False, "error": f"No position for {symbol}"}
             pos = self.positions.pop(symbol)
-            pos["closed_at"] = datetime.now().isoformat()
 
-            price = (
-                close_price
-                if close_price is not None
-                else pos.get("current_price", pos["entry_price"])
-            )
-            pos["close_price"] = price
+        pos["closed_at"] = datetime.now().isoformat()
 
-            # Credit sale proceeds to cash balance
-            pnl = (price - pos["entry_price"]) * pos["quantity"]
+        price = (
+            close_price
+            if close_price is not None
+            else pos.get("current_price", pos["entry_price"])
+        )
+        pos["close_price"] = price
+
+        # Credit sale proceeds to cash balance
+        pnl = (price - pos["entry_price"]) * pos["quantity"]
+        with self._lock:
             self.cash_balance += pos["quantity"] * price
-            pos["pnl"] = pnl
-            pos["realized"] = True
+        pos["pnl"] = pnl
+        pos["realized"] = True
 
-            # Record trade to StateDB
-            if self._db is not None:
-                try:
-                    self._db.trade_add(
-                        symbol=symbol,
-                        side="SELL",
-                        qty=pos["quantity"],
-                        price=price,
-                        pnl=pnl,
-                    )
-                    logger.info(
-                        f"Recorded trade: {symbol} SELL qty={pos['quantity']} price={price:.6f} PnL={pnl:.2f}"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to record trade to StateDB: {e}")
-
-                # Record outcome using stored entry_rowid for precise matching
-                try:
-                    from src.trade_outcome_recorder import TradeOutcomeRecorder
-
-                    recorder = TradeOutcomeRecorder(db=self._db)
-                    entry_rowid = pos.get("entry_rowid")
-                    recorder.record_outcome(
-                        symbol=symbol,
-                        exit_price=price,
-                        exit_reason=pos.get("exit_reason", "manual"),
-                        entry_id=entry_rowid,
-                    )
-                except Exception as e:
-                    logger.debug(f"Trade outcome recording failed: {e}")
-
-            self._save_state(force=True)
-            logger.info(f"Closed position: {symbol}, PnL: {pnl:.2f}")
-
-            # Publish event to event bus + update contextual bandit (Phase 9)
+        # Record trade to StateDB
+        if self._db is not None:
             try:
-                from src.event_bus import get_event_bus
-
-                bus = get_event_bus()
-                bus.publish(
-                    "trade_executed",
-                    {
-                        "symbol": symbol,
-                        "action": "SELL",
-                        "qty": pos["quantity"],
-                        "price": price,
-                        "pnl": pnl,
-                        "pnl_pct": (
-                            ((price - pos["entry_price"]) / pos["entry_price"] * 100)
-                            if pos["entry_price"] > 0
-                            else 0
-                        ),
-                    },
+                self._db.trade_add(
+                    symbol=symbol,
+                    side="SELL",
+                    qty=pos["quantity"],
+                    price=price,
+                    pnl=pnl,
                 )
-                bus.publish(
-                    "position_closed",
-                    {
-                        "symbol": symbol,
-                        "entry_price": pos["entry_price"],
-                        "close_price": price,
-                        "pnl": pnl,
-                        "strategy": pos.get("strategy", "unknown"),
-                    },
+                logger.info(
+                    f"Recorded trade: {symbol} SELL qty={pos['quantity']} price={price:.6f} PnL={pnl:.2f}"
                 )
             except Exception as e:
-                logger.debug(f"Event bus publish failed: {e}")
+                logger.error(f"Failed to record trade to StateDB: {e}")
 
-            # Update contextual bandit with trade outcome
+            # Record outcome using stored entry_rowid for precise matching
             try:
-                from src.contextual_bandit import get_contextual_bandit
+                from src.trade_outcome_recorder import TradeOutcomeRecorder
 
-                bandit = get_contextual_bandit()
-                pnl_pct = (
-                    ((price - pos["entry_price"]) / pos["entry_price"]) * 100
-                    if pos["entry_price"] > 0
-                    else 0
+                recorder = TradeOutcomeRecorder(db=self._db)
+                entry_rowid = pos.get("entry_rowid")
+                recorder.record_outcome(
+                    symbol=symbol,
+                    exit_price=price,
+                    exit_reason=pos.get("exit_reason", "manual"),
+                    entry_id=entry_rowid,
                 )
-                # Reconstruct context from stored data or use defaults
-                ctx = {
-                    "hmm_regime": "sideways",
-                    "fear_greed": 50,
-                    "btc_trend": "NEUTRAL",
-                    "portfolio_heat": "warm",
-                }
-                stored_ctx = pos.get("bandit_context")
-                if stored_ctx:
-                    ctx = stored_ctx
-                # Use actual invest_pct from the trade (stored as fraction, e.g. 0.15)
-                raw_invest = pos.get("invest_pct", 0.8)
-                action = raw_invest / 100.0 if raw_invest > 1.0 else raw_invest
-                bandit.update_from_outcome(ctx, action_taken=action, pnl_pct=pnl_pct)
             except Exception as e:
-                logger.debug(f"Bandit update failed: {e}")
+                logger.debug(f"Trade outcome recording failed: {e}")
 
-            return pos
-        return {}
+        self._save_state(force=True)
+        logger.info(f"Closed position: {symbol}, PnL: {pnl:.2f}")
+
+        # Publish event to event bus + update contextual bandit (Phase 9)
+        try:
+            from src.event_bus import get_event_bus
+
+            bus = get_event_bus()
+            bus.publish(
+                "trade_executed",
+                {
+                    "symbol": symbol,
+                    "action": "SELL",
+                    "qty": pos["quantity"],
+                    "price": price,
+                    "pnl": pnl,
+                    "pnl_pct": (
+                        ((price - pos["entry_price"]) / pos["entry_price"] * 100)
+                        if pos["entry_price"] > 0
+                        else 0
+                    ),
+                },
+            )
+            bus.publish(
+                "position_closed",
+                {
+                    "symbol": symbol,
+                    "entry_price": pos["entry_price"],
+                    "close_price": price,
+                    "pnl": pnl,
+                    "strategy": pos.get("strategy", "unknown"),
+                },
+            )
+        except Exception as e:
+            logger.debug(f"Event bus publish failed: {e}")
+
+        # Update contextual bandit with trade outcome
+        try:
+            from src.contextual_bandit import get_contextual_bandit
+
+            bandit = get_contextual_bandit()
+            pnl_pct = (
+                ((price - pos["entry_price"]) / pos["entry_price"]) * 100
+                if pos["entry_price"] > 0
+                else 0
+            )
+            # Reconstruct context from stored data or use defaults
+            ctx = {
+                "hmm_regime": "sideways",
+                "fear_greed": 50,
+                "btc_trend": "NEUTRAL",
+                "portfolio_heat": "warm",
+            }
+            stored_ctx = pos.get("bandit_context")
+            if stored_ctx:
+                ctx = stored_ctx
+            # Use actual invest_pct from the trade (stored as fraction, e.g. 0.15)
+            raw_invest = pos.get("invest_pct", 0.8)
+            action = raw_invest / 100.0 if raw_invest > 1.0 else raw_invest
+            bandit.update_from_outcome(ctx, action_taken=action, pnl_pct=pnl_pct)
+        except Exception as e:
+            logger.debug(f"Bandit update failed: {e}")
+
+        return pos
 
     def get_position(self, symbol: str) -> Optional[Dict]:
         """Get a single position by symbol"""

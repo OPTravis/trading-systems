@@ -41,9 +41,12 @@ class StateDB:
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local connection (sqlite3 is not thread-safe by default).
-        
+
         FIX M1: Auto-close stale connections to prevent file descriptor leaks.
         Connections older than 5 minutes are recycled.
+
+        FIX P2-3: Periodic integrity check to detect database corruption early.
+        Integrity check runs once per connection recycling cycle.
         """
         now = time.monotonic()
         # Check if existing connection is stale (>5 min old)
@@ -53,8 +56,8 @@ class StateDB:
                 # Run WAL checkpoint before recycling connection
                 try:
                     self._local.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"StateDB: WAL checkpoint failed: {e}")
                 try:
                     self._local.conn.close()
                 except Exception:
@@ -68,6 +71,20 @@ class StateDB:
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn_created = now
+
+            # Run integrity check on new connections (throttled to once per hour)
+            last_check = getattr(self._local, "last_integrity_check", 0)
+            if now - last_check > 3600:  # 1 hour
+                try:
+                    result = self._local.conn.execute("PRAGMA quick_check").fetchone()
+                    if result and result[0] != "ok":
+                        logger.error(f"StateDB: quick_check failed: {result[0]}")
+                        # Create backup before potential corruption
+                        self.backup()
+                    self._local.last_integrity_check = now
+                except Exception as e:
+                    logger.warning(f"StateDB: quick_check error: {e}")
+
         return self._local.conn
 
     def transaction(self):
@@ -106,6 +123,79 @@ class StateDB:
                 logger.error("Failed to close DB connection on shutdown", exc_info=True)
             self._local.conn = None  # type: ignore[assignment]
             self._local.conn_created = 0
+
+    def check_integrity(self) -> Dict[str, Any]:
+        """Run SQLite integrity check and return results.
+
+        Returns:
+            {
+                "ok": bool,           # True if no corruption detected
+                "errors": List[str],  # List of integrity errors (empty if ok)
+                "tables": int,        # Number of tables
+                "size_mb": float,     # Database file size in MB
+            }
+        """
+        result = {"ok": True, "errors": [], "tables": 0, "size_mb": 0.0}
+        try:
+            conn = self._get_conn()
+
+            # Run PRAGMA integrity_check
+            rows = conn.execute("PRAGMA integrity_check").fetchall()
+            for row in rows:
+                if row[0] != "ok":
+                    result["ok"] = False
+                    result["errors"].append(row[0])
+
+            # Count tables
+            tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+            ).fetchone()
+            result["tables"] = tables[0] if tables else 0
+
+            # Get database size
+            if self.db_path.exists():
+                result["size_mb"] = self.db_path.stat().st_size / (1024 * 1024)
+
+            if result["ok"]:
+                logger.info(
+                    f"StateDB: integrity check passed ({result['tables']} tables, {result['size_mb']:.1f} MB)"
+                )
+            else:
+                logger.error(f"StateDB: integrity check FAILED: {result['errors']}")
+
+        except Exception as e:
+            result["ok"] = False
+            result["errors"].append(str(e))
+            logger.error(f"StateDB: integrity check error: {e}")
+
+        return result
+
+    def backup(self, backup_path: Optional[str] = None) -> bool:
+        """Create a backup of the database.
+
+        Args:
+            backup_path: Path for backup file. If None, uses state.db.backup.YYYYMMDD
+
+        Returns:
+            True if backup succeeded, False otherwise.
+        """
+        try:
+            if backup_path is None:
+                from datetime import datetime
+
+                date_str = datetime.now().strftime("%Y%m%d")
+                backup_path = str(self.db_path.parent / f"state.db.backup.{date_str}")
+
+            conn = self._get_conn()
+            backup_conn = sqlite3.connect(backup_path)
+            conn.backup(backup_conn)
+            backup_conn.close()
+
+            logger.info(f"StateDB: backup created at {backup_path}")
+            return True
+        except Exception as e:
+            logger.error(f"StateDB: backup failed: {e}")
+            return False
 
     def _init_db(self):
         """Create tables if not exist."""

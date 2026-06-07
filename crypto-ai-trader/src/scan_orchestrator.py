@@ -72,7 +72,6 @@ def cmd_scan(send_notification: bool = False):
         notifier = FeishuNotifier()
         gainers = [m for m in movers if m["direction"] == "gainer"]
         losers = [m for m in movers if m["direction"] == "loser"]
-        gainers + losers
         notifier.send_market_scan(opportunities, gainers, losers)
         logger.info("Feishu notification sent")
 
@@ -323,7 +322,6 @@ def _step_research_top_n(ctx):
     adapted = ctx["adapted"]
     regime = ctx["regime"]
     fng = ctx["fng"]
-    ctx["fng_label"]
     btc_trend = ctx["btc_trend"]
     acct = ctx["acct"]
 

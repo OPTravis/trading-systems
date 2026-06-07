@@ -341,8 +341,8 @@ class DimensionScorer:
                             "weight": 0.05,
                             "data": {"btc_change": btc_change},
                         }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"DimensionScorer: regulatory dimension error: {e}")
         return {
             "score": 0.0,
             "signals": ["neutral_regulatory"],

@@ -89,7 +89,15 @@ class CircuitBreaker:
         """Check if trading should be halted. Returns True=halted, False=OK."""
         now = time.time()
 
-        # Check if trip has expired
+        # Indefinite pause (e.g. 20% drawdown) — requires manual reset
+        if self._tripped_until is None and self._trip_reason:
+            logger.warning(
+                f"CircuitBreaker: TRIPPED — {self._trip_reason} "
+                f"(manual reset required)"
+            )
+            return True
+
+        # Check if timed trip has expired
         if self._tripped_until and now >= self._tripped_until:
             self.reset()
             return False

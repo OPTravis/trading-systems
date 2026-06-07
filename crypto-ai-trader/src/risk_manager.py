@@ -6,6 +6,7 @@ All state is persisted to local JSON files in ~/crypto-ai-trader/data/.
 
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -18,6 +19,9 @@ from src.correlation_risk import CorrelationRiskManager
 from src.drawdown_breaker import DrawdownBreaker
 
 logger = logging.getLogger(__name__)
+
+# Module-level lock for risk_guard table (prevents read-modify-write race conditions)
+_risk_guard_lock = threading.Lock()
 
 # Base directory for persisted state
 from src.utils import get_project_root
@@ -118,7 +122,6 @@ class TrendFilter:
 
             trend_result = Indicators.btc_trend_score(klines)
 
-            [k["close"] for k in klines]
             adx_value = Indicators.adx(klines, 14)
 
             # ADX filter: weak trend → reduce position size
@@ -582,16 +585,17 @@ class ConsecutiveLossGuard:
         try:
             from src.state_db import get_state_db
 
-            db = get_state_db()
-            db.risk_set(
-                {
-                    "daily_pnl": 0,  # Not tracked here, reserved for future
-                    "streak": self._state.get("consecutive_losses", 0),
-                    "last_reset": self._state.get("last_loss_time", time.time()),
-                    # NOTE: DB column is named "last_reset" but stores "last_loss_time"
-                    # (timestamp of the most recent loss). Schema migration needed to rename.
-                }
-            )
+            with _risk_guard_lock:
+                db = get_state_db()
+                db.risk_set(
+                    {
+                        "daily_pnl": 0,  # Not tracked here, reserved for future
+                        "streak": self._state.get("consecutive_losses", 0),
+                        "last_reset": self._state.get("last_loss_time", time.time()),
+                        # NOTE: DB column is named "last_reset" but stores "last_loss_time"
+                        # (timestamp of the most recent loss). Schema migration needed to rename.
+                    }
+                )
             # Also persist history to JSON backup for disaster recovery
             _save_json(self._filepath, self._state)
             return True
@@ -881,10 +885,11 @@ class PerPairCooldown:
         try:
             from src.state_db import get_state_db
 
-            db = get_state_db()
-            existing = db.risk_get() or {}
-            existing["pair_cooldowns"] = self._cooldowns
-            db.risk_set(existing)
+            with _risk_guard_lock:
+                db = get_state_db()
+                existing = db.risk_get() or {}
+                existing["pair_cooldowns"] = self._cooldowns
+                db.risk_set(existing)
         except Exception:
             logger.error("Failed to save per-pair cooldowns to StateDB", exc_info=True)
 
@@ -998,7 +1003,11 @@ class RiskManager:
                         )
             except Exception as e:
                 logger.error(f"RiskManager: trend filter error: {e}")
-                # Fail-open for trend filter (don't block on error)
+                # Fail-open for trend filter but reduce size as safety measure
+                adjustments["size_multiplier"] = min(
+                    adjustments["size_multiplier"], 0.5
+                )
+                reasons.append("TrendFilter: API error — reducing size to 50% as safety")
         else:
             logger.debug("RiskManager: no binance_client, skipping trend filter")
 
@@ -1072,8 +1081,8 @@ class RiskManager:
                                         self.client.get_ticker_price(f"{_asset}USDT")
                                     )
                                     _rm_portfolio_value += _qty * _p
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.debug(f"RiskManager: failed to get price for {_asset}: {e}")
                 except Exception:
                     logger.error(
                         "RiskManager: failed to compute portfolio value for daily loss",
@@ -1096,6 +1105,7 @@ class RiskManager:
             logger.error(f"RiskManager: pair cooldown check error: {e}")
 
         # 5. Drawdown breaker (10% hard stop)
+        dd_check = {}  # Initialize before try block — used by stepwise drawdown below
         if self.drawdown_breaker and self.client:
             try:
                 acct = self.client.get_account()
@@ -1139,15 +1149,16 @@ class RiskManager:
                     reasons.append(f"Drawdown: {dd_check['drawdown_pct']:.1f}%")
             except Exception as e:
                 logger.error(f"RiskManager: drawdown check error: {e}")
+                # Fail-closed: if we can't check drawdown, block trading for safety
+                allowed = False
+                reasons.append(f"DRAWDOWN CHECK FAILED: {e} — blocking trade for safety")
 
         # 6. Stepwise drawdown — graduated risk reduction (P1: integrate into pre_trade_check)
         if self.drawdown_breaker and self.client:
             try:
                 from src.stepwise_drawdown import get_drawdown_action
 
-                dd_pct = (
-                    dd_check.get("drawdown_pct", 0.0) if "dd_check" in dir() else 0.0
-                )
+                dd_pct = dd_check.get("drawdown_pct", 0.0)
                 sd_action = get_drawdown_action(dd_pct)
                 sd_sm = sd_action.get("size_multiplier", 1.0)
                 if sd_sm < 1.0:
@@ -1246,6 +1257,10 @@ class RiskManager:
             "trend_filter": trend,
             "trailing_stops": self.trailing_stop.get_all(),
             "loss_guard": self.loss_guard.get_status(),
+            "daily_loss": self.daily_loss.get_status() if hasattr(self, 'daily_loss') else None,
+            "pair_cooldown": {
+                "cooldowns": self.pair_cooldown._cooldowns if hasattr(self, 'pair_cooldown') else {},
+            },
             "drawdown_breaker": (
                 self.drawdown_breaker.get_status()
                 if self.drawdown_breaker is not None
@@ -1281,6 +1296,8 @@ class RiskManager:
         from src.state_db import get_state_db
 
         db = get_state_db()
+        # NOTE: Using _get_conn() directly because StateDB lacks a public method
+        # for querying trade_outcomes. Consider adding db.trade_outcomes_get_recent().
         conn = db._get_conn()
 
         # Get recent closed trades

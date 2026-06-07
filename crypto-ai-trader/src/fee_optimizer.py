@@ -118,8 +118,8 @@ class FeeOptimizer:
             price = self.client.get_ticker_price("BNBUSDT")
             if price and price > 0:
                 return float(price)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"FeeOptimizer: failed to get BNB price: {e}")
         return 600  # fallback
 
     def get_effective_fees(self, use_bnb: Optional[bool] = None) -> Dict:

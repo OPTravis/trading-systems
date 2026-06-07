@@ -179,8 +179,10 @@ def execute_auto_trade(
                                 _dca_coins.add(_buy.split("/")[0])
                             if not _dca.get(_tier, {}).get("buys"):
                                 _dca_coins.update(["BTC", "ETH", "SOL"])
-        except Exception:
-            pass
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning(f"DCA state file corrupted: {e}, skipping DCA exclusion")
+        except Exception as e:
+            logger.warning(f"Failed to load DCA state: {e}, skipping DCA exclusion")
 
     _base = symbol.replace("/USDT", "").replace("USDT", "")
     if _base in _dca_coins:
