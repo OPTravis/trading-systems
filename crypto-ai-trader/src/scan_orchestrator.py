@@ -10,7 +10,7 @@ from typing import Dict
 from src.bear_analyst import BearAnalyst
 from src.binance_client import BinanceClient  # noqa: F401 — needed for test mocking
 from src.market_scanner import MarketScanner
-from src.notifier import FeishuNotifier
+from src.notifier import FeishuNotifier, send_signal
 from src.paper_trader import get_trading_client, is_paper_mode
 from src.pending_confirmation import clear_pending, save_pending
 from src.portfolio import PortfolioManager
@@ -960,6 +960,16 @@ def _step_execute_trades(ctx):
 
             print(
                 f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Tier: {result['tier']} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}"
+            )
+            # Write signal to pending.json for heartbeat notification
+            send_signal(
+                signal_type="BUY",
+                symbol=ctx["symbol"],
+                action="OPEN",
+                price=result["price"],
+                quantity=result["qty"],
+                reason=ctx["reason"],
+                strategy=ctx["strategy"],
             )
         else:
             # Self-heal: diagnose failure at point of error

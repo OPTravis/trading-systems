@@ -362,7 +362,7 @@ class BinanceClient:
         """Get account information with retry"""
         for attempt in range(3):
             try:
-                return self.client.account(recvWindow=self.recv_window)
+                return self.client.get_account(recvWindow=self.recv_window)
             except ClientError as e:
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
@@ -1090,7 +1090,7 @@ class BinanceClient:
             params = {"symbol": symbol, "limit": limit}
             if from_id is not None:
                 params["fromId"] = from_id
-            return self.client.my_trades(**params)
+            return self.client.get_my_trades(**params)
         except Exception as e:
             logger.error(f"Failed to get my trades for {symbol}: {e}")
             return []
