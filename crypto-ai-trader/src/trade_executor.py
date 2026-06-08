@@ -160,6 +160,17 @@ def execute_auto_trade(
 
     from src.utils import get_project_root
 
+    # Safety: Ensure stop_loss_pct is never 0 (hard minimum 3%)
+    MIN_STOP_LOSS_PCT = 3.0
+    MAX_SINGLE_LOSS_PCT = 5.0  # Maximum single trade loss as % of position
+    if stop_loss_pct < MIN_STOP_LOSS_PCT:
+        logger.warning(
+            f"stop_loss_pct={stop_loss_pct}% is below minimum {MIN_STOP_LOSS_PCT}%, "
+            f"adjusting to {MIN_STOP_LOSS_PCT}%"
+        )
+        stop_loss_pct = MIN_STOP_LOSS_PCT
+        stop_price = price * (1 - stop_loss_pct / 100)
+
     # DCA exclusion: block auto-trade on coins managed by DCA monitor
     # Skip when DCA_CHECK_DISABLED=1 (for testing) or when state file doesn't exist
     _dca_coins: set = set()
@@ -457,6 +468,36 @@ def execute_auto_trade(
             f"${_orig:.2f} → ${invest_amount:.2f}"
         )
         invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
+
+    # Safety: Single trade max loss limit (3% of total portfolio value)
+    # Calculate maximum loss for this trade: position_size * stop_loss_pct
+    max_loss_pct_of_portfolio = 3.0  # Maximum 3% of portfolio per trade
+    try:
+        _account = client.get_account()
+        _total_portfolio = usdt_bal
+        for b in _account.get("balances", []):
+            _asset = b["asset"]
+            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
+            if _qty > 0 and _asset not in ("USDT", "NTRN"):
+                try:
+                    _p = float(client.get_ticker_price(f"{_asset}USDT"))
+                    _total_portfolio += _qty * _p
+                except Exception:
+                    pass
+        max_loss_amount = _total_portfolio * max_loss_pct_of_portfolio / 100.0
+        potential_loss = invest_amount * stop_loss_pct / 100.0
+        if potential_loss > max_loss_amount:
+            # Reduce position size to limit max loss
+            adjusted_invest = max_loss_amount / (stop_loss_pct / 100.0)
+            logger.warning(
+                f"Single trade loss limit: potential loss ${potential_loss:.2f} > "
+                f"max ${max_loss_amount:.2f} ({max_loss_pct_of_portfolio}% of portfolio). "
+                f"Reducing position: ${invest_amount:.2f} → ${adjusted_invest:.2f}"
+            )
+            invest_amount = adjusted_invest
+            invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
+    except Exception as e:
+        logger.warning(f"Single trade loss limit check failed (proceeding without): {e}")
 
     # Final minimum check — caps may have reduced below Binance minimum
     if invest_amount < 10:

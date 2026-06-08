@@ -82,6 +82,7 @@ class StateMixin:
             db_positions = self._db.portfolio_get_all()
             if db_positions:
                 self.positions = {}
+                MIN_SL_PCT = 3.0  # Safety: minimum stop loss percentage
                 for sym, data in db_positions.items():
                     entry_price = data["entry_price"]
                     db_sl = data.get("stop_loss")
@@ -94,6 +95,15 @@ class StateMixin:
                         + self.config.get("take_profit", {}).get("default_pct", 6.0)
                         / 100
                     )
+                    # Safety: Ensure stop_loss is never 0 or invalid
+                    min_sl_price = entry_price * (1 - MIN_SL_PCT / 100)
+                    effective_sl = db_sl if db_sl and db_sl > 0 else default_sl
+                    if effective_sl <= 0 or effective_sl >= entry_price:
+                        effective_sl = min_sl_price
+                        logger.warning(
+                            f"Invalid stop_loss for {sym} (db_sl={db_sl}), "
+                            f"enforcing minimum {MIN_SL_PCT}%: ${effective_sl:.4f}"
+                        )
                     self.positions[sym] = {
                         "symbol": sym,
                         "quantity": data["quantity"],
@@ -102,7 +112,7 @@ class StateMixin:
                         "strategy": data.get("strategy", ""),
                         "created_at": data.get("opened_at", datetime.now().isoformat()),
                         "updated_at": datetime.now().isoformat(),
-                        "stop_loss": db_sl if db_sl is not None else default_sl,
+                        "stop_loss": effective_sl,
                         "take_profit": db_tp if db_tp is not None else default_tp,
                         "trailing_stop_pct": 1.5,
                         "highest_price": entry_price,
@@ -284,6 +294,16 @@ class StateMixin:
                             + self.config.get("take_profit", {}).get("default_pct", 6.0)
                             / 100
                         )
+                        # Safety: Ensure stop_loss is never 0 or None (minimum 3%)
+                        MIN_SL_PCT = 3.0
+                        min_sl_price = entry_price * (1 - MIN_SL_PCT / 100)
+                        effective_sl = db_sl if db_sl and db_sl > 0 else default_sl
+                        if effective_sl <= 0 or effective_sl >= entry_price:
+                            effective_sl = min_sl_price
+                            logger.warning(
+                                f"Invalid stop_loss for {sym_key} (db_sl={db_sl}), "
+                                f"enforcing minimum {MIN_SL_PCT}%: ${effective_sl:.4f}"
+                            )
                         self.positions[sym_key] = {
                             "symbol": sym_key,
                             "quantity": total,
@@ -292,7 +312,7 @@ class StateMixin:
                             "strategy": "synced",
                             "created_at": datetime.now().isoformat(),
                             "updated_at": datetime.now().isoformat(),
-                            "stop_loss": db_sl if db_sl else default_sl,
+                            "stop_loss": effective_sl,
                             "take_profit": db_tp if db_tp else default_tp,
                             "trailing_stop_pct": 1.5,
                             "highest_price": entry_price,
