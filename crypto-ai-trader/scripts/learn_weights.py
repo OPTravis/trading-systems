@@ -16,7 +16,7 @@ import os
 import json
 import argparse
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 
 def main():

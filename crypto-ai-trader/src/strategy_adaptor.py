@@ -598,3 +598,41 @@ class StrategyAdaptor:
             fear_greed, btc_trend, btc_price_change_24h
         )
         return len(enabled) > 0
+
+    def get_full_config(self) -> Optional[Dict]:
+        """Get the full cached configuration from the last adapt() call.
+        
+        Returns the cached config dict, or None if adapt() hasn't been called yet.
+        """
+        if self._cache is None:
+            return None
+        return self._cache
+
+    def format_report(self) -> str:
+        """Format the current strategy adaptation status as a readable report."""
+        cfg = self._cache
+        if not cfg:
+            return "策略適配器尚未運行。請先執行 cron-scan 以生成適配配置。"
+        
+        lines = []
+        lines.append("=== 策略適配狀態 ===")
+        lines.append(f"Regime: {cfg.get('regime', 'N/A')}")
+        lines.append(f"Fear & Greed: {cfg.get('fng', 'N/A')}")
+        lines.append(f"BTC Trend: {cfg.get('btc_trend', 'N/A')}")
+        lines.append(f"Dynamic Threshold: {cfg.get('dynamic_threshold', 'N/A')}")
+        lines.append("")
+        lines.append("策略狀態:")
+        
+        strategies = cfg.get('strategies', {})
+        for name, sconfig in strategies.items():
+            status = "✅ ON" if sconfig.get('enabled') else "❌ OFF"
+            reason = sconfig.get('reason', '')
+            if sconfig.get('enabled'):
+                size = sconfig.get('size_multiplier', 1.0) * 100
+                sl = sconfig.get('sl_pct', 7.0)
+                hold = sconfig.get('max_hold_hours', 48)
+                lines.append(f"  {name}: {status} (size={size:.0f}%, SL={sl}%, hold={hold}h)")
+            else:
+                lines.append(f"  {name}: {status} ({reason})")
+        
+        return "\n".join(lines)

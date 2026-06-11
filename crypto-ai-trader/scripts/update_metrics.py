@@ -5,7 +5,7 @@ Reads current portfolio state and updates Prometheus metrics.
 Stdout is SILENT when healthy.
 """
 import sys
-sys.path.insert(0, '/home/travis/crypto-ai-trader')
+sys.path.insert(0, str(Path.home() / 'trading-systems' / 'crypto-ai-trader'))
 
 from src.metrics_exporter import start_metrics_server, get_metrics
 from src.binance_client import BinanceClient

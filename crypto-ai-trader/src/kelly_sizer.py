@@ -202,6 +202,17 @@ class KellyPositionSizer:
                     }
 
         # Apply minimum threshold only for positive Kelly
+        if kelly <= 0:
+            reason = f"Kelly={kelly:.1%} ≤ 0, blocking trade"
+            return {
+                "position_pct": 0.0,
+                "win_rate": round(win_rate, 4),
+                "reward_risk": round(reward_risk, 2),
+                "avg_win": round(avg_win, 4),
+                "avg_loss": round(avg_loss, 4),
+                "confidence": "BLOCKED",
+                "reason": reason,
+            }
         if kelly < MIN_POSITION_PCT:
             kelly = MIN_POSITION_PCT
             reason = (

@@ -23,7 +23,7 @@ import os
 import sys
 from typing import Dict
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 from src.backtest import BacktestEngine
 from src.binance_client import BinanceClient

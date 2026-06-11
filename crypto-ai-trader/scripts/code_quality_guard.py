@@ -10,7 +10,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-PROJECT = Path.home() / "crypto-ai-trader"
+PROJECT = Path.home() / "trading-systems" / "crypto-ai-trader"
 SRC = PROJECT / "src"
 CONFIG = PROJECT / "config"
 

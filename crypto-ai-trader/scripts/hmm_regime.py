@@ -13,7 +13,7 @@ import os
 import argparse
 import logging
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)

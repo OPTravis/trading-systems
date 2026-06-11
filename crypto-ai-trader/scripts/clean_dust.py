@@ -16,13 +16,17 @@ import logging
 from pathlib import Path
 
 # Ensure project root is in sys.path (works from any directory)
-_project_root = Path.home() / 'crypto-ai-trader'
+_project_root = Path.home() / 'trading-systems' / 'crypto-ai-trader'
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Ensure venv site-packages is in sys.path (for binance, dotenv, etc.)
 import glob as _glob
-_venv_site = str(Path.home() / 'crypto-ai-trader' / '.venv' / 'lib' / 'python*' / 'site-packages')
+_venv_dir = Path.home() / 'trading-systems' / 'crypto-ai-trader' / '.venv'
+if sys.platform == 'win32':
+    _venv_site = str(_venv_dir / 'Lib' / 'site-packages')
+else:
+    _venv_site = str(_venv_dir / 'lib' / 'python*' / 'site-packages')
 _matches = _glob.glob(_venv_site)
 if _matches:
     _site = _matches[-1]  # latest python version

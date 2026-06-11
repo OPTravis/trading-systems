@@ -25,6 +25,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+def _order_qty(o):
+    """Get order quantity from either Binance SDK ('origQty') or ccxt ('amount')."""
+    return float(o.get('origQty') or o.get('amount') or 0)
+
+def _order_id(o):
+    """Get order ID from either Binance SDK ('orderId') or ccxt ('id')."""
+    return o.get('orderId') or o.get('id')
+
+def _is_stop_order(o):
+    """Check if order is a stop/stop-loss order (case-insensitive for ccxt compat)."""
+    t = o.get('type', '')
+    return 'STOP' in t.upper() or 'stop' in t.lower()
+
 from src.strategy_guard import strategy_guard
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -299,7 +312,7 @@ class GridBot:
                 else:
                     result = self.client.place_limit_buy(symbol, qty, price)
                     if result:
-                        level["buy_order_id"] = result["orderId"]
+                        level["buy_order_id"] = _order_id(result)
                         level["status"] = "pending_buy"
                         placed_buys += 1
 
@@ -318,7 +331,7 @@ class GridBot:
                 else:
                     result = self.client.place_limit_sell(symbol, qty, price)
                     if result:
-                        level["sell_order_id"] = result["orderId"]
+                        level["sell_order_id"] = _order_id(result)
                         level["status"] = "pending_sell"
                         placed_sells += 1
 
@@ -428,7 +441,7 @@ class GridBot:
                             symbol, sell_qty, sell_price
                         )
                         if result:
-                            sell_level["sell_order_id"] = result["orderId"]
+                            sell_level["sell_order_id"] = _order_id(result)
                             sell_level["status"] = "pending_sell"
 
                 self.state["stats"]["total_trades"] += 1
@@ -462,7 +475,7 @@ class GridBot:
                     if buy_qty * buy_price >= MIN_NOTIONAL:
                         result = self.client.place_limit_buy(symbol, buy_qty, buy_price)
                         if result:
-                            buy_level["buy_order_id"] = result["orderId"]
+                            buy_level["buy_order_id"] = _order_id(result)
                             buy_level["status"] = "pending_buy"
 
                 self.state["stats"]["total_trades"] += 1
@@ -499,7 +512,7 @@ class GridBot:
         """Compare open orders against state to find fills."""
         fills = []
         open_orders = self.client.get_open_orders(symbol)
-        open_order_ids = {o["orderId"] for o in open_orders}
+        open_order_ids = {_order_id(o) for o in open_orders}
 
         for level in self.state["grid_levels"]:
             # Check buy orders

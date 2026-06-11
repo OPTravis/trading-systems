@@ -20,7 +20,7 @@ import json
 import time
 import logging
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 from src.binance_client import BinanceClient
 from src.state_db import get_state_db

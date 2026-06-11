@@ -15,6 +15,7 @@ Usage:
     python main.py backtest          # Run backtest
     python main.py trailing-check    # Update trailing stop-loss orders
     python main.py dust-check        # Auto-convert dust positions (< $1) to USDT/BNB
+    python main.py sync-outcomes     # Sync trade outcomes with portfolio state
 """
 
 import sys
@@ -336,8 +337,8 @@ def cmd_cron_report():
             lines.append("\n📦 無持倉")
 
         if open_orders:
-            sl_count = sum(1 for o in open_orders if 'STOP' in o['type'])
-            tp_count = sum(1 for o in open_orders if 'LIMIT' in o['type'])
+            sl_count = sum(1 for o in open_orders if _is_stop_order(o))
+            tp_count = sum(1 for o in open_orders if 'LIMIT' in o.get('type', '').upper())
             lines.append(f"\n📋 掛單: {len(open_orders)} 個 (SL:{sl_count} TP:{tp_count})")
 
         # Rebalancing suggestions
@@ -472,6 +473,26 @@ def cmd_auto_dust():
     }, default=str, ensure_ascii=False))
 
 
+def cmd_sync_outcomes():
+    """Sync trade outcomes with actual portfolio state.
+    
+    Detects positions that were closed by SL/TP order fills on Binance
+    and records them in the trade_outcomes table.
+    """
+    logger.info("=== Sync Trade Outcomes ===")
+    
+    try:
+        from scripts.sync_trade_outcomes import sync_outcomes
+        result = sync_outcomes()
+        if result:
+            print(f"同步完成: {result.get('synced', 0)} 筆交易已同步")
+        else:
+            print("同步完成: 無需同步的交易")
+    except Exception as e:
+        logger.error(f"同步失敗: {e}")
+        print(f"❌ 同步失敗: {e}")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -497,6 +518,8 @@ def main():
         cmd_trailing_check()
     elif cmd == "dust-check":
         cmd_auto_dust()
+    elif cmd == "sync-outcomes":
+        cmd_sync_outcomes()
     elif cmd == "strategy-status":
         cmd_strategy_status()
     elif cmd == "analyze":
@@ -513,6 +536,19 @@ def main():
     else:
         print(f"Unknown command: {cmd}")
         print(__doc__)
+
+def _order_qty(o):
+    """Get order quantity from either Binance SDK ('origQty') or ccxt ('amount')."""
+    return float(o.get('origQty') or o.get('amount') or 0)
+
+def _order_id(o):
+    """Get order ID from either Binance SDK ('orderId') or ccxt ('id')."""
+    return o.get('orderId') or o.get('id')
+
+def _is_stop_order(o):
+    """Check if order is a stop/stop-loss order (case-insensitive for ccxt compat)."""
+    t = o.get('type', '')
+    return 'STOP' in t.upper() or 'stop' in t.lower()
 
 def cmd_trailing_check():
     """Check open positions and update trailing stop-loss orders.
@@ -680,7 +716,7 @@ def cmd_trailing_check():
 
         # Find existing SL order
         open_orders = client.get_open_orders(symbol)
-        sl_orders = [o for o in open_orders if 'STOP' in o.get('type', '')]
+        sl_orders = [o for o in open_orders if _is_stop_order(o)]
 
         old_sl_price = 0
         sl_moved = False
@@ -691,9 +727,9 @@ def cmd_trailing_check():
 
             # Only move UP
             if new_sl > old_sl_price * 1.001:  # 0.1% buffer to avoid dust moves
-                sl_qty = float(sl_order['origQty'])
+                sl_qty = _order_qty(sl_order)
                 # Cancel old SL
-                cancel_result = client.cancel_order(symbol, sl_order['orderId'])
+                cancel_result = client.cancel_order(symbol, _order_id(sl_order))
                 if cancel_result:
                     # Place new SL
                     new_sl_rounded = round(new_sl, p_prec)
@@ -765,10 +801,10 @@ def cmd_trailing_check():
         free_qty = pos['free']
 
         open_orders = client.get_open_orders(symbol)
-        sl_orders = [o for o in open_orders if 'STOP' in o.get('type', '')]
-        tp_orders = [o for o in open_orders if 'STOP' not in o.get('type', '')]
-        sl_covered = sum(float(o['origQty']) for o in sl_orders)
-        tp_covered = sum(float(o['origQty']) for o in tp_orders)
+        sl_orders = [o for o in open_orders if _is_stop_order(o)]
+        tp_orders = [o for o in open_orders if not _is_stop_order(o)]
+        sl_covered = sum(_order_qty(o) for o in sl_orders)
+        tp_covered = sum(_order_qty(o) for o in tp_orders)
 
         uncovered_by_sl = total_qty - sl_covered  # units with no SL protection
 
@@ -793,7 +829,7 @@ def cmd_trailing_check():
             else:
                 # All or most units locked in TP with no SL — cancel lowest TP
                 lowest_tp = min(tp_orders, key=lambda o: float(o.get('price', 0)))
-                cancel_qty = float(lowest_tp['origQty'])
+                cancel_qty = _order_qty(lowest_tp)
                 logger.warning(
                     "No SL for %s (%.4f total, SL covers %.4f, TP locks %.4f). "
                     "Canceling lowest TP (%.4f @ $%s) to place SL.",
@@ -801,7 +837,7 @@ def cmd_trailing_check():
                     cancel_qty, lowest_tp.get('price'),
                 )
                 try:
-                    cancel_result = client.cancel_order(symbol, lowest_tp['orderId'])
+                    cancel_result = client.cancel_order(symbol, _order_id(lowest_tp))
                     if cancel_result:
                         free_qty += cancel_qty  # freed up by cancel
                         uncovered_by_sl = total_qty - sl_covered  # recalculate

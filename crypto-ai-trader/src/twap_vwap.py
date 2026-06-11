@@ -15,6 +15,19 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+def _order_qty(o):
+    """Get order quantity from either Binance SDK ('origQty') or ccxt ('amount')."""
+    return float(o.get('origQty') or o.get('amount') or 0)
+
+def _order_id(o):
+    """Get order ID from either Binance SDK ('orderId') or ccxt ('id')."""
+    return o.get('orderId') or o.get('id')
+
+def _is_stop_order(o):
+    """Check if order is a stop/stop-loss order (case-insensitive for ccxt compat)."""
+    t = o.get('type', '')
+    return 'STOP' in t.upper() or 'stop' in t.lower()
+
 
 # ---------------------------------------------------------------------------
 # Minimum order filters (Binance defaults; overridden by exchange info)
@@ -267,11 +280,11 @@ def _execute_slices(
             open_orders = client.get_open_orders(symbol)
             for o in open_orders:
                 try:
-                    client.cancel_order(symbol, o["orderId"])
+                    client.cancel_order(symbol, _order_id(o))
                 except Exception:
                     logger.error(
                         "Failed to cancel unfilled limit order %s for %s",
-                        o["orderId"],
+                        _order_id(o),
                         symbol,
                         exc_info=True,
                     )

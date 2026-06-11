@@ -22,12 +22,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path.home() / "crypto-ai-trader"))
+sys.path.insert(0, str(Path.home() / "trading-systems" / "crypto-ai-trader"))
 
 from src.state_db import get_state_db
 from src.binance_client import BinanceClient
 
-DATA_DIR = Path.home() / "crypto-ai-trader" / "data"
+DATA_DIR = Path.home() / "trading-systems" / "crypto-ai-trader" / "data"
 DB_PATH = DATA_DIR / "state.db"
 
 

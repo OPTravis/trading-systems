@@ -81,8 +81,8 @@ def detect_repeating_errors(outputs):
 
 def investigate_price_deviation():
     """Investigate if _check_price_deviation is working correctly."""
-    sys.path.insert(0, str(Path.home() / "crypto-ai-trader"))
-    sys.path.insert(0, str(Path.home() / "crypto-ai-trader" / "src"))
+    sys.path.insert(0, str(Path.home() / "trading-systems" / "crypto-ai-trader"))
+    sys.path.insert(0, str(Path.home() / "trading-systems" / "crypto-ai-trader" / "src"))
 
     try:
         from src.binance_client import BinanceClient
@@ -128,7 +128,7 @@ def investigate_price_deviation():
 
 def auto_fix_price_deviation():
     """Auto-fix klines dict/list format mismatch in trade_executor.py."""
-    trade_executor_path = Path.home() / "crypto-ai-trader" / "src" / "trade_executor.py"
+    trade_executor_path = Path.home() / "trading-systems" / "crypto-ai-trader" / "src" / "trade_executor.py"
     if not trade_executor_path.exists():
         return False, "trade_executor.py not found"
 

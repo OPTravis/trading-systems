@@ -21,7 +21,20 @@ import time
 import logging
 from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
+
+def _order_qty(o):
+    """Get order quantity from either Binance SDK ('origQty') or ccxt ('amount')."""
+    return float(o.get('origQty') or o.get('amount') or 0)
+
+def _order_id(o):
+    """Get order ID from either Binance SDK ('orderId') or ccxt ('id')."""
+    return o.get('orderId') or o.get('id')
+
+def _is_stop_order(o):
+    """Check if order is a stop/stop-loss order (case-insensitive for ccxt compat)."""
+    t = o.get('type', '')
+    return 'STOP' in t.upper() or 'stop' in t.lower()
 
 from src.binance_client import BinanceClient
 from src.state_db import get_state_db
@@ -615,7 +628,7 @@ def main():
                 try:
                     open_orders = client.get_open_orders(sym)
                     for o in open_orders:
-                        client.cancel_order(sym, int(o["orderId"]))
+                        client.cancel_order(sym, _order_id(o))
                         time.sleep(0.3)
                 except Exception:
                     pass

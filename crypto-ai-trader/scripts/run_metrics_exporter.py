@@ -14,7 +14,7 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load env from crypto-secrets.env (has 'export' prefixes, parse manually)
-_env_file = os.path.expanduser('~/crypto-ai-trader/crypto-secrets.env')
+_env_file = os.path.expanduser('~/trading-systems/crypto-ai-trader/crypto-secrets.env')
 if os.path.exists(_env_file):
     with open(_env_file) as f:
         for line in f:
@@ -81,7 +81,7 @@ def update_metrics():
         # Per-position PnL — derive entry from state.db, compare with live price
         try:
             import sqlite3
-            _conn = sqlite3.connect(os.path.expanduser('~/crypto-ai-trader/data/state.db'))
+            _conn = sqlite3.connect(os.path.expanduser('~/trading-systems/crypto-ai-trader/data/state.db'))
             _conn.row_factory = sqlite3.Row
             _portfolio = {row['symbol']: dict(row) for row in _conn.execute("SELECT * FROM portfolio").fetchall()}
             _conn.close()
@@ -127,7 +127,7 @@ def update_metrics():
         # Cumulative PnL from trade_outcomes (closed trades)
         try:
             import sqlite3
-            _pnl_conn = sqlite3.connect(os.path.expanduser('~/crypto-ai-trader/data/state.db'))
+            _pnl_conn = sqlite3.connect(os.path.expanduser('~/trading-systems/crypto-ai-trader/data/state.db'))
             _pnl_row = _pnl_conn.execute(
                 "SELECT COALESCE(SUM(net_pnl_absolute), 0) FROM trade_outcomes WHERE status='closed'"
             ).fetchone()
@@ -140,7 +140,7 @@ def update_metrics():
         # Trade counts from trade_outcomes (real trades only, NOT phantom from trades table)
         try:
             import sqlite3
-            _tc_conn = sqlite3.connect(os.path.expanduser('~/crypto-ai-trader/data/state.db'))
+            _tc_conn = sqlite3.connect(os.path.expanduser('~/trading-systems/crypto-ai-trader/data/state.db'))
             _total_buys = _tc_conn.execute(
                 "SELECT COUNT(*) FROM trade_outcomes"
             ).fetchone()[0]

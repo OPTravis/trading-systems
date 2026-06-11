@@ -7,7 +7,11 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
+
+def _order_qty(o):
+    """Get order quantity from either Binance SDK ('origQty') or ccxt ('amount')."""
+    return float(o.get('origQty') or o.get('amount') or 0)
 
 from scripts.ensure_tp_sl import get_positions_with_targets, get_order_coverage, get_symbol_filters, floor_qty
 from src.binance_client import BinanceClient
@@ -71,7 +75,7 @@ def test_tp_breach_logic():
         
         # 斷言 6: OCO 訂單中 SL+TP 各鎖定全量，但只會成交一邊
         # 所以訂單總量可能 = 2*qty (OCO 結構)，這是預期行為
-        total_qty = sum(float(o["origQty"]) for o in sl_orders + tp_orders)
+        total_qty = sum(_order_qty(o) for o in sl_orders + tp_orders)
         qty = pos["quantity"]
         # OCO 訂單：SL 和 TP 各鎖定 qty，總和 = 2*qty
         # 分離訂單：總和應 <= qty

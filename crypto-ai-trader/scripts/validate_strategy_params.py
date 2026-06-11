@@ -21,7 +21,7 @@ import logging
 import argparse
 from datetime import datetime
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)

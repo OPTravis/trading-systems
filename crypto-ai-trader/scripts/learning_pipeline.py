@@ -19,12 +19,16 @@ import time
 from pathlib import Path
 
 # no_agent scripts need venv site-packages
-_venv_site = str(Path.home() / 'crypto-ai-trader' / '.venv' / 'lib' / 'python*' / 'site-packages')
+_venv_dir = Path.home() / 'trading-systems' / 'crypto-ai-trader' / '.venv'
+if sys.platform == 'win32':
+    _venv_site = str(_venv_dir / 'Lib' / 'site-packages')
+else:
+    _venv_site = str(_venv_dir / 'lib' / 'python*' / 'site-packages')
 _matches = _glob.glob(_venv_site)
 if _matches:
     sys.path.insert(0, _matches[-1])
 
-PROJECT = Path.home() / "crypto-ai-trader"
+PROJECT = Path.home() / "trading-systems" / "crypto-ai-trader"
 PYTHON = str(PROJECT / ".venv" / "bin" / "python")
 
 

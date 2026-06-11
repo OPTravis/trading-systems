@@ -29,14 +29,18 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 # no_agent cron uses system Python — add venv site-packages for project deps
-_venv_site = str(Path.home() / 'crypto-ai-trader' / '.venv' / 'lib' / 'python*' / 'site-packages')
+_venv_dir = Path.home() / 'trading-systems' / 'crypto-ai-trader' / '.venv'
+if sys.platform == 'win32':
+    _venv_site = str(_venv_dir / 'Lib' / 'site-packages')
+else:
+    _venv_site = str(_venv_dir / 'lib' / 'python*' / 'site-packages')
 _matches = _glob.glob(_venv_site)
 if _matches:
     sys.path.insert(0, _matches[-1])
 
 HERMES_DIR = Path.home() / ".hermes"
 CRON_OUTPUT_DIR = HERMES_DIR / "cron" / "output"
-CRYPTO_DIR = Path.home() / "crypto-ai-trader"
+CRYPTO_DIR = Path.home() / "trading-systems" / "crypto-ai-trader"
 
 # Cron job IDs
 JOB_IDS = {

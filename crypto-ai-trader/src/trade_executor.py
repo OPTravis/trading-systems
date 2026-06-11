@@ -160,9 +160,12 @@ def execute_auto_trade(
 
     from src.utils import get_project_root
 
-    # Safety: Ensure stop_loss_pct is never 0 (hard minimum 3%)
+    # Safety: Ensure stop_loss_pct is never 0 or negative (hard minimum 3%)
     MIN_STOP_LOSS_PCT = 3.0
     MAX_SINGLE_LOSS_PCT = 5.0  # Maximum single trade loss as % of position
+    if stop_loss_pct <= 0:
+        logger.error(f"stop_loss_pct={stop_loss_pct}% is invalid (≤0), blocking trade")
+        return {"success": False, "reason": f"Invalid stop_loss_pct={stop_loss_pct}%"}
     if stop_loss_pct < MIN_STOP_LOSS_PCT:
         logger.warning(
             f"stop_loss_pct={stop_loss_pct}% is below minimum {MIN_STOP_LOSS_PCT}%, "

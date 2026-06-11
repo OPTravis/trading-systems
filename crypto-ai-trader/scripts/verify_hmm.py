@@ -14,7 +14,7 @@ import sys
 import os
 import numpy as np
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
 
 
 def test_hmm_regime():
