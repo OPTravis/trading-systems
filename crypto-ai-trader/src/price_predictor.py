@@ -35,6 +35,11 @@ DERIVED_FEATURES = [
     "btc_trend",
     "volatility_24h",
     "volume_surge",
+    # --- P3 #11: new features ---
+    "exchange_netflow",       # net BTC flow to/from exchanges (negative = outflow = bullish)
+    "whale_activity",         # whale transaction z-score (higher = more large moves)
+    "funding_rate",           # perpetual funding rate (contrarian: high positive = bearish)
+    "open_interest_change",   # 24h OI change % (rising + price up = momentum)
 ]
 ALL_FEATURES = FACTOR_FEATURES + DERIVED_FEATURES
 
@@ -80,6 +85,71 @@ class PricePredictor:
     def is_ready(self) -> bool:
         """Check if model is trained and ready for predictions."""
         return self.is_trained and self.model is not None and self.scaler is not None
+
+    def enrich_features(self, features: Dict, symbol: str = "BTCUSDT") -> Dict:
+        """Populate missing derived features from data feeds.
+
+        Fills in exchange_netflow, whale_activity, funding_rate,
+        open_interest_change from on-chain and market data feeds.
+        Uses neutral 0.0 defaults if data is unavailable.
+
+        Args:
+            features: Existing feature dict (modified in-place and returned).
+            symbol: Trading pair symbol for data lookup.
+
+        Returns:
+            The enriched feature dict.
+        """
+        # --- exchange_netflow (from on-chain data) ---
+        if "exchange_netflow" not in features:
+            try:
+                from src.data_feed_onchain import DeFiLlamaOnChain
+                onchain = DeFiLlamaOnChain()
+                score = onchain.get_onchain_score()
+                # Map 0-100 score to roughly -1 to +1 range
+                # Low score (bearish on-chain) → positive netflow (inflow to exchanges) → bearish
+                # High score (bullish on-chain) → negative netflow (outflow) → bullish
+                features["exchange_netflow"] = (50.0 - score) / 50.0
+            except Exception:
+                features["exchange_netflow"] = 0.0  # neutral default
+
+        # --- whale_activity (placeholder — no dedicated feed yet) ---
+        if "whale_activity" not in features:
+            features["whale_activity"] = 0.0  # neutral default
+
+        # --- funding_rate (from scoring aggregator) ---
+        if "funding_rate" not in features:
+            try:
+                from src.data_feed_funding import FundingRate
+                from src.data_feed_oi import OpenInterest
+                from src.data_feed_scorer import ScoringDataAggregator
+                funding = FundingRate()
+                oi = OpenInterest()
+                scorer = ScoringDataAggregator(funding, oi)
+                sentiment = scorer.get_symbol_sentiment(symbol)
+                # funding_rate is in decimal (e.g. 0.0001 = 0.01%)
+                # Scale: 0.0001 → 0.01 range for feature
+                raw_fr = sentiment.get("funding_rate", 0.0)
+                features["funding_rate"] = raw_fr * 1000  # scale to ~0.1 range
+            except Exception:
+                features["funding_rate"] = 0.0  # neutral default
+
+        # --- open_interest_change (from scoring aggregator) ---
+        if "open_interest_change" not in features:
+            try:
+                from src.data_feed_funding import FundingRate
+                from src.data_feed_oi import OpenInterest
+                from src.data_feed_scorer import ScoringDataAggregator
+                funding = FundingRate()
+                oi = OpenInterest()
+                scorer = ScoringDataAggregator(funding, oi)
+                sentiment = scorer.get_symbol_sentiment(symbol)
+                oi_pct = sentiment.get("oi_change_pct")
+                features["open_interest_change"] = oi_pct if oi_pct is not None else 0.0
+            except Exception:
+                features["open_interest_change"] = 0.0  # neutral default
+
+        return features
 
     def train(self, features_list: List[Dict], labels: List[int]) -> Dict:
         """
@@ -145,6 +215,10 @@ class PricePredictor:
         """
         if not self.is_ready():
             raise RuntimeError("Model not trained. Call train() or load_model() first.")
+
+        # Auto-enrich with on-chain/market features if missing
+        symbol = features.get("symbol", "BTCUSDT")
+        features = self.enrich_features(dict(features), symbol=symbol)
 
         X = self._extract_features(features)
         assert self.scaler is not None

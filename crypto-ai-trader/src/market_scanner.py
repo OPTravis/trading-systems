@@ -126,6 +126,13 @@ class MarketScanner:
 
         # 4. Sort by weighted score, return top 20
         opportunities.sort(key=lambda x: x["score"], reverse=True)
+
+        # 4b. Optional LLM sentiment enrichment for top candidates (best-effort)
+        try:
+            self._llm_enrich_sentiment(opportunities[:5])
+        except Exception:
+            logger.debug("LLM sentiment enrichment skipped (non-critical)", exc_info=True)
+
         logger.info(f"Found {len(opportunities)} opportunities (top 20 returned)")
         return opportunities[:20]
 
@@ -922,6 +929,60 @@ class MarketScanner:
                 base = 30.0
 
         return max(0.0, min(100.0, base))
+
+    # ------------------------------------------------------------------
+    # LLM Sentiment Enrichment (optional, best-effort)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _llm_enrich_sentiment(top_opportunities: List[Dict]) -> None:
+        """Enrich top candidates with LLM-based sentiment analysis.
+
+        Best-effort: silently skips on any failure. Adds an 'llm_sentiment'
+        field and appends a signal to the signal list.
+        """
+        if not top_opportunities:
+            return
+
+        try:
+            from src.llm_client import LLMClient
+            client = LLMClient()
+        except Exception:
+            return
+
+        for opp in top_opportunities:
+            symbol = opp.get("symbol", "")
+            price = opp.get("price", 0)
+            score = opp.get("score", 0)
+            funding = opp.get("funding_rate")
+            oi_change = opp.get("oi_change_pct")
+            signals = opp.get("signals", [])
+
+            context = (
+                f"Symbol: {symbol}, Price: {price}, Score: {score}/100, "
+                f"Funding rate: {funding}, OI 24h change: {oi_change}%, "
+                f"Current signals: {', '.join(signals[:5])}"
+            )
+
+            prompt = (
+                "You are a crypto trading analyst. Based on this data, give a "
+                "1-sentence sentiment assessment (bullish/bearish/neutral) with "
+                "a brief reason. Max 20 words. Start with BULLISH/BEARISH/NEUTRAL.\n\n"
+                f"{context}"
+            )
+
+            try:
+                resp = client.chat(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2,
+                    max_tokens=60,
+                )
+                if resp and resp.get("content"):
+                    assessment = resp["content"].strip()[:100]
+                    opp["llm_sentiment"] = assessment
+                    opp.setdefault("signals", []).append(f"🤖 LLM: {assessment}")
+            except Exception:
+                logger.debug("LLM sentiment failed for %s", symbol, exc_info=True)
 
     # ------------------------------------------------------------------
     # Signal generation

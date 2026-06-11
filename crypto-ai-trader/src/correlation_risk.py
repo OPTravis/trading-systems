@@ -5,7 +5,7 @@ During market stress, altcoins correlate >0.8 with BTC. Holding BTC+ETH+SOL
 provides no diversification — they all crash together.
 
 This module:
-1. Computes 30-day return correlation matrix from daily closes
+1. Computes 45-day return correlation matrix from daily closes
 2. Blocks new positions if correlation with existing holdings exceeds threshold
 3. Enforces maximum portfolio correlation (average pairwise correlation)
 """
@@ -32,7 +32,7 @@ class CorrelationRiskManager:
         self._cache: Dict[str, Any] = {}
         self._cache_ts: float = 0
 
-    def _get_price_history(self, symbol: str, days: int = 14) -> List[float]:
+    def _get_price_history(self, symbol: str, days: int = 45) -> List[float]:
         """Fetch daily closing prices for correlation calculation."""
         try:
             # Handle both get_klines() (DataFeed) and klines() (BinanceSpotClient)
@@ -95,7 +95,7 @@ class CorrelationRiskManager:
         # Fetch all price histories
         histories = {}
         for sym in symbols:
-            hist = self._get_price_history(sym, days=14)
+            hist = self._get_price_history(sym, days=45)
             if len(hist) >= MIN_HISTORY_DAYS:
                 histories[sym] = hist
 

@@ -120,6 +120,7 @@ class StrategyEvolver:
                         "win_rate": round(win_rate, 1),
                         "avg_pnl": round(avg_pnl, 2),
                         "trades": trades,
+                        "trades_at_disable": trades,
                     }
                     changes.append(
                         {
@@ -136,9 +137,10 @@ class StrategyEvolver:
             # Check for re-enable
             elif is_disabled:
                 # Only consider recovery if enough new trades since disable
-                disabled[strategy]
+                trades_at_disable = disabled[strategy].get("trades_at_disable", 0)
+                trades_since_disable = trades - trades_at_disable
 
-                if trades >= MIN_TRADES_TO_EVALUATE and win_rate > RECOVER_WIN_RATE:
+                if trades_since_disable >= MIN_TRADES_TO_RECOVER and win_rate > RECOVER_WIN_RATE:
                     del disabled[strategy]
                     changes.append(
                         {

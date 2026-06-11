@@ -1248,6 +1248,119 @@ class RiskManager:
             pnl,
         )
 
+        # P3 #12: LLM stop-loss advisory (advisory only, not binding)
+        # Trigger when: significant loss + adverse regime (high_vol / bear_trend)
+        if pnl < 0:
+            try:
+                self._llm_stop_loss_advisory(symbol, pnl)
+            except Exception as e:
+                logger.debug("LLM stop-loss advisory failed (non-critical): %s", e)
+
+    def _llm_stop_loss_advisory(self, symbol: str, pnl: float) -> None:
+        """Call LLM for stop-loss advice when loss + adverse regime detected.
+
+        Advisory only — logged but never overrides risk decisions.
+        Triggers when:
+            - Trade has a loss (pnl < 0)
+            - HMM regime is high_vol or bear_trend, OR BTC trend is BEARISH
+        """
+        # Check regime conditions
+        adverse_regime = False
+        regime_info = ""
+        try:
+            from src.state_db import get_state_db
+            db = get_state_db()
+            hmm_regime = db.get("hmm_regime") or "unknown"
+            hmm_label = db.get("hmm_label_mapping") or {}
+            regime_info = f"HMM regime: {hmm_regime}"
+            if isinstance(hmm_label, dict):
+                regime_label = hmm_label.get(str(hmm_regime), str(hmm_regime))
+                regime_info += f" ({regime_label})"
+            # High-vol or bear regimes are adverse
+            if "bear" in str(hmm_regime).lower() or "bear" in str(hmm_label).lower():
+                adverse_regime = True
+            if "vol" in str(hmm_regime).lower() or "vol" in str(hmm_label).lower():
+                adverse_regime = True
+        except Exception:
+            pass
+
+        # Also check BTC trend from trend filter cache
+        btc_trend_info = ""
+        try:
+            if self.trend_filter._cache:
+                trend_val = self.trend_filter._cache.get("trend", "N/A")
+                btc_trend_info = f"BTC trend: {trend_val}"
+                if trend_val == "BEARISH":
+                    adverse_regime = True
+        except Exception:
+            pass
+
+        if not adverse_regime:
+            return  # Only advise in adverse conditions
+
+        # Compute rough loss percentage estimate
+        try:
+            from src.state_db import get_state_db
+            db = get_state_db()
+            portfolio_val = float(db.get("portfolio_value") or 10000)
+            loss_pct = abs(pnl) / portfolio_val * 100 if portfolio_val > 0 else 0
+        except Exception:
+            loss_pct = abs(pnl) / 10000 * 100  # rough fallback
+
+        # Only bother LLM for meaningful losses
+        if loss_pct < 1.0:
+            return
+
+        # Build advisory prompt
+        prompt = (
+            f"交易损失告警：\n"
+            f"- 交易对: {symbol}\n"
+            f"- 亏损: {pnl:.2f} USDT (约 {loss_pct:.1f}%)\n"
+            f"- 市场状态: {regime_info}; {btc_trend_info}\n"
+            f"\n"
+            f"请根据当前市场状态，简要建议：\n"
+            f"1. 是否应该立即平仓止损 (CLOSE/EXIT/HOLD)\n"
+            f"2. 如果继续持有，建议止损位\n"
+            f"3. 风险提示\n"
+            f"\n"
+            f"请用中文回复，控制在100字以内。"
+        )
+
+        try:
+            from src.llm_client import get_llm_client
+            llm = get_llm_client()
+            result = llm.chat(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=200,
+            )
+            if result and result.get("content"):
+                advice = result["content"]
+                provider = result.get("provider", "unknown")
+                logger.warning(
+                    "LLM ADVISORY [%s] %s: loss %.2f USDT (%.1f%%) | %s | %s\n"
+                    "  → Advice: %s",
+                    provider,
+                    symbol,
+                    pnl,
+                    loss_pct,
+                    regime_info,
+                    btc_trend_info,
+                    advice,
+                )
+                # Log "CLOSE"/"EXIT" signals for monitoring
+                advice_upper = advice.upper()
+                if "CLOSE" in advice_upper or "EXIT" in advice_upper or "平仓" in advice:
+                    logger.warning(
+                        "LLM ADVISORY SIGNAL: %s suggests CLOSE/EXIT for %s",
+                        provider,
+                        symbol,
+                    )
+            else:
+                logger.debug("LLM advisory: no response for %s", symbol)
+        except Exception as e:
+            logger.debug("LLM advisory call failed: %s", e)
+
     def get_full_status(self) -> Dict:
         """Return a comprehensive status of all risk modules."""
         trend = (

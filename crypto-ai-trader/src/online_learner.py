@@ -294,6 +294,30 @@ class OnlineLearner:
         except Exception as e:
             logger.debug(f"Strategy evolution skipped: {e}")
 
+        # Also trigger HMM auto-retrain if conditions are met
+        try:
+            from src.hmm_regime import HMMRegimeDetector
+            from src.binance_client import BinanceClient
+
+            hmm = HMMRegimeDetector(db=self._db)
+            retrain_check = hmm.should_retrain()
+            if retrain_check["should_retrain"]:
+                logger.info(
+                    f"HMM retrain triggered: {retrain_check['reason']} — "
+                    f"fetching klines for retraining"
+                )
+                try:
+                    client = BinanceClient(testnet=False)
+                    klines = client.get_klines("BTCUSDT", "1h", limit=720)
+                    if klines and len(klines) >= 50:
+                        hmm.auto_retrain(klines_1h=klines)
+                    else:
+                        logger.warning("HMM retrain: insufficient kline data (%s)", len(klines) if klines else 0)
+                except Exception as e:
+                    logger.warning(f"HMM retrain data fetch failed: {e}")
+        except Exception as e:
+            logger.debug(f"HMM auto-retrain check skipped: {e}")
+
         # Also run concept drift detection (Phase 7)
         try:
             from src.concept_drift import ConceptDriftDetector

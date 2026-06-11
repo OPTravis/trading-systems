@@ -13,7 +13,10 @@ import logging
 import time
 from typing import Dict, List, Optional
 
-import redis
+try:
+    import redis
+except ImportError:
+    redis = None  # graceful fallback — FeatureStore will use in-memory mode
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,10 @@ class FeatureStore:
         self._redis_available = False
         self._fallback: Dict[str, Dict] = {}  # key -> {field: value}
         self._fallback_sorted: Dict[str, list] = {}  # key -> [(score, member), ...]
-        self._r: Optional[redis.Redis] = None
+        self._r: Optional["redis.Redis"] = None
+        if redis is None:
+            logger.warning("redis package not installed, using in-memory fallback")
+            return
         try:
             self._r = redis.Redis(host=host, port=port, db=db, decode_responses=True)
             self._r.ping()

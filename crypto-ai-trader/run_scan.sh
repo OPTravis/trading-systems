@@ -1,11 +1,22 @@
 #!/bin/bash
-# Market scan cron wrapper
-# Run market scan and send results to Feishu
+set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+BASEDIR="$(cd "$(dirname "$0")" && pwd)"
+LOG="$BASEDIR/logs/scan.log"
+mkdir -p "$BASEDIR/logs"
 
-# Source secrets
-source ~/crypto-ai-trader/crypto-secrets.env 2>/dev/null
+# Ensure sing-box is running
+if ! pgrep -x sing-box > /dev/null; then
+    echo "[setup] Starting sing-box proxy..."
+    nohup sing-box run -c /etc/sing-box/config.json > /tmp/sing-box.log 2>&1 &
+    sleep 2
+fi
 
-python3 main.py cron-scan >> "$SCRIPT_DIR/logs/cron_scan.log" 2>&1
+# Load .env
+set -a
+source "$BASEDIR/.env"
+set +a
+
+# Run scan
+cd "$BASEDIR"
+python main.py scan 2>&1 | tee "$LOG"

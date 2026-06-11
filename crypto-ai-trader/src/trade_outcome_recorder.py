@@ -294,6 +294,48 @@ class TradeOutcomeRecorder:
             f"OUTCOME_CLOSE: {symbol} {exit_reason} pnl={net_pnl_pct:+.2f}% "
             f"time={time_held_hours:.1f}h score={row['score']} → {'WIN' if is_win else 'LOSS'}"
         )
+
+        # Update ContextualBandit with trade outcome for learning
+        try:
+            from src.contextual_bandit import get_contextual_bandit
+            from src.portfolio import PortfolioManager
+
+            bandit = get_contextual_bandit()
+            # Try to get bandit context from portfolio position (stored at entry time)
+            bandit_context = None
+            bandit_multiplier = 0.8
+            try:
+                pm = PortfolioManager()
+                pos = pm.positions.get(symbol, {})
+                bandit_context = pos.get("bandit_context")
+                bandit_multiplier = pos.get("bandit_multiplier", 0.8)
+            except Exception:
+                pass
+            # Fallback: reconstruct context from row data
+            if bandit_context is None:
+                try:
+                    ctx_data = json.loads(row.get("context_json", "{}"))
+                    bandit_context = {
+                        "hmm_regime": ctx_data.get("regime", "sideways").lower(),
+                        "fear_greed": float(ctx_data.get("fng_score", 50)),
+                        "btc_trend": ctx_data.get("btc_trend", "NEUTRAL"),
+                        "portfolio_heat": "cold",
+                    }
+                except Exception:
+                    bandit_context = None
+            if bandit_context:
+                bandit.update_from_outcome(
+                    context=bandit_context,
+                    action_taken=bandit_multiplier,
+                    pnl_pct=net_pnl_pct,
+                )
+                logger.info(
+                    f"ContextualBandit: updated with pnl={net_pnl_pct:+.2f}% "
+                    f"multiplier={bandit_multiplier} context={bandit_context}"
+                )
+        except Exception as e:
+            logger.debug(f"ContextualBandit update failed (non-critical): {e}")
+
         return outcome
 
     def get_open_entries(self) -> List[Dict]:

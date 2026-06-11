@@ -5,6 +5,7 @@ Thread-safe, SQLite-persisted, singleton.
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -15,7 +16,10 @@ from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path.home() / "crypto-ai-trader" / "data" / "events.db"
+# Resolve project root consistently with other modules
+_project_root = os.environ.get("PROJECT_ROOT")
+PROJECT_ROOT = Path(_project_root) if _project_root else Path(__file__).parent.parent
+DB_PATH = PROJECT_ROOT / "data" / "events.db"
 MAX_EVENTS = 10000
 
 VALID_EVENT_TYPES = {
@@ -39,6 +43,7 @@ class EventBus:
 
     def _init_db(self):
         with self._db_lock:
+            Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(self._db_path)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS events (

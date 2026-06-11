@@ -19,7 +19,10 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import ccxt
+try:
+    import ccxt
+except ImportError:
+    ccxt = None
 from dotenv import load_dotenv
 
 # Load .env early

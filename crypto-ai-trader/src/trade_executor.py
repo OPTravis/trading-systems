@@ -456,11 +456,73 @@ def execute_auto_trade(
     except Exception as e:
         logger.warning(f"Exposure cap check failed (proceeding without): {e}")
 
-    # ── Position size multipliers (strategy + daily loss tier + stepwise drawdown) ──
+    # ── ContextualBandit position size multiplier ──
+    # Thompson Sampling bandit that learns optimal sizing based on market context.
+    _bandit_multiplier = 1.0
+    _bandit_context = {}
+    try:
+        from src.contextual_bandit import DEFAULT_SIZE, get_contextual_bandit
+
+        bandit = get_contextual_bandit()
+
+        # Build context from available market data
+        _bandit_hmm = "sideways"
+        _bandit_fng = 50.0
+        _bandit_btc_trend = "NEUTRAL"
+        try:
+            conn = db._get_conn()
+            hmm_row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_regime'").fetchone()
+            if hmm_row:
+                import json as _json_hmm
+                hmm_data = _json_hmm.loads(hmm_row["value"])
+                _bandit_hmm = hmm_data.get("regime", "sideways").lower()
+        except Exception:
+            pass
+
+        try:
+            from src.data_feed import FearGreedIndex
+            fng = FearGreedIndex()
+            fng_data = fng.get_current()
+            if fng_data and "value" in fng_data:
+                _bandit_fng = float(fng_data["value"])
+        except Exception:
+            pass
+
+        try:
+            conn = db._get_conn()
+            btc_row = conn.execute("SELECT value FROM kv WHERE key = 'btc_trend'").fetchone()
+            if btc_row:
+                _bandit_btc_trend = str(btc_row["value"]).upper()
+        except Exception:
+            pass
+
+        _bandit_heat = "cold"
+        if active_positions >= 4:
+            _bandit_heat = "hot"
+        elif active_positions >= 2:
+            _bandit_heat = "warm"
+
+        _bandit_context = {
+            "hmm_regime": _bandit_hmm,
+            "fear_greed": _bandit_fng,
+            "btc_trend": _bandit_btc_trend,
+            "portfolio_heat": _bandit_heat,
+        }
+        _bandit_multiplier = bandit.recommend_size(_bandit_context)
+        if _bandit_multiplier != DEFAULT_SIZE:
+            logger.info(
+                f"ContextualBandit: multiplier={_bandit_multiplier:.2f} "
+                f"context={_bandit_context}"
+            )
+    except Exception as e:
+        logger.warning(f"ContextualBandit unavailable (using 1.0x): {e}")
+        _bandit_multiplier = 1.0
+
+    # ── Position size multipliers (strategy + daily loss tier + stepwise drawdown + bandit) ──
     # P0-3: strategy_size_multiplier (from strategy_adaptor) was previously ignored,
     # causing FEAR regime positions to be 30-40% oversized.
     _effective_multiplier = max(
-        0.15, strategy_size_multiplier * _dl_multiplier * _sd_multiplier
+        0.15, strategy_size_multiplier * _dl_multiplier * _sd_multiplier * _bandit_multiplier
     )
     if _effective_multiplier < 1.0:
         _orig = invest_amount
@@ -564,8 +626,38 @@ def execute_auto_trade(
             "error": f"Duplicate order: {symbol} already has pending BUY",
         }
 
-    # Market buy - use place_market_buy for proper MARKET order handling
-    buy_result = client.place_market_buy(symbol, qty)
+    # Market buy - use TWAP for large orders, MARKET for small ones
+    from src.twap_vwap import should_use_twap, execute_twap
+
+    if should_use_twap(invest_amount, threshold=100.0):
+        logger.info(
+            "TWAP: $%.2f >= $100 → splitting into %d slices over 2min",
+            invest_amount, 5,
+        )
+        twap_results = execute_twap(
+            client, symbol, "BUY", qty,
+            duration_minutes=2, num_slices=5, dry_run=False,
+        )
+        if twap_results:
+            filled_slices = [s for s in twap_results if s.get("success")]
+            if filled_slices:
+                total_filled = sum(s.get("filled_qty", 0) for s in filled_slices)
+                avg_price = (
+                    sum(s.get("filled_qty", 0) * s.get("price", 0) for s in filled_slices)
+                    / total_filled if total_filled > 0 else price
+                )
+                executed_qty = total_filled
+                buy_result = {"status": "TWAP_FILLED"}
+                results.append(f"TWAP BUY: {executed_qty:.6f} @ avg ${avg_price:.6f} ({len(filled_slices)}/{len(twap_results)} slices)")
+            else:
+                logger.warning("TWAP: all slices failed, falling back to MARKET")
+                buy_result = client.place_market_buy(symbol, qty)
+        else:
+            logger.warning("TWAP: returned empty, falling back to MARKET")
+            buy_result = client.place_market_buy(symbol, qty)
+    else:
+        buy_result = client.place_market_buy(symbol, qty)
+
     if buy_result is None:
         return {
             "success": False,
@@ -573,8 +665,11 @@ def execute_auto_trade(
         }
 
     # Get actual executed quantity from fills
+    # Skip fills parsing if TWAP already populated executed_qty and avg_price
     fills = buy_result.get("fills", [])
-    if fills:
+    if buy_result.get("status") == "TWAP_FILLED":
+        pass  # executed_qty and avg_price already set by TWAP path
+    elif fills:
         executed_qty = sum(float(f.get("qty", 0)) for f in fills)
         avg_price = (
             sum(float(f.get("price", 0)) * float(f.get("qty", 0)) for f in fills)
@@ -645,6 +740,10 @@ def execute_auto_trade(
     # 3. If OCO fails: fallback to separate SL + TP
 
     sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
+    # P0 FIX: SL limit price buffer — ensure limit order fills even in fast markets
+    # stop_price triggers the limit, limit_price is the actual fill floor
+    SL_LIMIT_BUFFER_PCT = 0.015  # 1.5% below stop trigger price
+    sl_limit_price = round(sl_price * (1 - SL_LIMIT_BUFFER_PCT), p_prec)
     sl_placed_qty = 0.0
     tp_placed_qty = 0.0
     oco_placed = False
@@ -670,7 +769,7 @@ def execute_auto_trade(
                     "SELL",
                     "STOP_LOSS_LIMIT",
                     sl_qty,
-                    price=sl_price,
+                    price=sl_limit_price,
                     stop_price=sl_price,
                 )
                 if sl:
@@ -758,7 +857,7 @@ def execute_auto_trade(
                             "SELL",
                             "STOP_LOSS_LIMIT",
                             executed_qty,
-                            price=sl_price,
+                            price=sl_limit_price,
                             stop_price=sl_price,
                         )
                         if sl:
@@ -927,7 +1026,7 @@ def execute_auto_trade(
                                 "SELL",
                                 "STOP_LOSS_LIMIT",
                                 sl_qty,
-                                price=sl_price,
+                                price=sl_limit_price,
                                 stop_price=sl_price,
                             )
                             if sl:
@@ -1006,7 +1105,7 @@ def execute_auto_trade(
                     "SELL",
                     "STOP_LOSS_LIMIT",
                     extra_sl_qty,
-                    price=sl_price,
+                    price=sl_limit_price,
                     stop_price=sl_price,
                 )
                 if extra_sl:
@@ -1100,15 +1199,18 @@ def execute_auto_trade(
             strategy=strategy,
             deduct_cash=True,
         )
-        # Store invest_pct on the position for bandit learning
+        # Store invest_pct and bandit context on the position for bandit learning
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
-            # Persist invest_pct to StateDB so it survives restart
+            if _bandit_context:
+                portfolio.positions[symbol]["bandit_context"] = _bandit_context
+                portfolio.positions[symbol]["bandit_multiplier"] = _bandit_multiplier
+            # Persist to StateDB so it survives restart
             try:
                 if portfolio._db is not None:
                     portfolio._db.portfolio_set(symbol, portfolio.positions[symbol])
             except Exception:
-                logger.debug("Failed to persist invest_pct for %s", symbol)
+                logger.debug("Failed to persist invest_pct/bandit for %s", symbol)
     except Exception as e:
         logger.warning(f"Portfolio tracking failed: {e}")
 

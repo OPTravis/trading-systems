@@ -559,3 +559,96 @@ class HMMRegimeDetector:
         )
 
         return "\n".join(lines)
+
+    def should_retrain(self, min_new_trades: int = 20, max_interval_days: int = 7) -> Dict:
+        """Check if HMM model should be retrained.
+
+        Retraining triggers:
+        (a) N new closed trades since last training, OR
+        (b) max_interval_days have elapsed since last training
+
+        Returns:
+            {"should_retrain": bool, "reason": str, "trades_since": int, "days_since": float}
+        """
+        conn = self._db._get_conn()
+
+        # Get last training metadata
+        row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_model_state'").fetchone()
+        last_trained_at = 0.0
+        last_trained_trades = 0
+        if row:
+            try:
+                state = json.loads(row["value"])
+                last_trained_at = state.get("trained_at", 0.0)
+                last_trained_trades = state.get("n_samples", 0)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Count total closed trades
+        try:
+            trade_count_row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM trade_outcomes WHERE status = 'closed'"
+            ).fetchone()
+            total_closed_trades = trade_count_row["cnt"] if trade_count_row else 0
+        except Exception:
+            total_closed_trades = 0
+
+        trades_since = total_closed_trades - last_trained_trades
+        days_since = (time.time() - last_trained_at) / 86400 if last_trained_at > 0 else 999
+
+        if last_trained_at == 0:
+            return {"should_retrain": True, "reason": "never_trained", "trades_since": 0, "days_since": 999}
+
+        if trades_since >= min_new_trades:
+            return {
+                "should_retrain": True,
+                "reason": f"{trades_since} new trades (>= {min_new_trades})",
+                "trades_since": trades_since,
+                "days_since": round(days_since, 1),
+            }
+
+        if days_since >= max_interval_days:
+            return {
+                "should_retrain": True,
+                "reason": f"{days_since:.1f} days elapsed (>= {max_interval_days})",
+                "trades_since": trades_since,
+                "days_since": round(days_since, 1),
+            }
+
+        return {
+            "should_retrain": False,
+            "reason": f"trades={trades_since}/{min_new_trades}, days={days_since:.1f}/{max_interval_days}",
+            "trades_since": trades_since,
+            "days_since": round(days_since, 1),
+        }
+
+    def auto_retrain(self, klines_1h: Optional[List] = None) -> bool:
+        """Check retrain conditions and retrain HMM if needed.
+
+        Args:
+            klines_1h: Optional pre-fetched 1h klines. If None, skips retrain
+                       (caller is responsible for fetching data).
+
+        Returns:
+            True if retraining was performed.
+        """
+        check = self.should_retrain()
+        if not check["should_retrain"]:
+            logger.info(f"HMM retrain not needed: {check['reason']}")
+            return False
+
+        if klines_1h is None or len(klines_1h) < MIN_KLINES:
+            logger.info(
+                f"HMM retrain triggered ({check['reason']}) but no kline data provided"
+            )
+            return False
+
+        logger.info(
+            f"HMM auto-retrain: {check['reason']} (days_since={check['days_since']:.1f})"
+        )
+        success = self.train(klines_1h)
+        if success:
+            logger.info("HMM auto-retrain completed successfully")
+        else:
+            logger.warning("HMM auto-retrain failed")
+        return success

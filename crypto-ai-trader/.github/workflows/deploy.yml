@@ -1,0 +1,93 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment target"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: "Dry run (skip actual deploy)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Pre-deploy syntax check
+        run: |
+          python -c "
+          import py_compile, glob, sys
+          errors = []
+          for pattern in ['src/**/*.py', 'main.py']:
+              for f in glob.glob(pattern, recursive=True):
+                  try:
+                      py_compile.compile(f, doraise=True)
+                  except py_compile.PyCompileError as e:
+                      errors.append(str(e))
+          if errors:
+              for e in errors: print('ERROR:', e)
+              sys.exit(1)
+          print('Pre-deploy syntax check passed')
+          "
+
+      - name: Deploy via SSH
+        if: ${{ inputs.dry_run == false }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          # --- Placeholder: configure secrets in repo settings ---
+          # DEPLOY_HOST  - server hostname or IP
+          # DEPLOY_USER  - SSH username
+          # DEPLOY_KEY   - SSH private key (PEM)
+          # DEPLOY_PATH  - remote project path
+          #
+          # Uncomment and configure below:
+          #
+          # mkdir -p ~/.ssh
+          # echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          # chmod 600 ~/.ssh/deploy_key
+          # ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          #
+          # rsync -avz --delete \
+          #   -e "ssh -i ~/.ssh/deploy_key" \
+          #   ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          #
+          # ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+          #   "cd $DEPLOY_PATH && systemctl restart crypto-trader"
+
+          echo "Deploy step placeholder — configure DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY, DEPLOY_PATH as repository secrets."
+
+      - name: Dry run summary
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          echo "=== DRY RUN ==="
+          echo "Would deploy to: ${{ inputs.environment }}"
+          echo "Files that would be synced:"
+          find src/ main.py -type f -name '*.py' | head -20
+          echo "..."
+          echo "Dry run complete — no changes made."
