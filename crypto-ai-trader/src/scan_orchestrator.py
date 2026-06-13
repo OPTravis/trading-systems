@@ -10,7 +10,7 @@ from typing import Dict
 from src.bear_analyst import BearAnalyst
 from src.binance_client import BinanceClient  # noqa: F401 — needed for test mocking
 from src.market_scanner import MarketScanner
-from src.notifier import FeishuNotifier, send_signal
+from src.notifier import FeishuNotifier, send_signal, _append_notification
 from src.paper_trader import get_trading_client, is_paper_mode
 from src.pending_confirmation import clear_pending, save_pending
 from src.portfolio import PortfolioManager
@@ -1040,16 +1040,68 @@ def cmd_cron_scan():
     """
     ctx = _step_scan_opportunities()
     if ctx is None:
+        # 即使没有机会也发通知
+        _append_scan_summary(None)
         return
 
     ctx = _step_research_top_n(ctx)
     if ctx is None:
+        _append_scan_summary(ctx)
         return
 
     # NEW: Event-driven position adjustment
     _step_event_driven_adjustment(ctx)
 
     _step_execute_trades(ctx)
+    
+    # 发送扫描摘要通知
+    _append_scan_summary(ctx)
+
+
+def _append_scan_summary(ctx):
+    """Append a brief scan summary notification."""
+    from datetime import datetime
+    
+    now = datetime.now().strftime("%H:%M")
+    
+    if ctx is None:
+        # 扫描失败或无机会
+        body = f"🔍 {now} 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大"
+    else:
+        fng = ctx.get("fng", 50)
+        fng_label = ctx.get("fng_label", "Unknown")
+        opportunities = ctx.get("opportunities", [])
+        threshold = ctx.get("dynamic_threshold", 80)
+        
+        opp_count = len(opportunities)
+        
+        # 市场情绪图标
+        if fng <= 25:
+            emoji = "😱"
+        elif fng <= 45:
+            emoji = "😟"
+        elif fng <= 55:
+            emoji = "😐"
+        elif fng <= 75:
+            emoji = "😊"
+        else:
+            emoji = "🤑"
+        
+        body = f"🔍 {now} 扫描完成\n\n"
+        body += f"{emoji} 市场情绪: {fng} ({fng_label})\n"
+        body += f"📊 动态阈值: {threshold}\n"
+        body += f"💡 发现机会: {opp_count}个"
+        
+        if opp_count > 0:
+            # 显示前3个机会
+            top_3 = opportunities[:3]
+            body += "\n\n🏆 前3名:\n"
+            for i, opp in enumerate(top_3, 1):
+                symbol = opp.get("symbol", "???")
+                score = opp.get("score", 0)
+                body += f"  {i}. {symbol} (评分: {score:.0f})\n"
+    
+    _append_notification("scan_summary", "", body)
 
 
 def _step_event_driven_adjustment(ctx):
