@@ -37,23 +37,17 @@ binance_client = read("src/binance_client.py")
 main_py = read("main.py")
 
 # ============================================================
-# C1: smart_order.py NameError fix
+# C1: smart_order.py NameError fix (P2-7: calculate_position_size removed)
 # ============================================================
-print("\n[C1] smart_order.py: quantity defined before filter check")
-# Find calculate_position_size method
+print("\n[C1] smart_order.py: calculate_position_size removed in P2-7")
+# calculate_position_size was removed as dead code in P2-7 (module overlap).
+# The check is now a no-op — the fix it verified no longer exists in the code.
 cps_match = re.search(
     r"def calculate_position_size\(.*?(?=\n    def |\nclass |\Z)",
     smart_order,
     re.DOTALL,
 )
-cps = cps_match.group(0) if cps_match else ""
-qty_line = cps.find("quantity = usdt_amount / price")
-filter_line = cps.find("if not filters:")
-check(
-    "quantity assigned before if-not-filters block",
-    qty_line > 0 and filter_line > 0 and qty_line < filter_line,
-    f"qty at char {qty_line}, filters at char {filter_line}",
-)
+check("calculate_position_size removed (P2-7)", cps_match is None)
 
 # ============================================================
 # C2: strategy_adaptor.py mutable shared dict fix
@@ -218,25 +212,23 @@ check(
 )
 
 # ============================================================
-# M7: smart_order.py batch price API calls
+# M7: smart_order.py batch price API calls (P2-7: get_current_positions removed)
 # ============================================================
-print("\n[M7] smart_order.py: get_current_positions uses batch ticker")
-# Find get_current_positions
+print("\n[M7] smart_order.py: get_current_positions removed in P2-7")
+# get_current_positions was removed as dead code in P2-7 (module overlap).
+# Position counting is now handled by count_active_positions() in trade_executor.
 gcp_match = re.search(
     r"def get_current_positions\(.*?(?=\n    def |\Z)", smart_order, re.DOTALL
 )
-gcp = gcp_match.group(0) if gcp_match else ""
-check("batch ticker fetch in get_current_positions", "get_24hr_stats()" in gcp)
-check("no per-asset get_price() calls", "self.get_price(" not in gcp)
+check("get_current_positions removed (P2-7)", gcp_match is None)
 
 # ============================================================
-# M8: smart_order.py division by zero fix
+# M8: smart_order.py division by zero fix (P2-7: place_buy_with_sl_tp removed)
 # ============================================================
-print("\n[M8] smart_order.py: division by zero in risk_reward")
-# Find the risk_reward line
+print("\n[M8] smart_order.py: risk_reward code removed with place_buy_with_sl_tp in P2-7")
+# place_buy_with_sl_tp (which contained the risk_reward calc) was removed in P2-7.
 rr_match = re.search(r"risk_reward.*", smart_order)
-rr_line = rr_match.group(0) if rr_match else ""
-check("sl_pct > 0 guard on risk_reward", "> 0" in rr_line and "N/A" in rr_line)
+check("no risk_reward in smart_order (moved/removed)", rr_match is None)
 
 # ============================================================
 # Summary

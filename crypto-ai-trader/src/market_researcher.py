@@ -423,90 +423,12 @@ class MarketResearcher:
                 else:
                     result["volume_trend"] = "LOW"
 
-            # Check if futures available for funding/OI
-            try:
-                funding_resp = requests.get(
-                    "https://fapi.binance.com/fapi/v1/fundingRate",
-                    params={"symbol": f"{coin}USDT", "limit": 3},  # type: ignore[arg-type]
-                    timeout=3,
-                )
-                if funding_resp.status_code == 200:
-                    funding_data = funding_resp.json()
-                    if funding_data:
-                        latest = float(funding_data[-1].get("fundingRate", 0))
-                        result["funding_rate"] = round(latest * 100, 4)
-
-                        # Whale activity heuristic: extreme funding = whale pressure
-                        if latest > 0.05:
-                            result["whale_activity"] = "LONG_HEAVY"
-                        elif latest < -0.05:
-                            result["whale_activity"] = "SHORT_HEAVY"
-                        elif latest > 0.01:
-                            result["whale_activity"] = "SLIGHT_LONG"
-                        elif latest < -0.01:
-                            result["whale_activity"] = "SLIGHT_SHORT"
-                        else:
-                            result["whale_activity"] = "NEUTRAL"
-
-                # Top trader long/short ratio — real whale positioning
-                top_resp = requests.get(
-                    "https://fapi.binance.com/futures/data/topLongShortPositionRatio",
-                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},  # type: ignore[arg-type]
-                    timeout=3,
-                )
-                if top_resp.status_code == 200 and top_resp.json():
-                    top_data = top_resp.json()[0]
-                    long_pct = float(top_data.get("longAccount", 0.5))
-                    short_pct = float(top_data.get("shortAccount", 0.5))
-                    result["top_trader_long_pct"] = round(long_pct * 100, 1)
-                    result["top_trader_short_pct"] = round(short_pct * 100, 1)
-                    # Override whale activity with more accurate data
-                    if long_pct > 0.6:
-                        result["whale_activity"] = "WHALE_LONG"
-                    elif short_pct > 0.6:
-                        result["whale_activity"] = "WHALE_SHORT"
-
-                # Taker buy/sell ratio — aggressive buying/selling
-                taker_resp = requests.get(
-                    "https://fapi.binance.com/futures/data/takerlongshortRatio",
-                    params={"symbol": f"{coin}USDT", "period": "1h", "limit": 1},  # type: ignore[arg-type]
-                    timeout=3,
-                )
-                if taker_resp.status_code == 200 and taker_resp.json():
-                    taker_data = taker_resp.json()[0]
-                    ratio = float(taker_data.get("buySellRatio", 1.0))
-                    result["taker_ratio"] = round(ratio, 3)
-                    if ratio > 1.5:
-                        result["exchange_flow"] = "AGGRESSIVE_BUY"
-                    elif ratio < 0.67:
-                        result["exchange_flow"] = "AGGRESSIVE_SELL"
-                    elif ratio > 1.1:
-                        result["exchange_flow"] = "NET_BUY"
-                    elif ratio < 0.9:
-                        result["exchange_flow"] = "NET_SELL"
-
-            except Exception:
-                logger.error(
-                    "Exchange flow research failed for %s", coin, exc_info=True
-                )
-
-            # Open Interest change
-            try:
-                oi_resp = requests.get(
-                    "https://fapi.binance.com/fapi/v1/openInterest",
-                    params={"symbol": f"{coin}USDT"},  # type: ignore[arg-type]
-                    timeout=3,
-                )
-                if oi_resp.status_code == 200:
-                    oi_data = oi_resp.json()
-                    result["oi_change"] = {
-                        "openInterest": float(oi_data.get("openInterest", 0)),
-                        "symbol": oi_data.get("symbol", ""),
-                    }
-            except Exception:
-                logger.error(
-                    "Open Interest research failed for %s", coin, exc_info=True
-                )
+            # Futures data (funding rate, long/short ratio, OI) disabled.
+            # This system only does SPOT — fapi.binance.com is unreachable from
+            # domestic cloud and unnecessary for spot trading.
+            # result["funding_rate"], result["whale_activity"],
+            # result["top_trader_long_pct"], result["taker_ratio"],
+            # result["exchange_flow"], result["oi_change"] are left unset.
 
         except Exception as e:
             logger.error(f"MarketResearcher: onchain research failed for {coin}: {e}")

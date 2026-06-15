@@ -62,7 +62,6 @@ check("KELLY_THRESHOLD", val <= 5, f"min_trades={val} — should be ≤5")
 patterns = {
     "trade_executor.py": r"max_positions\s*=\s*(\d+)",
     "backtest.py": r"MAX_POSITIONS\s*=\s*(\d+)",
-    "smart_order.py": r"MAX_POSITIONS\s*=\s*(\d+)",
     "portfolio.py": r'"max_open_positions":\s*(\d+)',
 }
 vals = set()

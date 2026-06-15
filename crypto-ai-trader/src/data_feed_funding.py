@@ -7,6 +7,7 @@ Fetches Binance Futures funding rates with anomaly detection.
 from __future__ import annotations
 
 import logging
+import os
 import statistics
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -44,12 +45,12 @@ class FundingRate:
         Returns:
             List of dicts with keys: symbol, funding_rate, funding_time, mark_price.
         """
-        # SPOT ONLY safety gate — funding rate uses /fapi/ which is futures API
-        # DISABLED: We need funding rate data for spot trading decisions (contrarian signal)
-        # The /fapi/v1/fundingRate endpoint is PUBLIC (no API key needed), safe to call
-        # if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-        #     logger.debug("FundingRate disabled (ENABLE_FUTURES not set). Skipping fapi call.")
-        #     return []
+        # SPOT ONLY safety gate — funding rate uses /fapi/ which is futures API.
+        # Disabled by default since this system only does SPOT.
+        # Set ENABLE_FUTURES=true to enable futures data fetching.
+        if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
+            logger.debug("FundingRate disabled (ENABLE_FUTURES not set). Skipping fapi call.")
+            return []
 
         try:
             # Phase 1: Fetch funding rate history (no markPrice in this endpoint)

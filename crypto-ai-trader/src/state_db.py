@@ -119,6 +119,29 @@ class StateDB:
 
         return _TransactionCtx(self)
 
+    def wal_checkpoint(self) -> bool:
+        """Force a WAL checkpoint to merge the WAL file into the main database.
+
+        Call this after batch operations (e.g., after a scan completes)
+        to keep the WAL file small and prevent bloat.
+
+        Returns:
+            True if checkpoint succeeded, False otherwise.
+        """
+        try:
+            conn = self._get_conn()
+            result = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            if result:
+                # TRUNCATE mode: (busy, log_pages, checkpointed_pages)
+                logger.debug(
+                    f"StateDB: WAL checkpoint complete "
+                    f"(busy={result[0]}, log_pages={result[1]}, checkpointed={result[2]})"
+                )
+            return True
+        except Exception as e:
+            logger.warning(f"StateDB: WAL checkpoint failed: {e}")
+            return False
+
     def close(self):
         """Close all thread-local connections. Call on shutdown."""
         if hasattr(self._local, "conn") and self._local.conn is not None:

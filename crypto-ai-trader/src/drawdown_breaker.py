@@ -25,8 +25,17 @@ class DrawdownBreaker:
     All state is stored exclusively in the SQLite drawdown table via StateDB.
     """
 
-    # Hard stop threshold
-    HARD_STOP_PCT = 0.10  # 10%
+    # Hard stop threshold (loaded from unified risk config with fallback)
+    # Default: 10% drawdown from peak equity → block all new trades
+    _DEFAULT_HARD_STOP_PCT = 0.10  # 10%
+
+    try:
+        from src.risk_config import get_risk_param
+        HARD_STOP_PCT = get_risk_param(
+            "drawdown_breaker", "hard_stop_pct", _DEFAULT_HARD_STOP_PCT
+        )
+    except Exception:
+        HARD_STOP_PCT = _DEFAULT_HARD_STOP_PCT
 
     def __init__(self, binance_client: Optional["ExchangeClient"] = None):
         self.client = binance_client

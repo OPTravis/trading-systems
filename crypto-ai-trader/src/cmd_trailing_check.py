@@ -68,7 +68,8 @@ def cmd_trailing_check():
                 price = float(stats.get('last_price', 0))
                 if total * price < 1.0:
                     continue  # dust, skip
-            except Exception:
+            except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
+                logger.debug(f"cmd_trailing_check: skipping {symbol}, can't get price: {e}")
                 continue  # can't price, skip
             positions.append({"asset": asset, "symbol": symbol, "free": free, "locked": locked, "total": total})
 
@@ -207,16 +208,32 @@ def cmd_trailing_check():
             # Only move UP
             if new_sl > old_sl_price * 1.001:  # 0.1% buffer to avoid dust moves
                 sl_qty = _order_qty(sl_order)
-                # Cancel old SL
-                cancel_result = client.cancel_order(symbol, _order_id(sl_order))
-                if cancel_result:
-                    # Place new SL
-                    new_sl_rounded = round(new_sl, p_prec)
-                    new_sl_order = client.place_order(
-                        symbol, "SELL", "STOP_LOSS_LIMIT",
-                        sl_qty, price=new_sl_rounded, stop_price=new_sl_rounded
-                    )
-                    if new_sl_order:
+                new_sl_rounded = round(new_sl, p_prec)
+
+                # P0-6 FIX: Place new SL FIRST, then cancel old SL.
+                # This eliminates the naked position window between cancel and place.
+                # Retry up to 3 times; if all fail, keep old SL and alert.
+                new_sl_order = None
+                for sl_attempt in range(3):
+                    try:
+                        new_sl_order = client.place_order(
+                            symbol, "SELL", "STOP_LOSS_LIMIT",
+                            sl_qty, price=new_sl_rounded, stop_price=new_sl_rounded
+                        )
+                        if new_sl_order:
+                            break
+                    except Exception as e:
+                        logger.warning(
+                            "TrailingStop: new SL placement attempt %d failed for %s: %s",
+                            sl_attempt + 1, asset, e
+                        )
+                        if sl_attempt < 2:
+                            time.sleep(1)
+
+                if new_sl_order:
+                    # New SL placed successfully — now safe to cancel old SL
+                    cancel_result = client.cancel_order(symbol, _order_id(sl_order))
+                    if cancel_result:
                         sl_moved = True
                         logger.info(
                             "TrailingStop SL moved %s: $%.6f → $%.6f",
@@ -232,12 +249,38 @@ def cmd_trailing_check():
                             "callback_pct": update.get("callback_pct", 0),
                         })
                     else:
-                        logger.critical("TrailingStop: failed to place new SL for %s after cancel!", asset)
-                        notifier.send_text(f"🔴 SL更新失敗 {asset}！舊SL已取消但新SL未掛上！手動處理！")
-                        results.append({"asset": asset, "action": "sl_move_failed", "old_sl": old_sl_price})
+                        # New SL placed but old SL cancel failed — not critical,
+                        # both orders are SELL so worst case both trigger.
+                        sl_moved = True
+                        logger.warning(
+                            "TrailingStop: old SL cancel failed for %s but new SL is active (both may exist)",
+                            asset
+                        )
+                        results.append({
+                            "asset": asset,
+                            "action": "sl_moved_old_cancel_failed",
+                            "old_sl": old_sl_price,
+                            "new_sl": new_sl_rounded,
+                            "highest": update["highest_price"],
+                            "current_price": current_price,
+                        })
                 else:
-                    logger.warning("TrailingStop: failed to cancel old SL for %s", asset)
-                    results.append({"asset": asset, "action": "sl_cancel_failed"})
+                    # New SL failed after 3 retries — keep old SL, alert
+                    logger.critical(
+                        "TrailingStop: failed to place new SL for %s after 3 retries! "
+                        "Old SL preserved at $%.6f. Manual review needed.",
+                        asset, old_sl_price
+                    )
+                    notifier.send_text(
+                        f"⚠️ SL移動失敗 {asset}！新SL連續3次掛單失敗，舊SL(${old_sl_price:.6f})保留。請手動確認。"
+                    )
+                    results.append({
+                        "asset": asset,
+                        "action": "sl_move_retries_exhausted",
+                        "old_sl": old_sl_price,
+                        "target_sl": new_sl_rounded,
+                        "msg": "New SL placement failed 3x, old SL preserved",
+                    })
             else:
                 # SL already at or above target
                 results.append({
@@ -293,7 +336,7 @@ def cmd_trailing_check():
             try:
                 stats = client.get_24hr_stats(symbol)
                 est_price = float(stats.get('last_price', 0)) if stats else 0
-            except Exception:
+            except (ConnectionError, TimeoutError, ValueError, KeyError, OSError):
                 est_price = 0
             est_sl_price = round(est_price * 0.95, p_prec) if est_price > 0 else 0
             est_notional = uncovered_by_sl * est_sl_price if est_sl_price > 0 else 0
@@ -336,8 +379,8 @@ def cmd_trailing_check():
         try:
             stats = client.get_24hr_stats(symbol)
             current_price = float(stats.get('last_price', 0))
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, ValueError, KeyError, OSError):
+            pass  # current_price stays 0, will skip this position
 
         if qty_to_protect <= 0 or current_price <= 0:
             continue
@@ -417,7 +460,16 @@ def cmd_trailing_check():
                         stats = client.get_24hr_stats(symbol)
                         exit_price = float(stats.get('last_price', 0))
                     if exit_price > 0:
-                        qty = sym_pos['total'] if sym_pos else sym_info.get('qty', 0)
+                        # P1-10: Get actual filled qty from Binance trade history
+                        # instead of relying on pos['total'] which is 0 when position is gone
+                        actual_qty = 0.0
+                        if trades:
+                            # Sum qty from recent trades (exit sells)
+                            actual_qty = sum(float(t.get('qty', 0)) for t in trades)
+                        if actual_qty <= 0:
+                            # Fallback to position data if trades unavailable
+                            actual_qty = sym_pos['total'] if sym_pos else sym_info.get('qty', 0)
+                        qty = actual_qty
                         if qty <= 0:
                             logger.warning(f"Cannot compute PnL for {sym}: no qty available (position gone, not tracked)")
                         else:

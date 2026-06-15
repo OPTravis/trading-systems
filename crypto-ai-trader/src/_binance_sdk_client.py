@@ -29,7 +29,17 @@ logger = logging.getLogger(__name__)
 # TLS certificate verification config.
 # For production, consider implementing certificate pinning to prevent MITM attacks.
 # See: https://requests.readthedocs.io/en/latest/user/advanced/#ssl-cert-verification
-VERIFY_SSL = os.environ.get("VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+# P1-7: Force SSL verification in production (non-testnet) mode
+_IS_TESTNET = os.environ.get("USE_TESTNET", "false").lower() in ("true", "1", "yes")
+_env_verify_ssl = os.environ.get("VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+if not _IS_TESTNET and not _env_verify_ssl:
+    logger.warning(
+        "VERIFY_SSL was disabled via env var but production mode requires it. "
+        "Forcing VERIFY_SSL=True for security."
+    )
+    VERIFY_SSL = True
+else:
+    VERIFY_SSL = _env_verify_ssl
 
 # Patterns to redact from error messages (API keys, secrets, etc.)
 _SENSITIVE_PATTERN = re.compile(
@@ -63,6 +73,29 @@ def _parse_retry_after(error: ClientError, default_wait: int) -> int:
 
 class BinanceClient:
     """Binance SPOT API Client with error handling and retry logic"""
+
+    def _log_used_weight(self, error: "ClientError"):
+        """P2-8: Read X-MBX-USED-WEIGHT-1M from error response headers and log it.
+
+        Issues a warning if used weight exceeds 1000 (Binance soft limit is 1200/min).
+        """
+        try:
+            hdr = getattr(error, "header", None) or getattr(error, "headers", None)
+            if not hdr:
+                return
+            raw_weight = hdr.get("X-MBX-USED-WEIGHT-1M")
+            if raw_weight is None:
+                return
+            weight = int(raw_weight)
+            if weight > 1000:
+                logger.warning(
+                    f"Binance API weight usage HIGH: {weight}/1200 — "
+                    f"consider reducing request frequency"
+                )
+            else:
+                logger.debug(f"Binance API weight usage: {weight}/1200")
+        except (ValueError, TypeError):
+            pass
 
     def __init__(self, testnet: bool = False):
         self.testnet = testnet
@@ -251,13 +284,31 @@ class BinanceClient:
                 return result
             except ClientError as e:
                 msg = _sanitize_error(str(e))
-                if e.status_code in (429, 418, 400):
+                self._log_used_weight(e)
+                if e.status_code in (429, 418):
+                    # P2-9: Rate-limited — parse Retry-After and retry
+                    wait = _parse_retry_after(e, 2 ** (attempt + 1))
+                    logger.warning(
+                        f"Binance rate limit (klines {symbol}): [{e.status_code}] {msg}, "
+                        f"waiting {wait}s (attempt {attempt+1}/{max_retries})"
+                    )
+                    if attempt < max_retries - 1:
+                        time.sleep(wait)
+                        continue
+                    else:
+                        logger.error(
+                            f"Binance rate limit persists for klines {symbol} "
+                            f"after {max_retries} attempts"
+                        )
+                        return []
+                elif e.status_code == 400:
                     logger.warning(
                         f"Binance API warning (klines {symbol}): [{e.status_code}] {msg}"
                     )
+                    return []
                 else:
                     logger.error(f"Binance API error (klines {symbol}): {msg}")
-                return []
+                    return []
             except (ssl.SSLError, Urllib3SSLError, requests.exceptions.SSLError) as e:
                 wait_time = min(2**attempt * 0.5, 8)  # Cap at 8 seconds
                 logger.warning(
@@ -364,6 +415,7 @@ class BinanceClient:
             try:
                 return self.client.account(recvWindow=self.recv_window)
             except ClientError as e:
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
@@ -638,6 +690,7 @@ class BinanceClient:
                 return result
             except ClientError as e:
                 # Rate limit — wait and retry
+                self._log_used_weight(e)
                 if e.status_code in (429, 418) and attempt < retry - 1:
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
@@ -831,6 +884,7 @@ class BinanceClient:
                 return result
             except ClientError as e:
                 # CRITICAL FIX A4: Don't retry business errors (insufficient balance, invalid price, etc.)
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     # Rate limit — retry with backoff
                     logger.warning("OCO attempt %d rate limited: %s", attempt + 1, e)
@@ -869,6 +923,7 @@ class BinanceClient:
             try:
                 return self.client.cancel_order(symbol=symbol, orderId=order_id)
             except ClientError as e:
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
@@ -899,6 +954,7 @@ class BinanceClient:
                     )
                 return self.client.get_open_orders(recvWindow=self.recv_window)
             except ClientError as e:
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
@@ -926,6 +982,7 @@ class BinanceClient:
                 self.client.cancel_open_orders(symbol=symbol)
                 return True
             except ClientError as e:
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
@@ -1043,6 +1100,7 @@ class BinanceClient:
             try:
                 return self.client.get_order(symbol=symbol, orderId=order_id)
             except ClientError as e:
+                self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(

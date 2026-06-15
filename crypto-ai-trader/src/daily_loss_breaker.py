@@ -26,10 +26,27 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# ── Tier thresholds (daily loss percentage) ──
-TIER_1_LOSS_PCT = 1.0  # ≥ 1% loss → defensive mode
-TIER_2_LOSS_PCT = 2.0  # ≥ 2% loss → block new trades
-TIER_3_LOSS_PCT = 3.0  # ≥ 3% loss → close all, halt 24h
+# ── Hardcoded defaults (fallback if config file is missing) ──
+_DEFAULT_TIER_1_LOSS_PCT = 1.0  # ≥ 1% loss → defensive mode
+_DEFAULT_TIER_2_LOSS_PCT = 2.0  # ≥ 2% loss → block new trades
+_DEFAULT_TIER_3_LOSS_PCT = 3.0  # ≥ 3% loss → close all, halt 24h
+
+# ── Load tier thresholds from unified risk config ──
+try:
+    from src.risk_config import get_risk_param
+    TIER_1_LOSS_PCT = get_risk_param(
+        "daily_loss_breaker", "tier_1_loss_pct", _DEFAULT_TIER_1_LOSS_PCT
+    )
+    TIER_2_LOSS_PCT = get_risk_param(
+        "daily_loss_breaker", "tier_2_loss_pct", _DEFAULT_TIER_2_LOSS_PCT
+    )
+    TIER_3_LOSS_PCT = get_risk_param(
+        "daily_loss_breaker", "tier_3_loss_pct", _DEFAULT_TIER_3_LOSS_PCT
+    )
+except Exception:
+    TIER_1_LOSS_PCT = _DEFAULT_TIER_1_LOSS_PCT
+    TIER_2_LOSS_PCT = _DEFAULT_TIER_2_LOSS_PCT
+    TIER_3_LOSS_PCT = _DEFAULT_TIER_3_LOSS_PCT
 
 # ── Persistence key ──
 STATE_KEY = "daily_loss_breaker:state"
@@ -161,7 +178,27 @@ class DailyLossBreaker:
             )
 
         # Tier escalates (never de-escalates within same day)
-        if new_tier > self._current_tier:
+        # P1-3: Allow one-level downgrade when portfolio turns profitable (daily_pnl_pct > 0)
+        if daily_pnl_pct > 0 and self._current_tier > 0 and new_tier < self._current_tier:
+            old_tier = self._current_tier
+            self._current_tier = max(0, old_tier - 1)  # only drop one tier
+            self._trip_history.append(
+                {
+                    "date": today,
+                    "time": time.time(),
+                    "from_tier": old_tier,
+                    "to_tier": self._current_tier,
+                    "daily_pnl_pct": round(daily_pnl_pct, 4),
+                    "portfolio_value": round(portfolio_value, 2),
+                    "action": "downgrade_on_profit",
+                }
+            )
+            self._save_state()
+            logger.info(
+                f"DailyLossBreaker: tier DOWNGRADED {old_tier} → {self._current_tier} "
+                f"(daily PnL turned positive: {daily_pnl_pct:+.2f}%)"
+            )
+        elif new_tier > self._current_tier:
             old_tier = self._current_tier
             self._current_tier = new_tier
             self._trip_history.append(

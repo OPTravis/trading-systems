@@ -33,5 +33,75 @@
     "title": "",
     "body": "📊 每日报告 2026-06-13\n\n💰 USDT: $303.97\n📈 總資產: $395.77\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($47.11, +0.27%)\n  🔴 ETH: 0.0 ($26.70, -0.04%)\n  🟢 SOL: 0.3 ($17.99, +0.63%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.8% > 60% → 可考慮加倉",
     "notified": true
+  },
+  {
+    "id": "msg_20260614091507",
+    "timestamp": "2026-06-14T09:15:07.565876",
+    "title": "",
+    "body": "📊 每日报告 2026-06-14\n\n💰 USDT: $303.97\n📈 總資產: $397.20\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($47.83, +1.55%)\n  🟢 ETH: 0.0 ($26.96, +0.95%)\n  🟢 SOL: 0.3 ($18.44, +2.47%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.5% > 60% → 可考慮加倉",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614224955",
+    "timestamp": "2026-06-14T22:49:55.598047",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614225002",
+    "timestamp": "2026-06-14T22:50:02.749266",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614230836",
+    "timestamp": "2026-06-14T23:08:36.222281",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614230836",
+    "timestamp": "2026-06-14T23:08:36.300977",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614230840",
+    "timestamp": "2026-06-14T23:08:40.992855",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614230841",
+    "timestamp": "2026-06-14T23:08:41.176234",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260614230841",
+    "timestamp": "2026-06-14T23:08:41.393430",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260615091505",
+    "timestamp": "2026-06-15T09:15:05.448654",
+    "title": "",
+    "body": "📊 每日报告 2026-06-15\n\n💰 USDT: $303.97\n📈 總資產: $398.96\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($48.48, +1.33%)\n  🟢 ETH: 0.0 ($27.48, +1.96%)\n  🟢 SOL: 0.3 ($19.03, +3.18%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.2% > 60% → 可考慮加倉",
+    "notified": true
+  },
+  {
+    "id": "msg_20260615114240",
+    "timestamp": "2026-06-15T11:42:40.194087",
+    "title": "",
+    "body": "🚀 自動執行 - WLDUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 11.9% of $303.45 = $36.05\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 61 @ $0.589100\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (82.1)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 61 @ $0.586600\n  Slippage: -0.42% (fill $0.586600 vs expected $0.589100)\n  SL(full): 61.199999999999996 @ $0.542 (-8.0%)\n  TP1(+6.0%): 24.4 @ $0.6244\n  TP2(+9.0%): 24.5 @ $0.6421\n  TP3(+12.0%): 12.2 @ $0.6598",
+    "notified": true
   }
 ]

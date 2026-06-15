@@ -24,9 +24,11 @@ Usage:
 
 import json
 import logging
+import os
 import threading
 import time
 from typing import Callable, Dict, Optional
+from urllib.parse import urlparse
 
 import websocket
 
@@ -34,6 +36,34 @@ logger = logging.getLogger(__name__)
 
 # Binance WebSocket endpoints
 SPOT_WS_BASE = "wss://stream.binance.com:9443/ws"
+
+
+def _get_proxy_url() -> Optional[str]:
+    """Get HTTP proxy URL from environment variables, fallback to default.
+
+    Returns proxy URL string (e.g. 'http://127.0.0.1:17890') or None.
+    """
+    proxy = (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("ALL_PROXY")
+    )
+    if proxy:
+        # Normalize socks5h:// to http:// for websocket-client compatibility
+        # sing-box mixed inbound supports both HTTP and SOCKS5
+        if proxy.startswith("socks5"):
+            proxy = "http://127.0.0.1:17890"
+        return proxy
+    # Fallback to default proxy
+    return "http://127.0.0.1:17890"
+
+
+def _get_requests_proxies() -> Optional[Dict[str, str]]:
+    """Get proxies dict for requests library."""
+    proxy = _get_proxy_url()
+    if proxy:
+        return {"http": proxy, "https": proxy}
+    return None
 
 # Reconnection constants
 RECONNECT_INITIAL_DELAY = 1.0  # Start with 1 second
@@ -175,6 +205,7 @@ class UserDataStream:
                 headers={"X-MBX-APIKEY": self.api_key},
                 params={"listenKey": self._listen_key},
                 timeout=10,
+                proxies=_get_requests_proxies(),
             )
             if resp.status_code == 200:
                 logger.debug("UserDataStream: listen key keepalive OK")
@@ -283,7 +314,19 @@ class UserDataStream:
 
                 logger.info("UserDataStream: connecting to %s...", ws_url[:60])
                 # Run with ping to keep connection alive
-                self._ws.run_forever(ping_interval=30, ping_timeout=10)
+                # Route through proxy (required for domestic cloud → Binance)
+                _proxy_url = _get_proxy_url()
+                _ws_kwargs = {"ping_interval": 30, "ping_timeout": 10}
+                if _proxy_url:
+                    _parsed = urlparse(_proxy_url)
+                    _ws_kwargs["http_proxy_host"] = _parsed.hostname
+                    _ws_kwargs["http_proxy_port"] = _parsed.port
+                    if _parsed.username:
+                        _ws_kwargs["http_proxy_auth"] = (
+                            _parsed.username,
+                            _parsed.password,
+                        )
+                self._ws.run_forever(**_ws_kwargs)
 
                 # Connection closed - reconnect with backoff if still running
                 if self._running:

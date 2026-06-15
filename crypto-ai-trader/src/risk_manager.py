@@ -1281,8 +1281,8 @@ class RiskManager:
                 adverse_regime = True
             if "vol" in str(hmm_regime).lower() or "vol" in str(hmm_label).lower():
                 adverse_regime = True
-        except Exception:
-            pass
+        except (ImportError, AttributeError, KeyError, TypeError, ValueError, ConnectionError) as e:
+            logger.debug(f"_llm_stop_loss_advisory: HMM regime check failed: {e}")
 
         # Also check BTC trend from trend filter cache
         btc_trend_info = ""
@@ -1292,8 +1292,8 @@ class RiskManager:
                 btc_trend_info = f"BTC trend: {trend_val}"
                 if trend_val == "BEARISH":
                     adverse_regime = True
-        except Exception:
-            pass
+        except (AttributeError, KeyError, TypeError) as e:
+            logger.debug(f"_llm_stop_loss_advisory: BTC trend cache check failed: {e}")
 
         if not adverse_regime:
             return  # Only advise in adverse conditions

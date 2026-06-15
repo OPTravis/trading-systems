@@ -1,0 +1,133 @@
+# ============================================================
+# Unified Risk Parameters Configuration
+# ============================================================
+# This file centralizes ALL risk control parameters that were
+# previously hardcoded across multiple Python modules.
+#
+# Each module loads its values from here with graceful fallback
+# to original hardcoded defaults if this file or a specific key
+# is missing.
+#
+# --- Drawdown Threshold Clarification ---
+# There are THREE different drawdown mechanisms operating at
+# different layers. They are NOT conflicting — each serves a
+# distinct purpose and triggers in a specific order:
+#
+# 1. stepwise_drawdown (first line of defense):
+#    Graduated risk reduction at 3%, 5%, 8%, 10% drawdown.
+#    Reduces position sizes progressively, then blocks new trades.
+#
+# 2. drawdown_breaker (hard stop):
+#    Single hard stop at 10% portfolio drawdown from peak.
+#    Blocks ALL new trades until manual reset.
+#
+# 3. circuit_breaker (catastrophic fail-safe):
+#    Trips at 20% drawdown from ATH. Requires manual reset.
+#    This is the "nuclear option" — system-wide halt.
+#
+# Trigger order during a drawdown event:
+#   3%  → stepwise: mild (reduce 30%)
+#   5%  → stepwise: moderate (reduce 60%)
+#   8%  → stepwise: severe (block new trades)
+#   10% → stepwise: critical (close all)
+#        + drawdown_breaker: HARD STOP (block all, manual reset)
+#   20% → circuit_breaker: TRIP (indefinite halt, manual reset)
+#
+# Additionally, risk_limits.yaml has max_drawdown_pct: 15
+# which is used by the scanner/strategy selection layer to
+# decide whether to enter new positions at all.
+# ============================================================
+
+# === Circuit Breaker ===
+# System-wide safety halt for crypto trading.
+# Trips under: consecutive API failures, drawdown from ATH, ghost positions.
+circuit_breaker:
+  consecutive_failures_max: 5        # trips after 5 consecutive API failures
+  failure_window_sec: 600            # 10 min window for counting failures
+  trip_duration_sec: 1800            # 30 min auto-reset after consecutive-failure trip
+  drawdown_trip_pct: 20.0            # 20% drawdown from ATH → indefinite pause (manual reset)
+  max_ghost_positions: 3             # unusual if >3 ghost positions detected
+
+# === Daily Loss Breaker ===
+# 3-tier daily P&L circuit breaker.
+# Tier is escalation-only within a UTC day (never de-escalates),
+# except when daily PnL turns positive → allows one-level downgrade.
+daily_loss_breaker:
+  tier_1_loss_pct: 1.0               # ≥ 1% daily loss → defensive mode (position size × 0.5)
+  tier_2_loss_pct: 2.0               # ≥ 2% daily loss → block new trades
+  tier_3_loss_pct: 3.0               # ≥ 3% daily loss → close all, halt 24h
+  allow_tier_downgrade_on_profit: true  # P1-3: PnL turns positive → downgrade one tier
+
+# === Drawdown Breaker ===
+# Portfolio-level hard stop for maximum drawdown from peak equity.
+# Once tripped, all new trades blocked until manual reset.
+drawdown_breaker:
+  hard_stop_pct: 0.10                # 10% hard stop (fractional, not percentage)
+
+# === Stepwise Drawdown ===
+# Progressive risk reduction based on drawdown from high watermark.
+# Unlike drawdown_breaker's single hard stop, this provides
+# graduated responses at multiple thresholds.
+stepwise_drawdown:
+  escalation_timeout_seconds: 7200   # 2h in moderate zone → escalate to severe
+  levels:
+    normal:
+      min_pct: 0.0
+      max_pct: 3.0
+      size_multiplier: 1.0
+      sl_tightening: 1.0
+      block_new_trades: false
+      close_all: false
+      reason: "Drawdown within normal range (0-3%)"
+    mild:
+      min_pct: 3.0
+      max_pct: 5.0
+      size_multiplier: 0.7
+      sl_tightening: 1.0
+      block_new_trades: false
+      close_all: false
+      reason: "Mild drawdown detected (3-5%): reducing position sizes by 30%"
+    moderate:
+      min_pct: 5.0
+      max_pct: 8.0
+      size_multiplier: 0.4
+      sl_tightening: 0.7
+      block_new_trades: false
+      close_all: false
+      reason: "Moderate drawdown (5-8%): reducing sizes by 60%, tightening stops"
+    severe:
+      min_pct: 8.0
+      max_pct: 10.0
+      size_multiplier: 0.0
+      sl_tightening: 0.5
+      block_new_trades: true
+      close_all: false
+      reason: "Severe drawdown (8-10%): blocking new trades, exits only"
+    critical:
+      min_pct: 10.0
+      max_pct: .inf
+      size_multiplier: 0.0
+      sl_tightening: 0.5
+      block_new_trades: true
+      close_all: true
+      reason: "Critical drawdown (>10%): closing all positions immediately"
+
+# === Trade Executor ===
+# Position safety parameters used during trade execution.
+trade_executor:
+  min_stop_loss_pct: 3.0             # hard minimum SL%; never allow SL below this
+  max_single_loss_pct: 5.0           # maximum single trade loss as % of position
+  max_active_positions: 5            # maximum concurrent open positions
+  sl_limit_buffer_pct: 0.015         # 1.5% buffer below SL trigger price (ensures limit fill)
+
+# === Risk Limits (from risk_limits.yaml — reference only) ===
+# These remain in config/risk_limits.yaml for backward compatibility.
+# Documented here for cross-reference; the canonical source is risk_limits.yaml.
+# risk:
+#   max_position_pct: 15
+#   max_total_exposure_pct: 70
+#   cash_reserve_pct: 30
+#   max_daily_loss_pct: 5
+#   max_drawdown_pct: 15
+#   max_open_positions: 5
+#   max_hold_hours: 48

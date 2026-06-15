@@ -161,22 +161,10 @@ def _step_scan_opportunities():
         logger.warning(f"BTC trend check failed: {e}")
 
     # ===== Step 3: Strategy Adaptation =====
-    # Get BTC funding rate as market-wide sentiment indicator
+    # BTC funding rate from futures API removed — this system only does SPOT.
+    # fapi.binance.com is unreachable from domestic cloud without proxy and
+    # is unnecessary for spot-only trading.
     btc_funding_rate = 0.0
-    try:
-        import requests as _req
-
-        fr_resp = _req.get(
-            "https://fapi.binance.com/fapi/v1/fundingRate",
-            params={"symbol": "BTCUSDT", "limit": "1"},
-            timeout=5,
-        )
-        if fr_resp.status_code == 200:
-            data = fr_resp.json()
-            if data:
-                btc_funding_rate = float(data[0].get("fundingRate", 0)) * 100
-    except Exception:
-        logger.error("Failed to fetch BTC funding rate", exc_info=True)
 
     adapted = adaptor.adapt(
         fear_greed=fng,
@@ -713,6 +701,9 @@ def _step_research_top_n(ctx):
     # Calculate tier with adjusted score
     _, tier_label = get_position_tier(adjusted_score)
     active_pos = count_active_positions(client)
+    # P1-8: fail-closed
+    if active_pos < 0:
+        active_pos = 0  # treat as 0 for display but the execute step will block
 
     ctx.update(
         {
@@ -1038,24 +1029,45 @@ def cmd_cron_scan():
     5. RiskManager: pre-trade risk checks
     6. Auto-execute if enabled
     """
-    ctx = _step_scan_opportunities()
-    if ctx is None:
-        # 即使没有机会也发通知
-        _append_scan_summary(None)
+    # P1-6: File lock to prevent concurrent scan runs
+    import fcntl
+    LOCK_FILE = "/tmp/crypto-trader-scan.lock"
+    _lock_fd = None
+    try:
+        _lock_fd = open(LOCK_FILE, "w")
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        logger.warning("Another scan is already running (lock held), skipping this scan")
+        if _lock_fd:
+            _lock_fd.close()
         return
+    try:
+        ctx = _step_scan_opportunities()
+        if ctx is None:
+            # 即使没有机会也发通知
+            _append_scan_summary(None)
+            return
 
-    ctx = _step_research_top_n(ctx)
-    if ctx is None:
+        ctx = _step_research_top_n(ctx)
+        if ctx is None:
+            _append_scan_summary(ctx)
+            return
+
+        # NEW: Event-driven position adjustment
+        _step_event_driven_adjustment(ctx)
+
+        _step_execute_trades(ctx)
+
+        # 发送扫描摘要通知
         _append_scan_summary(ctx)
-        return
-
-    # NEW: Event-driven position adjustment
-    _step_event_driven_adjustment(ctx)
-
-    _step_execute_trades(ctx)
-    
-    # 发送扫描摘要通知
-    _append_scan_summary(ctx)
+    finally:
+        # P1-6: Release file lock
+        if _lock_fd:
+            try:
+                fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                _lock_fd.close()
+            except (IOError, OSError):
+                logger.warning("Failed to release scan lock", exc_info=True)
 
 
 def _append_scan_summary(ctx):

@@ -1,9 +1,22 @@
 """
 Trade execution — position sizing, order placement, and portfolio tracking.
+
+This module is the SOLE entry point for executing trades. It orchestrates:
+  - Kelly-based position sizing (via KellyPositionSizer)
+  - Risk checks (circuit breakers, daily loss, drawdown)
+  - Order placement (market buy, SL/TP in tiered/OCO/separate strategies)
+  - Portfolio tracking and event publishing
+
+Calculation delegation:
+  - Exchange filters (LOT_SIZE, PRICE_FILTER, MIN_NOTIONAL) → SmartOrder.get_symbol_filters()
+  - Quantity precision → SmartOrder.apply_qty_precision()
+  - SL/TP price calculation → inline percentage-based (strategies define pct directly)
+
 Extracted from main.py for maintainability.
 """
 
 import logging
+import signal
 import time
 from math import floor
 
@@ -14,6 +27,50 @@ from src.paper_trader import get_trading_client
 from src.portfolio import PortfolioManager
 
 logger = logging.getLogger(__name__)
+
+# ── Trade executor risk parameters (loaded from unified risk config) ──
+# These were previously hardcoded inside execute_auto_trade().
+_DEFAULT_MIN_STOP_LOSS_PCT = 3.0
+_DEFAULT_MAX_SINGLE_LOSS_PCT = 5.0
+_DEFAULT_MAX_ACTIVE_POSITIONS = 5
+_DEFAULT_SL_LIMIT_BUFFER_PCT = 0.015  # 1.5% below stop trigger price
+
+try:
+    from src.risk_config import get_risk_param
+    _RISK_MIN_STOP_LOSS_PCT = get_risk_param(
+        "trade_executor", "min_stop_loss_pct", _DEFAULT_MIN_STOP_LOSS_PCT
+    )
+    _RISK_MAX_SINGLE_LOSS_PCT = get_risk_param(
+        "trade_executor", "max_single_loss_pct", _DEFAULT_MAX_SINGLE_LOSS_PCT
+    )
+    _RISK_MAX_ACTIVE_POSITIONS = get_risk_param(
+        "trade_executor", "max_active_positions", _DEFAULT_MAX_ACTIVE_POSITIONS
+    )
+    _RISK_SL_LIMIT_BUFFER_PCT = get_risk_param(
+        "trade_executor", "sl_limit_buffer_pct", _DEFAULT_SL_LIMIT_BUFFER_PCT
+    )
+except Exception:
+    _RISK_MIN_STOP_LOSS_PCT = _DEFAULT_MIN_STOP_LOSS_PCT
+    _RISK_MAX_SINGLE_LOSS_PCT = _DEFAULT_MAX_SINGLE_LOSS_PCT
+    _RISK_MAX_ACTIVE_POSITIONS = _DEFAULT_MAX_ACTIVE_POSITIONS
+    _RISK_SL_LIMIT_BUFFER_PCT = _DEFAULT_SL_LIMIT_BUFFER_PCT
+
+# P2-6: Graceful shutdown flag — SIGTERM handler sets this to prevent new trades
+_shutting_down = False
+
+
+def _sigterm_handler(signum, frame):
+    """SIGTERM handler — sets shutdown flag so execute_auto_trade refuses new trades."""
+    global _shutting_down
+    logger.warning("SIGTERM received — shutting down, no new trades will be executed")
+    _shutting_down = True
+
+
+# Register SIGTERM handler (best-effort; no-op if not in main thread)
+try:
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+except (ValueError, OSError):
+    logger.info("SIGTERM handler not registered (not in main thread) — skipping")
 
 
 def _check_price_deviation(
@@ -44,10 +101,10 @@ def _check_price_deviation(
             return False
         return True
     except Exception as e:
-        logger.warning(
-            f"Price deviation check failed for {symbol}: {e} — allowing trade (fail-open)"
+        logger.error(
+            f"Price deviation check failed for {symbol}: {e} — BLOCKING trade (fail-closed)"
         )
-        return True  # fail-open: allow trade on transient check failure
+        return False  # fail-closed: block trade on transient check failure
 
 
 def _check_duplicate_order(client, symbol: str) -> bool:
@@ -67,10 +124,10 @@ def _check_duplicate_order(client, symbol: str) -> bool:
                 return False
         return True
     except Exception as e:
-        logger.warning(
-            f"Duplicate order check failed for {symbol}: {e} — allowing trade (fail-open)"
+        logger.error(
+            f"Duplicate order check failed for {symbol}: {e} — BLOCKING trade (fail-closed)"
         )
-        return True  # fail-open: allow trade on transient check failure
+        return False  # fail-closed: block trade on transient check failure
 
 
 def get_position_tier(score):
@@ -127,7 +184,101 @@ def count_active_positions(client):
         return count
     except Exception:
         logger.warning("count_active_positions: account fetch failed")
-        return 0
+        return -1  # P1-8: fail-closed — return -1 so callers can detect error
+
+
+def _send_execution_notification(
+    notifier, symbol, strategy, tier_label, score,
+    invest_pct, usdt_bal, invest_amount, kelly_result,
+    executed_qty, price, reason, active_positions, max_positions, results,
+):
+    """Send Feishu notification after trade execution.
+
+    Extracted from execute_auto_trade for maintainability (P0-5).
+    """
+    lines = [
+        f"🚀 自動執行 - {symbol}",
+        f"策略: {strategy.upper()} | 倉位級別: {tier_label} (Score: {score})",
+        f"Kelly: {invest_pct*100:.1f}% of ${usdt_bal:.2f} = ${invest_amount:.2f}",
+        f"勝率: {kelly_result.get('win_rate',0):.1%} | 信心: {kelly_result.get('confidence','N/A')}",
+        f"買入: {executed_qty:.0f} @ ${price:.6f}",
+        f"信號: {reason}",
+        f"活躍持倉: {active_positions + 1}/{max_positions}",
+        "",
+        "📊 訂單:",
+    ]
+    for r in results:
+        lines.append(f"  {r}")
+    notifier.send_text("\n".join(lines))
+
+
+def _record_trade_portfolio(
+    client, symbol, executed_qty, avg_price, strategy,
+    usdt_bal, invest_amount, fee_rate,
+    invest_pct, bandit_context, bandit_multiplier,
+):
+    """Track executed trade in portfolio state and publish events.
+
+    Extracted from execute_auto_trade for maintainability (P0-5).
+    """
+    # Track position in portfolio_state.json
+    try:
+        portfolio = PortfolioManager()
+        try:
+            actual_usdt = client.get_free_balance("USDT")
+            portfolio.update_balance(actual_usdt)
+        except Exception:
+            logger.error(
+                "Failed to fetch actual USDT balance for portfolio tracking",
+                exc_info=True,
+            )
+            portfolio.update_balance(usdt_bal - invest_amount * (1 + fee_rate))
+        portfolio.add_position(
+            symbol=symbol,
+            quantity=executed_qty,
+            entry_price=avg_price,
+            strategy=strategy,
+            deduct_cash=True,
+        )
+        if symbol in portfolio.positions:
+            portfolio.positions[symbol]["invest_pct"] = invest_pct
+            if bandit_context:
+                portfolio.positions[symbol]["bandit_context"] = bandit_context
+                portfolio.positions[symbol]["bandit_multiplier"] = bandit_multiplier
+            try:
+                if portfolio._db is not None:
+                    portfolio._db.portfolio_set(symbol, portfolio.positions[symbol])
+            except Exception:
+                logger.debug("Failed to persist invest_pct/bandit for %s", symbol)
+    except Exception as e:
+        logger.warning(f"Portfolio tracking failed: {e}")
+
+    # Publish event to event bus (Phase 9)
+    try:
+        from src.event_bus import get_event_bus
+
+        bus = get_event_bus()
+        bus.publish(
+            "trade_executed",
+            {
+                "symbol": symbol,
+                "action": "BUY",
+                "qty": executed_qty,
+                "price": avg_price,
+                "strategy": strategy,
+            },
+        )
+        bus.publish(
+            "position_opened",
+            {
+                "symbol": symbol,
+                "entry_price": avg_price,
+                "quantity": executed_qty,
+                "strategy": strategy,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Event bus publish failed: {e}")
 
 
 def execute_auto_trade(
@@ -160,9 +311,26 @@ def execute_auto_trade(
 
     from src.utils import get_project_root
 
+    # P2-1: Structured logging context — generate trade_id for correlation
+    import uuid as _uuid
+    _trade_id = f"{symbol}_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
+
+    # P2-6: Graceful shutdown — refuse new trades if SIGTERM was received
+    if _shutting_down:
+        logger.warning(
+            f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — shutdown in progress, "
+            f"symbol={symbol}"
+        )
+        return {"success": False, "reason": "shutdown_in_progress"}
+
+    logger.info(
+        f"[trade_id={_trade_id}] execute_auto_trade START symbol={symbol} "
+        f"strategy={strategy} score={score} price=${price:.6f}"
+    )
+
     # Safety: Ensure stop_loss_pct is never 0 or negative (hard minimum 3%)
-    MIN_STOP_LOSS_PCT = 3.0
-    MAX_SINGLE_LOSS_PCT = 5.0  # Maximum single trade loss as % of position
+    MIN_STOP_LOSS_PCT = _RISK_MIN_STOP_LOSS_PCT
+    MAX_SINGLE_LOSS_PCT = _RISK_MAX_SINGLE_LOSS_PCT  # Maximum single trade loss as % of position
     if stop_loss_pct <= 0:
         logger.error(f"stop_loss_pct={stop_loss_pct}% is invalid (≤0), blocking trade")
         return {"success": False, "reason": f"Invalid stop_loss_pct={stop_loss_pct}%"}
@@ -214,6 +382,34 @@ def execute_auto_trade(
     if usdt_bal < 10:
         return {"success": False, "error": f"Insufficient USDT: ${usdt_bal:.2f}"}
 
+    # P1-1: Fetch account data ONCE and compute portfolio metrics for reuse
+    # (previously: get_account() called 3+ times per trade for daily_loss, exposure_cap, max_loss)
+    _account_data = None
+    _total_invested = 0.0  # total value in non-USDT positions
+    _total_portfolio = usdt_bal  # USDT + all non-USDT positions
+    _account_price_map = {}  # cache asset prices to avoid duplicate get_ticker_price calls
+    try:
+        _account_data = client.get_account()
+        for b in _account_data.get("balances", []):
+            _asset = b["asset"]
+            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
+            if _qty > 0 and _asset not in ("USDT", "NTRN"):
+                try:
+                    if f"{_asset}USDT" not in _account_price_map:
+                        _p = float(client.get_ticker_price(f"{_asset}USDT"))
+                        _account_price_map[f"{_asset}USDT"] = _p
+                    else:
+                        _p = _account_price_map[f"{_asset}USDT"]
+                    _total_invested += _qty * _p
+                    _total_portfolio += _qty * _p
+                except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
+                    logger.error(
+                        "Failed to get asset price for %s during account fetch: %s",
+                        _asset, e,
+                    )
+    except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
+        logger.error(f"Failed to fetch account data for pre-computation: {e}")
+
     # Circuit breaker: block trades when system is in failure/drawdown state
     try:
         from src.circuit_breaker import CircuitBreaker
@@ -231,28 +427,8 @@ def execute_auto_trade(
         from src.daily_loss_breaker import get_daily_loss_breaker
 
         dlb = get_daily_loss_breaker()
-        # Get total portfolio value for daily loss check
-        total_value = usdt_bal  # fallback to available USDT
-        try:
-            _account = client.get_account()
-            for b in _account.get("balances", []):
-                _asset = b["asset"]
-                _free = float(b.get("free", 0))
-                _locked = float(b.get("locked", 0))
-                _qty = _free + _locked
-                if _qty > 0 and _asset not in ("USDT", "NTRN"):
-                    try:
-                        _price = float(client.get_ticker_price(f"{_asset}USDT"))
-                        total_value += _qty * _price
-                    except Exception:
-                        logger.error(
-                            "Failed to get asset price for daily loss calc",
-                            exc_info=True,
-                        )
-        except Exception:
-            logger.error(
-                "Failed to fetch account balance for daily loss calc", exc_info=True
-            )
+        # P1-1: Reuse pre-computed portfolio value (was a separate get_account() call)
+        total_value = _total_portfolio if _total_portfolio > usdt_bal else usdt_bal
         dl_result = dlb.check_daily_loss(portfolio_value=total_value)
         if dlb.should_close_all():
             logger.warning(
@@ -304,7 +480,14 @@ def execute_auto_trade(
 
     # Count existing positions
     active_positions = count_active_positions(client)
-    max_positions = 5
+    max_positions = _RISK_MAX_ACTIVE_POSITIONS
+
+    # P1-8: fail-closed — if count failed, block trade
+    if active_positions < 0:
+        return {
+            "success": False,
+            "error": "count_active_positions failed (account fetch error) — blocking trade for safety",
+        }
 
     if active_positions >= max_positions:
         return {
@@ -428,28 +611,15 @@ def execute_auto_trade(
 
     # ── Total exposure cap ──
     # Total invested across all positions cannot exceed max_total_exposure_pct of portfolio.
+    # P1-1: Reuse pre-computed _total_invested and _total_portfolio
     try:
-        _account = client.get_account()
-        _invested = 0.0
-        for b in _account.get("balances", []):
-            _asset = b["asset"]
-            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
-            if _qty > 0 and _asset not in ("USDT", "NTRN"):
-                try:
-                    _p = float(client.get_ticker_price(f"{_asset}USDT"))
-                    _invested += _qty * _p
-                except Exception:
-                    logger.error(
-                        "Failed to get ticker price for exposure cap", exc_info=True
-                    )
-        _portfolio_val = usdt_bal + _invested
-        _max_exposure = _portfolio_val * max_total_exposure_pct / 100.0
-        if _invested + invest_amount > _max_exposure:
-            _allowed = max(0, _max_exposure - _invested)
+        _max_exposure = _total_portfolio * max_total_exposure_pct / 100.0
+        if _total_invested + invest_amount > _max_exposure:
+            _allowed = max(0, _max_exposure - _total_invested)
             if _allowed < invest_amount:
                 logger.info(
                     f"Exposure cap: ${invest_amount:.2f} → ${_allowed:.2f} "
-                    f"(invested=${_invested:.2f}, max={max_total_exposure_pct}%)"
+                    f"(invested=${_total_invested:.2f}, max={max_total_exposure_pct}%)"
                 )
                 invest_amount = _allowed
                 invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
@@ -477,7 +647,7 @@ def execute_auto_trade(
                 hmm_data = _json_hmm.loads(hmm_row["value"])
                 _bandit_hmm = hmm_data.get("regime", "sideways").lower()
         except Exception:
-            pass
+            logger.debug("ContextualBandit: HMM regime fetch failed", exc_info=True)
 
         try:
             from src.data_feed import FearGreedIndex
@@ -486,7 +656,7 @@ def execute_auto_trade(
             if fng_data and "value" in fng_data:
                 _bandit_fng = float(fng_data["value"])
         except Exception:
-            pass
+            logger.debug("ContextualBandit: FearGreed fetch failed", exc_info=True)
 
         try:
             conn = db._get_conn()
@@ -494,7 +664,7 @@ def execute_auto_trade(
             if btc_row:
                 _bandit_btc_trend = str(btc_row["value"]).upper()
         except Exception:
-            pass
+            logger.debug("ContextualBandit: BTC trend fetch failed", exc_info=True)
 
         _bandit_heat = "cold"
         if active_positions >= 4:
@@ -536,19 +706,9 @@ def execute_auto_trade(
 
     # Safety: Single trade max loss limit (3% of total portfolio value)
     # Calculate maximum loss for this trade: position_size * stop_loss_pct
+    # P1-1: Reuse pre-computed _total_portfolio
     max_loss_pct_of_portfolio = 3.0  # Maximum 3% of portfolio per trade
     try:
-        _account = client.get_account()
-        _total_portfolio = usdt_bal
-        for b in _account.get("balances", []):
-            _asset = b["asset"]
-            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
-            if _qty > 0 and _asset not in ("USDT", "NTRN"):
-                try:
-                    _p = float(client.get_ticker_price(f"{_asset}USDT"))
-                    _total_portfolio += _qty * _p
-                except Exception:
-                    pass
         max_loss_amount = _total_portfolio * max_loss_pct_of_portfolio / 100.0
         potential_loss = invest_amount * stop_loss_pct / 100.0
         if potential_loss > max_loss_amount:
@@ -575,6 +735,8 @@ def execute_auto_trade(
     _, tier_label = get_position_tier(score)
 
     # Fetch exchange filters once (stepSize, minQty, minNotional)
+    # Delegates to SmartOrder (pure calculation module) for filter data.
+    # SmartOrder does NOT execute trades — it only provides exchange metadata.
     _step_size = 1.0
     _qty_decimals = 0
     _min_qty = 1.0
@@ -742,7 +904,7 @@ def execute_auto_trade(
     sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
     # P0 FIX: SL limit price buffer — ensure limit order fills even in fast markets
     # stop_price triggers the limit, limit_price is the actual fill floor
-    SL_LIMIT_BUFFER_PCT = 0.015  # 1.5% below stop trigger price
+    SL_LIMIT_BUFFER_PCT = _RISK_SL_LIMIT_BUFFER_PCT  # 1.5% below stop trigger price
     sl_limit_price = round(sl_price * (1 - SL_LIMIT_BUFFER_PCT), p_prec)
     sl_placed_qty = 0.0
     tp_placed_qty = 0.0
@@ -1161,91 +1323,29 @@ def execute_auto_trade(
         if remainder >= _step_size:
             results.append(f"注意: {remainder:.0f} 單位已由額外SL覆蓋")
 
-    # Send execution notification
-    lines = [
-        f"🚀 自動執行 - {symbol}",
-        f"策略: {strategy.upper()} | 倉位級別: {tier_label} (Score: {score})",
-        f"Kelly: {invest_pct*100:.1f}% of ${usdt_bal:.2f} = ${invest_amount:.2f}",
-        f"勝率: {kelly_result.get('win_rate',0):.1%} | 信心: {kelly_result.get('confidence','N/A')}",
-        f"買入: {executed_qty:.0f} @ ${price:.6f}",
-        f"信號: {reason}",
-        f"活躍持倉: {active_positions + 1}/{max_positions}",
-        "",
-        "📊 訂單:",
-    ]
-    for r in results:
-        lines.append(f"  {r}")
+    # Send execution notification (extracted helper)
+    _send_execution_notification(
+        notifier, symbol, strategy, tier_label, score,
+        invest_pct, usdt_bal, invest_amount, kelly_result,
+        executed_qty, price, reason, active_positions, max_positions, results,
+    )
 
-    notifier.send_text("\n".join(lines))
+    # Track position and publish events (extracted helper)
+    _record_trade_portfolio(
+        client, symbol, executed_qty, avg_price, strategy,
+        usdt_bal, invest_amount, fee_rate,
+        invest_pct, _bandit_context, _bandit_multiplier,
+    )
 
-    # Track position in portfolio_state.json
-    try:
-        portfolio = PortfolioManager()
-        # H3 fix: query actual post-trade USDT balance instead of pre-trade estimate
-        try:
-            actual_usdt = client.get_free_balance("USDT")
-            portfolio.update_balance(actual_usdt)
-        except Exception:
-            logger.error(
-                "Failed to fetch actual USDT balance for portfolio tracking",
-                exc_info=True,
-            )
-            # Fallback: estimate with actual fee rate (not flat 1%)
-            portfolio.update_balance(usdt_bal - invest_amount * (1 + fee_rate))
-        portfolio.add_position(
-            symbol=symbol,
-            quantity=executed_qty,
-            entry_price=avg_price,
-            strategy=strategy,
-            deduct_cash=True,
-        )
-        # Store invest_pct and bandit context on the position for bandit learning
-        if symbol in portfolio.positions:
-            portfolio.positions[symbol]["invest_pct"] = invest_pct
-            if _bandit_context:
-                portfolio.positions[symbol]["bandit_context"] = _bandit_context
-                portfolio.positions[symbol]["bandit_multiplier"] = _bandit_multiplier
-            # Persist to StateDB so it survives restart
-            try:
-                if portfolio._db is not None:
-                    portfolio._db.portfolio_set(symbol, portfolio.positions[symbol])
-            except Exception:
-                logger.debug("Failed to persist invest_pct/bandit for %s", symbol)
-    except Exception as e:
-        logger.warning(f"Portfolio tracking failed: {e}")
-
-    # Publish event to event bus (Phase 9)
-    try:
-        from src.event_bus import get_event_bus
-
-        bus = get_event_bus()
-        bus.publish(
-            "trade_executed",
-            {
-                "symbol": symbol,
-                "action": "BUY",
-                "qty": executed_qty,
-                "price": avg_price,
-                "strategy": strategy,
-                "score": score,
-                "invest_amount": invest_amount,
-            },
-        )
-        bus.publish(
-            "position_opened",
-            {
-                "symbol": symbol,
-                "entry_price": avg_price,
-                "quantity": executed_qty,
-                "strategy": strategy,
-            },
-        )
-    except Exception as e:
-        logger.debug(f"Event bus publish failed: {e}")
+    logger.info(
+        f"[trade_id={_trade_id}] execute_auto_trade SUCCESS symbol={symbol} "
+        f"qty={executed_qty:.6f} invest_pct={invest_pct*100:.1f}% active_positions={active_positions + 1}"
+    )
 
     return {
         "success": True,
         "symbol": symbol,
+        "trade_id": _trade_id,
         "qty": executed_qty,
         "price": price,
         "strategy": strategy,

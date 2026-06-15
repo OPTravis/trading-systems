@@ -1,4 +1,4 @@
-#!/home/travis/crypto-ai-trader/.venv/bin/python3
+#!/usr/bin/env python3
 """
 System-wide health check — scans ALL cron job outputs for ACTIVE errors.
 

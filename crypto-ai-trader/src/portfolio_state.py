@@ -171,8 +171,13 @@ class StateMixin:
         old_positions = dict(self.positions)
         old_cash = self.cash_balance
 
-        # Clear local state
-        self.positions = {}
+        # P1-5: Build-then-swap pattern
+        # Build new state into a temporary dict; only swap self.positions
+        # after all positions are successfully built. This prevents partial
+        # state exposure and corruption on mid-build failures.
+        _new_positions: Dict[str, Any] = {}
+        # Temporarily redirect self.positions so add_position() works during build
+        self.positions = _new_positions
 
         usdt_balance = 0.0
         new_positions = []

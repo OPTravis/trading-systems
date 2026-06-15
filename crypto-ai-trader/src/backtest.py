@@ -170,12 +170,12 @@ def _detect_volume_surge(klines: List[Dict]) -> bool:
 class BacktestEngine:
     """回測引擎：模擬完整交易循環"""
 
-    # 倉位限制 (與 SmartOrder 一致)
+    # 倉位限制 (與 risk_config / TradeExecutor 一致)
     MAX_POSITIONS = 5
     MAX_SINGLE_POSITION_PCT = 15  # 單筆最多 15%
     MAX_TOTAL_EXPOSURE_PCT = 70  # 總敞口上限 70%
 
-    # ATR SL/TP 乘數 (與 SmartOrder 一致)
+    # ATR SL/TP 乘數 (與 SmartOrder ATR constants 一致)
     SL_ATR_MULT = 2.0
     TP1_ATR_MULT = 2.0
     TP2_ATR_MULT = 4.0

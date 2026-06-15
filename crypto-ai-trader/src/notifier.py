@@ -3,9 +3,13 @@ Signal Notifier - writes signals to local JSON + pending notifications file
 Notifications are pushed to WorkBuddy chat by the automation system
 """
 import json
+import logging
 import os
+import time as _time_module
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 SIGNALS_DIR = Path(__file__).parent.parent / "signals"
 SIGNALS_FILE = SIGNALS_DIR / "pending.json"
@@ -16,28 +20,48 @@ def _ensure_signals_dir():
     SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _append_notification(msg_type: str, title: str, body: str):
-    """Append to pending notifications file for WorkBuddy automation to pick up."""
+def _append_notification(msg_type: str, title: str, body: str, max_retries: int = 3):
+    """Append to pending notifications file for WorkBuddy automation to pick up.
+
+    P2-5: Retries up to max_retries times with exponential backoff (1s, 2s, 4s)
+    to ensure critical notifications (SL failure, trailing trigger) are persisted.
+    """
     _ensure_signals_dir()
-    notifications = []
-    if NOTIFICATIONS_FILE.exists():
+    for attempt in range(max_retries):
         try:
-            with open(NOTIFICATIONS_FILE, "r") as f:
-                notifications = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
             notifications = []
+            if NOTIFICATIONS_FILE.exists():
+                try:
+                    with open(NOTIFICATIONS_FILE, "r") as f:
+                        notifications = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    notifications = []
 
-    notifications.append({
-        "id": f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
-        "timestamp": datetime.now().isoformat(),
-        "type": msg_type,
-        "title": title,
-        "body": body,
-        "pushed": False
-    })
+            notifications.append({
+                "id": f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                "timestamp": datetime.now().isoformat(),
+                "type": msg_type,
+                "title": title,
+                "body": body,
+                "pushed": False
+            })
 
-    with open(NOTIFICATIONS_FILE, "w") as f:
-        json.dump(notifications, f, indent=2, ensure_ascii=False)
+            with open(NOTIFICATIONS_FILE, "w") as f:
+                json.dump(notifications, f, indent=2, ensure_ascii=False)
+            return  # success
+        except (OSError, IOError) as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(
+                    f"Notification write failed (attempt {attempt+1}/{max_retries}): {e}, "
+                    f"retrying in {wait}s"
+                )
+                _time_module.sleep(wait)
+            else:
+                logger.error(
+                    f"Notification write failed after {max_retries} attempts: {e} — "
+                    f"notification lost: [{msg_type}] {title}: {body}"
+                )
 
 
 def send_signal(signal_type: str, symbol: str, action: str, price: float,
@@ -95,26 +119,44 @@ def send_signal(signal_type: str, symbol: str, action: str, price: float,
 
 
 def send_message(title: str, body: str):
-    """Send a text message — logged + queued for WorkBuddy push."""
+    """Send a text message — logged + queued for WorkBuddy push.
+
+    P2-5: Retries file writes up to 3 times with exponential backoff
+    to ensure critical notifications survive transient I/O failures.
+    """
     _ensure_signals_dir()
 
-    # Save to messages.json (history)
     msg_file = SIGNALS_DIR / "messages.json"
-    messages = []
-    if msg_file.exists():
-        with open(msg_file, "r") as f:
-            messages = json.load(f)
-    messages.append({
-        "id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-        "timestamp": datetime.now().isoformat(),
-        "title": title,
-        "body": body,
-        "notified": False
-    })
-    with open(msg_file, "w") as f:
-        json.dump(messages, f, indent=2, ensure_ascii=False)
+    for attempt in range(3):
+        try:
+            messages = []
+            if msg_file.exists():
+                try:
+                    with open(msg_file, "r") as f:
+                        messages = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    messages = []
+            messages.append({
+                "id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                "timestamp": datetime.now().isoformat(),
+                "title": title,
+                "body": body,
+                "notified": False
+            })
+            with open(msg_file, "w") as f:
+                json.dump(messages, f, indent=2, ensure_ascii=False)
+            break
+        except (OSError, IOError) as e:
+            if attempt < 2:
+                wait = 2 ** attempt
+                logger.warning(
+                    f"Message write failed (attempt {attempt+1}/3): {e}, retrying in {wait}s"
+                )
+                _time_module.sleep(wait)
+            else:
+                logger.error(f"Message write failed after 3 attempts: {e}")
 
-    # Queue for WorkBuddy push
+    # Queue for WorkBuddy push (has its own retry via _append_notification)
     _append_notification("message", title, body)
 
 

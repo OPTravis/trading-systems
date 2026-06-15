@@ -21,8 +21,8 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Drawdown level definitions
-LEVELS: Dict[str, Dict[str, Any]] = {
+# ── Hardcoded defaults (fallback if config file is missing) ──
+_DEFAULT_LEVELS: Dict[str, Dict[str, Any]] = {
     "normal": {
         "min_pct": 0.0,
         "max_pct": 3.0,
@@ -70,11 +70,38 @@ LEVELS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+_DEFAULT_ESCALATION_TIMEOUT_SECONDS = 2 * 60 * 60  # 7200 seconds
+
+# ── Load from unified risk config (with fallback to defaults) ──
+try:
+    from src.risk_config import get_section
+
+    _sd_config = get_section("stepwise_drawdown")
+    if _sd_config.get("levels"):
+        # Validate config levels have the same keys as defaults
+        _cfg_levels = _sd_config["levels"]
+        if set(_cfg_levels.keys()) == set(_DEFAULT_LEVELS.keys()):
+            LEVELS = _cfg_levels
+        else:
+            logger.warning(
+                "stepwise_drawdown: config levels keys mismatch "
+                "(expected %s, got %s) — using defaults",
+                set(_DEFAULT_LEVELS.keys()),
+                set(_cfg_levels.keys()),
+            )
+            LEVELS = _DEFAULT_LEVELS
+    else:
+        LEVELS = _DEFAULT_LEVELS
+
+    ESCALATION_TIMEOUT_SECONDS = _sd_config.get(
+        "escalation_timeout_seconds", _DEFAULT_ESCALATION_TIMEOUT_SECONDS
+    )
+except Exception:
+    LEVELS = _DEFAULT_LEVELS
+    ESCALATION_TIMEOUT_SECONDS = _DEFAULT_ESCALATION_TIMEOUT_SECONDS
+
 # Ordered level names for transition tracking
 LEVEL_ORDER = ["normal", "mild", "moderate", "severe", "critical"]
-
-# Time-based escalation: 2 hours in moderate zone triggers escalation
-ESCALATION_TIMEOUT_SECONDS = 2 * 60 * 60  # 7200 seconds
 
 STATE_KEY = "stepwise_drawdown:state"
 

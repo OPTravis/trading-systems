@@ -14,14 +14,8 @@ logger = logging.getLogger(__name__)
 class StrategyAdaptor:
     """Adapts trading strategy based on market regime."""
 
-    # Cache for adapt() results
-    _cache: Optional[Dict] = None
-    _cache_ts: float = 0.0
+    # Cache TTL (class constant — same for all instances)
     _cache_ttl: float = 300  # 5 minutes
-
-    # Cache for BTC daily klines (used by GARCH overlay)
-    _btc_klines_cache = None
-    _btc_klines_ts: float = 0.0
 
     # Strategy definitions
     STRATEGIES = {
@@ -92,7 +86,11 @@ class StrategyAdaptor:
 
     def __init__(self):
         """Initialize StrategyAdaptor."""
-        pass
+        # Instance-level caches (P1-4: was class-level, caused shared state across instances)
+        self._cache: Optional[Dict] = None
+        self._cache_ts: float = 0.0
+        self._btc_klines_cache = None
+        self._btc_klines_ts: float = 0.0
 
     @classmethod
     def _determine_regime(cls, fear_greed: int) -> str:
@@ -426,10 +424,10 @@ class StrategyAdaptor:
             try:
                 _now_ts = time.time()
                 if (
-                    StrategyAdaptor._btc_klines_cache is not None
-                    and (_now_ts - StrategyAdaptor._btc_klines_ts) < 300
+                    self._btc_klines_cache is not None
+                    and (_now_ts - self._btc_klines_ts) < 300
                 ):
-                    kl_data = StrategyAdaptor._btc_klines_cache
+                    kl_data = self._btc_klines_cache
                 else:
                     import requests as _req
 
@@ -439,8 +437,8 @@ class StrategyAdaptor:
                         timeout=5,
                     )
                     kl_data = kl_resp.json()
-                    StrategyAdaptor._btc_klines_cache = kl_data
-                    StrategyAdaptor._btc_klines_ts = _now_ts
+                    self._btc_klines_cache = kl_data
+                    self._btc_klines_ts = _now_ts
                 if len(kl_data) >= 2:
                     closes = [float(k[4]) for k in kl_data]
                     daily_returns = [
