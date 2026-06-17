@@ -210,9 +210,51 @@ def cmd_trailing_check():
                 sl_qty = _order_qty(sl_order)
                 new_sl_rounded = round(new_sl, p_prec)
 
-                # P0-6 FIX: Place new SL FIRST, then cancel old SL.
-                # This eliminates the naked position window between cancel and place.
-                # Retry up to 3 times; if all fail, keep old SL and alert.
+                # === Cancel-first SL move with safety net ===
+                # When position is fully locked in OCO orders, placing new SL first
+                # fails with insufficient balance. Strategy:
+                # 1. Cancel old SL to free locked balance
+                # 2. Wait briefly for exchange to process
+                # 3. Place new SL
+                # 4. If new SL fails, re-place old SL as safety net (avoid naked position)
+
+                # Step 1: Cancel old SL
+                cancel_ok = False
+                for cancel_attempt in range(3):
+                    try:
+                        cancel_result = client.cancel_order(symbol, _order_id(sl_order))
+                        if cancel_result:
+                            cancel_ok = True
+                            break
+                    except Exception as e:
+                        logger.warning(
+                            "TrailingStop: cancel old SL attempt %d failed for %s: %s",
+                            cancel_attempt + 1, asset, e
+                        )
+                        if cancel_attempt < 2:
+                            time.sleep(1)
+
+                if not cancel_ok:
+                    logger.error(
+                        "TrailingStop: failed to cancel old SL for %s. Aborting SL move, old SL preserved.",
+                        asset
+                    )
+                    notifier.send_text(
+                        f"⚠️ SL取消失敗 {asset}！無法移動SL，舊SL(${old_sl_price:.6f})保留。"
+                    )
+                    results.append({
+                        "asset": asset,
+                        "action": "sl_cancel_failed",
+                        "old_sl": old_sl_price,
+                        "target_sl": new_sl_rounded,
+                        "msg": "Failed to cancel old SL, old SL preserved",
+                    })
+                    continue
+
+                # Step 2: Wait for balance release
+                time.sleep(0.5)
+
+                # Step 3: Place new SL
                 new_sl_order = None
                 for sl_attempt in range(3):
                     try:
@@ -231,56 +273,69 @@ def cmd_trailing_check():
                             time.sleep(1)
 
                 if new_sl_order:
-                    # New SL placed successfully — now safe to cancel old SL
-                    cancel_result = client.cancel_order(symbol, _order_id(sl_order))
-                    if cancel_result:
-                        sl_moved = True
-                        logger.info(
-                            "TrailingStop SL moved %s: $%.6f → $%.6f",
-                            asset, old_sl_price, new_sl_rounded
-                        )
-                        results.append({
-                            "asset": asset,
-                            "action": "sl_moved",
-                            "old_sl": old_sl_price,
-                            "new_sl": new_sl_rounded,
-                            "highest": update["highest_price"],
-                            "current_price": current_price,
-                            "callback_pct": update.get("callback_pct", 0),
-                        })
-                    else:
-                        # New SL placed but old SL cancel failed — not critical,
-                        # both orders are SELL so worst case both trigger.
-                        sl_moved = True
-                        logger.warning(
-                            "TrailingStop: old SL cancel failed for %s but new SL is active (both may exist)",
-                            asset
-                        )
-                        results.append({
-                            "asset": asset,
-                            "action": "sl_moved_old_cancel_failed",
-                            "old_sl": old_sl_price,
-                            "new_sl": new_sl_rounded,
-                            "highest": update["highest_price"],
-                            "current_price": current_price,
-                        })
-                else:
-                    # New SL failed after 3 retries — keep old SL, alert
-                    logger.critical(
-                        "TrailingStop: failed to place new SL for %s after 3 retries! "
-                        "Old SL preserved at $%.6f. Manual review needed.",
-                        asset, old_sl_price
-                    )
-                    notifier.send_text(
-                        f"⚠️ SL移動失敗 {asset}！新SL連續3次掛單失敗，舊SL(${old_sl_price:.6f})保留。請手動確認。"
+                    sl_moved = True
+                    logger.info(
+                        "TrailingStop SL moved %s: $%.6f → $%.6f",
+                        asset, old_sl_price, new_sl_rounded
                     )
                     results.append({
                         "asset": asset,
-                        "action": "sl_move_retries_exhausted",
+                        "action": "sl_moved",
                         "old_sl": old_sl_price,
-                        "target_sl": new_sl_rounded,
-                        "msg": "New SL placement failed 3x, old SL preserved",
+                        "new_sl": new_sl_rounded,
+                        "highest": update["highest_price"],
+                        "current_price": current_price,
+                        "callback_pct": update.get("callback_pct", 0),
                     })
+                else:
+                    # Step 4: SAFETY NET — re-place old SL to avoid naked position
+                    old_sl_rounded = round(old_sl_price, p_prec)
+                    safety_ok = False
+                    try:
+                        safety_order = client.place_order(
+                            symbol, "SELL", "STOP_LOSS_LIMIT",
+                            sl_qty, price=old_sl_rounded, stop_price=old_sl_rounded
+                        )
+                        if safety_order:
+                            safety_ok = True
+                    except Exception as safety_err:
+                        logger.error(
+                            "TrailingStop: safety net SL re-placement failed for %s: %s",
+                            asset, safety_err
+                        )
+
+                    if safety_ok:
+                        logger.warning(
+                            "TrailingStop: new SL failed for %s after 3 retries! "
+                            "Re-placed old SL at $%.6f as safety net.",
+                            asset, old_sl_price
+                        )
+                        notifier.send_text(
+                            f"⚠️ SL移動失敗 {asset}！新SL掛單3次失敗，已恢復舊SL(${old_sl_price:.6f})。請手動確認。"
+                        )
+                        results.append({
+                            "asset": asset,
+                            "action": "sl_move_reverted",
+                            "old_sl": old_sl_price,
+                            "target_sl": new_sl_rounded,
+                            "msg": "New SL failed 3x, old SL re-placed as safety net",
+                        })
+                    else:
+                        logger.critical(
+                            "TrailingStop: new SL failed AND safety net failed for %s! "
+                            "POSITION IS NAKED — no SL protection!",
+                            asset
+                        )
+                        notifier.send_text(
+                            f"🔴🔴 SL移動失敗且無法恢復 {asset}！倉位無SL保護！請立即手動處理！"
+                        )
+                        results.append({
+                            "asset": asset,
+                            "action": "sl_naked_position",
+                            "old_sl": old_sl_price,
+                            "target_sl": new_sl_rounded,
+                            "msg": "Both new SL and safety net failed — NAKED POSITION",
+                        })
             else:
                 # SL already at or above target
                 results.append({
