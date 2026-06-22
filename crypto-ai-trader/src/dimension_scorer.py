@@ -6,15 +6,16 @@ Based on research report "加密貨幣暴漲前徵兆研究報告":
 - 5 dimensions → 85%, 6 dimensions → 92%
 
 Dimensions (weight):
-  1. On-Chain (25%)    — MVRV, exchange reserves
-  2. Liquidity (25%)   — funding rate, stablecoin supply
+  1. On-Chain (25%)    — Chain TVL changes (DeFiLlama) + BTC volume
+  2. Liquidity (25%)   — funding rate, stablecoin supply (DeFiLlama), DEX volume
   3. Macro (20%)       — BTC trend, F&G regime
   4. Sentiment (15%)   — CFGI persistence, fear/greed
   5. Technical (10%)   — RSI, MACD, volume
   6. Regulatory (5%)   — news sentiment
 
-Only dimensions 2, 4, 5 are fully implementable with current API access.
-Dimensions 1, 3, 6 are approximated from available data.
+v2 (2026-06-22): Integrated llama-data-skill for DeFiLlama on-chain data.
+D1 now uses real chain TVL data instead of BTC volume proxy.
+D2 now includes stablecoin supply trends alongside funding rate.
 """
 
 from __future__ import annotations
@@ -107,16 +108,82 @@ class DimensionScorer:
 
     # ------------------------------------------------------------------
     def _score_onchain(self) -> Dict:
-        """D1: On-Chain — approximated from Binance orderbook depth."""
+        """D1: On-Chain — DeFiLlama chain TVL + BTC volume as backup.
+
+        Uses llama-data-skill for real on-chain TVL data (chain-level),
+        falls back to BTC volume proxy if llama unavailable.
+        """
         score = 0.0
         signals = []
         data: Dict[str, Any] = {}
 
+        # --- Primary: DeFiLlama chain TVL via llama-data-skill ---
+        try:
+            from src.data_feed_llama import LlamaDataFeed
+
+            llama = LlamaDataFeed()
+            chain_tvl = llama.get_chain_tvl()
+
+            if chain_tvl:
+                data["chain_tvl_changes"] = chain_tvl
+                avg_tvl_change = sum(chain_tvl.values()) / len(chain_tvl)
+                chains_up = sum(1 for v in chain_tvl.values() if v > 0.5)
+                chains_down = sum(1 for v in chain_tvl.values() if v < -0.5)
+
+                # Aggregate TVL direction is a strong on-chain signal
+                if avg_tvl_change > 2:
+                    score += 0.4
+                    signals.append(f"tvl_strong_inflow_{avg_tvl_change:+.1f}pct")
+                elif avg_tvl_change > 0.5:
+                    score += 0.2
+                    signals.append(f"tvl_inflow_{avg_tvl_change:+.1f}pct")
+                elif avg_tvl_change < -2:
+                    score -= 0.4
+                    signals.append(f"tvl_strong_outflow_{avg_tvl_change:+.1f}pct")
+                elif avg_tvl_change < -0.5:
+                    score -= 0.2
+                    signals.append(f"tvl_outflow_{avg_tvl_change:+.1f}pct")
+                else:
+                    signals.append(f"tvl_flat_{avg_tvl_change:+.1f}pct")
+
+                # Cross-check: divergence between chains
+                if chains_up >= 3 and chains_down == 0:
+                    score += 0.1
+                    signals.append(f"tvl_broad_inflow_{chains_up}chains")
+                elif chains_down >= 3 and chains_up == 0:
+                    score -= 0.1
+                    signals.append(f"tvl_broad_outflow_{chains_down}chains")
+
+            else:
+                # Fallback to old DeFiLlama direct API
+                logger.debug("Llama TVL unavailable, falling back to direct API")
+                try:
+                    from src.data_feed_onchain import DeFiLlamaOnChain
+
+                    onchain = DeFiLlamaOnChain()
+                    old_changes = onchain.get_chain_tvl_changes()
+                    if old_changes:
+                        data["chain_tvl_changes_fallback"] = old_changes
+                        avg_chg = sum(old_changes.values()) / len(old_changes)
+                        if avg_chg > 1:
+                            score += 0.2
+                            signals.append(f"tvl_fallback_inflow_{avg_chg:+.1f}pct")
+                        elif avg_chg < -1:
+                            score -= 0.2
+                            signals.append(f"tvl_fallback_outflow_{avg_chg:+.1f}pct")
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.debug(f"DeFiLlama on-chain scoring failed: {e}")
+
+        # --- Backup: BTC volume from Binance (always available) ---
         if not self.client:
-            return {"score": 0, "signals": ["no_client"], "weight": 0.25, "data": data}
+            if not signals:
+                return {"score": 0, "signals": ["no_client"], "weight": 0.25, "data": data}
+            return {"score": max(-1, min(1, score)), "signals": signals, "weight": 0.25, "data": data}
 
         try:
-            # Use BTC 24h stats as proxy
             stats = self.client.get_24hr_stats("BTCUSDT")
             if stats:
                 vol = float(stats.get("quote_volume", 0))
@@ -124,51 +191,146 @@ class DimensionScorer:
                 data["btc_volume_24h"] = vol
                 data["btc_price_change"] = price_change
 
-                # High volume + price up = accumulation proxy
+                # BTC volume as secondary signal (smaller weight than TVL)
                 if vol > 5_000_000_000 and price_change > 1.5:
-                    score += 0.3
+                    score += 0.15
                     signals.append("BTC_high_vol_accumulation")
                 elif vol > 5_000_000_000 and price_change < -1.5:
-                    score -= 0.3
-                    signals.append("BTC_high_vol_distribution")
-                elif vol > 2_000_000_000 and price_change > 0.5:
-                    score += 0.15
-                    signals.append("BTC_vol_accumulation")
-                elif vol > 2_000_000_000 and price_change < -0.5:
                     score -= 0.15
-                    signals.append("BTC_vol_distribution")
+                    signals.append("BTC_high_vol_distribution")
         except Exception as e:
-            logger.debug(f"On-chain scoring failed: {e}")
+            logger.debug(f"BTC volume scoring failed: {e}")
 
-        return {"score": score, "signals": signals, "weight": 0.25, "data": data}
+        return {"score": max(-1, min(1, score)), "signals": signals, "weight": 0.25, "data": data}
 
     # ------------------------------------------------------------------
     def _score_liquidity(self) -> Dict:
-        """D2: Liquidity — funding rate 30d rolling average."""
+        """D2: Liquidity — funding rate + stablecoin supply + DEX volume.
+
+        Combines three liquidity signals:
+        1. Funding rate 30d rolling avg (existing)
+        2. Stablecoin supply trends via DeFiLlama (new: capital inflow/outflow)
+        3. DEX volume trend via DeFiLlama (new: market activity)
+        """
         score = 0.0
         signals = []
         data: Dict[str, Any] = {}
 
+        # --- Signal 1: Funding rate (existing, 50% of liquidity weight) ---
+        funding_score = 0.0
         try:
             from src.data_feed_funding import FundingRate
 
             fr = FundingRate()
             btc_fr = fr.get_funding_rolling_avg("BTCUSDT", days=30)
-            data = btc_fr
+            data["funding"] = btc_fr
 
             strength = btc_fr.get("signal_strength", 0)
             signal = btc_fr.get("signal", "NEUTRAL")
-            score = strength / 5.0  # normalize to -1..+1
+            funding_score = strength / 5.0
             signals.append(f"funding_30d:{signal}")
             signals.append(f"funding_avg:{btc_fr.get('rolling_avg', 0):.6f}")
 
-            # Also check BTC specifically for extreme readings
             if btc_fr.get("negative_pct", 0) > 70:
-                score += 0.2
+                funding_score += 0.2
                 signals.append(f"funding_neg_{btc_fr['negative_pct']:.0f}pct")
 
         except Exception as e:
-            logger.debug(f"Liquidity scoring failed: {e}")
+            logger.debug(f"Funding rate scoring failed: {e}")
+
+        score += funding_score * 0.5  # 50% weight for funding
+
+        # --- Signal 2: Stablecoin supply via llama-data-skill (new, 30% of liquidity) ---
+        stbl_score = 0.0
+        try:
+            from src.data_feed_llama import LlamaDataFeed
+
+            llama = LlamaDataFeed()
+            stbl = llama.get_stablecoin_supply()
+
+            if stbl:
+                data["stablecoin"] = stbl
+                usdt = stbl.get("usdt_circulating", 0)
+                usdc = stbl.get("usdc_circulating", 0)
+                total = stbl.get("total_circulating_usd", 0)
+                usdt_chg = stbl.get("usdt_change_day", 0)
+                usdc_chg = stbl.get("usdc_change_day", 0)
+
+                signals.append(f"stbl_total_${total/1e9:.0f}B")
+                if usdt > 0:
+                    signals.append(f"USDT_${usdt/1e9:.1f}B_{usdt_chg:+.2f}pct")
+                if usdc > 0:
+                    signals.append(f"USDC_${usdc/1e9:.1f}B_{usdc_chg:+.2f}pct")
+
+                # Stablecoin supply change = capital inflow/outflow signal
+                # Aggregate USDT+USDC change as the primary liquidity signal
+                avg_stbl_chg = (usdt_chg + usdc_chg) / 2 if (usdt_chg or usdc_chg) else 0
+                if avg_stbl_chg > 0.5:
+                    stbl_score += 0.3
+                    signals.append(f"stbl_capital_inflow_{avg_stbl_chg:+.1f}pct")
+                elif avg_stbl_chg > 0.1:
+                    stbl_score += 0.15
+                    signals.append(f"stbl_mild_inflow_{avg_stbl_chg:+.1f}pct")
+                elif avg_stbl_chg < -0.5:
+                    stbl_score -= 0.3
+                    signals.append(f"stbl_capital_outflow_{avg_stbl_chg:+.1f}pct")
+                elif avg_stbl_chg < -0.1:
+                    stbl_score -= 0.15
+                    signals.append(f"stbl_mild_outflow_{avg_stbl_chg:+.1f}pct")
+
+                # Depeg alerts are a strong bearish signal
+                depegs = stbl.get("depeg_alerts", [])
+                if depegs:
+                    for d in depegs:
+                        stbl_score -= 0.3
+                        signals.append(f"depeg_{d.get('symbol','?')}_{d['deviation_pct']:+.1f}pct")
+                    data["depeg_alerts"] = depegs
+
+        except Exception as e:
+            logger.debug(f"Stablecoin scoring failed: {e}")
+
+        score += stbl_score * 0.3  # 30% weight for stablecoin
+
+        # --- Signal 3: DEX volume via llama-data-skill (new, 20% of liquidity) ---
+        dex_score = 0.0
+        try:
+            if "llama" not in dir():
+                from src.data_feed_llama import LlamaDataFeed
+                llama = LlamaDataFeed()
+
+            dex = llama.get_dex_volume()
+
+            if dex:
+                data["dex_volume"] = dex
+                vol_24h = dex.get("total_24h_usd", 0)
+                change_pct = dex.get("change_24h_pct", 0)
+
+                if vol_24h > 0:
+                    signals.append(f"dex_vol_${vol_24h/1e9:.1f}B")
+
+                # Volume spike = high activity, could precede moves
+                if change_pct > 30:
+                    dex_score += 0.3
+                    signals.append(f"dex_vol_spike_{change_pct:+.0f}pct")
+                elif change_pct > 10:
+                    dex_score += 0.15
+                    signals.append(f"dex_vol_up_{change_pct:+.0f}pct")
+                elif change_pct < -30:
+                    dex_score -= 0.3
+                    signals.append(f"dex_vol_collapse_{change_pct:+.0f}pct")
+                elif change_pct < -10:
+                    dex_score -= 0.15
+                    signals.append(f"dex_vol_down_{change_pct:+.0f}pct")
+
+                # Record top DEXes for debugging
+                top = dex.get("top_dexes", [])
+                if top:
+                    data["top_dexes"] = [f"{d['name']}:${d['volume_24h']/1e9:.1f}B" for d in top[:3]]
+
+        except Exception as e:
+            logger.debug(f"DEX volume scoring failed: {e}")
+
+        score += dex_score * 0.2  # 20% weight for DEX volume
 
         return {
             "score": max(-1, min(1, score)),
