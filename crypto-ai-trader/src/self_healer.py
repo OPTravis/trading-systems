@@ -4,7 +4,6 @@ Called from scan_orchestrator when auto-execute fails.
 """
 
 import logging
-import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -191,28 +190,16 @@ def _fix_klines_bug() -> dict:
             fixed_files.append(rel_path)
 
     if fixed_files:
-        # Auto-commit
-        try:
-            subprocess.run(
-                ["git", "add"] + [f for f in fixed_files],
-                cwd=str(CRYPTO_DIR),
-                capture_output=True,
-            )
-            subprocess.run(
-                [
-                    "git",
-                    "commit",
-                    "-m",
-                    f'auto-heal: fix klines format in {", ".join(fixed_files)}',
-                ],
-                cwd=str(CRYPTO_DIR),
-                capture_output=True,
-            )
-        except Exception:
-            logger.error("Failed to commit klines format fix via git", exc_info=True)
+        # NOTE: Auto git commit removed (BUG-005) — production code must not be
+        # silently modified. Log the fix and notify via alert instead.
+        logger.warning(
+            "self_healer fixed klines format in: %s — "
+            "MANUAL REVIEW REQUIRED before committing",
+            ", ".join(fixed_files),
+        )
         return {
             "fixed": True,
-            "msg": f"Fixed klines format in: {', '.join(fixed_files)}",
+            "msg": f"Fixed klines format in: {', '.join(fixed_files)} — REVIEW REQUIRED",
         }
 
     return {"fixed": False, "msg": "No klines format issues found in code"}

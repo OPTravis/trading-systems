@@ -1,450 +1,770 @@
 [
   {
-    "id": "notif_20260610090025795244",
-    "timestamp": "2026-06-10T09:00:25.795244",
+    "id": "notif_20260616031007108479",
+    "timestamp": "2026-06-16T03:10:07.108501",
     "type": "message",
     "title": "",
-    "body": "📊 每日报告 2026-06-10\n\n💰 USDT: $303.88\n📈 總資產: $393.55\n\n📦 持倉 (3):\n  🔴 BTC: 0.0 ($45.84, -1.05%)\n  🔴 ETH: 0.0 ($26.34, -1.08%)\n  🔴 SOL: 0.3 ($17.49, -0.40%)\n\n📋 掛單: 5 個 (SL:2 TP:5)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 77.2% > 60% → 可考慮加倉",
+    "body": "⚠️ SL移動失敗 SOL！新SL連續3次掛單失敗，舊SL($71.100000)保留。請手動確認。",
     "pushed": true
   },
   {
-    "id": "notif_20260611090059242915",
-    "timestamp": "2026-06-11T09:00:59.242915",
+    "id": "notif_20260616031507043990",
+    "timestamp": "2026-06-16T03:15:07.044026",
     "type": "message",
     "title": "",
-    "body": "📊 每日报告 2026-06-11\n\n💰 USDT: $303.97\n📈 總資產: $392.85\n\n📦 持倉 (3):\n  🔴 BTC: 0.0 ($45.75, -0.15%)\n  🔴 ETH: 0.0 ($26.06, -1.00%)\n  🔴 SOL: 0.3 ($17.06, -2.42%)\n\n📋 掛單: 6 個 (SL:0 TP:6)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 77.4% > 60% → 可考慮加倉",
+    "body": "⚠️ SL移動失敗 SOL！新SL連續3次掛單失敗，舊SL($71.100000)保留。請手動確認。",
     "pushed": true
   },
   {
-    "id": "notif_20260611214745461602",
-    "timestamp": "2026-06-11T21:47:45.461630",
-    "type": "message",
-    "title": "",
-    "body": "test",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260612091507902430",
-    "timestamp": "2026-06-12T09:15:07.902454",
-    "type": "message",
-    "title": "",
-    "body": "📊 每日报告 2026-06-12\n\n💰 USDT: $303.97\n📈 總資產: $395.55\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($46.98, +2.35%)\n  🟢 ETH: 0.0 ($26.71, +1.95%)\n  🟢 SOL: 0.3 ($17.88, +4.04%)\n\n📋 掛單: 3 個 (SL:3 TP:3)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.8% > 60% → 可考慮加倉",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613091508640920",
-    "timestamp": "2026-06-13T09:15:08.640960",
-    "type": "message",
-    "title": "",
-    "body": "📊 每日报告 2026-06-13\n\n💰 USDT: $303.97\n📈 總資產: $395.77\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($47.11, +0.27%)\n  🔴 ETH: 0.0 ($26.70, -0.04%)\n  🟢 SOL: 0.3 ($17.99, +0.63%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.8% > 60% → 可考慮加倉",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613144401216708",
-    "timestamp": "2026-06-13T14:44:01.216729",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 14:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613150204023804",
-    "timestamp": "2026-06-13T15:02:04.023833",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 15:02 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613170206055218",
-    "timestamp": "2026-06-13T17:02:06.055240",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 17:02 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613190212617285",
-    "timestamp": "2026-06-13T19:02:12.617305",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 19:02 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613210213891895",
-    "timestamp": "2026-06-13T21:02:13.891919",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 21:02 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613230211457118",
-    "timestamp": "2026-06-13T23:02:11.457145",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:02 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260613234301181756",
-    "timestamp": "2026-06-13T23:43:01.181782",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614034233483376",
-    "timestamp": "2026-06-14T03:42:33.483397",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 03:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614091507591518",
-    "timestamp": "2026-06-14T09:15:07.591548",
-    "type": "message",
-    "title": "",
-    "body": "📊 每日报告 2026-06-14\n\n💰 USDT: $303.97\n📈 總資產: $397.20\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($47.83, +1.55%)\n  🟢 ETH: 0.0 ($26.96, +0.95%)\n  🟢 SOL: 0.3 ($18.44, +2.47%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.5% > 60% → 可考慮加倉",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614094327665247",
-    "timestamp": "2026-06-14T09:43:27.665278",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 09:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614154243163559",
-    "timestamp": "2026-06-14T15:42:43.163587",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 15:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614174357239539",
-    "timestamp": "2026-06-14T17:43:57.239577",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 17:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614194159908981",
-    "timestamp": "2026-06-14T19:41:59.909015",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 19:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614194303962308",
-    "timestamp": "2026-06-14T19:43:03.962335",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 19:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614214206275265",
-    "timestamp": "2026-06-14T21:42:06.275298",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 21:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614224955648829",
-    "timestamp": "2026-06-14T22:49:55.648859",
-    "type": "message",
-    "title": "",
-    "body": "test",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225002785323",
-    "timestamp": "2026-06-14T22:50:02.785349",
-    "type": "message",
-    "title": "",
-    "body": "test",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225434878947",
-    "timestamp": "2026-06-14T22:54:34.878976",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 22:54 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225501522001",
-    "timestamp": "2026-06-14T22:55:01.522035",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 22:55 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225530532135",
-    "timestamp": "2026-06-14T22:55:30.532171",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 22:55 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225555244379",
-    "timestamp": "2026-06-14T22:55:55.244409",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 22:55 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614225804836247",
-    "timestamp": "2026-06-14T22:58:04.836279",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 22:58 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230315383402",
-    "timestamp": "2026-06-14T23:03:15.383423",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:03 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230421209935",
-    "timestamp": "2026-06-14T23:04:21.209956",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:04 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230441791961",
-    "timestamp": "2026-06-14T23:04:41.791985",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:04 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230446324023",
-    "timestamp": "2026-06-14T23:04:46.324045",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:04 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230536356951",
-    "timestamp": "2026-06-14T23:05:36.356971",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:05 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230550985679",
-    "timestamp": "2026-06-14T23:05:50.985697",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:05 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230612443985",
-    "timestamp": "2026-06-14T23:06:12.444012",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:06 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230646176909",
-    "timestamp": "2026-06-14T23:06:46.176940",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:06 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230649462563",
-    "timestamp": "2026-06-14T23:06:49.462583",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:06 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230652985330",
-    "timestamp": "2026-06-14T23:06:52.985349",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:06 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230759300595",
-    "timestamp": "2026-06-14T23:07:59.300615",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:07 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230816124466",
-    "timestamp": "2026-06-14T23:08:16.124489",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:08 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230836259070",
-    "timestamp": "2026-06-14T23:08:36.259091",
-    "type": "message",
-    "title": "",
-    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230836331448",
-    "timestamp": "2026-06-14T23:08:36.331468",
-    "type": "message",
-    "title": "",
-    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230841031710",
-    "timestamp": "2026-06-14T23:08:41.031734",
-    "type": "message",
-    "title": "",
-    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230841212789",
-    "timestamp": "2026-06-14T23:08:41.212814",
-    "type": "message",
-    "title": "",
-    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614230841423915",
-    "timestamp": "2026-06-14T23:08:41.423939",
-    "type": "message",
-    "title": "",
-    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614234147167591",
-    "timestamp": "2026-06-14T23:41:47.167620",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614234351699185",
-    "timestamp": "2026-06-14T23:43:51.699209",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260614234531924798",
-    "timestamp": "2026-06-14T23:45:31.924821",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 23:45 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260615014134337883",
-    "timestamp": "2026-06-15T01:41:34.337904",
-    "type": "scan_summary",
-    "title": "",
-    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260615034120732735",
-    "timestamp": "2026-06-15T03:41:20.732771",
+    "id": "notif_20260616034128436287",
+    "timestamp": "2026-06-16T03:41:28.436316",
     "type": "scan_summary",
     "title": "",
     "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
   },
   {
-    "id": "notif_20260615054323890043",
-    "timestamp": "2026-06-15T05:43:23.890078",
+    "id": "notif_20260616054316891956",
+    "timestamp": "2026-06-16T05:43:16.891991",
     "type": "scan_summary",
     "title": "",
     "body": "🔍 05:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
   },
   {
-    "id": "notif_20260615074137899356",
-    "timestamp": "2026-06-15T07:41:37.899393",
+    "id": "notif_20260616074219477511",
+    "timestamp": "2026-06-16T07:42:19.477546",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616091506674559",
+    "timestamp": "2026-06-16T09:15:06.674584",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-16\n\n💰 USDT: $379.05\n📈 總資產: $398.92\n\n📦 持倉 (1):\n  🟢 SOL: 0.3 ($19.87, +4.45%)\n\n📋 掛單: 2 個 (SL:1 TP:2)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.0% > 60% → 可考慮加倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616094149249866",
+    "timestamp": "2026-06-16T09:41:49.249907",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616114136124491",
+    "timestamp": "2026-06-16T11:41:36.124518",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616134130099691",
+    "timestamp": "2026-06-16T13:41:30.099712",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616154234620285",
+    "timestamp": "2026-06-16T15:42:34.620314",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616174146366655",
+    "timestamp": "2026-06-16T17:41:46.366689",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616194422890417",
+    "timestamp": "2026-06-16T19:44:22.890444",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616214140500059",
+    "timestamp": "2026-06-16T21:41:40.500090",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260616234308220210",
+    "timestamp": "2026-06-16T23:43:08.220238",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617014209671304",
+    "timestamp": "2026-06-17T01:42:09.671338",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617034123389536",
+    "timestamp": "2026-06-17T03:41:23.389570",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617054357879501",
+    "timestamp": "2026-06-17T05:43:57.879543",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617074119779081",
+    "timestamp": "2026-06-17T07:41:19.779112",
     "type": "scan_summary",
     "title": "",
     "body": "🔍 07:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
   },
   {
-    "id": "notif_20260615091505516716",
-    "timestamp": "2026-06-15T09:15:05.516746",
+    "id": "notif_20260617091505641891",
+    "timestamp": "2026-06-17T09:15:05.641918",
     "type": "message",
     "title": "",
-    "body": "📊 每日报告 2026-06-15\n\n💰 USDT: $303.97\n📈 總資產: $398.96\n\n📦 持倉 (3):\n  🟢 BTC: 0.0 ($48.48, +1.33%)\n  🟢 ETH: 0.0 ($27.48, +1.96%)\n  🟢 SOL: 0.3 ($19.03, +3.18%)\n\n📋 掛單: 7 個 (SL:5 TP:7)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 76.2% > 60% → 可考慮加倉",
+    "body": "📊 每日报告 2026-06-17\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
     "pushed": true
   },
   {
-    "id": "notif_20260615094225202655",
-    "timestamp": "2026-06-15T09:42:25.202683",
+    "id": "notif_20260617094201152430",
+    "timestamp": "2026-06-17T09:42:01.152459",
     "type": "scan_summary",
     "title": "",
     "body": "🔍 09:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
   },
   {
-    "id": "notif_20260615114240284314",
-    "timestamp": "2026-06-15T11:42:40.284348",
-    "type": "message",
-    "title": "",
-    "body": "🚀 自動執行 - WLDUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 11.9% of $303.45 = $36.05\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 61 @ $0.589100\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (82.1)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 61 @ $0.586600\n  Slippage: -0.42% (fill $0.586600 vs expected $0.589100)\n  SL(full): 61.199999999999996 @ $0.542 (-8.0%)\n  TP1(+6.0%): 24.4 @ $0.6244\n  TP2(+9.0%): 24.5 @ $0.6421\n  TP3(+12.0%): 12.2 @ $0.6598",
-    "pushed": true
-  },
-  {
-    "id": "notif_20260615114402929349",
-    "timestamp": "2026-06-15T11:44:02.929373",
+    "id": "notif_20260617114131476783",
+    "timestamp": "2026-06-17T11:41:31.476809",
     "type": "scan_summary",
     "title": "",
-    "body": "🔍 11:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "body": "🔍 11:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
   },
   {
-    "id": "notif_20260615134125494323",
-    "timestamp": "2026-06-15T13:41:25.494364",
+    "id": "notif_20260617134152653721",
+    "timestamp": "2026-06-17T13:41:52.653751",
     "type": "scan_summary",
     "title": "",
     "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
+  },
+  {
+    "id": "notif_20260617154137683926",
+    "timestamp": "2026-06-17T15:41:37.683955",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617174151446964",
+    "timestamp": "2026-06-17T17:41:51.446992",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617194428842643",
+    "timestamp": "2026-06-17T19:44:28.842674",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617214435026003",
+    "timestamp": "2026-06-17T21:44:35.026039",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260617234212857125",
+    "timestamp": "2026-06-17T23:42:12.857145",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618014153600903",
+    "timestamp": "2026-06-18T01:41:53.600933",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618034109561320",
+    "timestamp": "2026-06-18T03:41:09.561351",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618054333948146",
+    "timestamp": "2026-06-18T05:43:33.948177",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618074128932895",
+    "timestamp": "2026-06-18T07:41:28.932932",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618091504806368",
+    "timestamp": "2026-06-18T09:15:04.806394",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-18\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618094200110720",
+    "timestamp": "2026-06-18T09:42:00.110750",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618114143462172",
+    "timestamp": "2026-06-18T11:41:43.462207",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618134303877959",
+    "timestamp": "2026-06-18T13:43:03.877994",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618154136501225",
+    "timestamp": "2026-06-18T15:41:36.501262",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618174150669706",
+    "timestamp": "2026-06-18T17:41:50.669745",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618194254228721",
+    "timestamp": "2026-06-18T19:42:54.228768",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618214453020654",
+    "timestamp": "2026-06-18T21:44:53.020690",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260618234240876929",
+    "timestamp": "2026-06-18T23:42:40.876967",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619014127857515",
+    "timestamp": "2026-06-19T01:41:27.857551",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619034200979974",
+    "timestamp": "2026-06-19T03:42:00.980010",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619054134242424",
+    "timestamp": "2026-06-19T05:41:34.242461",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619074104891635",
+    "timestamp": "2026-06-19T07:41:04.891672",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619091505623094",
+    "timestamp": "2026-06-19T09:15:05.623123",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-19\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619094131385223",
+    "timestamp": "2026-06-19T09:41:31.385258",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619114151285284",
+    "timestamp": "2026-06-19T11:41:51.285328",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619134144802129",
+    "timestamp": "2026-06-19T13:41:44.802157",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619154140845395",
+    "timestamp": "2026-06-19T15:41:40.845430",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619174310378315",
+    "timestamp": "2026-06-19T17:43:10.378338",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619194138048127",
+    "timestamp": "2026-06-19T19:41:38.048160",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619214542456055",
+    "timestamp": "2026-06-19T21:45:42.456089",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:45 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260619234205597993",
+    "timestamp": "2026-06-19T23:42:05.598026",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620014114697181",
+    "timestamp": "2026-06-20T01:41:14.697217",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620034157968408",
+    "timestamp": "2026-06-20T03:41:57.968443",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620054125004166",
+    "timestamp": "2026-06-20T05:41:25.004204",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620074412878699",
+    "timestamp": "2026-06-20T07:44:12.878729",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620091505357192",
+    "timestamp": "2026-06-20T09:15:05.357221",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-20\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620094229202152",
+    "timestamp": "2026-06-20T09:42:29.202185",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620114126490844",
+    "timestamp": "2026-06-20T11:41:26.490874",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620134158325691",
+    "timestamp": "2026-06-20T13:41:58.325719",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620154303895400",
+    "timestamp": "2026-06-20T15:43:03.895433",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620174439903030",
+    "timestamp": "2026-06-20T17:44:39.903066",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:44 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620194203788962",
+    "timestamp": "2026-06-20T19:42:03.788984",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620214353696307",
+    "timestamp": "2026-06-20T21:43:53.696337",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260620234310408601",
+    "timestamp": "2026-06-20T23:43:10.408630",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621014336339110",
+    "timestamp": "2026-06-21T01:43:36.339126",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621034226751264",
+    "timestamp": "2026-06-21T03:42:26.751295",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621054301028329",
+    "timestamp": "2026-06-21T05:43:01.028359",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621074524265178",
+    "timestamp": "2026-06-21T07:45:24.265214",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:45 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621091505145374",
+    "timestamp": "2026-06-21T09:15:05.145406",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-21\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621094121676273",
+    "timestamp": "2026-06-21T09:41:21.676304",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621114304217122",
+    "timestamp": "2026-06-21T11:43:04.217150",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621134135209250",
+    "timestamp": "2026-06-21T13:41:35.209281",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621154309426043",
+    "timestamp": "2026-06-21T15:43:09.426071",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621174309545916",
+    "timestamp": "2026-06-21T17:43:09.545952",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621194115067080",
+    "timestamp": "2026-06-21T19:41:15.067119",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621214144425262",
+    "timestamp": "2026-06-21T21:41:44.425293",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260621234221441181",
+    "timestamp": "2026-06-21T23:42:21.441221",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622014112096170",
+    "timestamp": "2026-06-22T01:41:12.096200",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622034159321620",
+    "timestamp": "2026-06-22T03:41:59.321648",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622054111893128",
+    "timestamp": "2026-06-22T05:41:11.893163",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622074145189012",
+    "timestamp": "2026-06-22T07:41:45.189042",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622091505511072",
+    "timestamp": "2026-06-22T09:15:05.511099",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-06-22\n\n💰 USDT: $399.41\n📈 總資產: $399.41\n\n📦 無持倉",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622094204984259",
+    "timestamp": "2026-06-22T09:42:04.984290",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622114220556423",
+    "timestamp": "2026-06-22T11:42:20.556459",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622134137864778",
+    "timestamp": "2026-06-22T13:41:37.864819",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622154125525397",
+    "timestamp": "2026-06-22T15:41:25.525430",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622174204774308",
+    "timestamp": "2026-06-22T17:42:04.774343",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622194254840227",
+    "timestamp": "2026-06-22T19:42:54.840258",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622214158566653",
+    "timestamp": "2026-06-22T21:41:58.566691",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622234249569416",
+    "timestamp": "2026-06-22T23:42:49.569439",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ALLOUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622234250568621",
+    "timestamp": "2026-06-22T23:42:50.568650",
+    "type": "message",
+    "title": "",
+    "body": "🔴🔴 ALLOUSDT 完全無SL！108.5000 單位裸露！手動處理！",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260622234250823286",
+    "timestamp": "2026-06-22T23:42:50.823320",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ALLOUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 12.0% of $399.41 = $47.93\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 108 @ $0.441700\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (71.2)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 108 @ $0.442092\n  SL: FAILED\n  TP1: FAILED\n  TP2: FAILED\n  TP3: FAILED\n  🔴 未保護: 108.5000 units (no SL placed)\n  注意: 108 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260623003832481140",
+    "timestamp": "2026-06-23T00:38:32.481173",
+    "type": "message",
+    "title": "",
+    "body": "test",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623003857738678",
+    "timestamp": "2026-06-23T00:38:57.738709",
+    "type": "message",
+    "title": "",
+    "body": "test",
+    "pushed": false
   }
 ]

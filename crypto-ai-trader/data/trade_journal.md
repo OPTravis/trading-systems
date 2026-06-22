@@ -17247,3 +17247,14 @@
 
 ## 2026-06-15 11:42 | WLDUSDT | BUY | score=79.1 | bear_score=25 veto=False
 - Research: {'symbol': 'WLDUSDT', 'coin': 'WLD', 'news': [], 'onchain': {'whale_activity': 'UNKNOWN', 'exchange_flow': 'UNKNOWN', 'volume_trend': 'ACTIVE', 'funding_rate': None, 'oi_change': None}, 'catalysts': [
+
+## 2026-06-22 23:42 | ALLOUSDT | BUY | score=80.2
+- Price: $0.441700
+- Quantity: 108.5
+- Reasons: [📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (71.2)]
+- Signals: [📈 Moderate Trend Score: 60, 🚀 1h Strong Uptrend, 🔥 RSI Overbought (71.2), ✅ MACD Bullish (1h+4h), 📈 Above VWAP, 🌊 1h Volume Surge (1.5x avg), 📊 OBV Rising Trend, 🚀 Consolidation Breakout (0d range + Volume), 🤖 LLM: We need to assess sentiment based on given data. Price 0.4417, score 80.17/100 (high bullish score),]
+- Strategy: trend
+
+
+## 2026-06-22 23:42 | ALLOUSDT | BUY | score=80.2 | bear_score=25 veto=False
+- Research: {'symbol': 'ALLOUSDT', 'coin': 'ALLO', 'news': [], 'onchain': {'whale_activity': 'UNKNOWN', 'exchange_flow': 'UNKNOWN', 'volume_trend': 'ACTIVE', 'funding_rate': None, 'oi_change': None}, 'catalysts':

@@ -581,7 +581,7 @@ class ConsecutiveLossGuard:
             logger.warning(f"ConsecutiveLossGuard: failed to clear DB state: {e}")
 
     def _save(self) -> bool:
-        """Persist to SQLite (primary) and JSON backup (disaster recovery)."""
+        """Persist to SQLite (single source of truth)."""
         try:
             from src.state_db import get_state_db
 
@@ -596,8 +596,8 @@ class ConsecutiveLossGuard:
                         # (timestamp of the most recent loss). Schema migration needed to rename.
                     }
                 )
-            # Also persist history to JSON backup for disaster recovery
-            _save_json(self._filepath, self._state)
+            # BUG-004 fix: Removed JSON backup dual-write.
+            # SQLite is now the single source of truth (SSOT).
             return True
         except Exception as e:
             logger.error(f"ConsecutiveLossGuard: SQLite save failed: {e}")

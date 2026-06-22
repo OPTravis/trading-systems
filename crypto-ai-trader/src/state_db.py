@@ -380,6 +380,10 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_outcomes_symbol ON trade_outcomes(symbol);
             CREATE INDEX IF NOT EXISTS idx_outcomes_status ON trade_outcomes(status);
             CREATE INDEX IF NOT EXISTS idx_outcomes_entry_time ON trade_outcomes(entry_time);
+            CREATE INDEX IF NOT EXISTS idx_outcomes_exit_time ON trade_outcomes(exit_time);
+            CREATE INDEX IF NOT EXISTS idx_outcomes_strategy ON trade_outcomes(strategy);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_strategy ON portfolio(strategy);
+            CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
             """)
         conn.commit()
 
