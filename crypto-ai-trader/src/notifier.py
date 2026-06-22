@@ -2,9 +2,11 @@
 Signal Notifier - writes signals to local JSON + pending notifications file
 Notifications are pushed to WorkBuddy chat by the automation system
 """
+import fcntl
 import json
 import logging
 import os
+import tempfile
 import time as _time_module
 from datetime import datetime
 from pathlib import Path
@@ -25,29 +27,67 @@ def _append_notification(msg_type: str, title: str, body: str, max_retries: int 
 
     P2-5: Retries up to max_retries times with exponential backoff (1s, 2s, 4s)
     to ensure critical notifications (SL failure, trailing trigger) are persisted.
+
+    P0-fix: Uses atomic write (temp file + os.replace) to prevent JSON corruption
+    from concurrent writers (scan + trailing-check + ensure-tp-sl).
     """
     _ensure_signals_dir()
     for attempt in range(max_retries):
         try:
-            notifications = []
-            if NOTIFICATIONS_FILE.exists():
+            # Use file lock to serialize concurrent writers
+            lock_path = str(NOTIFICATIONS_FILE) + ".lock"
+            lock_fd = None
+            try:
+                # Create/open lock file
+                lock_fd = open(lock_path, "w")
+                import fcntl
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocking exclusive lock
+
+                notifications = []
+                if NOTIFICATIONS_FILE.exists():
+                    try:
+                        with open(NOTIFICATIONS_FILE, "r") as f:
+                            notifications = json.load(f)
+                    except (json.JSONDecodeError, FileNotFoundError):
+                        logger.warning("Corrupted notifications file, backing up and resetting")
+                        backup = str(NOTIFICATIONS_FILE) + f".corrupt.{int(_time_module.time())}"
+                        try:
+                            NOTIFICATIONS_FILE.rename(backup)
+                        except OSError:
+                            pass
+                        notifications = []
+
+                notifications.append({
+                    "id": f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                    "timestamp": datetime.now().isoformat(),
+                    "type": msg_type,
+                    "title": title,
+                    "body": body,
+                    "pushed": False
+                })
+
+                # Atomic write: temp file + rename
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=str(SIGNALS_FILE.parent), suffix=".tmp"
+                )
                 try:
-                    with open(NOTIFICATIONS_FILE, "r") as f:
-                        notifications = json.load(f)
-                except (json.JSONDecodeError, FileNotFoundError):
-                    notifications = []
-
-            notifications.append({
-                "id": f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
-                "timestamp": datetime.now().isoformat(),
-                "type": msg_type,
-                "title": title,
-                "body": body,
-                "pushed": False
-            })
-
-            with open(NOTIFICATIONS_FILE, "w") as f:
-                json.dump(notifications, f, indent=2, ensure_ascii=False)
+                    with os.fdopen(fd, "w") as f:
+                        json.dump(notifications, f, indent=2, ensure_ascii=False)
+                    os.replace(tmp_path, str(NOTIFICATIONS_FILE))
+                except:
+                    # Clean up temp file on failure
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                if lock_fd:
+                    try:
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                        lock_fd.close()
+                    except Exception:
+                        pass
             return  # success
         except (OSError, IOError) as e:
             if attempt < max_retries - 1:
@@ -93,16 +133,37 @@ def send_signal(signal_type: str, symbol: str, action: str, price: float,
         "notified": False
     }
 
-    # Load existing signals
-    signals = []
-    if SIGNALS_FILE.exists():
-        with open(SIGNALS_FILE, "r") as f:
-            signals = json.load(f)
+    # Load existing signals (with lock)
+    import fcntl
+    lock_path = str(SIGNALS_FILE) + ".lock"
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        signals = []
+        if SIGNALS_FILE.exists():
+            try:
+                with open(SIGNALS_FILE, "r") as f:
+                    signals = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                signals = []
 
-    signals.append(signal)
+        signals.append(signal)
 
-    with open(SIGNALS_FILE, "w") as f:
-        json.dump(signals, f, indent=2)
+        # Atomic write
+        fd, tmp_path = tempfile.mkstemp(dir=str(SIGNALS_DIR), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(signals, f, indent=2)
+            os.replace(tmp_path, str(SIGNALS_FILE))
+        except:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
     # Push notification
     emoji = "🟢" if signal_type == "BUY" else "🔴"
@@ -123,28 +184,45 @@ def send_message(title: str, body: str):
 
     P2-5: Retries file writes up to 3 times with exponential backoff
     to ensure critical notifications survive transient I/O failures.
+    P0-fix: Atomic write + flock to prevent JSON corruption.
     """
     _ensure_signals_dir()
 
     msg_file = SIGNALS_DIR / "messages.json"
     for attempt in range(3):
         try:
-            messages = []
-            if msg_file.exists():
+            lock_path = str(msg_file) + ".lock"
+            lock_fd = open(lock_path, "w")
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                messages = []
+                if msg_file.exists():
+                    try:
+                        with open(msg_file, "r") as f:
+                            messages = json.load(f)
+                    except (json.JSONDecodeError, FileNotFoundError):
+                        messages = []
+                messages.append({
+                    "id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "timestamp": datetime.now().isoformat(),
+                    "title": title,
+                    "body": body,
+                    "notified": False
+                })
+                fd, tmp_path = tempfile.mkstemp(dir=str(SIGNALS_DIR), suffix=".tmp")
                 try:
-                    with open(msg_file, "r") as f:
-                        messages = json.load(f)
-                except (json.JSONDecodeError, FileNotFoundError):
-                    messages = []
-            messages.append({
-                "id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                "timestamp": datetime.now().isoformat(),
-                "title": title,
-                "body": body,
-                "notified": False
-            })
-            with open(msg_file, "w") as f:
-                json.dump(messages, f, indent=2, ensure_ascii=False)
+                    with os.fdopen(fd, "w") as f:
+                        json.dump(messages, f, indent=2, ensure_ascii=False)
+                    os.replace(tmp_path, str(msg_file))
+                except:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
             break
         except (OSError, IOError) as e:
             if attempt < 2:

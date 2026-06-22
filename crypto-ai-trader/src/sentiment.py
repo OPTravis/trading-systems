@@ -239,16 +239,47 @@ class SentimentAnalyzer:
             }
         except Exception as e:
             logger.error(f"Failed to get Fear & Greed Index: {e}")
+            # P0: Fall back to cached F&G value instead of hardcoded 50
+            # Prevents a single API blip from flipping EXTREME_FEAR→NEUTRAL
+            cached_fng = self._get_cached_fng()
+            if cached_fng is not None:
+                logger.warning(f"Using cached F&G={cached_fng} (API failed)")
+                fng_value = cached_fng
+                fng_label = self._fng_label(cached_fng)
+            else:
+                logger.warning("No cached F&G available, defaulting to 50")
+                fng_value = 50
+                fng_label = "Neutral"
             return {
-                "sentiment_score": 0,
-                "sentiment_label": "Unknown",
-                "fear_greed": 50,
-                "fng_classification": "Neutral",
+                "sentiment_score": round((fng_value - 50) / 50, 2),
+                "sentiment_label": self._fng_label(fng_value),
+                "fear_greed": fng_value,
+                "fng_classification": fng_label,
                 "consecutive_fear_days": 0,
                 "consecutive_greed_days": 0,
                 "signal": "NO_DATA",
                 "timestamp": datetime.now().isoformat(),
             }
+
+    def _get_cached_fng(self) -> Optional[int]:
+        """Read the most recent F&G value from the SQLite cache.
+
+        Falls back to data_feed_fng's cache database. Returns None if
+        no cached data is available.
+        """
+        try:
+            from src.data_feed_base import CACHE_DB
+            import sqlite3
+            conn = sqlite3.connect(CACHE_DB, timeout=5)
+            row = conn.execute(
+                "SELECT value FROM fng_history ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if row:
+                return int(row[0])
+        except Exception as e:
+            logger.debug(f"F&G cache read failed: {e}")
+        return None
 
     def _fng_label(self, value: int) -> str:
         """Map F&G value to actionable label"""
