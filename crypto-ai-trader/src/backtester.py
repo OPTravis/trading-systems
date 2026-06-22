@@ -103,31 +103,58 @@ class Backtester:
         }
 
     def _get_historical_data(self, symbol: str, interval: str, days: int) -> List[Dict]:
-        """Get historical kline data"""
+        """Get historical kline data with pagination for long backtests.
+
+        Binance limits each request to 1500 candles. For periods longer
+        than 1500 candles, we paginate backwards using endTime to fetch
+        all required data.
+        """
         # Estimate number of candles needed
         interval_minutes = {
-            "1m": 1,
-            "5m": 5,
-            "15m": 15,
-            "1h": 60,
-            "4h": 240,
-            "1d": 1440,
+            "1m": 1, "5m": 5, "15m": 15,
+            "1h": 60, "4h": 240, "1d": 1440,
         }
 
         mins = interval_minutes.get(interval, 60)
         candles_needed = (days * 24 * 60) // mins
-        limit = min(candles_needed, 1500)  # Binance limit
 
-        # Cache klines to avoid redundant API calls (60s TTL)
-        cache_key = f"{symbol}:{interval}:{limit}"
+        # Cache key includes full request params
+        cache_key = f"{symbol}:{interval}:{candles_needed}"
         now = time.monotonic()
         cached = self._klines_cache.get(cache_key)
         if cached and now - cached[0] < 60:
             return cached[1]
 
-        data = self.client.get_klines(symbol, interval, limit=limit)
-        self._klines_cache[cache_key] = (now, data)
-        return data
+        if candles_needed <= 1500:
+            data = self.client.get_klines(symbol, interval, limit=candles_needed)
+            self._klines_cache[cache_key] = (now, data)
+            return data
+
+        # Paginate: fetch in chunks of 1500, working backwards
+        all_klines: List[Dict] = []
+        remaining = candles_needed
+        end_time = None  # None = latest
+
+        while remaining > 0:
+            batch_size = min(remaining, 1500)
+            batch = self.client.get_klines(
+                symbol, interval, limit=batch_size, endTime=end_time
+            )
+            if not batch:
+                break
+            all_klines = batch + all_klines  # prepend older data
+            remaining -= len(batch)
+            # Next batch ends just before the oldest candle in this batch
+            end_time = batch[0]["open_time"] - 1
+            if len(batch) < batch_size:
+                break  # no more historical data available
+
+        logger.info(
+            "Fetched %d klines for %s %s (requested %d, paginated)",
+            len(all_klines), symbol, interval, candles_needed,
+        )
+        self._klines_cache[cache_key] = (now, all_klines)
+        return all_klines
 
     def _run_backtest(
         self,

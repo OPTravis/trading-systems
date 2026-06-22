@@ -46,14 +46,19 @@ class CVaRRiskManager:
         CVaR_alpha = E[Loss | Loss > VaR_alpha]
         = average of the worst alpha% of returns
 
+        For small samples (<10), uses conservative fallback: returns the
+        worst observed loss instead of 0.0 (which dangerously underestimates risk).
+
         Args:
             returns: list of period returns (e.g., daily %)
             alpha: confidence level (0.05 = 95% CVaR)
 
         Returns: CVaR as a negative percentage (e.g., -12.5)
         """
-        if not returns or len(returns) < 10:
+        if not returns:
             return 0.0
+        if len(returns) < 10:
+            return self._estimate_cvar_small_sample(returns)
 
         sorted_returns = sorted(returns)
         n = len(sorted_returns)
@@ -65,6 +70,22 @@ class CVaRRiskManager:
 
         return round(cvar, 2)
 
+    def _estimate_cvar_small_sample(self, returns: List[float]) -> float:
+        """Conservative CVaR estimate for small samples (<10 data points).
+
+        Returns the worst observed loss (min return) as a floor estimate.
+        This is intentionally conservative — it's better to overestimate
+        risk than to report 0.0 and allow oversized positions.
+        """
+        if not returns:
+            return 0.0
+        worst = min(returns)
+        logger.warning(
+            "CVaR small sample (n=%d): using worst observed loss %.2f%% as conservative estimate",
+            len(returns), worst,
+        )
+        return round(worst, 2)
+
     def compute_var(self, returns: List[float], alpha: float = 0.05) -> float:
         """Compute VaR (Value at Risk) from return series.
 
@@ -72,8 +93,11 @@ class CVaRRiskManager:
 
         Returns: VaR as a negative percentage.
         """
-        if not returns or len(returns) < 10:
+        if not returns:
             return 0.0
+        if len(returns) < 10:
+            # Small sample: use worst observed loss (conservative)
+            return round(min(returns), 2)
 
         sorted_returns = sorted(returns)
         n = len(sorted_returns)

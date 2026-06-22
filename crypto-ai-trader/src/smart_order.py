@@ -21,7 +21,8 @@ Removed in P2-7 (module overlap elimination):
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+import time
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from src.exchange_client import ExchangeClient
@@ -65,10 +66,20 @@ class SmartOrder:
         No trade-execution methods exist in this class.
         """
         self.client = client
-        self._symbol_info_cache: Dict[str, Dict] = {}
+        self._symbol_info_cache: Dict[str, Tuple[Dict, float]] = {}  # symbol -> (filters, timestamp)
+        self._symbol_info_cache_ttl = 3600  # 1 hour
+
+    def clear_symbol_cache(self, symbol: Optional[str] = None):
+        """Clear cached symbol info. Pass symbol to clear one, or None for all."""
+        if symbol:
+            self._symbol_info_cache.pop(symbol, None)
+            logger.info("Cleared symbol info cache for %s", symbol)
+        else:
+            self._symbol_info_cache.clear()
+            logger.info("Cleared all symbol info cache")
 
     def get_symbol_filters(self, symbol: str) -> Optional[Dict]:
-        """Get LOT_SIZE and PRICE_FILTER for a symbol (cached).
+        """Get LOT_SIZE and PRICE_FILTER for a symbol (cached, 1h TTL).
 
         Returns a dict with keys: minQty, maxQty, stepSize, qty_decimals,
         minPrice, tickSize, price_decimals, minNotional (if available).
@@ -77,8 +88,9 @@ class SmartOrder:
           - TradeExecutor.execute_auto_trade() for qty precision
           - scripts/trailing_tp.py for TP order adjustments
         """
-        if symbol in self._symbol_info_cache:
-            return self._symbol_info_cache[symbol]
+        cached = self._symbol_info_cache.get(symbol)
+        if cached and (time.time() - cached[1]) < self._symbol_info_cache_ttl:
+            return cached[0]
 
         try:
             exchange_info = self.client.get_exchange_info()
@@ -109,7 +121,7 @@ class SmartOrder:
                 elif f["filterType"] in ("MIN_NOTIONAL", "NOTIONAL"):
                     filters["minNotional"] = float(f["minNotional"])
 
-            self._symbol_info_cache[symbol] = filters
+            self._symbol_info_cache[symbol] = (filters, time.time())
             return filters
         except Exception as e:
             logger.error(f"Failed to get symbol info for {symbol}: {e}")

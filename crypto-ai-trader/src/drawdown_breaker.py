@@ -25,6 +25,11 @@ class DrawdownBreaker:
     All state is stored exclusively in the SQLite drawdown table via StateDB.
     """
 
+    # Spike detection thresholds for HWM update rejection.
+    # Reject HARD at >5x (definitely phantom), warn at >3x but allow update.
+    _PHANTOM_SPIKE_HARD = 5.0  # hard reject above 5x
+    _PHANTOM_SPIKE_WARN = 3.0  # warn above 3x but allow
+
     # Hard stop threshold (loaded from unified risk config with fallback)
     # Default: 10% drawdown from peak equity → block all new trades
     _DEFAULT_HARD_STOP_PCT = 0.10  # 10%
@@ -93,27 +98,38 @@ class DrawdownBreaker:
 
         # Update high watermark
         if current_balance > hwm:
-            # Sanity check: reject if equity looks inflated (>3x previous watermark)
-            # This prevents phantom spikes from corrupting the watermark
-            if hwm > 0 and current_balance > hwm * 3:
-                logger.warning(
-                    "DrawdownBreaker: rejected watermark update %.2f → %.2f (3x spike, likely phantom)",
-                    hwm,
-                    current_balance,
-                )
-                self._save_state()
-                return {
-                    "tripped": False,
-                    "drawdown_pct": (
-                        round(((hwm - current_balance) / hwm) * 100, 2)
-                        if hwm > 0
-                        else 0
-                    ),
-                    "high_watermark": hwm,
-                    "action": "HOLD",
-                    "reason": f"Rejected phantom equity spike: {current_balance:.2f} > 3x watermark {hwm:.2f}",
-                }
+            # Spike detection: graduated response instead of hard 3x reject
             if hwm > 0:
+                spike_ratio = current_balance / hwm
+                if spike_ratio > self._PHANTOM_SPIKE_HARD:
+                    # Hard reject: >5x is almost certainly phantom data
+                    logger.warning(
+                        "DrawdownBreaker: REJECTED watermark update %.2f → %.2f "
+                        "(%.1fx spike > %.0fx hard limit, likely phantom)",
+                        hwm, current_balance, spike_ratio, self._PHANTOM_SPIKE_HARD,
+                    )
+                    self._save_state()
+                    return {
+                        "tripped": False,
+                        "drawdown_pct": (
+                            round(((hwm - current_balance) / hwm) * 100, 2)
+                            if hwm > 0
+                            else 0
+                        ),
+                        "high_watermark": hwm,
+                        "action": "HOLD",
+                        "reason": (
+                            f"Rejected phantom equity spike: {current_balance:.2f} "
+                            f"> {self._PHANTOM_SPIKE_HARD}x watermark {hwm:.2f}"
+                        ),
+                    }
+                elif spike_ratio > self._PHANTOM_SPIKE_WARN:
+                    # Warn but allow: 3-5x spike in crypto is possible (alt season)
+                    logger.warning(
+                        "DrawdownBreaker: LARGE spike %.2f → %.2f (%.1fx), "
+                        "allowing but flagging — verify manually if unexpected",
+                        hwm, current_balance, spike_ratio,
+                    )
                 # Record the peak before resetting
                 state["history"].append(
                     {

@@ -109,64 +109,60 @@ class SentimentAnalyzer:
         return total / len(news)
 
     def _score_sentiment(self, text: str) -> float:
-        """Simple sentiment scoring based on keywords"""
+        """Sentiment scoring with negation-aware keyword matching.
+
+        Handles negation patterns like "not bullish", "no surge", "far from moon"
+        by flipping positive keywords to negative when preceded by a negation word
+        within 3 tokens.
+        """
         if not text:
             return 0.0
 
+        import re
+
         text_lower = text.lower()
+        words = re.findall(r'\w+', text_lower)
+
+        # Negation words that flip the meaning of the next keyword
+        negation_words = {
+            "not", "no", "never", "neither", "nor", "barely", "hardly",
+            "scarcely", "seldom", "without", "nobody", "nothing", "nowhere",
+            "cannot", "cant", "wont", "dont", "isnt", "arent", "wasnt",
+            "werent", "hasnt", "havent", "hadnt", "doesnt", "didnt",
+            "lack", "lacking", "lacks", "fail", "fails", "failed", "failing",
+            "far", "away", "unlikely", "unlikely",
+        }
 
         # Positive keywords
         positive = [
-            "bullish",
-            "buy",
-            "up",
-            "gain",
-            "rise",
-            "surge",
-            "pump",
-            "growth",
-            "positive",
-            " rally",
-            "high",
-            "highs",
-            "moon",
-            "adoption",
-            "partnership",
-            "launch",
-            "upgrade",
-            "breakout",
+            "bullish", "buy", "up", "gain", "rise", "surge", "pump",
+            "growth", "positive", "rally", "high", "highs", "moon",
+            "adoption", "partnership", "launch", "upgrade", "breakout",
         ]
 
         # Negative keywords
         negative = [
-            "bearish",
-            "sell",
-            "down",
-            "drop",
-            "fall",
-            "crash",
-            "dump",
-            "loss",
-            "negative",
-            "decline",
-            "low",
-            "lows",
-            "hack",
-            "ban",
-            "regulation",
-            "fraud",
-            "scam",
-            "risk",
-            "warning",
+            "bearish", "sell", "down", "drop", "fall", "crash", "dump",
+            "loss", "negative", "decline", "low", "lows", "hack", "ban",
+            "regulation", "fraud", "scam", "risk", "warning",
         ]
 
         score = 0.0
-        for word in positive:
-            if word in text_lower:
-                score += 0.1
-        for word in negative:
-            if word in text_lower:
-                score -= 0.1
+
+        for i, word in enumerate(words):
+            # Check if any of the preceding 3 words is a negation
+            is_negated = False
+            for j in range(max(0, i - 3), i):
+                if words[j] in negation_words:
+                    is_negated = True
+                    break
+
+            if word in positive:
+                score += -0.1 if is_negated else 0.1
+            elif word in negative:
+                # Negating a negative word makes it positive, but this is
+                # weaker than direct positive — use +0.05
+                score += 0.05 if is_negated else -0.1
 
         return max(-1.0, min(1.0, score))
 
