@@ -598,7 +598,7 @@ class MarketResearcher:
 
         # --- Primary model (mimo-v2.5-pro) ---
         primary_scores = self._call_llm_for_sentiment(
-            prompt, articles, "mimo-v2.5", "second"
+            prompt, articles, "mimo-v2.5-pro", "second"
         )
 
         # --- Verification (DeepSeek) — best-effort ---
@@ -1066,7 +1066,7 @@ class MarketResearcher:
                         "content": f"Analyze this crypto news sentiment:\n\n{text}",
                     }
                 ],
-                model="mimo-v2.5",
+                model="mimo-v2.5-pro",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
                 max_tokens=10,
                 temperature=0.0,

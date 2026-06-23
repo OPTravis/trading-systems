@@ -1,8 +1,9 @@
 """
 Centralized LLM Client with automatic fallback.
 
-Primary: DeepSeek (deepseek-v4-flash / deepseek-chat)
-Fallback: OpenAI GPT-4o-mini
+Primary: DeepSeek (deepseek-v4-pro)
+Fallback: Xiaomi MiMo (mimo-v2.5-pro)
+Second Opinion: Xiaomi MiMo (mimo-v2.5-pro)
 
 On timeout, rate-limit (429), 5xx, or connection errors, automatically
 tries the fallback provider.
@@ -13,7 +14,7 @@ Usage:
     client = LLMClient()
     response = client.chat(
         messages=[{"role": "user", "content": "Hello"}],
-        model="deepseek-v4-flash",
+        model="deepseek-v4-pro",
     )
     # Returns: {"content": "...", "provider": "deepseek"} or None on total failure
 """
@@ -45,14 +46,14 @@ def _load_config() -> Dict:
         "llm": {
             "primary": {
                 "provider": "deepseek",
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-v4-pro",
                 "base_url": "https://api.deepseek.com/v1",
                 "timeout": 30,
             },
             "fallback": {
-                "provider": "openai",
-                "model": "gpt-4o-mini",
-                "base_url": "https://api.openai.com/v1",
+                "provider": "xiaomi",
+                "model": "mimo-v2.5-pro",
+                "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
                 "timeout": 30,
                 "enabled": True,
             },
@@ -84,7 +85,7 @@ def _load_config() -> Dict:
         cfg["llm"]["primary"]["base_url"] = os.environ.get(
             "DEEPSEEK_BASE_URL", cfg["llm"]["primary"]["base_url"]
         )
-    if os.environ.get("OPENAI_API_KEY"):
+    if os.environ.get("XIAOMI_API_KEY"):
         cfg["llm"]["fallback"]["enabled"] = True
 
     _config_cache = cfg
@@ -123,7 +124,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 
     return {
         "provider": provider,
-        "model": pcfg.get("model", "gpt-4o-mini"),
+        "model": pcfg.get("model", "mimo-v2.5-pro"),
         "base_url": base_url,
         "timeout": pcfg.get("timeout", 30),
     }, api_key
@@ -417,7 +418,7 @@ def get_second_opinion_client() -> Optional[LLMClient]:
         cfg = _load_config()["llm"]
         xiaomi_cfg = {
             "provider": "xiaomi",
-            "model": "mimo-v2.5",
+            "model": "mimo-v2.5-pro",
             "base_url": os.environ.get(
                 "XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"
             ),
@@ -425,7 +426,7 @@ def get_second_opinion_client() -> Optional[LLMClient]:
         }
         _second_client._primary_cfg = xiaomi_cfg
         _second_client._primary_key = os.environ.get("XIAOMI_API_KEY", "")
-        # Set DeepSeek as fallback for xiaomi to handle 429 rate limits
+        # Set DeepSeek as fallback for xiaomi
         _second_client._fallback_cfg = cfg["primary"]  # DeepSeek
         _second_client._fallback_key = os.environ.get("DEEPSEEK_API_KEY", "")
         _second_client._fallback_enabled = True

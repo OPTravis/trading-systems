@@ -238,7 +238,7 @@ Answer with only the sector name in uppercase."""
             llm = get_llm_client()
             result = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
-                model="deepseek-v4-flash",
+                model="deepseek-v4-pro",
                 max_tokens=500,
                 temperature=0.1,
             )

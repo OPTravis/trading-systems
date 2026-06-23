@@ -5,17 +5,17 @@
 llm:
   primary:
     provider: deepseek
-    model: deepseek-v4-flash
+    model: deepseek-v4-pro
     base_url: https://api.deepseek.com/v1
     timeout: 30          # seconds
     # API key loaded from DEEPSEEK_API_KEY env var
 
   fallback:
-    provider: openai
-    model: gpt-4o-mini
-    base_url: https://api.openai.com/v1
+    provider: xiaomi
+    model: mimo-v2.5-pro
+    base_url: https://token-plan-cn.xiaomimimo.com/v1
     timeout: 30          # seconds
-    # API key loaded from OPENAI_API_KEY env var
+    # API key loaded from XIAOMI_API_KEY env var
     enabled: true
 
   # Retry configuration
