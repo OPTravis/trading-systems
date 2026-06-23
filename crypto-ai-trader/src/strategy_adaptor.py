@@ -119,6 +119,68 @@ class StrategyAdaptor:
         else:
             return "EXTREME"
 
+    def compute_volatility_adjustment(
+        self,
+        btc_price_change_24h: float,
+        daily_returns: Optional[List[float]] = None,
+    ) -> float:
+        """Compute volatility_adjustment for adaptive trailing stop.
+
+        Strategy: use GARCH forecast if available, fall back to 24h realized vol.
+
+        Returns a multiplier for trailing stop width:
+          - low vol → <1.0 (tighter trailing)
+          - normal vol → ~1.0
+          - high vol → >1.0 (wider trailing)
+
+        P2-fix: Previously hardcoded to 1.0, now uses real volatility.
+        """
+        # Try GARCH first
+        try:
+            from src.garch_vol import forecast_volatility, get_vol_regime
+            import math
+
+            returns = daily_returns
+            if returns is None or len(returns) < 5:
+                # Fall back to 24h realized vol estimate
+                returns = [btc_price_change_24h / 100] if btc_price_change_24h else [0.02]
+
+            vol_result = forecast_volatility(returns)
+            if vol_result:
+                ann_vol = vol_result.get("annualized_vol", 0)
+                if ann_vol > 0:
+                    vol_regime = get_vol_regime(ann_vol)
+                    adj = {
+                        "low": 0.7,
+                        "normal": 1.0,
+                        "high": 1.3,
+                        "extreme": 1.5,
+                    }.get(vol_regime, 1.0)
+                    logger.info(
+                        f"VolatilityAdjustment: GARCH regime={vol_regime}, "
+                        f"ann_vol={ann_vol:.2f}, adjustment={adj}"
+                    )
+                    return adj
+        except Exception:
+            logger.debug("GARCH vol adjustment unavailable, falling back to 24h estimate")
+
+        # Fallback: 24h realized volatility
+        abs_change = abs(btc_price_change_24h) if btc_price_change_24h else 2.0
+        # Map 24h BTC change % to adjustment factor
+        # Based on typical crypto vol: <2% = low, 2-5% = normal, 5-10% = high, >10% = extreme
+        if abs_change < 2:
+            adj = 0.7
+        elif abs_change < 5:
+            adj = 1.0
+        elif abs_change < 10:
+            adj = 1.3
+        else:
+            adj = 1.5
+        logger.info(
+            f"VolatilityAdjustment: 24h fallback abs_change={abs_change:.1f}%, adjustment={adj}"
+        )
+        return adj
+
     def adapt(
         self,
         fear_greed: int,
@@ -416,6 +478,8 @@ class StrategyAdaptor:
 
         # Apply GARCH-based dynamic SL/TP (Phase 9 — replaces fixed SL/TP)
         # FIX-9: Use 30-day historical returns instead of single 24h data point
+        # P2-fix: daily_returns is also used for volatility_adjustment computation
+        daily_returns: List[float] = []
         try:
             from src.garch_vol import forecast_volatility, get_dynamic_sl_tp
 
@@ -474,6 +538,16 @@ class StrategyAdaptor:
         except Exception as e:
             logger.debug(f"GARCH adjustment unavailable: {e}")
 
+        # P2-fix: Compute volatility_adjustment for adaptive trailing stop
+        # Reuses daily_returns already fetched for GARCH above
+        try:
+            vol_adjustment = self.compute_volatility_adjustment(
+                btc_price_change_24h, daily_returns=daily_returns or None
+            )
+        except Exception:
+            logger.debug("volatility_adjustment computation failed, defaulting to 1.0")
+            vol_adjustment = 1.0
+
         result: Dict[str, Any] = {
             "regime": regime,
             "hmm_regime": hmm_regime,
@@ -487,6 +561,7 @@ class StrategyAdaptor:
                 "max_total_exposure_pct": settings["max_total_exposure_pct"],
                 "cash_reserve_pct": settings["cash_reserve_pct"],
             },
+            "volatility_adjustment": vol_adjustment,
             "changes": changes,
         }
 
