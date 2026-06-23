@@ -3,6 +3,7 @@ Final coverage tests for remaining uncovered code paths.
 """
 
 import os
+import sys
 import time
 from unittest.mock import MagicMock, patch
 
@@ -275,7 +276,8 @@ class TestTradeExecutorPaths:
 
         mock_client = MagicMock()
         mock_client.get_klines.side_effect = Exception("API error")
-        assert _check_price_deviation(mock_client, "BTCUSDT", 100.0) is True
+        # P0 fix: fail-closed — exception now blocks trade (returns False)
+        assert _check_price_deviation(mock_client, "BTCUSDT", 100.0) is False
 
 
 # ── RiskManager ───────────────────────────────────────────────────────
@@ -364,7 +366,10 @@ class TestNotifierPaths:
         from src.notifier import FeishuNotifier
 
         n = FeishuNotifier()
-        assert isinstance(n.send_text("test"), bool)
+        # P0 fix: send_text delegates to send_message, returns None
+        with patch("src.notifier.send_message"):
+            result = n.send_text("test")
+            assert result is None
 
 
 # ── Portfolio ─────────────────────────────────────────────────────────
@@ -848,10 +853,15 @@ class TestSentimentAnalyzerPaths:
 
 class TestPricePredictorPaths:
     def test_init(self):
-        from src.price_predictor import PricePredictor
+        # Mock lightgbm since it's not installed in test env
+        mock_lgb = MagicMock()
+        # Remove cached module to force re-import with mock
+        sys.modules.pop("src.price_predictor", None)
+        with patch.dict("sys.modules", {"lightgbm": mock_lgb}):
+            from src.price_predictor import PricePredictor
 
-        pp = PricePredictor()
-        assert pp.is_ready() is False
+            pp = PricePredictor()
+            assert pp.is_ready() is False
 
 
 # ── DataFeedManager ───────────────────────────────────────────────────

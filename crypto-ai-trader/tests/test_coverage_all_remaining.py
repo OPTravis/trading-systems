@@ -15,46 +15,45 @@ class TestNotifierComplete:
     def test_init_no_webhook(self):
         from src.notifier import FeishuNotifier
 
-        with patch.dict(os.environ, {"FEISHU_WEBHOOK_URL": ""}, clear=False):
-            n = FeishuNotifier()
-            assert n.webhook_url == "" or n.webhook_url is not None
+        # P0 fix: FeishuNotifier is now a no-op wrapper, no webhook_url stored
+        n = FeishuNotifier()
+        assert not hasattr(n, "webhook_url") or n.__dict__.get("webhook_url", "") == ""
 
     def test_send_text_disabled(self):
         from src.notifier import FeishuNotifier
 
-        n = FeishuNotifier.__new__(FeishuNotifier)
-        n.webhook_url = ""
-        n.config = {}
-        assert n.send_text("test") is False
+        n = FeishuNotifier()
+        # P0 fix: send_text now delegates to send_message, returns None
+        with patch("src.notifier.send_message"):
+            result = n.send_text("test")
+            assert result is None
 
     def test_send_text_success(self):
         from src.notifier import FeishuNotifier
 
-        n = FeishuNotifier.__new__(FeishuNotifier)
-        n.webhook_url = "https://test.webhook"
-        n.config = {}
-        with patch("src.notifier.requests.post") as mock_post:
-            mock_post.return_value = MagicMock(status_code=200)
-            assert n.send_text("test") is True
+        n = FeishuNotifier()
+        # P0 fix: send_text delegates to send_message (no return value)
+        with patch("src.notifier.send_message") as mock_send:
+            n.send_text("test")
+            mock_send.assert_called_once_with(title="", body="test")
 
     def test_send_text_failure(self):
         from src.notifier import FeishuNotifier
 
-        n = FeishuNotifier.__new__(FeishuNotifier)
-        n.webhook_url = "https://test.webhook"
-        n.config = {}
-        with patch("src.notifier.requests.post") as mock_post:
-            mock_post.return_value = MagicMock(status_code=500, text="error")
-            assert n.send_text("test") is False
+        n = FeishuNotifier()
+        # P0 fix: send_message may raise; send_text doesn't catch
+        with patch("src.notifier.send_message", side_effect=Exception("network")):
+            with pytest.raises(Exception, match="network"):
+                n.send_text("test")
 
     def test_send_text_exception(self):
         from src.notifier import FeishuNotifier
 
-        n = FeishuNotifier.__new__(FeishuNotifier)
-        n.webhook_url = "https://test.webhook"
-        n.config = {}
-        with patch("src.notifier.requests.post", side_effect=Exception("network")):
-            assert n.send_text("test") is False
+        n = FeishuNotifier()
+        # P0 fix: same as failure — exception propagates
+        with patch("src.notifier.send_message", side_effect=Exception("network")):
+            with pytest.raises(Exception, match="network"):
+                n.send_text("test")
 
 
 # ── LLMClient (87 missed) ─────────────────────────────────────────────
@@ -192,7 +191,8 @@ class TestTradeExecutorComplete:
 
         mock_client = MagicMock()
         mock_client.get_klines.side_effect = Exception("error")
-        assert _check_price_deviation(mock_client, "BTCUSDT", 100.0) is True
+        # P0 fix: fail-closed — exception now blocks trade (returns False)
+        assert _check_price_deviation(mock_client, "BTCUSDT", 100.0) is False
 
 
 # ── MarketScanner (136 missed) ────────────────────────────────────────

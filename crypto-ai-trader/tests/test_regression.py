@@ -15,6 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
 from decimal import Decimal
 
@@ -198,7 +199,7 @@ class TestVariableScope:
         import glob
 
         phase_files = glob.glob(
-            "/home/travis/crypto-ai-trader/scripts/verify_phase*.py"
+            os.path.join(PROJECT_ROOT, "scripts", "verify_phase*.py")
         )
         for f in phase_files:
             with open(f) as fh:
@@ -210,7 +211,7 @@ class TestVariableScope:
 
     def test_no_undefined_db_in_ensure_tp_sl(self):
         """ensure_tp_sl.py 中使用 db 的位置必須先定義"""
-        f = "/home/travis/crypto-ai-trader/scripts/ensure_tp_sl.py"
+        f = os.path.join(PROJECT_ROOT, "scripts", "ensure_tp_sl.py")
         with open(f) as fh:
             content = fh.read()
         # 檢查所有函數中 db 的使用
@@ -299,7 +300,7 @@ class TestIntegration:
 
         result = subprocess.run(
             [sys.executable, "scripts/hmm_regime.py", "--predict"],
-            cwd="/home/travis/crypto-ai-trader",
+            cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             timeout=30,
@@ -312,7 +313,7 @@ class TestIntegration:
 
         result = subprocess.run(
             [sys.executable, "scripts/ensure_tp_sl.py"],
-            cwd="/home/travis/crypto-ai-trader",
+            cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             timeout=30,
@@ -326,7 +327,7 @@ class TestIntegration:
 
         result = subprocess.run(
             [sys.executable, "scripts/auto_heal.py", "--verbose"],
-            cwd="/home/travis/crypto-ai-trader",
+            cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             timeout=600,

@@ -19,6 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 # Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -378,63 +379,59 @@ class TestNetworkAnomaly:
     """Simulate Binance API timeout and verify retry logic."""
 
     def test_klines_ssl_retry_exhausts(self, tmp_path):
-        import ccxt
-
         from src.binance_client import BinanceClient
 
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
-            bc.exchange = MagicMock()
-            # ccxt_client.get_klines uses exchange.publicGetKlines, not fetch_ohlcv
-            bc.exchange.publicGetKlines.side_effect = ccxt.NetworkError(
-                "SSLError timeout"
-            )
-            result = bc.get_klines("BTCUSDT", "1h", max_retries=3)
+            bc.client = MagicMock()
+            # P0 refactor: get_klines uses self.client.klines() (SDK), not exchange
+            import ssl as _ssl
+            bc.client.klines.side_effect = _ssl.SSLError("SSLError timeout")
+            with patch("src._binance_sdk_client.time.sleep"):
+                result = bc.get_klines("BTCUSDT", "1h", max_retries=3)
         assert result == []
-        assert bc.exchange.publicGetKlines.call_count == 3
+        assert bc.client.klines.call_count == 3
 
     def test_place_order_network_retry_then_fail(self, tmp_path):
-        import ccxt
-
         from src.binance_client import BinanceClient
 
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
-            bc.exchange = MagicMock()
-            bc.exchange.create_order.side_effect = ccxt.NetworkError(
-                "ConnectionError timeout"
-            )
-            result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.01, retry=3)
+            bc.client = MagicMock()
+            # P0 refactor: place_order uses self.client.new_order()
+            bc.client.new_order.side_effect = ConnectionError("ConnectionError timeout")
+            bc._exchange_info_cache = {"symbols": [{"symbol": "BTCUSDT", "filters": [], "permissions": ["SPOT"]}]}
+            bc._symbol_set = {"BTCUSDT"}
+            with patch("src._binance_sdk_client.time.sleep"):
+                result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.01, retry=3)
         assert result is None
-        assert bc.exchange.create_order.call_count == 3
 
     def test_get_account_429_backoff(self, tmp_path):
-        import ccxt
-
+        from binance.error import ClientError
         from src.binance_client import BinanceClient
 
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
-            bc.exchange = MagicMock()
-            err = ccxt.RateLimitExceeded("rate limit")
-            bc.exchange.private_get_account.side_effect = [err, {"balances": []}]
-            with patch("src.ccxt_client.time.sleep") as mock_sleep:
+            bc.client = MagicMock()
+            bc.recv_window = 5000
+            # P0 refactor: get_account uses self.client.account()
+            err = ClientError(429, -1003, "Too many requests", {})
+            bc.client.account.side_effect = [err, {"balances": []}]
+            with patch("src._binance_sdk_client.time.sleep") as mock_sleep:
                 result = bc.get_account()
             assert result == {"balances": []}
             assert mock_sleep.call_count >= 1
 
     def test_get_account_network_error_returns_empty(self, tmp_path):
-        import ccxt
-
         from src.binance_client import BinanceClient
 
         with patch.object(BinanceClient, "__init__", lambda self, *a, **kw: None):
             bc = BinanceClient.__new__(BinanceClient)
-            bc.exchange = MagicMock()
-            bc.exchange.private_get_account.side_effect = ccxt.NetworkError(
-                "ConnectionError timeout"
-            )
-            with patch("src.ccxt_client.time.sleep"):
+            bc.client = MagicMock()
+            bc.recv_window = 5000
+            # P0 refactor: get_account uses self.client.account()
+            bc.client.account.side_effect = requests.exceptions.ConnectionError("timeout")
+            with patch("src._binance_sdk_client.time.sleep"):
                 result = bc.get_account()
             assert result == {}
 

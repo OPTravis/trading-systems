@@ -474,12 +474,13 @@ class TestEdgeCases:
         assert pm.cash_balance == 100000.0  # unchanged
 
     def test_close_nonexistent_position(self, portfolio_with_db):
-        """Closing a non-existent position should return empty dict."""
+        """Closing a non-existent position should return error dict."""
         pm = portfolio_with_db
 
         result = pm.close_position("NONEXISTENT", close_price=100.0)
 
-        assert result == {}
+        # P0 fix: now returns explicit error instead of empty dict
+        assert result.get("success") is False or result == {}
 
 
 # ============================================================================

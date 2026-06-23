@@ -6,10 +6,11 @@ Scenarios 1-9:  BinanceClient rate-limit / retry logic
 Scenarios 10-20: RiskManager sub-modules and integration
 """
 
+import requests
 from unittest.mock import MagicMock, patch
 
-import ccxt
 import pytest
+from binance.error import ClientError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -17,13 +18,13 @@ import pytest
 
 
 def _rate_limit_error(message="Rate limit exceeded"):
-    """Build a ccxt RateLimitExceeded error."""
-    return ccxt.RateLimitExceeded(message)
+    """Build a ClientError with status 429."""
+    return ClientError(429, -1003, message, {})
 
 
 def _network_error(message="Connection timeout"):
-    """Build a ccxt NetworkError."""
-    return ccxt.NetworkError(message)
+    """Build a requests.exceptions.ConnectionError."""
+    return requests.exceptions.ConnectionError(message)
 
 
 # ======================== BinanceClient Tests ===============================
@@ -32,92 +33,90 @@ def _network_error(message="Connection timeout"):
 class TestBinanceClientRateLimit:
     """Scenarios 1-9: rate-limit backoff and _parse_retry_after."""
 
-    # --- Scenario 1: get_account() → 429 → Retry-After:5 → wait 5s retry ---
-    # Because the code checks error.headers (plural) but ClientError stores
-    # header (singular), the Retry-After value is NOT read; default 2**(attempt+1)
-    # is used instead.  We test the actual runtime behaviour.
-    @patch("src.ccxt_client.time.sleep")
+    # --- Scenario 1: get_account() → 429 → retry succeeds ---
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario1_get_account_429_retry(self, mock_sleep, make_binance_client):
         bc = make_binance_client()
         err = _rate_limit_error()
         good = {"balances": []}
-        bc.exchange.private_get_account = MagicMock(side_effect=[err, good])
+        bc.client.account.side_effect = [err, good]
 
         result = bc.get_account()
         assert result == good
-        # ccxt client uses 2**attempt * 0.5; attempt 0 → 0.5
-        mock_sleep.assert_called_once_with(0.5)
+        # SDK: attempt 0 → 2**(0+1) = 2, but _parse_retry_after caps at 60
+        mock_sleep.assert_called_once_with(2)
 
-    # --- Scenario 2: get_account() → 429 → no Retry-After → exponential backoff ---
-    @patch("src.ccxt_client.time.sleep")
+    # --- Scenario 2: get_account() → 429 → exponential backoff ---
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario2_get_account_429_exponential(
         self, mock_sleep, make_binance_client
     ):
         bc = make_binance_client()
         err = _rate_limit_error()
         good = {"balances": [{"asset": "USDT", "free": "100", "locked": "0"}]}
-        bc.exchange.private_get_account = MagicMock(side_effect=[err, err, good])
+        bc.client.account.side_effect = [err, err, good]
 
         result = bc.get_account()
         assert result == good
-        # ccxt: attempt 0 → min(2**0*0.5, 60)=0.5, attempt 1 → min(2**1*0.5, 60)=1.0
+        # SDK: attempt 0 → 2**(0+1)=2, attempt 1 → 2**(1+1)=4
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(0.5)
-        mock_sleep.assert_any_call(1.0)
+        mock_sleep.assert_any_call(2)
+        mock_sleep.assert_any_call(4)
 
-    # --- Scenario 3: place_order() → 418 → retry and succeed ---
-    @patch("src.ccxt_client.time.sleep")
+    # --- Scenario 3: place_order() → 429 → retry and succeed ---
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario3_place_order_418_retry(self, mock_sleep, make_binance_client):
         bc = make_binance_client()
         err = _rate_limit_error()
         ok_result = {"symbol": "BTCUSDT", "orderId": 42, "status": "FILLED"}
-        bc.exchange.create_order = MagicMock(side_effect=[err, ok_result])
+        bc.client.new_order.side_effect = [err, ok_result]
 
         result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.01)
         assert result == ok_result
-        mock_sleep.assert_called_once_with(2)  # ccxt place_order: 2**(0+1)
+        # SDK: 2**(0+1) = 2
+        mock_sleep.assert_called_once_with(2)
 
     # --- Scenario 4: place_order() → 400 business error → no retry, return None ---
-    @patch("src.ccxt_client.time.sleep")
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario4_place_order_400_no_retry(self, mock_sleep, make_binance_client):
         bc = make_binance_client()
-        err400 = ccxt.InvalidOrder("MIN_NOTIONAL")
-        bc.exchange.create_order = MagicMock(side_effect=err400)
+        err400 = ClientError(400, -1013, "MIN_NOTIONAL", {})
+        bc.client.new_order.side_effect = err400
 
         result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.001)
         assert result is None
         mock_sleep.assert_not_called()
 
     # --- Scenario 5: place_order() → network error → retry 3 times → None ---
-    @patch("src.ccxt_client.time.sleep")
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario5_place_order_network_exhaust(
         self, mock_sleep, make_binance_client
     ):
         bc = make_binance_client()
         net_err = _network_error()
-        bc.exchange.create_order = MagicMock(side_effect=net_err)
+        bc.client.new_order.side_effect = net_err
 
         result = bc.place_order("BTCUSDT", "BUY", "MARKET", quantity=0.01, retry=3)
         assert result is None
-        assert bc.exchange.create_order.call_count == 3
-        # ccxt: attempt 0 → 2**0=1, attempt 1 → 2**1=2
+        assert bc.client.new_order.call_count == 3
+        # SDK: attempt 0 → 2**0=1, attempt 1 → 2**1=2
         assert mock_sleep.call_count == 2
         mock_sleep.assert_any_call(1)
         mock_sleep.assert_any_call(2)
 
     # --- Scenario 6: cancel_order() → network error → retry succeeds ---
-    @patch("src.ccxt_client.time.sleep")
+    @patch("src._binance_sdk_client.time.sleep")
     def test_scenario6_cancel_order_network_retry(
         self, mock_sleep, make_binance_client
     ):
         bc = make_binance_client()
         net_err = _network_error()
         ok = {"symbol": "BTCUSDT", "orderId": 99, "status": "CANCELED"}
-        bc.exchange.cancel_order = MagicMock(side_effect=[net_err, ok])
+        bc.client.cancel_order.side_effect = [net_err, ok]
 
         result = bc.cancel_order("BTCUSDT", 99)
         assert result == ok
-        assert bc.exchange.cancel_order.call_count == 2
+        assert bc.client.cancel_order.call_count == 2
         mock_sleep.assert_called_once_with(1)  # 2**0
 
     # --- Scenario 7: _parse_retry_after → no header attr → default ---

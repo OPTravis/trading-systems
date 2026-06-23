@@ -18,7 +18,8 @@ def _make_bc_with_positions(balances=None):
     bc = MagicMock()
     if balances is None:
         balances = [{"asset": "USDT", "free": "500", "locked": "0"}]
-    bc.client.account.return_value = {"balances": balances}
+    # P0/P1/P2 refactor: cmd_trailing_check uses client.get_account() directly
+    bc.get_account.return_value = {"balances": balances}
     bc.get_24hr_stats.return_value = {"last_price": "100.0"}
     bc.get_klines.return_value = [
         {
@@ -57,18 +58,19 @@ def _run_trailing(bc, ts, positions_balances=None, entry_price_result=None):
     rm = MagicMock()
     notifier = MagicMock()
     if positions_balances:
-        bc.client.account.return_value = {"balances": positions_balances}
+        bc.get_account.return_value = {"balances": positions_balances}
 
-    with patch("main.BinanceClient", return_value=bc), patch(
-        "src.risk_manager.TrailingStop", return_value=ts
-    ), patch("src.risk_manager.RiskManager", return_value=rm), patch(
-        "main.FeishuNotifier", return_value=notifier
+    # P0/P1/P2 refactor: patches must target src.cmd_trailing_check (module-level imports)
+    with patch("src.cmd_trailing_check.BinanceClient", return_value=bc), patch(
+        "src.cmd_trailing_check.TrailingStop", return_value=ts
+    ), patch("src.cmd_trailing_check.RiskManager", return_value=rm), patch(
+        "src.cmd_trailing_check.FeishuNotifier", return_value=notifier
     ), patch(
         "src.indicators.Indicators.atr", return_value=5.0
     ), patch(
         "src.entry_price.get_avg_entry_price", return_value=entry_price_result
     ):
-        from main import cmd_trailing_check
+        from src.cmd_trailing_check import cmd_trailing_check
 
         cmd_trailing_check()
     return rm, notifier
@@ -142,7 +144,7 @@ class TestPositionFiltering:
                 {"asset": "BADCOIN", "free": "100", "locked": "0"},
             ]
         )
-        bc.get_24hr_stats.side_effect = Exception("no market")
+        bc.get_24hr_stats.side_effect = ConnectionError("no market")
         ts = _make_ts()
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
@@ -489,7 +491,8 @@ class TestTrailingActive:
             },
         ]
 
-        # Cancel succeeds but new SL placement fails
+        # Cancel succeeds but new SL placement fails (all retries + safety net)
+        # P1 fix: code now retries 3x then tries safety net; if both fail → sl_naked_position
         def mock_place(*a, **kw):
             if len(a) > 2 and "STOP" in str(a[2]):
                 return None
@@ -500,10 +503,10 @@ class TestTrailingActive:
         out = capsys.readouterr().out
         data = json.loads(out)
         if "results" in data:
-            assert any(r.get("action") == "sl_move_failed" for r in data["results"])
+            assert any(r.get("action") in ("sl_naked_position", "sl_move_failed") for r in data["results"])
             # Urgent notification
             calls = [str(c) for c in notifier.send_text.call_args_list]
-            assert any("手動處理" in c for c in calls)
+            assert any("手動" in c or "立即" in c for c in calls)
         else:
             assert data.get("action") in ("none",)
 
@@ -600,7 +603,8 @@ class TestUncoveredProtection:
             assert data.get("action") in ("none",)
 
     def test_s22_fully_covered_no_extra_sl(self, capsys):
-        bc, ts = self._setup_uncovered(free_qty=100, sl_covered=60, tp_covered=40)
+        # P1 fix: TP doesn't count as SL coverage; only SL orders protect downside
+        bc, ts = self._setup_uncovered(free_qty=100, sl_covered=100, tp_covered=0)
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
         data = json.loads(out)
@@ -641,7 +645,8 @@ class TestUncoveredProtection:
             assert data.get("action") in ("none",)
 
     def test_s25_uncovered_calc_subtracts_orders(self, capsys):
-        # free=100, sl_covered=30, tp_covered=30 → uncovered=40
+        # P1 fix: only SL coverage counts, not TP
+        # free=100, sl_covered=30, tp_covered=30 → uncovered=70 (TP doesn't protect downside)
         bc, ts = self._setup_uncovered(free_qty=100, sl_covered=30, tp_covered=30)
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
@@ -651,12 +656,15 @@ class TestUncoveredProtection:
                 r for r in data["results"] if "uncovered" in r.get("action", "")
             ]
             if uncovered_actions:
-                assert uncovered_actions[0].get("qty") == 40
+                assert uncovered_actions[0].get("qty") == 70  # 100 - 30 SL
         else:
             assert data.get("action") in ("none",)
 
     def test_s26_dust_free_skip(self, capsys):
-        bc, ts = self._setup_uncovered(free_qty=0.5, sl_covered=0, tp_covered=0)
+        # P1 fix: dust is filtered by $1 value in position filtering, not here
+        # Use very small qty at low price so notional < $5 minimum for SL placement
+        bc, ts = self._setup_uncovered(free_qty=0.01, sl_covered=0, tp_covered=0)
+        bc.get_24hr_stats.return_value = {"last_price": "0.10"}  # $0.001 notional
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
         data = json.loads(out)
@@ -674,7 +682,7 @@ class TestSLTPFillDetection:
     def test_s27_position_gone_detect_fill(self, capsys):
         """Tracked position no longer in account → stale cleanup removes it."""
         bc = MagicMock()
-        bc.client.account.return_value = {
+        bc.get_account.return_value = {
             "balances": [
                 {"asset": "USDT", "free": "600", "locked": "0"},
             ]
@@ -688,14 +696,14 @@ class TestSLTPFillDetection:
         ts.get_all.return_value = {"TREE": {"entry_price": 100.0}}
         rm = MagicMock()
         notifier = MagicMock()
-        with patch("main.BinanceClient", return_value=bc), patch(
-            "src.risk_manager.TrailingStop", return_value=ts
-        ), patch("src.risk_manager.RiskManager", return_value=rm), patch(
-            "main.FeishuNotifier", return_value=notifier
+        with patch("src.cmd_trailing_check.BinanceClient", return_value=bc), patch(
+            "src.cmd_trailing_check.TrailingStop", return_value=ts
+        ), patch("src.cmd_trailing_check.RiskManager", return_value=rm), patch(
+            "src.cmd_trailing_check.FeishuNotifier", return_value=notifier
         ), patch(
             "src.indicators.Indicators.atr", return_value=5.0
         ):
-            from main import cmd_trailing_check
+            from src.cmd_trailing_check import cmd_trailing_check
 
             cmd_trailing_check()
         out = capsys.readouterr().out

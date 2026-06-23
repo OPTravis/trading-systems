@@ -161,7 +161,7 @@ def mock_binance_spot():
 
 @pytest.fixture
 def make_binance_client(mock_binance_spot):
-    """Factory fixture: returns a BinanceClient whose inner .exchange is mocked."""
+    """Factory fixture: returns a BinanceClient with SDK-style .client mock."""
     from src.binance_client import BinanceClient
 
     def _make(**overrides):
@@ -174,33 +174,33 @@ def make_binance_client(mock_binance_spot):
             bc.recv_window = 10000
             bc._balance_cache = {}
             bc._balance_cache_ttl = 30
-            # ccxt_client uses self.exchange; set up a MagicMock with ccxt-style methods
-            bc.exchange = MagicMock()
-            bc.exchange.private_get_account.return_value = {
+            # SDK client uses self.client (SpotAccount); set up MagicMock
+            bc.client = MagicMock()
+            bc.client.account.return_value = {
                 "balances": [
                     {"asset": "USDT", "free": "1000.00", "locked": "0.00"},
                     {"asset": "BTC", "free": "0.01", "locked": "0.00"},
                 ]
             }
-            bc.exchange.create_order.return_value = {
+            bc.client.new_order.return_value = {
                 "symbol": "BTCUSDT",
-                "orderId": 42,
-                "status": "FILLED",
+                "orderId": 12345,
+                "status": "NEW",
+                "fills": [{"price": "34500.00", "qty": "0.01", "commission": "0.01"}],
             }
-            bc.exchange.cancel_order.return_value = {
+            bc.client.cancel_order.return_value = {
                 "symbol": "BTCUSDT",
-                "orderId": 99,
+                "orderId": 12345,
                 "status": "CANCELED",
             }
-            bc.exchange.fetch_ohlcv.return_value = [
-                [1000, 200.0, 210.0, 190.0, 200.0, 1000.0]
+            bc.client.klines.return_value = [
+                [1000, "200.0", "210.0", "190.0", "200.0", "1000.0",
+                 2000, "200000.0", 100, "500.0", "250.0", "0"]
             ] * 250
             # exchange_info cache attributes
             bc._exchange_info_cache = None
             bc._exchange_info_timestamp = 0.0
             bc._exchange_info_ttl = 3600
-            # Legacy .client attribute (some tests still reference it)
-            bc.client = mock_binance_spot
             # Apply overrides
             for k, v in overrides.items():
                 setattr(bc, k, v)
