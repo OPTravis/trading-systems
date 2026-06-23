@@ -121,7 +121,7 @@ def _run_trailing_check(client, ts, ind_atr=500.0, entry_price=38000.0):
 class TestSLMoveOrder:
 
     def test_new_sl_placed_before_old_cancelled(self, capsys):
-        """P0-6: New SL order is placed BEFORE old SL is cancelled."""
+        """Current strategy: cancel old SL first (free balance), then place new SL."""
         existing_sl = {
             "orderId": 100,
             "type": "STOP_LOSS_LIMIT",
@@ -150,12 +150,12 @@ class TestSLMoveOrder:
         assert client.place_order.called
         assert client.cancel_order.called
 
-        # Verify ORDER: first place_order before first cancel_order
+        # Current strategy: cancel first (free balance), then place new SL
         calls = client.method_calls
-        place_idx = next(i for i, c in enumerate(calls) if c[0] == "place_order")
         cancel_idx = next(i for i, c in enumerate(calls) if c[0] == "cancel_order")
-        assert place_idx < cancel_idx, \
-            "P0-6 VIOLATION: cancel_order called before place_order!"
+        place_idx = next(i for i, c in enumerate(calls) if c[0] == "place_order")
+        assert cancel_idx < place_idx, \
+            "Strategy: cancel_order should be called before place_order to free balance!"
 
     def test_sl_move_successful_result(self, capsys):
         """Verify SL move produces correct result output."""
@@ -192,7 +192,7 @@ class TestSLMoveOrder:
 class TestSLMoveFailure:
 
     def test_sl_move_retries_3x_then_preserves_old(self, capsys):
-        """P0-6: When new SL fails 3 times, old SL is preserved and alert sent."""
+        """When new SL fails 3x AND safety net fails, position is naked (alert sent)."""
         existing_sl = {
             "orderId": 100,
             "type": "STOP_LOSS_LIMIT",
@@ -214,12 +214,13 @@ class TestSLMoveFailure:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         results = data.get("results", [])
-        exhausted = [r for r in results if r.get("action") == "sl_move_retries_exhausted"]
-        assert len(exhausted) == 1
-        assert exhausted[0]["old_sl"] == 37000.0  # old SL preserved
+        # New behavior: when both new SL and safety net fail → sl_naked_position
+        naked = [r for r in results if r.get("action") == "sl_naked_position"]
+        assert len(naked) == 1
+        assert naked[0]["old_sl"] == 37000.0
 
-    def test_place_order_attempted_3_times(self, capsys):
-        """New SL placement should be attempted exactly 3 times."""
+    def test_place_order_attempted_4_times(self, capsys):
+        """New SL placement: 3 retries + 1 safety net = 4 total STOP_LOSS_LIMIT attempts."""
         existing_sl = {
             "orderId": 100,
             "type": "STOP_LOSS_LIMIT",
@@ -238,15 +239,15 @@ class TestSLMoveFailure:
 
         notifier, _ = _run_trailing_check(client, ts)
 
-        # Count STOP_LOSS_LIMIT placement attempts
+        # Count STOP_LOSS_LIMIT placement attempts: 3 new SL + 1 safety net
         sl_attempts = [
             c for c in client.place_order.call_args_list
             if len(c.args) > 2 and c.args[2] == "STOP_LOSS_LIMIT"
         ]
-        assert len(sl_attempts) == 3, f"Expected 3 SL placement attempts, got {len(sl_attempts)}"
+        assert len(sl_attempts) == 4, f"Expected 4 SL placement attempts (3 new + 1 safety), got {len(sl_attempts)}"
 
-    def test_old_sl_not_cancelled_on_failure(self, capsys):
-        """When new SL placement fails, cancel_order should NOT be called for old SL."""
+    def test_old_sl_cancelled_before_new_placement(self, capsys):
+        """Current strategy: old SL is cancelled first to free balance, then new SL placed."""
         existing_sl = {
             "orderId": 100,
             "type": "STOP_LOSS_LIMIT",
@@ -265,8 +266,9 @@ class TestSLMoveFailure:
 
         _run_trailing_check(client, ts)
 
-        for c in client.cancel_order.call_args_list:
-            assert c.args[1] != 100, "Old SL should NOT be cancelled when new SL failed!"
+        # Old SL SHOULD be cancelled (to free balance for new SL placement)
+        cancel_calls = [c for c in client.cancel_order.call_args_list if c.args[1] == 100]
+        assert len(cancel_calls) >= 1, "Old SL (orderId=100) should be cancelled to free balance"
 
     def test_alert_sent_on_failure(self, capsys):
         """P0-6: Alert notification sent when SL move fails 3x."""
