@@ -223,8 +223,6 @@ class KellyPositionSizer:
                 f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
             )
 
-        balance * kelly
-
         return {
             "position_pct": round(kelly, 4),
             "win_rate": round(win_rate, 4),

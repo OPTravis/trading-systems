@@ -274,25 +274,32 @@ def _execute_slices(
             }
         )
 
-    # Cancel any remaining unfilled limit orders after all slices placed
+    # Cancel only orders placed by THIS TWAP execution (not user orders)
     if not dry_run:
-        try:
-            open_orders = client.get_open_orders(symbol)
-            for o in open_orders:
-                try:
-                    client.cancel_order(symbol, _order_id(o))
-                except Exception:
-                    logger.error(
-                        "Failed to cancel unfilled limit order %s for %s",
-                        _order_id(o),
-                        symbol,
-                        exc_info=True,
-                    )
-        except Exception:
-            logger.error(
-                "Failed to get open orders for cleanup after TWAP/VWAP execution",
-                exc_info=True,
-            )
+        twap_order_ids = {
+            str(r.get("order_id"))
+            for r in results
+            if r.get("order_id") and r.get("status") not in ("SKIPPED_BELOW_MIN",)
+        }
+        if twap_order_ids:
+            try:
+                open_orders = client.get_open_orders(symbol)
+                for o in open_orders:
+                    oid = str(_order_id(o))
+                    if oid in twap_order_ids:
+                        try:
+                            client.cancel_order(symbol, _order_id(o))
+                        except Exception:
+                            logger.error(
+                                "Failed to cancel TWAP order %s for %s",
+                                _order_id(o), symbol,
+                                exc_info=True,
+                            )
+            except Exception:
+                logger.error(
+                    "Failed to get open orders for TWAP cleanup",
+                    exc_info=True,
+                )
 
     return results
 

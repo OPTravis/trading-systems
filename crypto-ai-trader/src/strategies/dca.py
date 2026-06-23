@@ -100,7 +100,26 @@ class DCAStrategy(BaseStrategy):
                     metadata={"deviation_pct": deviation_pct},
                 )
         else:
-            # Have position - check for additional DCA
+            # Have position - HARD STOP LOSS for DCA (P0: prevent death spiral)
+            # If position is down > 25% from average cost, force sell to cut losses
+            if position and position.get("entry_price") and current_price > 0:
+                entry_price = position["entry_price"]
+                if entry_price > 0:
+                    total_loss_pct = ((current_price - entry_price) / entry_price) * 100
+                    if total_loss_pct < -25:
+                        return StrategySignal(
+                            signal=SignalType.SELL,
+                            confidence=95,
+                            reason=f"DCA HARD STOP: position down {total_loss_pct:.1f}% from avg cost (entry=${entry_price:.6f}, now=${current_price:.6f}) — cut loss to prevent death spiral",
+                            metadata={
+                                "sell_pct": 100,
+                                "stop_type": "hard_stop",
+                                "loss_pct": total_loss_pct,
+                                "entry_price": entry_price,
+                            },
+                        )
+
+            # Check if in downtrend
             if (
                 deviation_pct <= self.dip_threshold_pct * 0.5
                 and current_dca_round < self.max_dca_rounds

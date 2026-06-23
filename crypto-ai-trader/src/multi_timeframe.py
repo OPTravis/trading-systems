@@ -227,9 +227,6 @@ class MultiTimeframeAnalyzer:
             # MODERATE: momentum continuation, gate with 1h not overbought
             if rsi_1h < 65 and rsi_15m < 60:
                 return "long"
-        # TREND-FOLLOWING: already in trend, not overbought
-        if is_4h_bullish and rsi_1h < 70:
-            return "long"
 
         # --- SHORT ENTRY (symmetrical mirror of long) ---
         if is_4h_bearish and macd_hist_1h < 0:

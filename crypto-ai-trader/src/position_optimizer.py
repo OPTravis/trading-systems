@@ -28,7 +28,7 @@ class PositionOptimizer:
         10.0  # new score - existing score > 10 triggers switch (was 20, unreachable)
     )
     BLACKLIST_24H_CHANGE = 30.0  # skip coins with 24h change > +30%
-    SWITCH_FEE_PCT = 0.2  # total fee for sell+buy (0.1% * 2)
+    SWITCH_FEE_PCT = 0.5  # total cost for sell+buy: 0.1% fee × 2 + ~0.3% slippage (market orders)
     MIN_SWITCH_INTERVAL_HOURS = (
         2  # min hours between switches for same coin (was 4, too slow)
     )

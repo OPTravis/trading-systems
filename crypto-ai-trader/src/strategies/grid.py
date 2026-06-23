@@ -38,9 +38,13 @@ class GridStrategy(BaseStrategy):
         current_price = self._current_price(klines)
         prices = self._recent_prices(klines, 50)
 
-        # Calculate grid boundaries
-        high_price = max(prices)
-        low_price = min(prices)
+        # P0 FIX: Anchor grid to 50-bar MA with price_range_pct for stable boundaries.
+        # Previously used rolling high/low which drifts as klines scroll,
+        # turning the grid into a chase-then-cut strategy.
+        anchor = sum(prices) / len(prices)  # 50-bar moving average
+        half_range = anchor * self.price_range_pct / 100 / 2
+        high_price = anchor + half_range
+        low_price = anchor - half_range
 
         # Current price position within range
         range_size = high_price - low_price

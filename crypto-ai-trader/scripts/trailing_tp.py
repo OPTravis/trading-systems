@@ -191,14 +191,22 @@ def trailing_tp_check(client: BinanceClient = None, dry_run: bool = False):
 
 
 def _calc_atr(klines: list, period: int = 14) -> float:
-    """Calculate ATR from kline data."""
+    """Calculate ATR from kline data (supports both dict and list formats)."""
     if len(klines) < 2:
         return 0.0
     trs = []
     for i in range(1, len(klines)):
-        high = float(klines[i][2])
-        low = float(klines[i][3])
-        prev_close = float(klines[i - 1][4])
+        k = klines[i]
+        pk = klines[i - 1]
+        # Support both dict (SDK) and list (raw API) formats
+        if isinstance(k, dict):
+            high = float(k["high"])
+            low = float(k["low"])
+            prev_close = float(pk["close"])
+        else:
+            high = float(k[2])
+            low = float(k[3])
+            prev_close = float(pk[4])
         tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
         trs.append(tr)
     return sum(trs[-period:]) / min(period, len(trs))

@@ -536,13 +536,629 @@
     "timestamp": "2026-06-23T00:38:32.295410",
     "title": "",
     "body": "test",
-    "notified": false
+    "notified": true
   },
   {
     "id": "msg_20260623003857",
     "timestamp": "2026-06-23T00:38:57.600782",
     "title": "",
     "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623005911",
+    "timestamp": "2026-06-23T00:59:11.976166",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623005912",
+    "timestamp": "2026-06-23T00:59:12.311998",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623005917",
+    "timestamp": "2026-06-23T00:59:17.188123",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623005917",
+    "timestamp": "2026-06-23T00:59:17.607680",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623005918",
+    "timestamp": "2026-06-23T00:59:18.093145",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623072500",
+    "timestamp": "2026-06-23T07:25:00.710183",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623072500",
+    "timestamp": "2026-06-23T07:25:00.992440",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623072501",
+    "timestamp": "2026-06-23T07:25:01.310185",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623072501",
+    "timestamp": "2026-06-23T07:25:01.571580",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623083158",
+    "timestamp": "2026-06-23T08:31:58.573353",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623083158",
+    "timestamp": "2026-06-23T08:31:58.871216",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623083159",
+    "timestamp": "2026-06-23T08:31:59.144586",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623083159",
+    "timestamp": "2026-06-23T08:31:59.377709",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623090808",
+    "timestamp": "2026-06-23T09:08:08.419438",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623090814",
+    "timestamp": "2026-06-23T09:08:14.941327",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623091504",
+    "timestamp": "2026-06-23T09:15:04.371518",
+    "title": "",
+    "body": "📊 每日报告 2026-06-23\n\n💰 USDT: $399.87\n📈 總資產: $399.87\n\n📦 無持倉",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623092144",
+    "timestamp": "2026-06-23T09:21:44.456489",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623092144",
+    "timestamp": "2026-06-23T09:21:44.722044",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623092149",
+    "timestamp": "2026-06-23T09:21:49.742267",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623092150",
+    "timestamp": "2026-06-23T09:21:50.336814",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623092150",
+    "timestamp": "2026-06-23T09:21:50.963377",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093156",
+    "timestamp": "2026-06-23T09:31:56.346113",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093201",
+    "timestamp": "2026-06-23T09:32:01.984346",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093306",
+    "timestamp": "2026-06-23T09:33:06.660341",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093312",
+    "timestamp": "2026-06-23T09:33:12.771360",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093648",
+    "timestamp": "2026-06-23T09:36:48.815861",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093817",
+    "timestamp": "2026-06-23T09:38:17.371438",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093817",
+    "timestamp": "2026-06-23T09:38:17.637832",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093822",
+    "timestamp": "2026-06-23T09:38:22.536164",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093822",
+    "timestamp": "2026-06-23T09:38:22.867886",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093823",
+    "timestamp": "2026-06-23T09:38:23.233362",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093839",
+    "timestamp": "2026-06-23T09:38:39.134615",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623093856",
+    "timestamp": "2026-06-23T09:38:56.186559",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094154",
+    "timestamp": "2026-06-23T09:41:54.546506",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094154",
+    "timestamp": "2026-06-23T09:41:54.825896",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094159",
+    "timestamp": "2026-06-23T09:41:59.684357",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094200",
+    "timestamp": "2026-06-23T09:42:00.110211",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094200",
+    "timestamp": "2026-06-23T09:42:00.564016",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094515",
+    "timestamp": "2026-06-23T09:45:15.246912",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094515",
+    "timestamp": "2026-06-23T09:45:15.563374",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094520",
+    "timestamp": "2026-06-23T09:45:20.508424",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094523",
+    "timestamp": "2026-06-23T09:45:23.216120",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094523",
+    "timestamp": "2026-06-23T09:45:23.820041",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094659",
+    "timestamp": "2026-06-23T09:46:59.803943",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094700",
+    "timestamp": "2026-06-23T09:47:00.882124",
+    "title": "",
+    "body": "test",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094745",
+    "timestamp": "2026-06-23T09:47:45.906293",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094746",
+    "timestamp": "2026-06-23T09:47:46.210629",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094751",
+    "timestamp": "2026-06-23T09:47:51.121085",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094751",
+    "timestamp": "2026-06-23T09:47:51.621967",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094752",
+    "timestamp": "2026-06-23T09:47:52.075834",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094945",
+    "timestamp": "2026-06-23T09:49:45.755883",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094946",
+    "timestamp": "2026-06-23T09:49:46.044070",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623094950",
+    "timestamp": "2026-06-23T09:49:50.825714",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100300",
+    "timestamp": "2026-06-23T10:03:00.028779",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100300",
+    "timestamp": "2026-06-23T10:03:00.433522",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100738",
+    "timestamp": "2026-06-23T10:07:38.294211",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100738",
+    "timestamp": "2026-06-23T10:07:38.597236",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100740",
+    "timestamp": "2026-06-23T10:07:40.514663",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100821",
+    "timestamp": "2026-06-23T10:08:21.017420",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100821",
+    "timestamp": "2026-06-23T10:08:21.283213",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623100823",
+    "timestamp": "2026-06-23T10:08:23.253372",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112156",
+    "timestamp": "2026-06-23T11:21:56.486366",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112156",
+    "timestamp": "2026-06-23T11:21:56.740505",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112157",
+    "timestamp": "2026-06-23T11:21:57.108729",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112157",
+    "timestamp": "2026-06-23T11:21:57.437328",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112157",
+    "timestamp": "2026-06-23T11:21:57.815145",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112441",
+    "timestamp": "2026-06-23T11:24:41.199575",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112441",
+    "timestamp": "2026-06-23T11:24:41.461633",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112441",
+    "timestamp": "2026-06-23T11:24:41.829943",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112544",
+    "timestamp": "2026-06-23T11:25:44.179476",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623112545",
+    "timestamp": "2026-06-23T11:25:45.314549",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260623114432",
+    "timestamp": "2026-06-23T11:44:32.537574",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114432",
+    "timestamp": "2026-06-23T11:44:32.943602",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114433",
+    "timestamp": "2026-06-23T11:44:33.394055",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114433",
+    "timestamp": "2026-06-23T11:44:33.799614",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114434",
+    "timestamp": "2026-06-23T11:44:34.278058",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114718",
+    "timestamp": "2026-06-23T11:47:18.792272",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114719",
+    "timestamp": "2026-06-23T11:47:19.443984",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114719",
+    "timestamp": "2026-06-23T11:47:19.914869",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114720",
+    "timestamp": "2026-06-23T11:47:20.403770",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114720",
+    "timestamp": "2026-06-23T11:47:20.884934",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114904",
+    "timestamp": "2026-06-23T11:49:04.872945",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114905",
+    "timestamp": "2026-06-23T11:49:05.194243",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 15.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $850.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114905",
+    "timestamp": "2026-06-23T11:49:05.609638",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 20.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $800.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114918",
+    "timestamp": "2026-06-23T11:49:18.535231",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623114919",
+    "timestamp": "2026-06-23T11:49:19.578449",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623122142",
+    "timestamp": "2026-06-23T12:21:42.054364",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.7% >= 10% limit\nHigh watermark: $1,200.00\nCurrent balance: $1,000.00\nAll new trades BLOCKED until manual reset.",
+    "notified": false
+  },
+  {
+    "id": "msg_20260623122142",
+    "timestamp": "2026-06-23T12:21:42.540409",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 16.0% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $840.00\nAll new trades BLOCKED until manual reset.",
     "notified": false
   }
 ]

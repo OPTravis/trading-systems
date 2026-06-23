@@ -1270,8 +1270,8 @@ class RiskManager:
         try:
             from src.state_db import get_state_db
             db = get_state_db()
-            hmm_regime = db.get("hmm_regime") or "unknown"
-            hmm_label = db.get("hmm_label_mapping") or {}
+            hmm_regime = db.kv_get("hmm_regime") or "unknown"
+            hmm_label = db.kv_get("hmm_label_mapping") or {}
             regime_info = f"HMM regime: {hmm_regime}"
             if isinstance(hmm_label, dict):
                 regime_label = hmm_label.get(str(hmm_regime), str(hmm_regime))
@@ -1302,7 +1302,7 @@ class RiskManager:
         try:
             from src.state_db import get_state_db
             db = get_state_db()
-            portfolio_val = float(db.get("portfolio_value") or 10000)
+            portfolio_val = float(db.kv_get("portfolio_value") or 10000)
             loss_pct = abs(pnl) / portfolio_val * 100 if portfolio_val > 0 else 0
         except Exception:
             loss_pct = abs(pnl) / 10000 * 100  # rough fallback
