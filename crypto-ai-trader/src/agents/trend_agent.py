@@ -12,6 +12,7 @@ import logging
 from typing import Dict, List
 
 from .base import SpecialistResult
+from .calibration import apply_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,17 @@ class TrendAgent:
 
         confidence = "high" if trend_score >= 70 or trend_score <= 30 else "medium"
 
+        # Apply outcome-based calibration
+        score = self._apply_calibration(score)
+
         return SpecialistResult(
             score=round(score, 2), signals=signals, data=data, confidence=confidence
         )
+
+    @staticmethod
+    def _apply_calibration(raw_score: float) -> float:
+        """Apply outcome-based calibration to the raw score."""
+        return apply_calibration("trend_agent", raw_score)
 
     # ------------------------------------------------------------------
     # Factor 2: Multi-TF Trend (direct passthrough of trend_score)

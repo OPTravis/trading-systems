@@ -5510,5 +5510,269 @@
     "title": "",
     "body": "🔍 12:24 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": false
+  },
+  {
+    "id": "notif_20260623122409049868",
+    "timestamp": "2026-06-23T12:24:09.049900",
+    "type": "signal",
+    "title": "交易信号: ETHUSDT",
+    "body": "🟢 BUY ETHUSDT @ $100.0000 x10.0\n原因: RSI Oversold\n策略: trend",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122409244540",
+    "timestamp": "2026-06-23T12:24:09.244567",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. ETHUSDT (评分: 80)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122409966410",
+    "timestamp": "2026-06-23T12:24:09.966440",
+    "type": "signal",
+    "title": "交易信号: SOL0USDT",
+    "body": "🟢 BUY SOL0USDT @ $100.0000 x10.0\n原因: RSI Oversold\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122410141808",
+    "timestamp": "2026-06-23T12:24:10.141835",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 3个\n\n🏆 前3名:\n  1. SOL0USDT (评分: 75)\n  2. SOL1USDT (评分: 74)\n  3. SOL2USDT (评分: 73)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122410850634",
+    "timestamp": "2026-06-23T12:24:10.850665",
+    "type": "signal",
+    "title": "交易信号: HIGHUSDT",
+    "body": "🟢 BUY HIGHUSDT @ $100.0000 x10.0\n原因: RSI Oversold\n策略: trend",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122411033278",
+    "timestamp": "2026-06-23T12:24:11.033306",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 2个\n\n🏆 前3名:\n  1. LOWUSDT (评分: 65)\n  2. HIGHUSDT (评分: 85)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122411297168",
+    "timestamp": "2026-06-23T12:24:11.297202",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122411781984",
+    "timestamp": "2026-06-23T12:24:11.782012",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122412606790",
+    "timestamp": "2026-06-23T12:24:12.606823",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI Oversold\n策略: trend",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122412788885",
+    "timestamp": "2026-06-23T12:24:12.788913",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:24 扫描完成\n\n😐 市场情绪: 55 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 78)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122827553953",
+    "timestamp": "2026-06-23T12:28:27.553983",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI Oversold\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122827757838",
+    "timestamp": "2026-06-23T12:28:27.757865",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:28 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122905138575",
+    "timestamp": "2026-06-23T12:29:05.138605",
+    "type": "signal",
+    "title": "交易信号: DOGEUSDT",
+    "body": "🟢 BUY DOGEUSDT @ $100.0000 x10.0\n原因: MACD\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122905288490",
+    "timestamp": "2026-06-23T12:29:05.288514",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:29 扫描完成\n\n😱 市场情绪: 15 (Extreme Fear)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. DOGEUSDT (评分: 63)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122939670331",
+    "timestamp": "2026-06-23T12:29:39.670380",
+    "type": "signal",
+    "title": "交易信号: BTCUSDT",
+    "body": "🟢 BUY BTCUSDT @ $100.0000 x10.0\n原因: Trend\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623122939850411",
+    "timestamp": "2026-06-23T12:29:39.850439",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:29 扫描完成\n\n🤑 市场情绪: 90 (Extreme Greed)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 80)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123015468443",
+    "timestamp": "2026-06-23T12:30:15.468473",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: VWAP\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123015625371",
+    "timestamp": "2026-06-23T12:30:15.625396",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:30 扫描完成\n\n😐 市场情绪: 50 (Unknown)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 72)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123039442631",
+    "timestamp": "2026-06-23T12:30:39.442662",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:30 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123102347144",
+    "timestamp": "2026-06-23T12:31:02.347185",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:31 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123125071239",
+    "timestamp": "2026-06-23T12:31:25.071276",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:31 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123147970349",
+    "timestamp": "2026-06-23T12:31:47.970380",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:31 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123222427691",
+    "timestamp": "2026-06-23T12:32:22.427724",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123222592191",
+    "timestamp": "2026-06-23T12:32:22.592219",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:32 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 80)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123256939437",
+    "timestamp": "2026-06-23T12:32:56.939471",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123257110612",
+    "timestamp": "2026-06-23T12:32:57.110638",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:32 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123331412356",
+    "timestamp": "2026-06-23T12:33:31.412379",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:33 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 75)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123424171639",
+    "timestamp": "2026-06-23T12:34:24.171672",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123424329699",
+    "timestamp": "2026-06-23T12:34:24.329727",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:34 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 80)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123447743718",
+    "timestamp": "2026-06-23T12:34:47.743755",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:34 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123523356128",
+    "timestamp": "2026-06-23T12:35:23.356159",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $100.0000 x10.0\n原因: RSI\n策略: score_based",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123523525485",
+    "timestamp": "2026-06-23T12:35:23.525510",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:35 扫描完成\n\n😐 市场情绪: 50 (Neutral)\n📊 动态阈值: 60\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 80)\n",
+    "pushed": false
+  },
+  {
+    "id": "notif_20260623123545541425",
+    "timestamp": "2026-06-23T12:35:45.541453",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:35 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": false
   }
 ]

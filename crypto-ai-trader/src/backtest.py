@@ -191,7 +191,7 @@ class BacktestEngine:
     MAX_TP_PCT = 25.0
 
     # 手續費
-    TAKER_FEE = 0.001  # Binance Spot 0.1%
+    TAKER_FEE = 0.00075  # Binance Spot 0.075% (BNB discount, matching live FeeOptimizer)
 
     # 追蹤止損參數 (與 TrailingStop 一致)
     TRAILING_ACTIVATION_ATR = 1.5

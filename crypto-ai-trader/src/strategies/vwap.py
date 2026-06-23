@@ -125,13 +125,36 @@ class VWAPStrategy(BaseStrategy):
                     metadata={"vwap": vwap, "pnl_pct": pnl_pct},
                 )
 
+    @staticmethod
+    def _infer_window(klines: List[Dict]) -> int:
+        """Infer appropriate VWAP window from kline interval metadata.
+
+        Falls back to 24 klines (≈24h for 1h data).  If the klines carry an
+        ``interval`` field (e.g. ``"15m"``, ``"4h"``), we compute how many bars
+        make up ~24 hours.  For ``"1d"`` data, 24 bars ≈ 24 days which is also
+        a sensible look-back.
+        """
+        if not klines:
+            return 24
+        # Try to read interval from the first kline (populated by most clients)
+        interval = klines[0].get("interval", "")
+        _minutes = {
+            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
+            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "8h": 480, "12h": 720,
+            "1d": 1440, "3d": 4320, "1w": 10080,
+        }
+        bar_minutes = _minutes.get(interval, 60)  # default assume 1h
+        target_minutes = 24 * 60  # aim for ~24h window
+        window = max(10, target_minutes // bar_minutes)
+        return min(window, len(klines))
+
     def _calculate_vwap(self, klines: List[Dict]) -> float:
-        """Calculate VWAP from klines"""
+        """Calculate VWAP from klines with timeframe-aware window."""
         if not klines:
             return 0
 
-        # Use 24h of data for VWAP
-        data = klines[-24:] if len(klines) >= 24 else klines
+        window = self._infer_window(klines)
+        data = klines[-window:] if len(klines) >= window else klines
 
         total_pv = 0
         total_vol = 0

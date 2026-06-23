@@ -475,11 +475,14 @@ class DimensionScorer:
 
     # ------------------------------------------------------------------
     def _score_regulatory(self) -> Dict:
-        """D6: Regulatory/Sentiment — use BTC volume ratio as proxy.
+        """D6: Market Sentiment (misnamed "Regulatory" for legacy compat).
 
-        Different from macro (which uses BTC price change). High BTC volume
-        relative to altcoins suggests risk-off / regulatory uncertainty,
-        while low BTC volume ratio suggests risk-on / favorable environment.
+        Uses BTC volume + price change as a risk-on/off proxy:
+        - BTC drops >2% with high volume → risk-off / panic
+        - BTC gains >2% → risk-on momentum
+
+        NOTE: This does NOT measure actual regulatory events (no news API).
+        Weight kept low (5%) to limit impact of this crude proxy.
         """
         try:
             if self.client:

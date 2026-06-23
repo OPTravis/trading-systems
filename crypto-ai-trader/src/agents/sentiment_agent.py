@@ -12,6 +12,7 @@ import logging
 from typing import Dict, List, Optional
 
 from .base import SpecialistResult
+from .calibration import apply_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -83,20 +84,21 @@ class SentimentAgent:
 
         confidence = "medium" if funding_data else "low"
 
+        # Apply outcome-based calibration
+        score = self._apply_calibration(score)
+
         return SpecialistResult(
             score=round(score, 2), signals=signals, data=data, confidence=confidence
         )
+
+    @staticmethod
+    def _apply_calibration(raw_score: float) -> float:
+        """Apply outcome-based calibration to the raw score."""
+        return apply_calibration("sentiment_agent", raw_score)
 
     # ------------------------------------------------------------------
     # Factor 4: Sentiment (funding + OI)
     # Mirrors MarketScanner._factor_sentiment exactly.
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _factor_sentiment(sentiment_data: Optional[Dict]) -> float:
-        if sentiment_data is None:
-            return 50.0
-
-        sentiment_score = sentiment_data.get("sentiment_score", 0)
-        mapped = 50.0 + sentiment_score * 3.33
-        return max(0.0, min(100.0, mapped))
+    @staticme

@@ -42,7 +42,7 @@ class Backtester:
         self,
         initial_capital: float = 10000,
         slippage: float = 0.001,
-        fee_rate: float = 0.001,
+        fee_rate: float = 0.00075,
         position_size: float = 0.1,
     ):
         self.initial_capital = initial_capital
@@ -162,7 +162,7 @@ class Backtester:
         klines: List[Dict],
         symbol: str,
         slippage: float = 0.001,
-        fee_rate: float = 0.001,
+        fee_rate: float = 0.00075,
         position_size: float = 0.1,
     ) -> Dict:
         """Run backtest simulation"""

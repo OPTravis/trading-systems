@@ -294,7 +294,7 @@ class Indicators:
         trend = Indicators.trend_strength(klines)
         mom = Indicators.momentum(klines)
         atr = Indicators.atr(klines)
-        vwap_val = Indicators.vwap(klines[-24:])  # 24h VWAP
+        vwap_val = Indicators.vwap(klines)  # VWAP over all available bars
 
         # Moving averages
         ma7 = Indicators.sma(prices, 7)

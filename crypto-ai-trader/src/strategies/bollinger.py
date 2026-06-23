@@ -109,12 +109,20 @@ class BollingerStrategy(BaseStrategy):
                 )
         else:
             # Have position
-            if current_price < bb["middle"] and pnl_pct > 0:
+            # P1-fix: Only sell on momentum reversal (price drops into lower 35%
+            # of band) instead of just crossing below middle band.  The old logic
+            # sold 50% on ANY dip below middle — cutting trend profits too early.
+            if band_position < 0.35 and pnl_pct > 0:
+                sell_pct = 100 if band_position < 0.15 else 50
                 return StrategySignal(
                     signal=SignalType.SELL,
                     confidence=70,
-                    reason="Price fell back below middle band",
-                    metadata={"pnl_pct": pnl_pct, "sell_pct": 50},
+                    reason=f"Momentum reversal: band_position={band_position:.2f} (< 0.35)",
+                    metadata={
+                        "pnl_pct": pnl_pct,
+                        "sell_pct": sell_pct,
+                        "band_position": band_position,
+                    },
                 )
             elif pnl_pct >= self.take_profit_pct:
                 return StrategySignal(
