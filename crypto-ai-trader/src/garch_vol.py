@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import time
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -156,8 +157,30 @@ def train_from_klines(symbol: str, klines: List[Dict]) -> bool:
 
 
 def load_model(symbol: str) -> Optional[dict]:
+    """Load saved GARCH parameters and cached forecast.
+
+    Returns a dict with:
+      - params: raw GARCH coefficients
+      - volatility: cached conditional volatility at save time
+      - annualized_vol: pre-computed annualized vol from save time
+      - vol_regime: pre-computed regime from save time
+      - saved_at: file modification timestamp (for staleness checks)
+
+    Callers should check staleness (e.g., >24h old) and retrain if needed.
+    """
     path = os.path.join(DATA_DIR, f"garch_{symbol}.json")
     if os.path.exists(path):
         with open(path, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+        # Enrich with derived fields so callers can use directly
+        saved_vol = data.get("volatility", 0.0)
+        if saved_vol and not data.get("annualized_vol"):
+            data["annualized_vol"] = saved_vol * math.sqrt(365) if saved_vol < 1 else saved_vol
+            data["vol_regime"] = get_vol_regime(data["annualized_vol"])
+        elif not data.get("annualized_vol"):
+            data["annualized_vol"] = 0.0
+            data["vol_regime"] = "normal"
+        data["saved_at"] = os.path.getmtime(path)
+        data["stale"] = (time.time() - data["saved_at"]) > 86400  # >24h = stale
+        return data
     return None

@@ -11,6 +11,7 @@ This module:
 """
 
 import logging
+import time
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -89,9 +90,24 @@ class CorrelationRiskManager:
     ) -> Tuple[Dict[str, Dict[str, float]], Dict[str, List[float]]]:
         """Build correlation matrix for a list of symbols.
 
+        Uses in-memory cache with CACHE_TTL_SECONDS TTL to avoid
+        redundant API calls and computation.
+
         Returns:
             (correlation_dict, price_history_dict)
         """
+        now = time.time()
+        cache_key = ",".join(sorted(symbols))
+
+        # Check cache
+        if (
+            cache_key in self._cache
+            and (now - self._cache_ts) < CACHE_TTL_SECONDS
+        ):
+            logger.debug("CorrelationRisk: cache hit for %s", cache_key)
+            cached = self._cache[cache_key]
+            return cached["matrix"], cached["histories"]
+
         # Fetch all price histories
         histories = {}
         for sym in symbols:
@@ -111,6 +127,11 @@ class CorrelationRiskManager:
                     corr_matrix[sym_a][sym_b] = self._compute_correlation(
                         histories[sym_a], histories[sym_b]
                     )
+
+        # Update cache
+        self._cache[cache_key] = {"matrix": corr_matrix, "histories": histories}
+        self._cache_ts = now
+        logger.debug("CorrelationRisk: cache updated for %s (%d symbols)", cache_key, len(symbols))
 
         return corr_matrix, histories
 

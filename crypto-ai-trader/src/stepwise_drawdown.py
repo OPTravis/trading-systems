@@ -96,7 +96,11 @@ try:
     ESCALATION_TIMEOUT_SECONDS = _sd_config.get(
         "escalation_timeout_seconds", _DEFAULT_ESCALATION_TIMEOUT_SECONDS
     )
-except Exception:
+except Exception as e:
+    logger.warning(
+        "stepwise_drawdown: failed to load config (%s), using hardcoded defaults",
+        e,
+    )
     LEVELS = _DEFAULT_LEVELS
     ESCALATION_TIMEOUT_SECONDS = _DEFAULT_ESCALATION_TIMEOUT_SECONDS
 

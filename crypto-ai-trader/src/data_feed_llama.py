@@ -26,7 +26,12 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Path to llama-data-skill CLI wrapper
-LLAMA_CLI = "/app/data/所有对话/主对话/.skills/skill_llama-data-skill/bin/_cli_wrapper.py"
+# Priority: 1) LLAMA_CLI env var, 2) relative path from project root
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_LLAMA_CLI = os.path.join(
+    _PROJECT_ROOT, "..", ".skills", "skill_llama-data-skill", "bin", "_cli_wrapper.py"
+)
+LLAMA_CLI = os.environ.get("LLAMA_CLI", _DEFAULT_LLAMA_CLI)
 
 # Cache TTL
 CACHE_TTL = 1800  # 30 minutes

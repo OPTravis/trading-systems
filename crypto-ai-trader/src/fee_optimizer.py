@@ -304,7 +304,6 @@ class FeeOptimizer:
         )
 
         total_fees = entry["fee_amount"] + exit_["fee_amount"]
-        quantity * entry_price
 
         # Break even: price needs to move enough to cover fees
         if side == "BUY":
