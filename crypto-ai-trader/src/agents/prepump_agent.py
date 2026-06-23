@@ -19,6 +19,7 @@ import logging
 from typing import Dict, List, Optional
 
 from .base import SpecialistResult
+from .calibration import apply_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +121,17 @@ class PrePumpAgent:
 
         confidence = "high" if score >= 65 else "medium" if score >= 45 else "low"
 
+        # Apply outcome-based calibration
+        score = self._apply_calibration(score)
+
         return SpecialistResult(
             score=round(score, 2), signals=signals, data=data, confidence=confidence
         )
+
+    @staticmethod
+    def _apply_calibration(raw_score: float) -> float:
+        """Apply outcome-based calibration to the raw score."""
+        return apply_calibration("prepump_agent", raw_score)
 
     # ------------------------------------------------------------------
     # Factor 6: OBV Divergence

@@ -12,6 +12,7 @@ import logging
 from typing import Dict, List
 
 from .base import SpecialistResult
+from .calibration import apply_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,17 @@ class MarketSentimentAgent:
 
         confidence = "high" if abs(fng_value - 50) > 30 else "medium"
 
+        # Apply outcome-based calibration
+        score = self._apply_calibration(score)
+
         return SpecialistResult(
             score=round(score, 2), signals=signals, data=data, confidence=confidence
         )
+
+    @staticmethod
+    def _apply_calibration(raw_score: float) -> float:
+        """Apply outcome-based calibration to the raw score."""
+        return apply_calibration("market_sentiment_agent", raw_score)
 
     # ------------------------------------------------------------------
     # Contrarian F&G mapping — mirrors the inline logic in

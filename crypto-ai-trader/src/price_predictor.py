@@ -4,12 +4,14 @@ CPU-friendly gradient boosting approach for predicting price direction (up/down)
 """
 
 import logging
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import joblib
 import lightgbm as lgb
 import numpy as np
+from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -153,54 +155,143 @@ class PricePredictor:
 
     def train(self, features_list: List[Dict], labels: List[int]) -> Dict:
         """
-        Train the LightGBM model on provided features and labels.
+        Train the LightGBM model with time-based validation and early stopping.
+
+        Data is split 80/20 by position (NOT random) to simulate time-series
+        ordering — the first 80% become training data and the last 20% become
+        the held-out validation set.  This avoids data leakage from future
+        observations leaking into the training window.
 
         Args:
-            features_list: List of feature dictionaries
-            labels: List of binary labels (1=up, 0=down)
+            features_list: List of feature dictionaries (assumed time-ordered).
+            labels: List of binary labels (1=up, 0=down).
 
         Returns:
-            Dict with training metrics
+            Dict with training AND validation metrics.
         """
         if len(features_list) < MIN_TRAINING_SAMPLES:
             raise ValueError(
                 f"Insufficient training samples: {len(features_list)} < {MIN_TRAINING_SAMPLES}"
             )
 
-        # Convert to numpy arrays
+        # ── 1. Time-based train / validation split (80 / 20) ───────────
         X = self._extract_features_batch(features_list)
         y = np.array(labels)
+        split_idx = int(len(X) * 0.8)
+        # Ensure at least MIN_TRAINING_SAMPLES in train and some in val
+        split_idx = max(split_idx, MIN_TRAINING_SAMPLES)
+        split_idx = min(split_idx, len(X) - 1)  # leave at least 1 for val
 
-        # Initialize and fit scaler
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
+
+        # ── 2. Fit scaler on TRAINING data only, then transform both ───
         self.scaler = StandardScaler()
-        X_scaled = self.scaler.fit_transform(X)
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_val_scaled = self.scaler.transform(X_val)
 
-        # Initialize and train LightGBM
+        # ── 3. Train LightGBM with early stopping ──────────────────────
         self.model = lgb.LGBMClassifier(**LGBM_PARAMS)  # type: ignore[arg-type]
-        self.model.fit(X_scaled, y)
+
+        # Build callbacks for early stopping (LightGBM >= 4.x style)
+        callbacks = [
+            lgb.early_stopping(stopping_rounds=50, verbose=False),
+            lgb.log_evaluation(period=0),  # suppress per-iteration logging
+        ]
+
+        # Suppress LightGBM warnings about early stopping with custom metric
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.model.fit(
+                X_train_scaled,
+                y_train,
+                eval_set=[(X_train_scaled, y_train), (X_val_scaled, y_val)],
+                eval_metric="auc",
+                callbacks=callbacks,
+            )
+
         self.is_trained = True
 
-        # Calculate training metrics
-        train_pred = self.model.predict(X_scaled)
-        train_prob = self.model.predict_proba(X_scaled)[:, 1]
+        # ── 4. Compute metrics on BOTH splits ──────────────────────────
+        train_pred = self.model.predict(X_train_scaled)
+        train_prob = self.model.predict_proba(X_train_scaled)[:, 1]
 
-        accuracy = np.mean(train_pred == y)
-        loss = -np.mean(
-            y * np.log(train_prob + 1e-15) + (1 - y) * np.log(1 - train_prob + 1e-15)
+        val_pred = self.model.predict(X_val_scaled)
+        val_prob = self.model.predict_proba(X_val_scaled)[:, 1]
+
+        train_accuracy = float(accuracy_score(y_train, train_pred))
+        try:
+            train_auc = float(roc_auc_score(y_train, train_prob))
+        except ValueError:
+            train_auc = float("nan")
+        try:
+            train_logloss = float(log_loss(y_train, train_prob))
+        except ValueError:
+            train_logloss = float("nan")
+
+        # Guard: validation set may be very small or single-class
+        try:
+            val_accuracy = float(accuracy_score(y_val, val_pred))
+        except Exception:
+            val_accuracy = float("nan")
+        try:
+            val_auc = float(roc_auc_score(y_val, val_prob))
+        except ValueError:
+            val_auc = float("nan")
+        try:
+            val_logloss = float(log_loss(y_val, val_prob))
+        except Exception:
+            val_logloss = float("nan")
+
+        # ── 5. Log comparison ──────────────────────────────────────────
+        best_iter = getattr(self.model, "best_iteration_", self.model.n_estimators)
+        logger.info(
+            "Model trained | train_acc=%.4f  train_auc=%.4f  train_logloss=%.4f "
+            "| val_acc=%.4f  val_auc=%.4f  val_logloss=%.4f "
+            "| n_train=%d  n_val=%d  best_iter=%s",
+            train_accuracy,
+            train_auc,
+            train_logloss,
+            val_accuracy,
+            val_auc,
+            val_logloss,
+            len(y_train),
+            len(y_val),
+            best_iter,
         )
 
+        # ── 6. Overfitting / random-model warning ──────────────────────
+        if not (val_auc != val_auc):  # not NaN  (NaN != NaN is True)
+            if val_auc < 0.52:
+                logger.warning(
+                    "VALIDATION AUC %.4f is barely better than random (0.50). "
+                    "Model is likely overfitting or features have no predictive power. "
+                    "Consider adding more data, reducing model complexity, or reviewing features.",
+                    val_auc,
+                )
+
         metrics = {
-            "accuracy": float(accuracy),
-            "loss": float(loss),
+            # Train metrics
+            "train_accuracy": train_accuracy,
+            "train_auc": train_auc,
+            "train_logloss": train_logloss,
+            # Validation metrics
+            "val_accuracy": val_accuracy,
+            "val_auc": val_auc,
+            "val_logloss": val_logloss,
+            # Metadata
+            "n_train": len(y_train),
+            "n_val": len(y_val),
             "n_samples": len(labels),
+            "best_iteration": best_iter,
             "feature_importance": dict(
                 zip(self.feature_names, self.model.feature_importances_.tolist())
             ),
+            # Backward-compatible keys (some consumers read 'accuracy' / 'loss')
+            "accuracy": train_accuracy,
+            "loss": train_logloss,
         }
 
-        logger.info(
-            f"Model trained: accuracy={accuracy:.4f}, loss={loss:.4f}, samples={len(labels)}"
-        )
         return metrics
 
     def predict(self, features: Dict) -> Dict:

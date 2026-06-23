@@ -101,4 +101,11 @@ class SentimentAgent:
     # Mirrors MarketScanner._factor_sentiment exactly.
     # ------------------------------------------------------------------
 
-    @staticme
+    @staticmethod
+    def _factor_sentiment(sentiment_data: Optional[Dict]) -> float:
+        if sentiment_data is None:
+            return 50.0
+
+        sentiment_score = sentiment_data.get("sentiment_score", 0)
+        mapped = 50.0 + sentiment_score * 3.33
+        return max(0.0, min(100.0, mapped))

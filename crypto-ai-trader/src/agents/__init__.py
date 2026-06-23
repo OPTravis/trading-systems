@@ -6,6 +6,11 @@ into an independently testable component.
 """
 
 from .base import SpecialistResult
+from .calibration import (
+    apply_calibration,
+    record_agent_outcome,
+    record_agent_outcomes_from_trade,
+)
 from .market_sentiment_agent import MarketSentimentAgent
 from .onchain_agent import OnChainAgent
 from .prepump_agent import PrePumpAgent
@@ -23,4 +28,7 @@ __all__ = [
     "OnChainAgent",
     "MarketSentimentAgent",
     "PrePumpAgent",
+    "apply_calibration",
+    "record_agent_outcome",
+    "record_agent_outcomes_from_trade",
 ]
