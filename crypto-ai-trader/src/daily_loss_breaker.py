@@ -297,13 +297,18 @@ class DailyLossBreaker:
         }
 
 
-# ── Singleton ──
+# ── Singleton (thread-safe, matching risk_manager pattern) ──
+import threading as _dlb_threading
+
 _dlb_instance = None
+_dlb_lock = _dlb_threading.Lock()
 
 
 def get_daily_loss_breaker() -> DailyLossBreaker:
-    """Get singleton DailyLossBreaker instance."""
+    """Get singleton DailyLossBreaker instance (thread-safe double-check lock)."""
     global _dlb_instance
     if _dlb_instance is None:
-        _dlb_instance = DailyLossBreaker()
+        with _dlb_lock:
+            if _dlb_instance is None:
+                _dlb_instance = DailyLossBreaker()
     return _dlb_instance

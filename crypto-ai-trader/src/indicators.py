@@ -160,70 +160,70 @@ class Indicators:
 
     @staticmethod
     def adx(klines: List[Dict], period: int = 14) -> float:
-        """Average Directional Index (trend strength)"""
-        if len(klines) < period + 1:
+        """Average Directional Index (trend strength).
+
+        Returns Wilder-smoothed ADX (not raw DX).
+        ADX = WilderEMA(DX) over the same period.
+        """
+        n = len(klines)
+        if n < period + 2:
             return 0
 
-        # Calculate +DM and -DM
+        # ── Step 1: compute +DM, -DM, TR for each bar ──
         plus_dm = []
         minus_dm = []
+        tr_list = []
 
-        for i in range(1, len(klines)):
-            high = klines[i]["high"]
-            low = klines[i]["low"]
-            prev_high = klines[i - 1]["high"]
-            prev_low = klines[i - 1]["low"]
+        for i in range(1, n):
+            high = float(klines[i]["high"])
+            low = float(klines[i]["low"])
+            prev_high = float(klines[i - 1]["high"])
+            prev_low = float(klines[i - 1]["low"])
+            prev_close = float(klines[i - 1]["close"])
 
             up_move = high - prev_high
             down_move = prev_low - low
 
             plus_dm.append(up_move if up_move > down_move and up_move > 0 else 0)
             minus_dm.append(down_move if down_move > up_move and down_move > 0 else 0)
-
-        # Calculate ATR
-        atr = Indicators.atr(klines, period)
-
-        if atr == 0:
-            return 0
-
-        # Wilder's smoothing (same EMA method as RSI)
-        # Initialize with simple average of first 'period' values
-        smoothed_plus_dm = sum(plus_dm[:period]) / period
-        smoothed_minus_dm = sum(minus_dm[:period]) / period
-        smoothed_tr = (
-            sum(
-                [
-                    Indicators._true_range(klines[i], klines[i - 1])
-                    for i in range(1, period + 1)
-                ]
+            tr_list.append(
+                max(high - low, abs(high - prev_close), abs(low - prev_close))
             )
-            / period
-        )
 
-        # Smooth remaining values
-        for i in range(period, len(plus_dm)):
-            smoothed_plus_dm = (smoothed_plus_dm * (period - 1) + plus_dm[i]) / period
-            smoothed_minus_dm = (
-                smoothed_minus_dm * (period - 1) + minus_dm[i]
-            ) / period
-            smoothed_tr = (
-                smoothed_tr * (period - 1)
-                + Indicators._true_range(klines[i + 1], klines[i])
-            ) / period
-
-        if smoothed_tr == 0:
+        if len(plus_dm) < period:
             return 0
 
-        plus_di = (smoothed_plus_dm / smoothed_tr) * 100
-        minus_di = (smoothed_minus_dm / smoothed_tr) * 100
+        # ── Step 2: Wilder's smoothing for +DM, -DM, TR ──
+        sm_plus = sum(plus_dm[:period]) / period
+        sm_minus = sum(minus_dm[:period]) / period
+        sm_tr = sum(tr_list[:period]) / period
 
-        dx = (
-            (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-            if (plus_di + minus_di) > 0
-            else 0
-        )
+        dx_values: List[float] = []
 
-        return dx
+        for i in range(period, len(plus_dm)):
+            sm_plus = (sm_plus * (period - 1) + plus_dm[i]) / period
+            sm_minus = (sm_minus * (period - 1) + minus_dm[i]) / period
+            sm_tr = (sm_tr * (period - 1) + tr_list[i]) / period
+
+            if sm_tr == 0:
+                dx_values.append(0.0)
+                continue
+
+            plus_di = (sm_plus / sm_tr) * 100
+            minus_di = (sm_minus / sm_tr) * 100
+            di_sum = plus_di + minus_di
+            dx = (abs(plus_di - minus_di) / di_sum) * 100 if di_sum > 0 else 0
+            dx_values.append(dx)
+
+        if not dx_values:
+            return 0
+
+        # ── Step 3: Wilder's smoothing of DX → true ADX ──
+        adx = sum(dx_values[:period]) / min(period, len(dx_values))
+        for dx in dx_values[period:]:
+            adx = (adx * (period - 1) + dx) / period
+
+        return round(adx, 2)
 
     @staticmethod
     def _true_range(current, prev):

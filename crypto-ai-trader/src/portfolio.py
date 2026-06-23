@@ -390,6 +390,17 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             except Exception as e:
                 logger.debug(f"Trade outcome recording failed: {e}")
 
+            # Snapshot features for LightGBM training (closes the training-serving loop)
+            try:
+                from src.feature_store import get_store
+                import time as _t
+                fs = get_store()
+                label = 1 if pnl >= 0 else 0
+                entry_ts = pos.get("opened_at_ts", _t.time())
+                fs.snapshot_for_training(symbol, label=label, timestamp=entry_ts)
+            except Exception:
+                pass  # non-critical
+
         self._save_state(force=True)
         logger.info(f"Closed position: {symbol}, PnL: {pnl:.2f}")
 

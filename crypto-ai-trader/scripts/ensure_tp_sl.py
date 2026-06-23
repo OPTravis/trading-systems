@@ -54,10 +54,12 @@ def get_positions_with_targets():
     conn = db._get_conn()
     saved_factory = conn.row_factory
     conn.row_factory = None
-    rows = conn.execute(
-        "SELECT symbol, quantity, entry_price, stop_loss, take_profit FROM portfolio"
-    ).fetchall()
-    conn.row_factory = saved_factory  # restore for other callers
+    try:
+        rows = conn.execute(
+            "SELECT symbol, quantity, entry_price, stop_loss, take_profit FROM portfolio"
+        ).fetchall()
+    finally:
+        conn.row_factory = saved_factory  # restore for other callers
     positions = {}
     for row in rows:
         sym, qty, entry, sl, tp = row
@@ -586,10 +588,12 @@ def main():
         conn = db._get_conn()
         saved_factory2 = conn.row_factory
         conn.row_factory = None
-        rows = conn.execute(
-            "SELECT symbol, quantity, entry_price, strategy, opened_at FROM portfolio"
-        ).fetchall()
-        conn.row_factory = saved_factory2
+        try:
+            rows = conn.execute(
+                "SELECT symbol, quantity, entry_price, strategy, opened_at FROM portfolio"
+            ).fetchall()
+        finally:
+            conn.row_factory = saved_factory2
         # Default max hold: 48 hours (strategy may override)
         MAX_HOLD_DEFAULT = 48 * 3600
         for row in rows:

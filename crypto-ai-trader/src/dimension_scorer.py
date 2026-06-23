@@ -438,16 +438,21 @@ class DimensionScorer:
             # Binance returns lists: [open_time, open, high, low, close, ...]
             klines = self.client.get_klines(symbol="BTCUSDT", interval="1h", limit=15)
             closes = [float(k["close"]) for k in klines]
-            if len(closes) >= 14:
-                # Simple RSI calculation
+            if len(closes) >= 15:
+                # Wilder's smoothing RSI (consistent with indicators.py)
                 gains = []
                 losses = []
                 for i in range(1, len(closes)):
                     diff = closes[i] - closes[i - 1]
                     gains.append(max(0, diff))
                     losses.append(max(0, -diff))
-                avg_gain = sum(gains[-14:]) / 14
-                avg_loss = sum(losses[-14:]) / 14
+                # Seed with simple average of first 14 values
+                avg_gain = sum(gains[:14]) / 14
+                avg_loss = sum(losses[:14]) / 14
+                # Wilder's EMA for the rest
+                for i in range(14, len(gains)):
+                    avg_gain = (avg_gain * 13 + gains[i]) / 14
+                    avg_loss = (avg_loss * 13 + losses[i]) / 14
                 if avg_loss > 0:
                     rs = avg_gain / avg_loss
                     rsi = 100 - (100 / (1 + rs))
