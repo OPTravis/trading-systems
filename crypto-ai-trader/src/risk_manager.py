@@ -1465,3 +1465,21 @@ class RiskManager:
             "trades_analyzed": len(rows),
             "recommendation": recommendation,
         }
+
+# --- Singleton factory (double-checked locking) ---
+_risk_manager_instance: Optional[RiskManager] = None
+_risk_manager_lock = threading.Lock()
+
+
+def get_risk_manager(binance_client: Optional["ExchangeClient"] = None) -> RiskManager:
+    """Return a process-wide singleton RiskManager instance.
+
+    Uses double-checked locking so concurrent callers within the same
+    process share one instance (avoids duplicate sub-module state loads).
+    """
+    global _risk_manager_instance
+    if _risk_manager_instance is None:
+        with _risk_manager_lock:
+            if _risk_manager_instance is None:
+                _risk_manager_instance = RiskManager(binance_client=binance_client)
+    return _risk_manager_instance

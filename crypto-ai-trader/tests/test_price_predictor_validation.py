@@ -116,14 +116,14 @@ class TestTimeBasedSplit:
     """Verify the train/val split is positional (time-based), not random."""
 
     def test_split_ratio_200(self):
-        """200 samples → 160 train / 40 val."""
+        """300 samples → 240 train / 60 val (80/20 split)."""
         from src.price_predictor import PricePredictor
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=200)
+        features_list, labels = _make_features_and_labels(n=300)
         metrics = pp.train(features_list, labels)
-        assert metrics["n_train"] == 160
-        assert metrics["n_val"] == 40
-        assert metrics["n_samples"] == 200
+        assert metrics["n_train"] == 240
+        assert metrics["n_val"] == 60
+        assert metrics["n_samples"] == 300
 
     def test_split_ratio_250(self):
         """250 samples → 200 train / 50 val."""
@@ -136,21 +136,22 @@ class TestTimeBasedSplit:
 
     def test_minimum_training_samples_enforced(self):
         """When 80% < MIN_TRAINING_SAMPLES, split pushes train up to minimum."""
-        from src.price_predictor import PricePredictor
+        from src.price_predictor import PricePredictor, MIN_TRAINING_SAMPLES
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=110)
+        features_list, labels = _make_features_and_labels(n=MIN_TRAINING_SAMPLES + 10)
         metrics = pp.train(features_list, labels)
-        assert metrics["n_train"] >= 100
+        assert metrics["n_train"] >= MIN_TRAINING_SAMPLES
 
     def test_split_preserves_order(self):
         """Scaler mean matches training-only data (first 80%)."""
         from src.price_predictor import PricePredictor
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=200, seed=99)
-        pp.train(features_list, labels)
+        features_list, labels = _make_features_and_labels(n=300, seed=99)
+        metrics = pp.train(features_list, labels)
 
         X = pp._extract_features_batch(features_list)
-        X_train_expected = X[:160]
+        n_train = metrics["n_train"]
+        X_train_expected = X[:n_train]
         expected_means = X_train_expected.mean(axis=0)
         np.testing.assert_array_almost_equal(
             pp.scaler.mean_, expected_means, decimal=10
@@ -238,11 +239,12 @@ class TestScalerIsolation:
     def test_scaler_not_fit_on_val(self):
         from src.price_predictor import PricePredictor
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=200, seed=7)
-        pp.train(features_list, labels)
+        features_list, labels = _make_features_and_labels(n=300, seed=7)
+        metrics = pp.train(features_list, labels)
 
+        n_train = metrics["n_train"]
         X_all = pp._extract_features_batch(features_list)
-        X_train_only = X_all[:160]
+        X_train_only = X_all[:n_train]
 
         # scaler.mean_ should match X_train_only, not X_all
         train_mean = X_train_only.mean(axis=0)
@@ -286,7 +288,7 @@ class TestLowAucWarning:
 
         from src.price_predictor import PricePredictor
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=200)
+        features_list, labels = _make_features_and_labels(n=300)
 
         with caplog.at_level(logging.WARNING, logger="src.price_predictor"):
             metrics = pp.train(features_list, labels)
@@ -310,12 +312,12 @@ class TestEdgeCases:
 
     def test_exact_minimum_samples(self):
         """Exactly MIN_TRAINING_SAMPLES should succeed."""
-        from src.price_predictor import PricePredictor
+        from src.price_predictor import PricePredictor, MIN_TRAINING_SAMPLES
         pp = PricePredictor()
-        features_list, labels = _make_features_and_labels(n=100)
+        features_list, labels = _make_features_and_labels(n=MIN_TRAINING_SAMPLES)
         metrics = pp.train(features_list, labels)
-        assert metrics["n_samples"] == 100
-        assert metrics["n_train"] >= 80
+        assert metrics["n_samples"] == MIN_TRAINING_SAMPLES
+        assert metrics["n_train"] >= int(MIN_TRAINING_SAMPLES * 0.8)
         assert metrics["n_val"] >= 1
 
     def test_single_class_val_no_crash(self, monkeypatch):

@@ -114,7 +114,7 @@ def _step_scan_opportunities():
     sentiment = SentimentAnalyzer()
 
     from src.market_researcher import MarketResearcher
-    from src.risk_manager import RiskManager
+    from src.risk_manager import get_risk_manager
     from src.strategy_adaptor import StrategyAdaptor
 
     # ===== Step 0: Sync with Binance (source of truth) =====
@@ -124,7 +124,7 @@ def _step_scan_opportunities():
     else:
         logger.info("Paper mode: skipping Binance portfolio sync")
 
-    risk_mgr = RiskManager(binance_client=client)
+    risk_mgr = get_risk_manager(binance_client=client)
     researcher = MarketResearcher()
     adaptor = StrategyAdaptor()
 

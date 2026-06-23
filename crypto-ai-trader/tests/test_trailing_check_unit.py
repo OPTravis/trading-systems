@@ -106,7 +106,7 @@ def _run_trailing_check(client, ts, ind_atr=500.0, entry_price=38000.0):
 
     with patch("src.cmd_trailing_check.BinanceClient", return_value=client), \
          patch("src.cmd_trailing_check.TrailingStop", return_value=ts), \
-         patch("src.cmd_trailing_check.RiskManager", return_value=risk_mgr), \
+         patch("src.cmd_trailing_check.get_risk_manager", return_value=risk_mgr), \
          patch("src.cmd_trailing_check.FeishuNotifier", return_value=notifier), \
          patch("src.cmd_trailing_check.Indicators", ind_mock):
         cmd_trailing_check()

@@ -168,8 +168,8 @@ class DrawdownBreaker:
         drawdown = (hwm - current_balance) / hwm
         state["current_drawdown_pct"] = round(drawdown * 100, 2)
 
-        if drawdown > state["max_drawdown_pct"]:
-            state["max_drawdown_pct"] = drawdown
+        if round(drawdown * 100, 2) > state["max_drawdown_pct"]:
+            state["max_drawdown_pct"] = round(drawdown * 100, 2)
 
         # Check hard stop
         if drawdown >= self.HARD_STOP_PCT:
@@ -246,7 +246,7 @@ class DrawdownBreaker:
         return {
             "high_watermark": self._state["high_watermark"],
             "current_drawdown_pct": self._state["current_drawdown_pct"],
-            "max_drawdown_pct": round(self._state.get("max_drawdown_pct", 0) * 100, 2),
+            "max_drawdown_pct": self._state.get("max_drawdown_pct", 0.0),
             "tripped": self._state["tripped_at"] is not None,
             "tripped_count": self._state.get("tripped_count", 0),
             "tripped_at": self._state["tripped_at"],

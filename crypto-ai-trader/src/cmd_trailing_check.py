@@ -12,7 +12,7 @@ import time
 from src.binance_client import BinanceClient
 from src.indicators import Indicators
 from src.notifier import FeishuNotifier
-from src.risk_manager import RiskManager, TrailingStop
+from src.risk_manager import RiskManager, TrailingStop, get_risk_manager
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def cmd_trailing_check():
     """
     client = BinanceClient(testnet=False)
     ts = TrailingStop()
-    risk_mgr = RiskManager(binance_client=client)  # single instance for entire check
+    risk_mgr = get_risk_manager(binance_client=client)  # singleton: reuse across calls
     notifier = FeishuNotifier()
 
     # Get non-USDT positions (exclude dust < $1 value)

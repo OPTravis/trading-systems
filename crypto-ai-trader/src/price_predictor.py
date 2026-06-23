@@ -39,7 +39,7 @@ DERIVED_FEATURES = [
     "volume_surge",
     # --- P3 #11: new features ---
     "exchange_netflow",       # net BTC flow to/from exchanges (negative = outflow = bullish)
-    "whale_activity",         # whale transaction z-score (higher = more large moves)
+    "whale_activity",         # PLACEHOLDER: always 0.0 — no dedicated feed yet; replace with real data when available
     "funding_rate",           # perpetual funding rate (contrarian: high positive = bearish)
     "open_interest_change",   # 24h OI change % (rising + price up = momentum)
 ]
@@ -60,7 +60,7 @@ LGBM_PARAMS = {
     "random_state": 42,
 }
 
-MIN_TRAINING_SAMPLES = 100
+MIN_TRAINING_SAMPLES = 200  # bumped from 100 to reduce overfitting on small samples
 
 
 class PricePredictor:
@@ -173,6 +173,23 @@ class PricePredictor:
             raise ValueError(
                 f"Insufficient training samples: {len(features_list)} < {MIN_TRAINING_SAMPLES}"
             )
+
+        # Feature completeness check — warn if any ALL_FEATURES are always zero
+        sample_keys = set(features_list[0].keys()) if features_list else set()
+        missing = [f for f in ALL_FEATURES if f not in sample_keys]
+        if missing:
+            logger.warning(
+                f"PricePredictor.train(): {len(missing)} features missing from training data: {missing}. "
+                f"They will default to 0.0 via _extract_features_batch."
+            )
+        # Check for always-zero features (e.g. placeholder whale_activity)
+        for fname in ALL_FEATURES:
+            vals = [f.get(fname, 0.0) for f in features_list[:50]]
+            if all(v == 0.0 for v in vals):
+                logger.info(
+                    f"PricePredictor.train(): feature '{fname}' is always 0.0 in first 50 samples — "
+                    f"consider replacing with real data or removing"
+                )
 
         # ── 1. Time-based train / validation split (80 / 20) ───────────
         X = self._extract_features_batch(features_list)
