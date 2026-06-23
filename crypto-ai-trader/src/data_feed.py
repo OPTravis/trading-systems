@@ -72,6 +72,9 @@ class DataFeedManager:
         Individual feed failures are caught and logged; the snapshot
         still includes data from the feeds that succeeded.
 
+        P3-4: Returns feed_status dict tracking which feeds succeeded/failed,
+        enabling downstream consumers to make informed degradation decisions.
+
         Returns:
             dict with keys:
                 - fear_greed:      current F&G value dict or None
@@ -80,32 +83,48 @@ class DataFeedManager:
                 - news_p1:         list of P1 (high-impact) articles
                 - news_p2:         list of P2 articles
                 - onchain_score:   0-100 on-chain health score or None
+                - feed_status:     dict of {feed_name: {"ok": bool, "error": str|None}}
+                - data_quality:    float 0.0-1.0 (fraction of feeds that succeeded)
                 - timestamp:       ISO timestamp of snapshot
         """
         snapshot: Dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
+        # P3-4: Track per-feed status
+        feed_status: Dict[str, Dict[str, Any]] = {}
+        total_feeds = 6
+        ok_feeds = 0
+
         # 1. Fear & Greed Index
         try:
             snapshot["fear_greed"] = self.fng.get_current()
+            feed_status["fear_greed"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("FearGreedIndex failed in snapshot: %s", e)
             snapshot["fear_greed"] = None
+            feed_status["fear_greed"] = {"ok": False, "error": str(e)[:120]}
 
         # 2. BTC price (from Binance public REST)
         try:
             snapshot["btc_price"] = self._get_btc_price()
+            feed_status["btc_price"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("BTC price fetch failed in snapshot: %s", e)
             snapshot["btc_price"] = None
+            feed_status["btc_price"] = {"ok": False, "error": str(e)[:120]}
 
         # 3. Funding rates
         try:
             snapshot["funding"] = self.funding.get_funding_summary()
+            feed_status["funding"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("FundingRate failed in snapshot: %s", e)
             snapshot["funding"] = None
+            feed_status["funding"] = {"ok": False, "error": str(e)[:120]}
 
         # 4. News (last 24h)
         try:
@@ -113,10 +132,13 @@ class DataFeedManager:
             classified = self.news.classify_news(articles)
             snapshot["news_p1"] = classified["P1"]
             snapshot["news_p2"] = classified["P2"]
+            feed_status["news"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("NewsFeed failed in snapshot: %s", e)
             snapshot["news_p1"] = []
             snapshot["news_p2"] = []
+            feed_status["news"] = {"ok": False, "error": str(e)[:120]}
 
         # 5. Market sentiment (funding + OI based scoring)
         try:
@@ -134,16 +156,36 @@ class DataFeedManager:
                     f"OI change: {eth_sent.get('oi_change_pct', 'N/A')}%)"
                 ),
             }
+            feed_status["market_sentiment"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("Market sentiment scoring failed in snapshot: %s", e)
             snapshot["market_sentiment"] = None
+            feed_status["market_sentiment"] = {"ok": False, "error": str(e)[:120]}
 
         # 6. On-chain score (DeFiLlama TVL changes)
         try:
             snapshot["onchain_score"] = self.onchain.get_onchain_score()
+            feed_status["onchain"] = {"ok": True, "error": None}
+            ok_feeds += 1
         except Exception as e:
             logger.error("OnChain score failed in snapshot: %s", e)
             snapshot["onchain_score"] = None
+            feed_status["onchain"] = {"ok": False, "error": str(e)[:120]}
+
+        # P3-4: Attach quality metadata
+        snapshot["feed_status"] = feed_status
+        snapshot["data_quality"] = round(ok_feeds / total_feeds, 2)
+
+        # Log degraded snapshots
+        if ok_feeds < total_feeds:
+            failed = [k for k, v in feed_status.items() if not v["ok"]]
+            logger.warning(
+                "Snapshot degraded: %d/%d feeds ok — failed: %s",
+                ok_feeds,
+                total_feeds,
+                ", ".join(failed),
+            )
 
         return snapshot
 

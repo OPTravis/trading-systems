@@ -124,6 +124,11 @@ class PaperTrader:
 
         # ── Simulated state (persisted in StateDB) ──
         self._db = None  # lazy
+
+        # ── P3-1: Transaction mode flag ──
+        # When True, _set_sim_value defers commit; caller must call _commit_transaction()
+        self._in_transaction = False
+
         self._init_simulated_state()
 
         logger.info(
@@ -212,7 +217,25 @@ class PaperTrader:
                value=excluded.value, updated_at=excluded.updated_at""",
             (key, value, now),
         )
+        if not self._in_transaction:
+            self._conn().commit()
+
+    def _begin_transaction(self):
+        """P3-1: Start a transaction — defer all commits until _commit_transaction()."""
+        self._in_transaction = True
+
+    def _commit_transaction(self):
+        """P3-1: Commit all deferred writes atomically."""
+        self._in_transaction = False
         self._conn().commit()
+
+    def _rollback_transaction(self):
+        """P3-1: Rollback deferred writes. Caller should restore state manually."""
+        self._in_transaction = False
+        try:
+            self._conn().rollback()
+        except Exception:
+            pass  # SQLite auto-rollback on connection close
 
     def _init_simulated_state(self):
         """Initialize simulated balance from DB or set default."""
@@ -543,7 +566,11 @@ class PaperTrader:
     def _fill_market(
         self, symbol: str, side: str, quantity: float, current_price: float
     ) -> Optional[Dict]:
-        """Simulate a market order fill with slippage and fees."""
+        """Simulate a market order fill with slippage and fees.
+
+        P3-1: All state changes (balance, positions, PnL, trade record) are
+        wrapped in an atomic transaction — all commit or all rollback.
+        """
         if quantity is None or quantity <= 0:
             logger.error("PaperTrader: invalid quantity %s for %s", quantity, symbol)
             return None
@@ -566,99 +593,123 @@ class PaperTrader:
             )
             return None
 
-        # Check balance
-        if side == "BUY":
-            total_cost = notional + fee
-            bal = self._get_sim_balance()
-            if total_cost > bal:
-                logger.error(
-                    "PaperTrader: insufficient balance $%.2f (need $%.2f with fee)",
-                    bal,
-                    total_cost,
-                )
-                return None
-            # Deduct USDT
-            self._set_sim_balance(bal - total_cost)
-            # Add position
-            self._add_position(symbol, quantity, fill_price)
-        else:  # SELL
-            base = symbol.replace("USDT", "").replace("USDC", "")
-            positions = self._get_sim_positions()
-            pos = positions.get(base, {})
-            held = pos.get("qty", 0.0)
-            if quantity > held + 1e-10:  # small float tolerance
-                logger.error(
-                    "PaperTrader: insufficient %s qty %.8f (have %.8f)",
-                    base,
-                    quantity,
-                    held,
-                )
-                return None
-            # Add USDT (net of fee)
-            bal = self._get_sim_balance()
-            self._set_sim_balance(bal + notional - fee)
-            # Remove position
-            self._remove_position(symbol, quantity)
+        # ── Snapshot state for rollback ──
+        snap_balance = self._get_sim_balance()
+        snap_positions = self._get_sim_positions()
+        snap_pnl = self._get_sim_pnl()
+        snap_counter = self._get_sim_order_counter()
 
-        # Calculate slippage percentage
-        slippage_pct = (fill_price - current_price) / current_price * 100
+        # ── Begin atomic transaction ──
+        self._begin_transaction()
+        try:
+            # Check balance
+            if side == "BUY":
+                total_cost = notional + fee
+                if total_cost > snap_balance:
+                    logger.error(
+                        "PaperTrader: insufficient balance $%.2f (need $%.2f with fee)",
+                        snap_balance,
+                        total_cost,
+                    )
+                    self._rollback_transaction()
+                    return None
+                # Deduct USDT
+                self._set_sim_balance(snap_balance - total_cost)
+                # Add position
+                self._add_position(symbol, quantity, fill_price)
+            else:  # SELL
+                base = symbol.replace("USDT", "").replace("USDC", "")
+                pos = snap_positions.get(base, {})
+                held = pos.get("qty", 0.0)
+                if quantity > held + 1e-10:  # small float tolerance
+                    logger.error(
+                        "PaperTrader: insufficient %s qty %.8f (have %.8f)",
+                        base,
+                        quantity,
+                        held,
+                    )
+                    self._rollback_transaction()
+                    return None
+                # Add USDT (net of fee)
+                self._set_sim_balance(snap_balance + notional - fee)
+                # Remove position
+                self._remove_position(symbol, quantity)
 
-        # Calculate realized P&L for sells
-        pnl = 0.0
-        if side == "SELL":
-            base = symbol.replace("USDT", "").replace("USDC", "")
-            positions = self._get_sim_positions()
-            # P&L was calculated before position removal, estimate from entry
-            # Use the entry price from position data
-            try:
-                db = self._get_db()
-                conn = db._get_conn()
-                row = conn.execute(
-                    "SELECT entry_price FROM paper_trades WHERE symbol = ? AND side = 'BUY' ORDER BY timestamp DESC LIMIT 1",
-                    (symbol,),
-                ).fetchone()
-                if row:
-                    entry = float(row["entry_price"])
-                    pnl = (fill_price - entry) * quantity - fee
-                    self._set_sim_pnl(self._get_sim_pnl() + pnl)
-            except Exception:
-                logger.error(
-                    "Failed to calculate simulated PnL for SELL trade on %s",
+            # Calculate slippage percentage
+            slippage_pct = (fill_price - current_price) / current_price * 100
+
+            # Calculate realized P&L for sells
+            pnl = 0.0
+            if side == "SELL":
+                base = symbol.replace("USDT", "").replace("USDC", "")
+                try:
+                    db = self._get_db()
+                    conn = db._get_conn()
+                    row = conn.execute(
+                        "SELECT entry_price FROM paper_trades WHERE symbol = ? AND side = 'BUY' ORDER BY timestamp DESC LIMIT 1",
+                        (symbol,),
+                    ).fetchone()
+                    if row:
+                        entry = float(row["entry_price"])
+                        pnl = (fill_price - entry) * quantity - fee
+                        self._set_sim_pnl(snap_pnl + pnl)
+                except Exception:
+                    logger.error(
+                        "Failed to calculate simulated PnL for SELL trade on %s",
+                        symbol,
+                        exc_info=True,
+                    )
+
+            # Record trade
+            order_id = snap_counter + 1
+            self._set_sim_value("order_counter", str(order_id))
+            trade_id = f"paper_{order_id}_{int(time.time())}"
+            now = time.time()
+
+            conn = self._conn()
+            conn.execute(
+                """INSERT INTO paper_trades
+                   (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
+                    fee_usdt, notional_usdt, status, timestamp, details)
+                   VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
+                (
+                    trade_id,
                     symbol,
-                    exc_info=True,
-                )
-
-        # Record trade
-        order_id = self._increment_order_counter()
-        trade_id = f"paper_{order_id}_{int(time.time())}"
-        now = time.time()
-
-        conn = self._conn()
-        conn.execute(
-            """INSERT INTO paper_trades
-               (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
-                fee_usdt, notional_usdt, status, timestamp, details)
-               VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
-            (
-                trade_id,
-                symbol,
-                side,
-                quantity,
-                fill_price,
-                slippage_pct,
-                fee,
-                notional,
-                now,
-                json.dumps(
-                    {
-                        "current_price": current_price,
-                        "slippage_pct": slippage_pct,
-                        "fee_rate": PAPER_FEE_RATE,
-                    }
+                    side,
+                    quantity,
+                    fill_price,
+                    slippage_pct,
+                    fee,
+                    notional,
+                    now,
+                    json.dumps(
+                        {
+                            "current_price": current_price,
+                            "slippage_pct": slippage_pct,
+                            "fee_rate": PAPER_FEE_RATE,
+                        }
+                    ),
                 ),
-            ),
-        )
-        conn.commit()
+            )
+
+            # ── Commit all changes atomically ──
+            self._commit_transaction()
+
+        except Exception:
+            # ── Rollback on any failure ──
+            self._rollback_transaction()
+            # Restore in-memory state
+            self._set_sim_balance(snap_balance)
+            self._set_sim_positions(snap_positions)
+            self._set_sim_pnl(snap_pnl)
+            self._set_sim_value("order_counter", str(snap_counter))
+            logger.error(
+                "PaperTrader: atomic fill failed for %s %s, rolled back",
+                side,
+                symbol,
+                exc_info=True,
+            )
+            return None
 
         # Also record in standard trades table for backward compat
         try:

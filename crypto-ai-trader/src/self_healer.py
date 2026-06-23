@@ -1,15 +1,23 @@
 """
 Self-healer: diagnose and fix issues at point of failure.
 Called from scan_orchestrator when auto-execute fails.
+
+P3-3: Source code modification is gated by SELF_HEALER_AUTO_FIX env var.
+      Default is False (dry-run mode) — fixes are logged but NOT applied.
+      Set SELF_HEALER_AUTO_FIX=1 to enable automatic source patching.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 CRYPTO_DIR = Path.home() / "crypto-ai-trader"
+
+# P3-3: Safety gate — source code modifications require explicit opt-in
+AUTO_FIX_ENABLED = os.environ.get("SELF_HEALER_AUTO_FIX", "0").strip() in ("1", "true", "yes")
 
 
 def diagnose_and_fix(error_msg: str, context: Optional[dict] = None) -> dict:
@@ -162,8 +170,11 @@ def _verify_price_deviation(
 
 
 def _fix_klines_bug() -> dict:
-    """Auto-fix klines format bug in all affected files."""
+    """Auto-fix klines format bug in all affected files.
 
+    P3-3: Source modification is gated by SELF_HEALER_AUTO_FIX env var.
+    In dry-run mode (default), only reports what *would* be changed.
+    """
     files_to_check = [
         (
             "src/trade_executor.py",
@@ -176,6 +187,30 @@ def _fix_klines_bug() -> dict:
         ("src/twap_vwap.py", [("k[5]", "k['quote_volume']")]),
     ]
 
+    # Phase 1: Scan for issues (always safe, read-only)
+    issues_found = []
+    for rel_path, replacements in files_to_check:
+        fpath = CRYPTO_DIR / rel_path
+        if not fpath.exists():
+            continue
+        content = fpath.read_text()
+        for old, new in replacements:
+            if old in content:
+                issues_found.append((rel_path, old, new))
+
+    if not issues_found:
+        return {"fixed": False, "msg": "No klines format issues found in code"}
+
+    if not AUTO_FIX_ENABLED:
+        dry_run_msg = (
+            f"[DRY-RUN] self_healer found {len(issues_found)} klines issues in: "
+            + ", ".join(set(r[0] for r in issues_found))
+            + " — set SELF_HEALER_AUTO_FIX=1 to enable patching"
+        )
+        logger.warning(dry_run_msg)
+        return {"fixed": False, "msg": dry_run_msg}
+
+    # Phase 2: Apply fixes (only when AUTO_FIX_ENABLED)
     fixed_files = []
     for rel_path, replacements in files_to_check:
         fpath = CRYPTO_DIR / rel_path
