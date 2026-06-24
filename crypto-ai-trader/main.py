@@ -365,6 +365,22 @@ def cmd_cron_report():
                 if p['change_pct'] > 10:
                     lines.append(f"  🎯 {p['asset']} 24h +{p['change_pct']:.1f}% → 考慮鎖利")
 
+        # Fund Flow Audit summary (from Binance API FIFO PnL)
+        try:
+            from src.fund_flow_audit import fetch_all_trades, get_current_prices, compute_fifo_pnl
+            all_trades = fetch_all_trades()
+            if all_trades:
+                prices = get_current_prices()
+                audit = compute_fifo_pnl(all_trades, prices)
+                lines.append(f"\n📋 資金審計 (FIFO, {audit['num_trades']}筆交易):")
+                lines.append(f"  已實現PnL: ${audit['total_realized_pnl']:.2f}")
+                lines.append(f"  手續費: -${audit['total_commission']:.2f}")
+                lines.append(f"  淨已實現: ${audit['net_realized']:.2f}")
+                if audit["unrealized_positions"]:
+                    lines.append(f"  塵倉浮虧: ${audit['total_unrealized']:.2f} ({len(audit['unrealized_positions'])}個)")
+        except Exception as audit_err:
+            logger.warning(f"Fund flow audit in daily report failed: {audit_err}")
+
         notifier.send_text("\n".join(lines))
         logger.info("Daily report sent")
 
