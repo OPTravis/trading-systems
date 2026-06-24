@@ -92,6 +92,153 @@ def _sync_from_binance(portfolio, client):
 # ===================================================================
 
 
+def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, risk_mgr):
+    """Fear Accumulation Fallback — buy small amounts of oversold coins during extreme fear.
+
+    Only activates when:
+    - F&G < 20 (extreme fear)
+    - Normal scan produced 0 opportunities above threshold
+    - Available balance > $50
+
+    Selects top 2 oversold candidates by RSI (< 40) from the raw scan results.
+    Uses relaxed scoring (55 threshold), small position size (5%), wide stop (15%).
+    """
+    try:
+        from src.indicators import calculate_rsi
+    except ImportError:
+        # Fallback: inline RSI calculation
+        def calculate_rsi(closes, period=14):
+            if len(closes) < period + 1:
+                return 50.0
+            deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+            gains = [d if d > 0 else 0 for d in deltas]
+            losses = [-d if d < 0 else 0 for d in deltas]
+            avg_gain = sum(gains[:period]) / period
+            avg_loss = sum(losses[:period]) / period
+            for i in range(period, len(deltas)):
+                avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+                avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+            if avg_loss == 0:
+                return 100.0
+            rs = avg_gain / avg_loss
+            return 100 - (100 / (1 + rs))
+
+    # Check available balance
+    try:
+        balance = client.get_free_balance("USDT")
+    except Exception:
+        balance = 0
+    if balance < 50:
+        logger.info("Fear accumulation: balance too low ($%.2f), skipping", balance)
+        return None
+
+    # Target major coins only (high liquidity, less likely to go to zero)
+    MAJOR_COINS = {"BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "LINK"}
+
+    # Get RSI for each candidate
+    candidates = []
+    for opp in all_opportunities[:15]:  # check top 15 by score
+        sym = opp.get("symbol", "")
+        if not sym:
+            continue
+        # Extract coin name (remove USDT suffix)
+        coin = sym.replace("USDT", "").replace("BUSD", "")
+        if coin not in MAJOR_COINS:
+            continue
+        try:
+            klines = client.get_klines(sym, interval="1h", limit=50)
+            if klines and len(klines) >= 20:
+                closes = [float(k["close"]) for k in klines]
+                rsi = calculate_rsi(closes, 14)
+                if rsi < 40:  # oversold or near oversold
+                    candidates.append({
+                        "symbol": sym,
+                        "coin": coin,
+                        "rsi": rsi,
+                        "score": opp.get("score", 0),
+                        "price": opp.get("price", 0),
+                    })
+        except Exception as e:
+            logger.debug(f"Fear accumulation: failed to get RSI for {sym}: {e}")
+
+    if not candidates:
+        logger.info("Fear accumulation: no oversold major coins found (RSI < 40)")
+        return None
+
+    # Sort by RSI (most oversold first), pick top 2
+    candidates.sort(key=lambda x: x["rsi"])
+    picks = candidates[:2]
+
+    logger.info(
+        "Fear accumulation: F&G=%d, found %d oversold majors, picking %s",
+        fng, len(candidates), [p["symbol"] for p in picks],
+    )
+    print(f"FEAR_ACCUMULATION: F&G={fng}, picks={[p['symbol'] for p in picks]}")
+
+    # Return the best pick as a synthetic scan result
+    best = picks[0]
+    symbol = best["symbol"]
+    price = best["price"] or client.get_ticker_price(symbol)
+
+    # Use small position size: 5% of available balance
+    order_value = balance * 0.05
+    if order_value < 10:
+        order_value = 10  # minimum $10
+
+    # Build a synthetic opportunity that looks like normal scan output
+    # so it can flow through the rest of the pipeline
+    fear_opp = {
+        "symbol": symbol,
+        "price": price,
+        "score": 60,  # relaxed score for fear mode
+        "volume_24h": 0,
+        "change_24h": 0,
+        "signals": [{"type": "BUY", "source": "fear_accumulation"}],
+        "analysis": {"1h": {"rsi": best["rsi"]}},
+        "fear_mode": True,
+        "order_value": order_value,
+    }
+
+    # Return a full context dict matching _step_scan_opportunities output
+    # with the fear opportunity injected
+    from src.market_researcher import MarketResearcher
+    from src.strategy_adaptor import StrategyAdaptor
+    adaptor = StrategyAdaptor()
+    adapted = adaptor.adapt(
+        fear_greed=fng,
+        btc_trend="BEARISH",
+        btc_price_change_24h=0,
+    )
+    # Override threshold and position sizing for fear accumulation
+    adapted["global"]["score_threshold"] = 55
+    adapted["global"]["cash_reserve_pct"] = 50  # keep 50% cash reserve
+    adapted["global"]["max_position_pct"] = 5   # max 5% per position
+    # Reduce DCA size multiplier for fear mode (conservative entry)
+    if "dca" in adapted.get("strategies", {}):
+        adapted["strategies"]["dca"]["size_multiplier"] = 0.5
+
+    result = {
+        "client": client,
+        "scanner": scanner,
+        "notifier": FeishuNotifier(),
+        "risk_mgr": risk_mgr,
+        "researcher": MarketResearcher(),
+        "portfolio": portfolio,
+        "opportunities": [fear_opp],
+        "dynamic_threshold": 55,
+        "adapted": adapted,
+        "regime": "EXTREME_FEAR",
+        "fng": fng,
+        "fng_label": "Extreme Fear",
+        "btc_trend": "BEARISH",
+        "btc_change_24h": 0,
+        "btc_score": 30,
+        "acct": client.get_account(),
+    }
+
+    return result
+
+
 def _step_scan_opportunities():
     """Step 1: Market scan with sentiment, strategy adaptation, and filtering.
 
@@ -234,12 +381,23 @@ def _step_scan_opportunities():
     acct = client.get_account()
 
     # Apply adapted threshold
+    all_opportunities = opportunities  # save raw before filter
     opportunities = [o for o in opportunities if o["score"] >= dynamic_threshold]
     logger.info(
         f"{len(opportunities)} opportunities after adapted threshold ({dynamic_threshold})"
     )
 
     if not opportunities:
+        # ===== Fear Accumulation Fallback =====
+        # When normal scan finds nothing AND we're in extreme fear (F&G < 20),
+        # try to accumulate top oversold coins with relaxed criteria + small size.
+        if fng < 20 and all_opportunities:
+            fear_result = _try_fear_accumulation(
+                all_opportunities, fng, client, scanner, portfolio, risk_mgr
+            )
+            if fear_result:
+                return fear_result
+
         print("NO_OPPORTUNITIES")
         clear_pending()
         return None
@@ -335,11 +493,16 @@ def _step_research_top_n(ctx):
     # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold to near-unreachable
     # (historical 0/7 wins in FEAR, 0/6 wins when BTC non-bullish)
     # Instead of hard block, set threshold to 98 so only extraordinary setups pass
+    # Exception: fear_mode opportunities bypass regime guard (fear accumulation)
+    has_fear_mode = any(o.get("fear_mode") for o in opportunities)
     if regime in ("EXTREME_FEAR",):
-        dynamic_threshold = max(dynamic_threshold, 98)
-        print(
-            f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (historical 0% win rate)"
-        )
+        if not has_fear_mode:
+            dynamic_threshold = max(dynamic_threshold, 98)
+            print(
+                f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (historical 0% win rate)"
+            )
+        else:
+            print(f"REGIME_GUARD: {regime} — bypassed for fear accumulation mode")
     elif regime == "FEAR" and btc_trend != "BULLISH":
         dynamic_threshold = max(dynamic_threshold, 95)
         print(
@@ -464,15 +627,35 @@ def _step_research_top_n(ctx):
     top_n = opportunities[:3]
     research_results = {}  # symbol -> research dict
 
-    logger.info(
-        f"Researching top {len(top_n)} candidates: {[o['symbol'] for o in top_n]}"
-    )
+    # Fear mode: skip heavy research, use synthetic result
+    for opp in top_n:
+        if opp.get("fear_mode"):
+            rsi_val = opp.get("analysis", {}).get("1h", {}).get("rsi", 50)
+            research_results[opp["symbol"]] = (opp, {
+                "score_adjustment": 0,
+                "confidence": 60,
+                "sentiment_summary": f"Fear accumulation mode — RSI={rsi_val:.0f}, F&G={fng}",
+                "news": [],
+                "onchain": {
+                    "whale_activity": "UNKNOWN",
+                    "exchange_flow": "UNKNOWN",
+                    "volume_trend": "UNKNOWN",
+                },
+            })
+            logger.info("Fear mode: using synthetic research for %s", opp["symbol"])
+
+    # Remove fear_mode candidates from normal research
+    normal_top_n = [o for o in top_n if not o.get("fear_mode")]
+    if normal_top_n:
+        logger.info(
+            f"Researching top {len(normal_top_n)} candidates: {[o['symbol'] for o in normal_top_n]}"
+        )
     t_research = _time.time()
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         futures = {
             pool.submit(researcher.research, opp["symbol"], client): opp
-            for opp in top_n
+            for opp in normal_top_n
         }
         try:
             for fut in as_completed(
@@ -553,8 +736,20 @@ def _step_research_top_n(ctx):
         return None
 
     # ===== Step 6b: Bear Analysis (Devil's Advocate) =====
+    # Fear mode: skip bear analysis (we're already buying fear — bear is redundant)
+    is_fear_mode = top.get("fear_mode", False)
     bear = BearAnalyst()
-    bear_result = bear.analyze(
+    if is_fear_mode:
+        from src.bear_analyst import BearResult
+        bear_result = BearResult(
+            bear_score=0,
+            veto=False,
+            reasons=["Fear accumulation mode — bear analysis bypassed"],
+            confidence="LOW",
+        )
+        print(f"BEAR_BYPASS: {symbol} — fear accumulation mode, skipping bear analysis")
+    else:
+        bear_result = bear.analyze(
         symbol,
         {
             "score": adjusted_score,
@@ -605,54 +800,62 @@ def _step_research_top_n(ctx):
             return None
 
     # ===== Step 7: Determine Strategy (weighted voting via StrategyRegistry) =====
-    # Run all enabled strategies, pick the one with highest weighted confidence
-    strategy = "score_based"  # Default when no specific strategy matches
+    # Fear mode: use DCA directly (skip registry for speed)
+    if is_fear_mode:
+        strategy = "dca"
+        logger.info("Fear mode: using DCA strategy directly")
+    else:
+        strategy = "score_based"  # Default when no specific strategy matches
     try:
-        from src.strategy_registry import StrategyRegistry
+        if is_fear_mode:
+            # Fear mode: skip registry, use DCA directly
+            logger.info("Fear mode: skipping StrategyRegistry, using DCA")
+        else:
+            from src.strategy_registry import StrategyRegistry
 
-        dca_params = adapted.get("dca_params", {})
-        registry = StrategyRegistry(dca_params=dca_params)
+            dca_params = adapted.get("dca_params", {})
+            registry = StrategyRegistry(dca_params=dca_params)
 
-        # Get klines for the top coin (needed by strategy classes)
-        try:
-            klines_raw = client.get_klines(symbol, "1h", limit=100)
-            klines_data = [
-                {
-                    "open": float(k["open"]),
-                    "high": float(k["high"]),
-                    "low": float(k["low"]),
-                    "close": float(k["close"]),
-                    "volume": float(k["volume"]),
-                }
-                for k in klines_raw
+            # Get klines for the top coin (needed by strategy classes)
+            try:
+                klines_raw = client.get_klines(symbol, "1h", limit=100)
+                klines_data = [
+                    {
+                        "open": float(k["open"]),
+                        "high": float(k["high"]),
+                        "low": float(k["low"]),
+                        "close": float(k["close"]),
+                        "volume": float(k["volume"]),
+                    }
+                    for k in klines_raw
+                ]
+            except Exception:
+                logger.error("Klines fetch failed for %s", symbol, exc_info=True)
+                klines_data = []
+
+            # Get enabled strategies from adaptor
+            enabled = [
+                s
+                for s, cfg in adapted.get("strategies", {}).items()
+                if cfg.get("enabled", True)
             ]
-        except Exception:
-            logger.error("Klines fetch failed for %s", symbol, exc_info=True)
-            klines_data = []
 
-        # Get enabled strategies from adaptor
-        enabled = [
-            s
-            for s, cfg in adapted.get("strategies", {}).items()
-            if cfg.get("enabled", True)
-        ]
-
-        if klines_data and enabled:
-            best = registry.select_best(symbol, klines_data, enabled)
-            if best:
-                strategy_name, confidence, reason, meta = best
-                strategy = strategy_name
-                logger.info(
-                    f"StrategyRegistry: selected {strategy} (confidence={confidence:.1f}, weight={meta.get('weight', 1.0):.2f})"
-                )
-            else:
-                # No strategy emitted BUY/SELL — fall back to first enabled strategy.
-                # The 12-factor scoring system already validated this opportunity;
-                # strategy name only drives SL/TP/max_hold configs, not entry logic.
-                strategy = enabled[0]
-                logger.info(
-                    f"StrategyRegistry: no explicit BUY signal, falling back to {strategy}"
-                )
+            if klines_data and enabled:
+                best = registry.select_best(symbol, klines_data, enabled)
+                if best:
+                    strategy_name, confidence, reason, meta = best
+                    strategy = strategy_name
+                    logger.info(
+                        f"StrategyRegistry: selected {strategy} (confidence={confidence:.1f}, weight={meta.get('weight', 1.0):.2f})"
+                    )
+                else:
+                    # No strategy emitted BUY/SELL — fall back to first enabled strategy.
+                    # The 12-factor scoring system already validated this opportunity;
+                    # strategy name only drives SL/TP/max_hold configs, not entry logic.
+                    strategy = enabled[0]
+                    logger.info(
+                        f"StrategyRegistry: no explicit BUY signal, falling back to {strategy}"
+                    )
     except Exception as e:
         logger.warning(f"StrategyRegistry failed: {e}")
         # Block trade when registry fails — don't fall back to score_based (0% win rate)

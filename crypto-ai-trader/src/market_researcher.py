@@ -423,12 +423,79 @@ class MarketResearcher:
                 else:
                     result["volume_trend"] = "LOW"
 
-            # Futures data (funding rate, long/short ratio, OI) disabled.
-            # This system only does SPOT — fapi.binance.com is unreachable from
-            # domestic cloud and unnecessary for spot trading.
-            # result["funding_rate"], result["whale_activity"],
-            # result["top_trader_long_pct"], result["taker_ratio"],
-            # result["exchange_flow"], result["oi_change"] are left unset.
+            # Whale activity detection via recent trades
+            # (replaces futures-based whale detection for SPOT-only system)
+            try:
+                trades = binance_client.get_trades(symbol, limit=1000)
+                if trades and len(trades) >= 50:
+                    trade_vals = []
+                    for t in trades:
+                        qty = float(t.get("qty", 0))
+                        price = float(t.get("price", 0))
+                        trade_vals.append(qty * price)
+
+                    if trade_vals:
+                        avg_trade = sum(trade_vals) / len(trade_vals)
+                        threshold = max(avg_trade * 5.0, 10_000)  # 5x avg or $10k min
+
+                        whale_buys = 0.0
+                        whale_sells = 0.0
+                        whale_count = 0
+                        for i, val in enumerate(trade_vals):
+                            if val >= threshold:
+                                whale_count += 1
+                                # isBuyerMaker=True means seller initiated (market sell)
+                                if trades[i].get("isBuyerMaker", False):
+                                    whale_sells += val
+                                else:
+                                    whale_buys += val
+
+                        if whale_count >= 3:
+                            total_whale = whale_buys + whale_sells
+                            buy_ratio = whale_buys / total_whale if total_whale > 0 else 0.5
+                            if buy_ratio > 0.65:
+                                result["whale_activity"] = "ACCUMULATING"
+                            elif buy_ratio < 0.35:
+                                result["whale_activity"] = "DISTRIBUTING"
+                            else:
+                                result["whale_activity"] = "ACTIVE"
+                        else:
+                            result["whale_activity"] = "DORMANT"
+
+                        logger.debug(
+                            "Whale analysis %s: %d whale trades (>$%.0f), "
+                            "buys=$%.0f sells=$%.0f → %s",
+                            symbol, whale_count, threshold,
+                            whale_buys, whale_sells, result["whale_activity"],
+                        )
+            except Exception as e:
+                logger.debug(f"Whale activity detection failed for {symbol}: {e}")
+
+            # Exchange flow estimation via order book depth imbalance
+            try:
+                order_book = binance_client.get_order_book(symbol, limit=20)
+                bids = order_book.get("bids", [])
+                asks = order_book.get("asks", [])
+                if bids and asks:
+                    bid_total = sum(p * q for p, q in bids)
+                    ask_total = sum(p * q for p, q in asks)
+                    total = bid_total + ask_total
+                    if total > 0:
+                        bid_pct = bid_total / total
+                        if bid_pct > 0.58:
+                            result["exchange_flow"] = "NET_INFLOW"
+                        elif bid_pct < 0.42:
+                            result["exchange_flow"] = "NET_OUTFLOW"
+                        else:
+                            result["exchange_flow"] = "BALANCED"
+
+                        logger.debug(
+                            "Order book %s: bid=$%.0f ask=$%.0f bid_pct=%.1f%% → %s",
+                            symbol, bid_total, ask_total, bid_pct * 100,
+                            result["exchange_flow"],
+                        )
+            except Exception as e:
+                logger.debug(f"Order book flow detection failed for {symbol}: {e}")
 
         except Exception as e:
             logger.error(f"MarketResearcher: onchain research failed for {coin}: {e}")
