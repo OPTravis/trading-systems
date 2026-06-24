@@ -113,10 +113,18 @@ EOF
 }
 
 # === Main ===
-# P2-10: Proxy is mandatory — abort if unavailable
+# Try proxy first; if all nodes fail, test direct connection as fallback
 if ! ensure_proxy; then
-    echo "[$(date)] No proxy available, aborting." >> "$LOGFILE"
-    exit 1
+    echo "[$(date)] [PROXY] All proxy nodes failed, testing direct connection..." >> "$LOGFILE"
+    # Some domestic IPs can reach api.binance.com directly
+    DIRECT_TEST=$(curl -s --max-time 10 https://api.binance.com/api/v3/ping 2>/dev/null)
+    if echo "$DIRECT_TEST" | grep -q '{}'; then
+        echo "[$(date)] [PROXY] ⚡ Direct connection works, proceeding without proxy." >> "$LOGFILE"
+        export SKIP_PROXY=1
+    else
+        echo "[$(date)] No proxy and no direct connection, aborting." >> "$LOGFILE"
+        exit 1
+    fi
 fi
 
 # Load .env
@@ -124,12 +132,22 @@ set -a
 source "$BASEDIR/.env"
 set +a
 
+# If direct connection mode, clear proxy env vars so Python uses direct
+if [ "${SKIP_PROXY:-0}" = "1" ]; then
+    unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+fi
+
 cd "$BASEDIR"
 
 echo "========== $(date) - $CMD ==========" >> "$LOGFILE"
 python3 main.py "$CMD" "$@" >> "$LOGFILE" 2>&1
 EXIT_CODE=$?
 echo "========== Exit: $EXIT_CODE ==========" >> "$LOGFILE"
+
+# Auto-push notifications after scan to prevent backlog
+if [ "$CMD" = "cron-scan" ] && [ $EXIT_CODE -eq 0 ]; then
+    python3 scripts/push_notifications.py >> "$LOGFILE" 2>&1 || true
+fi
 
 # Rotate log if > 5MB
 if [ -f "$LOGFILE" ] && [ $(stat -c%s "$LOGFILE" 2>/dev/null || echo 0) -gt 5242880 ]; then

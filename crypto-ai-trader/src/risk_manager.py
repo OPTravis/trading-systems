@@ -1302,10 +1302,15 @@ class RiskManager:
         try:
             from src.state_db import get_state_db
             db = get_state_db()
-            portfolio_val = float(db.kv_get("portfolio_value") or 10000)
-            loss_pct = abs(pnl) / portfolio_val * 100 if portfolio_val > 0 else 0
-        except Exception:
-            loss_pct = abs(pnl) / 10000 * 100  # rough fallback
+            # Use actual cash_balance from KV, never hardcode a fallback
+            portfolio_val = float(db.kv_get("cash_balance") or db.kv_get("portfolio_value") or 0)
+            if portfolio_val <= 0:
+                logger.warning("_llm_stop_loss_advisory: portfolio value unknown, skipping")
+                return
+            loss_pct = abs(pnl) / portfolio_val * 100
+        except Exception as e:
+            logger.warning(f"_llm_stop_loss_advisory: failed to get portfolio value: {e}")
+            return  # skip rather than use arbitrary fallback
 
         # Only bother LLM for meaningful losses
         if loss_pct < 1.0:
