@@ -111,6 +111,20 @@ def _so_filters(step_size=1.0, qty_decimals=0, min_qty=1.0, min_notional=5.0):
 
 class TestCronScan:
 
+    @pytest.fixture(autouse=True)
+    def _clear_scan_lock(self):
+        """Clear stale file lock between tests to prevent cross-test interference."""
+        import os
+        try:
+            os.remove("/tmp/crypto-trader-scan.lock")
+        except FileNotFoundError:
+            pass
+        yield
+        try:
+            os.remove("/tmp/crypto-trader-scan.lock")
+        except FileNotFoundError:
+            pass
+
     def _run_scan(self, bc, ms, sa, rm, notifier, auto_execute="true"):
         with patch("src.scan_orchestrator.BinanceClient", return_value=bc), patch(
             "src.scan_orchestrator.MarketScanner", return_value=ms

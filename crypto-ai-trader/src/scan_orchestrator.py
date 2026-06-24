@@ -214,7 +214,7 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
         btc_price_change_24h=0,
     )
     # Override threshold and position sizing for fear accumulation
-    adapted["global"]["score_threshold"] = 55
+    adapted["global"]["score_threshold"] = 50
     adapted["global"]["cash_reserve_pct"] = 50  # keep 50% cash reserve
     adapted["global"]["max_position_pct"] = 5   # max 5% per position
     # Reduce DCA size multiplier for fear mode (conservative entry)
@@ -229,7 +229,7 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
         "researcher": MarketResearcher(),
         "portfolio": portfolio,
         "opportunities": [fear_opp],
-        "dynamic_threshold": 55,
+        "dynamic_threshold": 50,
         "adapted": adapted,
         "regime": "EXTREME_FEAR",
         "fng": fng,
@@ -286,7 +286,7 @@ def _try_qfl_fallback(client, fng, balance):
     from src.strategy_adaptor import StrategyAdaptor
     adaptor = StrategyAdaptor()
     adapted = adaptor.adapt(fear_greed=fng, btc_trend="BEARISH", btc_price_change_24h=0)
-    adapted["global"]["score_threshold"] = 55
+    adapted["global"]["score_threshold"] = 50
     adapted["global"]["cash_reserve_pct"] = 60
     adapted["global"]["max_position_pct"] = 3
 
@@ -318,7 +318,7 @@ def _try_qfl_fallback(client, fng, balance):
         "researcher": MarketResearcher(),
         "portfolio": PortfolioManager(client),
         "opportunities": [fear_opp],
-        "dynamic_threshold": 55,
+        "dynamic_threshold": 50,
         "adapted": adapted,
         "regime": "EXTREME_FEAR",
         "fng": fng,

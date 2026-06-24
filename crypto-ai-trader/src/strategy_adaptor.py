@@ -293,7 +293,7 @@ class StrategyAdaptor:
         # Regime adjustments
         regime_map = {
             "EXTREME_FEAR": {
-                "score_threshold": 85,
+                "score_threshold": 78,
                 "max_position_pct": 8,
                 "max_total_exposure_pct": 40,
                 "cash_reserve_pct": 60,
@@ -332,7 +332,7 @@ class StrategyAdaptor:
                 f"BTC trend BEARISH (score={effective_btc_score:.0f}) — risk-off adjustments"
             )
             if regime in ("EXTREME_FEAR", "FEAR"):
-                settings["score_threshold"] = max(settings["score_threshold"] + 5, 75)
+                settings["score_threshold"] = max(settings["score_threshold"] + 3, 75)
                 settings["max_position_pct"] = max(settings["max_position_pct"] - 3, 5)
                 settings["cash_reserve_pct"] = min(
                     settings["cash_reserve_pct"] + 10, 60

@@ -29,3 +29,67 @@ llm:
     rate_limit_429: true
     server_error_5xx: true
     connection_error: true
+
+# ── Risk Management ──
+risk:
+  # Daily loss circuit breaker (3-tier)
+  daily_loss_breaker:
+    tier_1_loss_pct: 1.0    # ≥1% daily loss → defensive (position × 0.5)
+    tier_2_loss_pct: 2.0    # ≥2% → block new trades
+    tier_3_loss_pct: 3.0    # ≥3% → close all, halt 24h
+
+  # RiskManager
+  max_daily_loss_pct: 5.0        # max daily loss as % of portfolio
+  max_daily_loss_usdt_pct: 0.01  # min absolute daily loss floor (1% of portfolio)
+
+  # Kelly position sizing
+  kelly:
+    max_fraction: 0.03           # cold-start Kelly cap (3% of bankroll)
+    warm_fraction: 0.10          # cap after 20+ trades
+    min_trade_usdt: 5.0          # skip trades below this size
+
+  # Circuit breaker
+  circuit_breaker:
+    failure_threshold: 5         # consecutive failures before trip
+    trip_duration_sec: 3600      # 1h cool-down
+
+# ── Strategy Regime Thresholds ──
+strategy:
+  regime_thresholds:
+    EXTREME_FEAR:
+      score_threshold: 78
+      max_position_pct: 8
+      max_total_exposure_pct: 40
+      cash_reserve_pct: 60
+    FEAR:
+      score_threshold: 80
+      max_position_pct: 10
+      max_total_exposure_pct: 50
+      cash_reserve_pct: 50
+    NEUTRAL:
+      score_threshold: 60
+      max_position_pct: 15
+      max_total_exposure_pct: 70
+      cash_reserve_pct: 30
+    GREED:
+      score_threshold: 75
+      max_position_pct: 15
+      max_total_exposure_pct: 70
+      cash_reserve_pct: 30
+    EXTREME_GREED:
+      score_threshold: 85
+      max_position_pct: 10
+      max_total_exposure_pct: 50
+      cash_reserve_pct: 50
+
+  # Fear accumulation fallback (used when RSI < 40 in EXTREME_FEAR)
+  fear_accumulation:
+    score_threshold: 50      # lowered from 55 for more entries
+    max_position_pct: 5
+    cash_reserve_pct: 50
+
+  # QFL panic buy fallback
+  qfl_fallback:
+    score_threshold: 50
+    max_position_pct: 3
+    cash_reserve_pct: 60
