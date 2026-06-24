@@ -162,7 +162,11 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
             logger.debug(f"Fear accumulation: failed to get RSI for {sym}: {e}")
 
     if not candidates:
-        logger.info("Fear accumulation: no oversold major coins found (RSI < 40)")
+        logger.info("Fear accumulation: no oversold major coins found (RSI < 40), trying QFL")
+        # ===== QFL Fallback — structural support break detection =====
+        qfl_result = _try_qfl_fallback(client, fng, balance)
+        if qfl_result:
+            return qfl_result
         return None
 
     # Sort by RSI (most oversold first), pick top 2
@@ -239,6 +243,180 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
     return result
 
 
+def _try_qfl_fallback(client, fng, balance):
+    """QFL (Quickfingers Luc) Fallback — structural support break detection.
+
+    When RSI-based fear accumulation finds nothing, try QFL which detects
+    panic selling that breaks below historical support with volume exhaustion.
+
+    Only activates when F&G < 30 (panic environment).
+    """
+    from src.qfl_scanner import qfl_scan
+
+    MAJOR_COINS = {"BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+                   "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT"}
+
+    try:
+        qfl_signals = qfl_scan(client, list(MAJOR_COINS), fng=fng, timeframe="4h")
+    except Exception as e:
+        logger.warning("QFL fallback scan failed: %s", e)
+        return None
+
+    if not qfl_signals:
+        logger.info("QFL fallback: no signals found")
+        return None
+
+    # Pick the best QFL signal (highest R:R)
+    best = max(qfl_signals, key=lambda s: s.get("rr_ratio", 0))
+    symbol = best["symbol"]
+
+    # Small position: 3% of balance (conservative for QFL)
+    order_value = balance * 0.03
+    if order_value < 10:
+        order_value = 10
+
+    price = best.get("entry", 0) or client.get_ticker_price(symbol)
+
+    logger.info(
+        "QFL fallback signal: %s support=%.4f crack_mag=%.1f%% R:R=%.1f",
+        symbol, best["support_price"], best["crack_magnitude"] * 100, best["rr_ratio"],
+    )
+
+    from src.market_researcher import MarketResearcher
+    from src.strategy_adaptor import StrategyAdaptor
+    adaptor = StrategyAdaptor()
+    adapted = adaptor.adapt(fear_greed=fng, btc_trend="BEARISH", btc_price_change_24h=0)
+    adapted["global"]["score_threshold"] = 55
+    adapted["global"]["cash_reserve_pct"] = 60
+    adapted["global"]["max_position_pct"] = 3
+
+    fear_opp = {
+        "symbol": symbol,
+        "price": price,
+        "score": 65,
+        "volume_24h": 0,
+        "change_24h": 0,
+        "signals": [{"type": "BUY", "source": "qfl_panic_bottom"}],
+        "analysis": {
+            "1h": {},
+            "qfl": {
+                "support_price": best["support_price"],
+                "stop_loss": best["stop_loss"],
+                "take_profit": best["take_profit"],
+                "rr_ratio": best["rr_ratio"],
+            },
+        },
+        "fear_mode": True,
+        "order_value": order_value,
+    }
+
+    return {
+        "client": client,
+        "scanner": MarketScanner(client),
+        "notifier": FeishuNotifier(),
+        "risk_mgr": PortfolioManager(client),
+        "researcher": MarketResearcher(),
+        "portfolio": PortfolioManager(client),
+        "opportunities": [fear_opp],
+        "dynamic_threshold": 55,
+        "adapted": adapted,
+        "regime": "EXTREME_FEAR",
+        "fng": fng,
+        "fng_label": "Extreme Fear",
+        "btc_trend": "BEARISH",
+        "btc_change_24h": 0,
+        "btc_score": 30,
+        "acct": client.get_account(),
+    }
+
+
+def _try_hash_ribbon(client, portfolio, risk_mgr):
+    """Hash Ribbon — miner capitulation recovery signal.
+
+    Independent of Fear & Greed Index. Fires once when 30 DMA crosses
+    above 60 DMA after a capitulation phase. Very rare (1-2x/year)
+    but historically high conviction (64% profitable, >5000% avg return).
+
+    Returns context dict for pipeline execution, or None if no signal.
+    """
+    from src.hash_ribbon import get_hash_ribbon_status
+
+    try:
+        status = get_hash_ribbon_status()
+    except Exception as e:
+        logger.warning("Hash Ribbon check failed: %s", e)
+        return None
+
+    if not status.get("signal_fired"):
+        return None
+
+    signal = status["signal"]
+    logger.info(
+        "Hash Ribbon BUY signal detected! ma30=%.1f EH/s, ma60=%.1f EH/s, gap=%.2f%%",
+        signal["ma30_ehs"], signal["ma60_ehs"], signal["ma_gap_pct"],
+    )
+
+    # BTC only — hash ribbon is a BTC-specific signal
+    symbol = "BTCUSDT"
+    balance = client.get_free_balance("USDT")
+    deploy_pct = signal.get("recommended_deploy_pct", 0.20)
+    order_value = balance * deploy_pct
+
+    if order_value < 10:
+        logger.info("Hash Ribbon: balance too low ($%.2f), skipping", balance)
+        return None
+
+    price = client.get_ticker_price(symbol)
+
+    from src.market_researcher import MarketResearcher
+    from src.strategy_adaptor import StrategyAdaptor
+    # Hash ribbon doesn't depend on fear/greed — use neutral adaptation
+    adaptor = StrategyAdaptor()
+    adapted = adaptor.adapt(fear_greed=50, btc_trend="NEUTRAL", btc_price_change_24h=0)
+    adapted["global"]["score_threshold"] = 50  # high conviction — lower threshold
+    adapted["global"]["cash_reserve_pct"] = 30  # deploy up to 20%, keep 30% reserve
+
+    hash_opp = {
+        "symbol": symbol,
+        "price": price,
+        "score": 70,  # high conviction
+        "volume_24h": 0,
+        "change_24h": 0,
+        "signals": [{"type": "BUY", "source": "hash_ribbon_recovery"}],
+        "analysis": {
+            "1h": {},
+            "hash_ribbon": {
+                "ma30_ehs": signal["ma30_ehs"],
+                "ma60_ehs": signal["ma60_ehs"],
+                "ma_gap_pct": signal["ma_gap_pct"],
+                "confidence": signal["confidence"],
+                "holding_period_days": signal.get("holding_period_days", 180),
+            },
+        },
+        "fear_mode": False,
+        "order_value": order_value,
+    }
+
+    return {
+        "client": client,
+        "scanner": MarketScanner(client),
+        "notifier": FeishuNotifier(),
+        "risk_mgr": risk_mgr,
+        "researcher": MarketResearcher(),
+        "portfolio": portfolio,
+        "opportunities": [hash_opp],
+        "dynamic_threshold": 50,
+        "adapted": adapted,
+        "regime": "HASH_RIBBON_RECOVERY",
+        "fng": 50,
+        "fng_label": "Neutral (Hash Ribbon)",
+        "btc_trend": "NEUTRAL",
+        "btc_change_24h": 0,
+        "btc_score": 50,
+        "acct": client.get_account(),
+    }
+
+
 def _step_scan_opportunities():
     """Step 1: Market scan with sentiment, strategy adaptation, and filtering.
 
@@ -286,7 +464,15 @@ def _step_scan_opportunities():
         fng = 50
         fng_label = "Unknown"
 
-    # ===== Step 2: BTC Trend & Volatility =====
+    # ===== Step 2: Hash Ribbon Check (independent of F&G) =====
+    # Hash Ribbon is a long-term macro signal that fires 1-2x/year.
+    # Check early — if it fires, it overrides normal scan flow.
+    hash_ribbon_result = _try_hash_ribbon(client, portfolio, risk_mgr)
+    if hash_ribbon_result:
+        logger.info("Hash Ribbon signal active — overriding normal scan")
+        return hash_ribbon_result
+
+    # ===== Step 3: BTC Trend & Volatility =====
     btc_trend = "NEUTRAL"
     btc_change_24h = 0.0
     btc_adx = 0.0
