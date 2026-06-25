@@ -11,7 +11,40 @@ Verifies data flows correctly between stages.
 """
 
 import os
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
+
+
+def _submodule_patches(bc=None, scanner=None, notifier=None, sa=None,
+                       bear_analyst=None, mock_exec=None):
+    """Generate patches for scan_phases / execute_phases / research_phase.
+
+    Since cmd_cron_scan delegates to sub-modules, objects (BinanceClient etc.)
+    are instantiated there, not in scan_orchestrator. Tests must patch both.
+    """
+    subs = []
+    if bc is not None:
+        subs.append(("src.scan_phases.BinanceClient", {"return_value": bc}))
+    if scanner is not None:
+        subs.append(("src.scan_phases.MarketScanner", {"return_value": scanner}))
+    if notifier is not None:
+        subs.append(("src.scan_phases.FeishuNotifier", {"return_value": notifier}))
+        subs.append(("src.research_phase.FeishuNotifier", {"return_value": notifier}))
+    if sa is not None:
+        subs.append(("src.scan_phases.SentimentAnalyzer", {"return_value": sa}))
+    if bear_analyst is not None:
+        subs.append(("src.scan_phases.BearAnalyst", {"return_value": bear_analyst}))
+        subs.append(("src.research_phase.BearAnalyst", {"return_value": bear_analyst}))
+    else:
+        subs.append(("src.research_phase.BearAnalyst", {}))
+    subs.append(("src.scan_phases.PortfolioManager", {}))
+    subs.append(("src.scan_phases.PositionOptimizer", {}))
+    subs.append(("src.scan_phases.clear_pending", {}))
+    subs.append(("src.scan_phases.save_pending", {}))
+    subs.append(("src.execute_phases.clear_pending", {}))
+    subs.append(("src.execute_phases.save_pending", {}))
+    subs.append(("src.execute_phases.execute_auto_trade", {}))
+    return subs
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -155,6 +188,22 @@ def _make_bear_analyst(veto=False, bear_score=30):
 
 
 class TestE2EPipeline:
+
+    import pytest
+
+    @pytest.fixture(autouse=True)
+    def _clean_lock(self):
+        """Remove scan lock between tests to avoid flock contention."""
+        import os as _os
+        lock = "/tmp/crypto-trader-scan.lock"
+        if _os.path.exists(lock):
+            _os.remove(lock)
+        yield
+        if _os.path.exists(lock):
+            try:
+                _os.remove(lock)
+            except OSError:
+                pass
     """End-to-end smoke tests for the full scan→research→execute pipeline."""
 
     def _run_full_pipeline(
@@ -200,27 +249,57 @@ class TestE2EPipeline:
             "kelly": {"win_rate": 0.6, "confidence": "medium"},
         }
 
-        with (
-            patch("src.scan_orchestrator.BinanceClient", return_value=bc),
-            patch("src.scan_orchestrator.MarketScanner", return_value=scanner),
-            patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier),
-            patch("src.scan_orchestrator.SentimentAnalyzer", return_value=sa),
-            patch("src.scan_orchestrator.PortfolioManager") as mock_pm,
-            patch("src.risk_manager.RiskManager", return_value=rm),
-            patch("src.market_researcher.MarketResearcher", return_value=researcher),
-            patch("src.scan_orchestrator.BearAnalyst", return_value=bear_analyst),
-            patch("src.strategy_adaptor.StrategyAdaptor") as mock_adaptor,
-            patch("src.strategy_registry.StrategyRegistry") as mock_registry,
-            patch("src.dimension_scorer.DimensionScorer") as mock_dim,
-            patch("src.scan_orchestrator.PositionOptimizer") as mock_opt,
-            patch("src.scan_orchestrator.clear_pending") as mock_clear,
-            patch("src.scan_orchestrator.save_pending") as mock_save,
-            patch("src.scan_orchestrator.execute_auto_trade") as mock_exec,
-            patch("src.trade_outcome_recorder.TradeOutcomeRecorder") as mock_recorder,
-            patch.dict(
+        from contextlib import ExitStack
+        patches = [
+            ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
+            ("src.scan_orchestrator.MarketScanner", {"return_value": scanner}),
+            ("src.scan_orchestrator.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_orchestrator.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_orchestrator.PortfolioManager", {}),
+            ("src.risk_manager.RiskManager", {"return_value": rm}),
+            ("src.market_researcher.MarketResearcher", {"return_value": researcher}),
+            ("src.scan_orchestrator.BearAnalyst", {"return_value": bear_analyst}),
+            ("src.strategy_adaptor.StrategyAdaptor", {}),
+            ("src.strategy_registry.StrategyRegistry", {}),
+            ("src.dimension_scorer.DimensionScorer", {}),
+            ("src.scan_orchestrator.PositionOptimizer", {}),
+            ("src.scan_orchestrator.clear_pending", {}),
+            ("src.scan_orchestrator.save_pending", {}),
+            ("src.scan_orchestrator.execute_auto_trade", {}),
+            ("src.trade_outcome_recorder.TradeOutcomeRecorder", {}),
+            # scan_phases / execute_phases / research_phase — objects created there directly
+            ("src.scan_phases.BinanceClient", {"return_value": bc}),
+            ("src.scan_phases.MarketScanner", {"return_value": scanner}),
+            ("src.scan_phases.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_phases.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_phases.PortfolioManager", {}),
+            ("src.scan_phases.BearAnalyst", {"return_value": bear_analyst}),
+            ("src.research_phase.BearAnalyst", {"return_value": bear_analyst}),
+            ("src.scan_phases.PositionOptimizer", {}),
+            ("src.scan_phases.clear_pending", {}),
+            ("src.scan_phases.save_pending", {}),
+            ("src.execute_phases.clear_pending", {}),
+            ("src.execute_phases.save_pending", {}),
+            ("src.execute_phases.execute_auto_trade", {}),
+            ("src.research_phase.FeishuNotifier", {"return_value": notifier}),
+        ]
+        with ExitStack() as stack:
+            mocks = {}
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.dict(
                 os.environ, {"AUTO_EXECUTE": auto_execute, "TRADING_MODE": "paper"}
-            ),
-        ):
+            ))
+
+            mock_pm = mocks["src.scan_orchestrator.PortfolioManager"]
+            mock_adaptor = mocks["src.strategy_adaptor.StrategyAdaptor"]
+            mock_registry = mocks["src.strategy_registry.StrategyRegistry"]
+            mock_dim = mocks["src.dimension_scorer.DimensionScorer"]
+            mock_opt = mocks["src.scan_orchestrator.PositionOptimizer"]
+            mock_clear = mocks["src.scan_phases.clear_pending"]
+            mock_save = mocks["src.execute_phases.save_pending"]
+            mock_exec = mocks["src.execute_phases.execute_auto_trade"]
+            mock_recorder = mocks["src.trade_outcome_recorder.TradeOutcomeRecorder"]
             # Strategy adaptor
             mock_adaptor.return_value.adapt.return_value = {
                 "regime": strategy_regime,
@@ -347,25 +426,36 @@ class TestE2EPipeline:
         bear_result.reasons = []
         bear_analyst.analyze.return_value = bear_result
 
-        with (
-            patch("src.scan_orchestrator.BinanceClient", return_value=bc),
-            patch("src.scan_orchestrator.MarketScanner", return_value=scanner),
-            patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier),
-            patch("src.scan_orchestrator.SentimentAnalyzer", return_value=sa),
-            patch("src.scan_orchestrator.PortfolioManager"),
-            patch("src.risk_manager.RiskManager", return_value=rm),
-            patch("src.market_researcher.MarketResearcher") as mock_mr,
-            patch("src.scan_orchestrator.BearAnalyst", return_value=bear_analyst),
-            patch("src.strategy_adaptor.StrategyAdaptor") as mock_adaptor,
-            patch("src.strategy_registry.StrategyRegistry") as mock_reg,
-            patch("src.dimension_scorer.DimensionScorer") as mock_dim,
-            patch("src.scan_orchestrator.PositionOptimizer"),
-            patch("src.scan_orchestrator.clear_pending"),
-            patch("src.scan_orchestrator.save_pending"),
-            patch("src.scan_orchestrator.execute_auto_trade") as mock_exec,
-            patch("src.trade_outcome_recorder.TradeOutcomeRecorder"),
-            patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}),
-        ):
+        from contextlib import ExitStack
+        patches = [
+            ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
+            ("src.scan_orchestrator.MarketScanner", {"return_value": scanner}),
+            ("src.scan_orchestrator.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_orchestrator.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_orchestrator.PortfolioManager", {}),
+            ("src.risk_manager.RiskManager", {"return_value": rm}),
+            ("src.market_researcher.MarketResearcher", {}),
+            ("src.scan_orchestrator.BearAnalyst", {"return_value": bear_analyst}),
+            ("src.strategy_adaptor.StrategyAdaptor", {}),
+            ("src.strategy_registry.StrategyRegistry", {}),
+            ("src.dimension_scorer.DimensionScorer", {}),
+            ("src.scan_orchestrator.PositionOptimizer", {}),
+            ("src.scan_orchestrator.clear_pending", {}),
+            ("src.scan_orchestrator.save_pending", {}),
+            ("src.scan_orchestrator.execute_auto_trade", {}),
+            ("src.trade_outcome_recorder.TradeOutcomeRecorder", {}),
+        ] + _submodule_patches(bc=bc, scanner=scanner, notifier=notifier, sa=sa, bear_analyst=bear_analyst)
+        with ExitStack() as stack:
+            mocks = {}
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}))
+
+            mock_mr = mocks["src.market_researcher.MarketResearcher"]
+            mock_adaptor = mocks["src.strategy_adaptor.StrategyAdaptor"]
+            mock_reg = mocks["src.strategy_registry.StrategyRegistry"]
+            mock_dim = mocks["src.dimension_scorer.DimensionScorer"]
+            mock_exec = mocks["src.execute_phases.execute_auto_trade"]
             mock_mr.return_value.research.return_value = {
                 "score_adjustment": 0,
                 "confidence": 0.5,
@@ -577,27 +667,33 @@ class TestE2EPipeline:
         rm = _make_risk_manager()
         notifier = _make_notifier()
 
-        with (
-            patch("src.scan_orchestrator.BinanceClient", return_value=bc),
-            patch("src.scan_orchestrator.MarketScanner", return_value=scanner),
-            patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier),
-            patch(
-                "src.scan_orchestrator.SentimentAnalyzer",
-                return_value=_make_sentiment(),
-            ),
-            patch("src.scan_orchestrator.PortfolioManager"),
-            patch("src.risk_manager.RiskManager", return_value=rm),
-            patch("src.market_researcher.MarketResearcher", return_value=mr),
-            patch("src.scan_orchestrator.BearAnalyst"),
-            patch("src.strategy_adaptor.StrategyAdaptor") as mock_adaptor,
-            patch("src.strategy_registry.StrategyRegistry"),
-            patch("src.dimension_scorer.DimensionScorer") as mock_dim,
-            patch("src.scan_orchestrator.PositionOptimizer"),
-            patch("src.scan_orchestrator.clear_pending"),
-            patch("src.scan_orchestrator.save_pending"),
-            patch("src.scan_orchestrator.execute_auto_trade"),
-            patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}),
-        ):
+        from contextlib import ExitStack
+        sa = _make_sentiment()
+        patches = [
+            ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
+            ("src.scan_orchestrator.MarketScanner", {"return_value": scanner}),
+            ("src.scan_orchestrator.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_orchestrator.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_orchestrator.PortfolioManager", {}),
+            ("src.risk_manager.RiskManager", {"return_value": rm}),
+            ("src.market_researcher.MarketResearcher", {"return_value": mr}),
+            ("src.scan_orchestrator.BearAnalyst", {}),
+            ("src.strategy_adaptor.StrategyAdaptor", {}),
+            ("src.strategy_registry.StrategyRegistry", {}),
+            ("src.dimension_scorer.DimensionScorer", {}),
+            ("src.scan_orchestrator.PositionOptimizer", {}),
+            ("src.scan_orchestrator.clear_pending", {}),
+            ("src.scan_orchestrator.save_pending", {}),
+            ("src.scan_orchestrator.execute_auto_trade", {}),
+        ] + _submodule_patches(bc=bc, scanner=scanner, notifier=notifier, sa=sa)
+        with ExitStack() as stack:
+            mocks = {}
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}))
+
+            mock_adaptor = mocks["src.strategy_adaptor.StrategyAdaptor"]
+            mock_dim = mocks["src.dimension_scorer.DimensionScorer"]
             mock_adaptor.return_value.adapt.return_value = {
                 "regime": "NEUTRAL",
                 "global": {
@@ -632,29 +728,42 @@ class TestE2EPipeline:
         rm = _make_risk_manager()
         notifier = _make_notifier()
 
-        with (
-            patch("src.scan_orchestrator.BinanceClient", return_value=bc),
-            patch("src.scan_orchestrator.MarketScanner", return_value=scanner),
-            patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier),
-            patch(
-                "src.scan_orchestrator.SentimentAnalyzer",
-                return_value=_make_sentiment(),
-            ),
-            patch("src.scan_orchestrator.PortfolioManager"),
-            patch("src.risk_manager.RiskManager", return_value=rm),
-            patch("src.market_researcher.MarketResearcher") as mock_mr,
-            patch("src.scan_orchestrator.BearAnalyst") as mock_ba,
-            patch("src.strategy_adaptor.StrategyAdaptor") as mock_adaptor,
-            patch("src.strategy_registry.StrategyRegistry") as mock_reg,
-            patch("src.dimension_scorer.DimensionScorer") as mock_dim,
-            patch("src.scan_orchestrator.PositionOptimizer"),
-            patch("src.scan_orchestrator.clear_pending"),
-            patch("src.scan_orchestrator.save_pending"),
-            patch("src.scan_orchestrator.execute_auto_trade") as mock_exec,
-            patch("src.trade_outcome_recorder.TradeOutcomeRecorder"),
-            patch("src.self_healer.diagnose_and_fix") as mock_heal,
-            patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}),
-        ):
+        from contextlib import ExitStack
+        sa = _make_sentiment()
+        patches = [
+            ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
+            ("src.scan_orchestrator.MarketScanner", {"return_value": scanner}),
+            ("src.scan_orchestrator.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_orchestrator.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_orchestrator.PortfolioManager", {}),
+            ("src.risk_manager.RiskManager", {"return_value": rm}),
+            ("src.market_researcher.MarketResearcher", {}),
+            ("src.scan_orchestrator.BearAnalyst", {}),
+            ("src.strategy_adaptor.StrategyAdaptor", {}),
+            ("src.strategy_registry.StrategyRegistry", {}),
+            ("src.dimension_scorer.DimensionScorer", {}),
+            ("src.scan_orchestrator.PositionOptimizer", {}),
+            ("src.scan_orchestrator.clear_pending", {}),
+            ("src.scan_orchestrator.save_pending", {}),
+            ("src.scan_orchestrator.execute_auto_trade", {}),
+            ("src.trade_outcome_recorder.TradeOutcomeRecorder", {}),
+            ("src.self_healer.diagnose_and_fix", {}),
+        ] + _submodule_patches(bc=bc, scanner=scanner, notifier=notifier, sa=sa)
+        with ExitStack() as stack:
+            mocks = {}
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.dict(os.environ, {"AUTO_EXECUTE": "true", "TRADING_MODE": "paper"}))
+
+            mock_mr = mocks["src.market_researcher.MarketResearcher"]
+            mock_ba = mocks["src.scan_orchestrator.BearAnalyst"]
+            # Link research_phase's BearAnalyst to the same mock
+            mocks["src.research_phase.BearAnalyst"].return_value = mock_ba.return_value
+            mock_adaptor = mocks["src.strategy_adaptor.StrategyAdaptor"]
+            mock_reg = mocks["src.strategy_registry.StrategyRegistry"]
+            mock_dim = mocks["src.dimension_scorer.DimensionScorer"]
+            mock_exec = mocks["src.execute_phases.execute_auto_trade"]
+            mock_heal = mocks["src.self_healer.diagnose_and_fix"]
             mock_mr.return_value.research.return_value = {
                 "score_adjustment": 5,
                 "confidence": 0.7,

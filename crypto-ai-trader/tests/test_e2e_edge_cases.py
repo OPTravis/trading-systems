@@ -598,29 +598,42 @@ class TestCronScanIntegration:
             "take_profit_levels": [{"pct": 2.0, "size_pct": 50}],
             "max_hold_hours": 24,
         }
-        with patch("src.scan_orchestrator.BinanceClient", return_value=bc), patch(
-            "src.scan_orchestrator.MarketScanner", return_value=ms
-        ), patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier), patch(
-            "src.scan_orchestrator.SentimentAnalyzer", return_value=sa
-        ), patch(
-            "src.scan_orchestrator.PortfolioManager"
-        ), patch(
-            "src.risk_manager.RiskManager", return_value=rm
-        ), patch(
-            "src.market_researcher.MarketResearcher"
-        ) as mock_mr, patch(
-            "src.strategy_adaptor.StrategyAdaptor"
-        ) as mock_sa, patch(
-            "src.scan_orchestrator.PositionOptimizer"
-        ) as mock_opt, patch(
-            "src.scan_orchestrator.clear_pending"
-        ), patch(
-            "src.scan_orchestrator.save_pending"
-        ), patch(
-            "src.scan_orchestrator.execute_auto_trade"
-        ) as mock_exec, patch.dict(
-            os.environ, {"AUTO_EXECUTE": "true"}
-        ):
+        from contextlib import ExitStack
+        patches = [
+            ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
+            ("src.scan_orchestrator.MarketScanner", {"return_value": ms}),
+            ("src.scan_orchestrator.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_orchestrator.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_orchestrator.PortfolioManager", {}),
+            ("src.risk_manager.RiskManager", {"return_value": rm}),
+            ("src.market_researcher.MarketResearcher", {}),
+            ("src.strategy_adaptor.StrategyAdaptor", {}),
+            ("src.scan_orchestrator.PositionOptimizer", {}),
+            ("src.scan_orchestrator.clear_pending", {}),
+            ("src.scan_orchestrator.save_pending", {}),
+            ("src.scan_orchestrator.execute_auto_trade", {}),
+            ("src.execute_phases.execute_auto_trade", {}),
+            # scan_phases creates objects directly, so patch there too
+            ("src.scan_phases.BinanceClient", {"return_value": bc}),
+            ("src.scan_phases.MarketScanner", {"return_value": ms}),
+            ("src.scan_phases.FeishuNotifier", {"return_value": notifier}),
+            ("src.scan_phases.SentimentAnalyzer", {"return_value": sa}),
+            ("src.scan_phases.PortfolioManager", {}),
+            ("src.scan_phases.PositionOptimizer", {}),
+            ("src.scan_phases.clear_pending", {}),
+            ("src.scan_phases.save_pending", {}),
+            ("src.research_phase.FeishuNotifier", {"return_value": notifier}),
+        ]
+        with ExitStack() as stack:
+            mocks = {}
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.dict(os.environ, {"AUTO_EXECUTE": "true"}))
+
+            mock_mr = mocks["src.market_researcher.MarketResearcher"]
+            mock_sa = mocks["src.strategy_adaptor.StrategyAdaptor"]
+            mock_opt = mocks["src.scan_orchestrator.PositionOptimizer"]
+            mock_exec = mocks["src.execute_phases.execute_auto_trade"]
             mock_mr.return_value.research.return_value = {
                 "score_adjustment": 0.0,
                 "confidence": 0.5,
