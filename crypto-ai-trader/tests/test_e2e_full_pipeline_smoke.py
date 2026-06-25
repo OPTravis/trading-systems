@@ -189,21 +189,6 @@ def _make_bear_analyst(veto=False, bear_score=30):
 
 class TestE2EPipeline:
 
-    import pytest
-
-    @pytest.fixture(autouse=True)
-    def _clean_lock(self):
-        """Remove scan lock between tests to avoid flock contention."""
-        import os as _os
-        lock = "/tmp/crypto-trader-scan.lock"
-        if _os.path.exists(lock):
-            _os.remove(lock)
-        yield
-        if _os.path.exists(lock):
-            try:
-                _os.remove(lock)
-            except OSError:
-                pass
     """End-to-end smoke tests for the full scan→research→execute pipeline."""
 
     def _run_full_pipeline(

@@ -393,8 +393,9 @@ class PositionOptimizer:
                 min_qty = sell_filters.get("minQty", 0)
                 min_notional = sell_filters.get("minNotional", 0)
                 step = sell_filters.get("stepSize", 1)
-                # Floor to stepSize
-                from_qty = math.floor(from_qty / step) * step
+                # Floor to stepSize and round to avoid floating-point noise
+                decimals = max(0, -int(math.floor(math.log10(step)))) if step > 0 else 8
+                from_qty = round(math.floor(from_qty / step) * step, decimals)
                 if from_qty < min_qty:
                     logger.error(
                         f"Sell blocked for {from_symbol}: qty={from_qty:.8f} < minQty={min_qty} (dust position)"
@@ -543,7 +544,9 @@ class PositionOptimizer:
                 import math
 
                 step = filters["stepSize"]
-                buy_qty = math.floor(buy_qty / step) * step
+                # Round to step precision to avoid floating-point noise (e.g. 1.6580000000000001)
+                decimals = max(0, -int(math.floor(math.log10(step))))
+                buy_qty = round(math.floor(buy_qty / step) * step, decimals)
                 logger.info(
                     f"Floored buy qty for {to_symbol}: {buy_qty:.8f} (stepSize={step})"
                 )

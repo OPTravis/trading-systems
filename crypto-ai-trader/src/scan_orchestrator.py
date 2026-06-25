@@ -10,6 +10,7 @@ This module provides the public API (cmd_scan, cmd_cron_scan) and re-exports
 all names that external code and tests may reference.
 """
 
+import os
 import logging
 
 # ── Re-export names for backward compatibility ────────────────────────────────
@@ -111,7 +112,7 @@ def cmd_cron_scan():
     """
     import fcntl
 
-    LOCK_FILE = "/tmp/crypto-trader-scan.lock"
+    LOCK_FILE = os.environ.get("SCAN_LOCK_FILE", "/tmp/crypto-trader-scan.lock")
     _lock_fd = None
     try:
         _lock_fd = open(LOCK_FILE, "w")

@@ -111,27 +111,13 @@ def _so_filters(step_size=1.0, qty_decimals=0, min_qty=1.0, min_notional=5.0):
 
 class TestCronScan:
 
-    @pytest.fixture(autouse=True)
-    def _clear_scan_lock(self):
-        """Clear stale file lock between tests to prevent cross-test interference."""
-        import os
-        try:
-            os.remove("/tmp/crypto-trader-scan.lock")
-        except FileNotFoundError:
-            pass
-        yield
-        try:
-            os.remove("/tmp/crypto-trader-scan.lock")
-        except FileNotFoundError:
-            pass
-
     def _run_scan(self, bc, ms, sa, rm, notifier, auto_execute="true"):
-        with patch("src.scan_orchestrator.BinanceClient", return_value=bc), patch(
-            "src.scan_orchestrator.MarketScanner", return_value=ms
-        ), patch("src.scan_orchestrator.FeishuNotifier", return_value=notifier), patch(
-            "src.scan_orchestrator.SentimentAnalyzer", return_value=sa
+        with patch("src.scan_phases.get_trading_client", return_value=bc), patch(
+            "src.scan_phases.MarketScanner", return_value=ms
+        ), patch("src.scan_phases.FeishuNotifier", return_value=notifier), patch(
+            "src.scan_phases.SentimentAnalyzer", return_value=sa
         ), patch(
-            "src.scan_orchestrator.PortfolioManager"
+            "src.scan_phases.PortfolioManager"
         ), patch(
             "src.risk_manager.RiskManager", return_value=rm
         ), patch(
@@ -139,14 +125,16 @@ class TestCronScan:
         ) as mock_mr, patch(
             "src.strategy_adaptor.StrategyAdaptor"
         ) as mock_sa, patch(
-            "src.scan_orchestrator.PositionOptimizer"
+            "src.research_phase.PositionOptimizer"
         ) as mock_opt, patch(
-            "src.scan_orchestrator.clear_pending"
+            "src.execute_phases.clear_pending"
         ) as mock_clear, patch(
-            "src.scan_orchestrator.save_pending"
+            "src.execute_phases.save_pending"
         ) as mock_save, patch(
-            "src.scan_orchestrator.execute_auto_trade"
-        ) as mock_exec, patch.dict(
+            "src.execute_phases.execute_auto_trade"
+        ) as mock_exec, patch(
+            "src.scan_phases.clear_pending", mock_clear
+        ), patch.dict(
             os.environ, {"AUTO_EXECUTE": auto_execute}
         ):
             mock_mr.return_value.research.return_value = {

@@ -43,6 +43,17 @@ def _set_env(monkeypatch, tmp_path):
     monkeypatch.setattr(rm, "_DATA_DIR", tmp_path / "data")
     (tmp_path / "data").mkdir(parents=True, exist_ok=True)
 
+    # Redirect signals dir so tests don't pollute production notification files
+    import src.notifier as notifier_mod
+    test_signals_dir = tmp_path / "signals"
+    test_signals_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(notifier_mod, "SIGNALS_DIR", test_signals_dir)
+    monkeypatch.setattr(notifier_mod, "SIGNALS_FILE", test_signals_dir / "pending.json")
+    monkeypatch.setattr(notifier_mod, "NOTIFICATIONS_FILE", test_signals_dir / "pending_notifications.json")
+
+    # Use a unique scan lock file per test to avoid flock contention
+    monkeypatch.setenv("SCAN_LOCK_FILE", str(tmp_path / "test_scan.lock"))
+
 
 @pytest.fixture(autouse=True)
 def _isolate_statedb(monkeypatch, tmp_path):
@@ -229,3 +240,18 @@ def mock_notifier():
         MockCls.return_value = instance
         MockCls2.return_value = instance
         yield instance
+
+@pytest.fixture(autouse=True)
+def _reset_risk_manager_singleton():
+    """Reset RiskManager singleton to prevent cross-test contamination.
+
+    get_risk_manager() caches the instance process-wide; without this reset,
+    a mock from an earlier test persists and bypasses patches in later tests.
+    """
+    import src.risk_manager as rm_mod
+    rm_mod._risk_manager_instance = None
+    yield
+    rm_mod._risk_manager_instance = None
+
+# Prevent pytest from importing standalone scripts that pollute global state
+collect_ignore = ["test_integration_recent_changes.py"]

@@ -63,7 +63,7 @@ def _run_trailing(bc, ts, positions_balances=None, entry_price_result=None):
     # P0/P1/P2 refactor: patches must target src.cmd_trailing_check (module-level imports)
     with patch("src.cmd_trailing_check.BinanceClient", return_value=bc), patch(
         "src.cmd_trailing_check.TrailingStop", return_value=ts
-    ), patch("src.cmd_trailing_check.RiskManager", return_value=rm), patch(
+    ), patch("src.cmd_trailing_check.get_risk_manager", return_value=rm), patch(
         "src.cmd_trailing_check.FeishuNotifier", return_value=notifier
     ), patch(
         "src.indicators.Indicators.atr", return_value=5.0
