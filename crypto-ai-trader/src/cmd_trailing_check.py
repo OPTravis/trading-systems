@@ -98,6 +98,7 @@ def cmd_trailing_check():
                 results.append({"asset": asset, "action": "skip", "reason": "invalid_price"})
                 continue
         except Exception as e:
+            logger.warning("cmd_trailing_check.cmd_trailing_check: " + str(e))
             results.append({"asset": asset, "action": "skip", "reason": str(e)})
             continue
 
@@ -114,6 +115,7 @@ def cmd_trailing_check():
                 results.append({"asset": asset, "action": "skip", "reason": "atr_zero"})
                 continue
         except Exception as e:
+            logger.warning("cmd_trailing_check.cmd_trailing_check: " + str(e))
             results.append({"asset": asset, "action": "skip", "reason": f"atr_error: {e}"})
             continue
 

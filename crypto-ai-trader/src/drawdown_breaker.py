@@ -39,7 +39,8 @@ class DrawdownBreaker:
         HARD_STOP_PCT = get_risk_param(
             "drawdown_breaker", "hard_stop_pct", _DEFAULT_HARD_STOP_PCT
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("drawdown_breaker.module: " + str(e))
         HARD_STOP_PCT = _DEFAULT_HARD_STOP_PCT
 
     def __init__(self, binance_client: Optional["ExchangeClient"] = None):

@@ -55,7 +55,8 @@ try:
     MAX_GHOST_POSITIONS = get_risk_param(
         "circuit_breaker", "max_ghost_positions", _DEFAULT_MAX_GHOST_POSITIONS
     )
-except Exception:
+except Exception as e:
+    logger.warning("circuit_breaker.module: " + str(e))
     # Fallback to all defaults if risk_config module itself fails to import
     CONSECUTIVE_FAILURES_MAX = _DEFAULT_CONSECUTIVE_FAILURES_MAX
     FAILURE_WINDOW_SEC = _DEFAULT_FAILURE_WINDOW_SEC

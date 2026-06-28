@@ -112,7 +112,8 @@ class PricePredictor:
                 # Low score (bearish on-chain) → positive netflow (inflow to exchanges) → bearish
                 # High score (bullish on-chain) → negative netflow (outflow) → bullish
                 features["exchange_netflow"] = (50.0 - score) / 50.0
-            except Exception:
+            except Exception as e:
+                logger.warning("price_predictor.enrich_features: " + str(e))
                 features["exchange_netflow"] = 0.0  # neutral default
 
         # --- whale_activity (placeholder — no dedicated feed yet) ---
@@ -133,7 +134,8 @@ class PricePredictor:
                 # Scale: 0.0001 → 0.01 range for feature
                 raw_fr = sentiment.get("funding_rate", 0.0)
                 features["funding_rate"] = raw_fr * 1000  # scale to ~0.1 range
-            except Exception:
+            except Exception as e:
+                logger.warning("price_predictor.enrich_features: " + str(e))
                 features["funding_rate"] = 0.0  # neutral default
 
         # --- open_interest_change (from scoring aggregator) ---
@@ -148,7 +150,8 @@ class PricePredictor:
                 sentiment = scorer.get_symbol_sentiment(symbol)
                 oi_pct = sentiment.get("oi_change_pct")
                 features["open_interest_change"] = oi_pct if oi_pct is not None else 0.0
-            except Exception:
+            except Exception as e:
+                logger.warning("price_predictor.enrich_features: " + str(e))
                 features["open_interest_change"] = 0.0  # neutral default
 
         return features
@@ -249,7 +252,8 @@ class PricePredictor:
         # Guard: validation set may be very small or single-class
         try:
             val_accuracy = float(accuracy_score(y_val, val_pred))
-        except Exception:
+        except Exception as e:
+            logger.warning("price_predictor.train: " + str(e))
             val_accuracy = float("nan")
         try:
             val_auc = float(roc_auc_score(y_val, val_prob))
@@ -257,7 +261,8 @@ class PricePredictor:
             val_auc = float("nan")
         try:
             val_logloss = float(log_loss(y_val, val_prob))
-        except Exception:
+        except Exception as e:
+            logger.warning("price_predictor.train: " + str(e))
             val_logloss = float("nan")
 
         # ── 5. Log comparison ──────────────────────────────────────────

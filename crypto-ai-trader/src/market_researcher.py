@@ -53,7 +53,8 @@ class _IPv4HTTPAdapter(HTTPAdapter):
                 try:
                     sock.connect(sa)
                     return sock
-                except Exception:
+                except Exception as e:
+                    logger.warning("market_researcher._ipv4_create_connection: " + str(e))
                     sock.close()
             raise OSError(f"IPv4 connection to {host}:{port} failed")
 
@@ -151,7 +152,8 @@ class MarketResearcher:
                         coin = f.stem.split("_")[0]
                         self._cache[coin] = data
                         self._cache_ts[coin] = mtime
-                except Exception:
+                except Exception as e:
+                    logger.warning("market_researcher._load_recent_cache: " + str(e))
                     continue
             if self._cache:
                 logger.info(

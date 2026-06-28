@@ -73,7 +73,8 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
     # Check available balance
     try:
         balance = client.get_free_balance("USDT")
-    except Exception:
+    except Exception as e:
+        logger.warning("scan_phases._try_fear_accumulation: " + str(e))
         balance = 0
     if balance < 50:
         logger.info("Fear accumulation: balance too low ($%.2f), skipping", balance)
@@ -490,6 +491,21 @@ def _step_scan_opportunities():
         dim_scorer = DimensionScorer(binance_client=client)
         dim_result = dim_scorer.score_all()
         print(dim_scorer.format_report(dim_result))
+
+        # ===== Data Health Check =====
+        unhealthy = []
+        dims = dim_result.get("dimensions", {})
+        for name, d in dims.items():
+            signals = d.get("signals", [])
+            sig_str = " ".join(str(s) for s in signals)
+            if "NO_DATA" in sig_str or "no_client" in sig_str or len(signals) == 0:
+                unhealthy.append(f"{name}({d.get('weight',0):.0%}): {signals}")
+        if unhealthy:
+            msg = "Data health WARN: " + " | ".join(unhealthy)
+            logger.warning(msg)
+            print(f"\n⚠️  {msg}")
+        else:
+            print("\n✅ Data health: all 6 dimensions reporting data")
     except Exception as e:
         logger.warning(f"Dimension scoring failed: {e}")
 

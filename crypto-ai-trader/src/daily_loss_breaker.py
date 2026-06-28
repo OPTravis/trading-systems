@@ -43,7 +43,8 @@ try:
     TIER_3_LOSS_PCT = get_risk_param(
         "daily_loss_breaker", "tier_3_loss_pct", _DEFAULT_TIER_3_LOSS_PCT
     )
-except Exception:
+except Exception as e:
+    logger.warning("daily_loss_breaker.module: " + str(e))
     TIER_1_LOSS_PCT = _DEFAULT_TIER_1_LOSS_PCT
     TIER_2_LOSS_PCT = _DEFAULT_TIER_2_LOSS_PCT
     TIER_3_LOSS_PCT = _DEFAULT_TIER_3_LOSS_PCT

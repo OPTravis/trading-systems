@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 """
 Fund Flow Audit — Reconstruct complete PnL from Binance trade history.
 
@@ -70,8 +74,8 @@ def fetch_all_trades(since_ts: int = 0) -> list[dict]:
             )
             if r.status_code == 200 and r.json():
                 all_trades.extend(r.json())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("fund_flow_audit.fetch_all_trades: " + str(e))
     all_trades.sort(key=lambda x: x["time"])
     return all_trades
 
@@ -84,8 +88,8 @@ def get_current_prices() -> dict[str, float]:
         if r.status_code == 200:
             for item in r.json():
                 prices[item["symbol"]] = float(item["price"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("fund_flow_audit.get_current_prices: " + str(e))
     return prices
 
 

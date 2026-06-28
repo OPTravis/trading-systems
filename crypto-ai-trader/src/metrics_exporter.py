@@ -5,7 +5,10 @@ Exposes trading system metrics via HTTP for Prometheus scraping.
 Uses prometheus_client library with singleton pattern.
 """
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 import threading
 from typing import Optional
 
@@ -132,8 +135,8 @@ class MetricsExporter:
                 parts = self._server  # type: ignore[misc]
                 if isinstance(parts, tuple) and len(parts) >= 1:
                     parts[0].shutdown()  # type: ignore[index]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("metrics_exporter.stop_server: " + str(e))
             self._server = None
 
     def update_portfolio_metrics(

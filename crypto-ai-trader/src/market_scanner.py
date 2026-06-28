@@ -947,7 +947,8 @@ class MarketScanner:
         try:
             from src.llm_client import LLMClient
             client = LLMClient()
-        except Exception:
+        except Exception as e:
+            logger.warning("market_scanner._llm_enrich_sentiment: " + str(e))
             return
 
         for opp in top_opportunities:

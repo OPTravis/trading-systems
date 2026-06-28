@@ -86,7 +86,8 @@ def _append_notification(msg_type: str, title: str, body: str, max_retries: int 
                     try:
                         fcntl.flock(lock_fd, fcntl.LOCK_UN)
                         lock_fd.close()
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("notifier._append_notification: " + str(e))
                         pass
             return  # success
         except (OSError, IOError) as e:

@@ -243,7 +243,8 @@ def qfl_scan(
                 closes = [float(k["close"]) for k in klines]
                 try:
                     atr = Indicators.atr(klines, period=14)
-                except Exception:
+                except Exception as e:
+                    logger.warning("qfl_scanner.qfl_scan: " + str(e))
                     atr = closes[-1] * 0.02  # fallback: 2% of price
 
                 entry, stop_loss, take_profit = calculate_qfl_targets(crack, atr)

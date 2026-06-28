@@ -398,7 +398,8 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                 label = 1 if pnl >= 0 else 0
                 entry_ts = pos.get("opened_at_ts", _t.time())
                 fs.snapshot_for_training(symbol, label=label, timestamp=entry_ts)
-            except Exception:
+            except Exception as e:
+                logger.warning("portfolio.close_position: " + str(e))
                 pass  # non-critical
 
         self._save_state(force=True)

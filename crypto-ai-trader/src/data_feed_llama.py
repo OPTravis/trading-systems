@@ -292,7 +292,8 @@ class LlamaDataFeed:
                         res = future.result()
                         if res:
                             result[res[0]] = round(res[1], 2)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("data_feed_llama.get_chain_tvl: " + str(e))
                         pass
 
             if result:

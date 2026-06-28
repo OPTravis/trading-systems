@@ -590,7 +590,8 @@ class HMMRegimeDetector:
                 "SELECT COUNT(*) as cnt FROM trade_outcomes WHERE status = 'closed'"
             ).fetchone()
             total_closed_trades = trade_count_row["cnt"] if trade_count_row else 0
-        except Exception:
+        except Exception as e:
+            logger.warning("hmm_regime.should_retrain: " + str(e))
             total_closed_trades = 0
 
         trades_since = total_closed_trades - last_trained_trades

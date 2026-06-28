@@ -234,7 +234,8 @@ class PaperTrader:
         self._in_transaction = False
         try:
             self._conn().rollback()
-        except Exception:
+        except Exception as e:
+            logger.warning("paper_trader._rollback_transaction: " + str(e))
             pass  # SQLite auto-rollback on connection close
 
     def _init_simulated_state(self):

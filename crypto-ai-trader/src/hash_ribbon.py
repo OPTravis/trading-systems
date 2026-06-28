@@ -36,7 +36,8 @@ def _get_cached_hashrate() -> Optional[List[Dict]]:
         if time.time() - cache.get("fetched_at", 0) > _CACHE_TTL:
             return None
         return cache.get("data")
-    except Exception:
+    except Exception as e:
+        logger.warning("hash_ribbon._get_cached_hashrate: " + str(e))
         return None
 
 

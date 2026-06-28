@@ -49,7 +49,8 @@ try:
     _RISK_SL_LIMIT_BUFFER_PCT = get_risk_param(
         "trade_executor", "sl_limit_buffer_pct", _DEFAULT_SL_LIMIT_BUFFER_PCT
     )
-except Exception:
+except Exception as e:
+    logger.warning("trade_executor.module: " + str(e))
     _RISK_MIN_STOP_LOSS_PCT = _DEFAULT_MIN_STOP_LOSS_PCT
     _RISK_MAX_SINGLE_LOSS_PCT = _DEFAULT_MAX_SINGLE_LOSS_PCT
     _RISK_MAX_ACTIVE_POSITIONS = _DEFAULT_MAX_ACTIVE_POSITIONS

@@ -309,7 +309,8 @@ class TradeOutcomeRecorder:
                 pos = pm.positions.get(symbol, {})
                 bandit_context = pos.get("bandit_context")
                 bandit_multiplier = pos.get("bandit_multiplier", 0.8)
-            except Exception:
+            except Exception as e:
+                logger.warning("trade_outcome_recorder.record_outcome: " + str(e))
                 pass
             # Fallback: reconstruct context from row data
             if bandit_context is None:
@@ -321,7 +322,8 @@ class TradeOutcomeRecorder:
                         "btc_trend": ctx_data.get("btc_trend", "NEUTRAL"),
                         "portfolio_heat": "cold",
                     }
-                except Exception:
+                except Exception as e:
+                    logger.warning("trade_outcome_recorder.record_outcome: " + str(e))
                     bandit_context = None
             if bandit_context:
                 bandit.update_from_outcome(

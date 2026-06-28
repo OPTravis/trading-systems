@@ -171,7 +171,8 @@ class DimensionScorer:
                         elif avg_chg < -1:
                             score -= 0.2
                             signals.append(f"tvl_fallback_outflow_{avg_chg:+.1f}pct")
-                except Exception:
+                except Exception as e:
+                    logger.warning("dimension_scorer._score_onchain: " + str(e))
                     pass
 
         except Exception as e:

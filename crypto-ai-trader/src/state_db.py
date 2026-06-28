@@ -390,7 +390,8 @@ class StateDB:
         # Migration: add invest_pct column if missing (for existing databases)
         try:
             conn.execute("ALTER TABLE portfolio ADD COLUMN invest_pct REAL DEFAULT 0")
-        except Exception:
+        except Exception as e:
+            logger.warning("state_db._init_db: " + str(e))
             pass  # column already exists
 
     # ==================== Trailing Stop ====================

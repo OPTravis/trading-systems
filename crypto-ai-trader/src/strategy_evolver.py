@@ -316,7 +316,8 @@ class StrategyEvolver:
                 if s not in trade_pnls:
                     trade_pnls[s] = []
                 trade_pnls[s].append(r["net_pnl_pct"])
-        except Exception:
+        except Exception as e:
+            logger.warning("strategy_evolver.get_evolution_report: " + str(e))
             pass
 
         disabled = self.get_disabled_strategies()
