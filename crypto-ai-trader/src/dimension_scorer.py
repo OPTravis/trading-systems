@@ -176,7 +176,7 @@ class DimensionScorer:
                     pass
 
         except Exception as e:
-            logger.debug(f"DeFiLlama on-chain scoring failed: {e}")
+            logger.warning(f"DeFiLlama on-chain scoring failed: {e}")
 
         # --- Backup: BTC volume from Binance (always available) ---
         if not self.client:
@@ -200,7 +200,7 @@ class DimensionScorer:
                     score -= 0.15
                     signals.append("BTC_high_vol_distribution")
         except Exception as e:
-            logger.debug(f"BTC volume scoring failed: {e}")
+            logger.warning(f"BTC volume scoring failed: {e}")
 
         return {"score": max(-1, min(1, score)), "signals": signals, "weight": 0.25, "data": data}
 
@@ -237,7 +237,7 @@ class DimensionScorer:
                 signals.append(f"funding_neg_{btc_fr['negative_pct']:.0f}pct")
 
         except Exception as e:
-            logger.debug(f"Funding rate scoring failed: {e}")
+            logger.warning(f"Funding rate scoring failed: {e}")
 
         score += funding_score * 0.5  # 50% weight for funding
 
@@ -288,7 +288,7 @@ class DimensionScorer:
                     data["depeg_alerts"] = depegs
 
         except Exception as e:
-            logger.debug(f"Stablecoin scoring failed: {e}")
+            logger.warning(f"Stablecoin scoring failed: {e}")
 
         score += stbl_score * 0.3  # 30% weight for stablecoin
 
@@ -329,7 +329,7 @@ class DimensionScorer:
                     data["top_dexes"] = [f"{d['name']}:${d['volume_24h']/1e9:.1f}B" for d in top[:3]]
 
         except Exception as e:
-            logger.debug(f"DEX volume scoring failed: {e}")
+            logger.warning(f"DEX volume scoring failed: {e}")
 
         score += dex_score * 0.2  # 20% weight for DEX volume
 
@@ -368,8 +368,10 @@ class DimensionScorer:
                 elif change < -1:
                     score -= 0.2
                     signals.append("BTC_downtrend")
+                else:
+                    signals.append(f"BTC_neutral_{change:+.1f}pct")
         except Exception as e:
-            logger.debug(f"Macro scoring failed: {e}")
+            logger.warning(f"Macro scoring failed: {e}")
 
         return {"score": score, "signals": signals, "weight": 0.20, "data": data}
 
@@ -420,7 +422,7 @@ class DimensionScorer:
                 signals.append(f"CFGI_greed_{fng}")
 
         except Exception as e:
-            logger.debug(f"Sentiment scoring failed: {e}")
+            logger.warning(f"Sentiment scoring failed: {e}")
 
         return {"score": score, "signals": signals, "weight": 0.15, "data": data}
 
@@ -472,9 +474,11 @@ class DimensionScorer:
                 elif rsi > 60:
                     score -= 0.1
                     signals.append(f"RSI_high_{rsi:.0f}")
+                else:
+                    signals.append(f"RSI_neutral_{rsi:.0f}")
 
         except Exception as e:
-            logger.debug(f"Technical scoring failed: {e}")
+            logger.warning(f"Technical scoring failed: {e}")
 
         return {"score": score, "signals": signals, "weight": 0.10, "data": data}
 
