@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Priority: 1) LLAMA_CLI env var, 2) relative path from project root
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_LLAMA_CLI = os.path.join(
-    _PROJECT_ROOT, "..", ".skills", "skill_llama-data-skill", "bin", "_cli_wrapper.py"
+    _PROJECT_ROOT, "..", "..", ".skills", "skill_llama-data-skill", "bin", "_cli_wrapper.py"
 )
 LLAMA_CLI = os.environ.get("LLAMA_CLI", _DEFAULT_LLAMA_CLI)
 

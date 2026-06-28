@@ -425,7 +425,7 @@ class DimensionScorer:
 
     # ------------------------------------------------------------------
     def _score_technical(self) -> Dict:
-        """D5: Technical — RSI + volume trend."""
+        """D5: Technical — RSI + MACD histogram from 1h candles (aligned with scanner)."""
         score = 0.0
         signals = []
         data: Dict[str, Any] = {}
@@ -434,9 +434,8 @@ class DimensionScorer:
             return {"score": 0, "signals": ["no_client"], "weight": 0.10, "data": data}
 
         try:
-            # Fetch 1h klines for RSI calculation
-            # Binance returns lists: [open_time, open, high, low, close, ...]
-            klines = self.client.get_klines(symbol="BTCUSDT", interval="1h", limit=15)
+            # Fetch 1h klines — use 50 candles to match scanner's timeframe and reduce noise
+            klines = self.client.get_klines(symbol="BTCUSDT", interval="1h", limit=50)
             closes = [float(k["close"]) for k in klines]
             if len(closes) >= 15:
                 # Wilder's smoothing RSI (consistent with indicators.py)

@@ -45,11 +45,11 @@ class FundingRate:
         Returns:
             List of dicts with keys: symbol, funding_rate, funding_time, mark_price.
         """
-        # SPOT ONLY safety gate — funding rate uses /fapi/ which is futures API.
-        # Disabled by default since this system only does SPOT.
-        # Set ENABLE_FUTURES=true to enable futures data fetching.
-        if os.environ.get("ENABLE_FUTURES", "").lower() not in ("true", "1", "yes"):
-            logger.debug("FundingRate disabled (ENABLE_FUTURES not set). Skipping fapi call.")
+        # Funding rate is READ-ONLY market data (public endpoint, no trading).
+        # We always allow it for analysis — futures TRADING remains disabled separately.
+        # Set DISABLE_FUNDING_DATA=true to opt out if needed.
+        if os.environ.get("DISABLE_FUNDING_DATA", "").lower() in ("true", "1", "yes"):
+            logger.debug("FundingRate disabled (DISABLE_FUNDING_DATA set). Skipping fapi call.")
             return []
 
         try:
