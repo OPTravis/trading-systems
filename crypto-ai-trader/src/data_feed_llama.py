@@ -54,9 +54,30 @@ class LlamaDataFeed:
     def __init__(self) -> None:
         self._cache: Dict[str, Any] = {}
         self._cache_ts: Dict[str, float] = {}
+        # Quick subprocess ping to verify CLI actually works in this context.
+        # os.path checks pass even when .skills is sandbox-restricted in cron.
+        self._cli_available = self._ping_cli()
+        if not self._cli_available:
+            logger.info("llama CLI not accessible — on-chain data will use neutral fallback")
+
+    def _ping_cli(self) -> bool:
+        """Test CLI with a minimal call. Returns True if operational."""
+        if not os.path.isfile(LLAMA_CLI):
+            return False
+        try:
+            result = subprocess.run(
+                ["python3", LLAMA_CLI, "call", "stablecoins", "--param", "includePrices=false"],
+                capture_output=True, text=True, timeout=8,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
 
     def _call_llama(self, operation: str, params: Optional[Dict] = None) -> Optional[Any]:
         """Call a llama CLI operation and return parsed JSON."""
+        if not self._cli_available:
+            return None
+
         cmd = ["python3", LLAMA_CLI, "call", operation]
         if params:
             for k, v in params.items():
