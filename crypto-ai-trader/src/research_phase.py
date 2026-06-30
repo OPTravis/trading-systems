@@ -456,7 +456,15 @@ def _step_research_top_n(ctx):
                 )
                 break
 
-    reason = " / ".join(signals[:3]) if signals else "Multiple signals"
+    _sig_strs = []
+    for s in signals[:3]:
+        if isinstance(s, str):
+            _sig_strs.append(s)
+        elif isinstance(s, dict):
+            _sig_strs.append(s.get("source", s.get("type", str(s))))
+        else:
+            _sig_strs.append(str(s))
+    reason = " / ".join(_sig_strs) if _sig_strs else "Multiple signals"
 
     # Use adapted strategy config (overrides YAML)
     if strategy_cfg:
