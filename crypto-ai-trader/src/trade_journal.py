@@ -80,7 +80,7 @@ class TradeJournal:
 
         # Format reasons and signals as lists
         reasons_str = ", ".join(reasons) if reasons else "N/A"
-        signals_str = ", ".join(signals) if signals else "N/A"
+        signals_str = ", ".join(str(s) for s in signals) if signals else "N/A"
 
         # Append to markdown journal
         entry = f"""
@@ -311,11 +311,11 @@ class TradeJournal:
         lesson += f"- PnL: {pnl_pct:+.2f}%\n"
 
         if pnl_pct > 0:
-            lesson += f"- WIN: Signals [{', '.join(signals[:3])}]\n"
+            lesson += f"- WIN: Signals [{', '.join(str(s) for s in signals[:3])}]\n"
             lesson += f"- What worked: {', '.join(reasons[:2])}\n"
             lesson += "- Consider: This pattern worked, watch for similar setups\n"
         else:
-            lesson += f"- LOSS: Signals [{', '.join(signals[:3])}]\n"
+            lesson += f"- LOSS: Signals [{', '.join(str(s) for s in signals[:3])}]\n"
             lesson += f"- What failed: {', '.join(reasons[:2])}\n"
             lesson += "- Improvement: Review entry timing and risk management\n"
 
