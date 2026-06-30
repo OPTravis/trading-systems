@@ -39,6 +39,163 @@ def _sync_from_binance(portfolio, client):
 # ===================================================================
 
 
+def _try_deep_value_btc(fng, client, scanner, portfolio, risk_mgr):
+    """Deep Value BTC Pickup — contrarian micro-buy during extreme extended fear.
+
+    Activates when ALL conditions met:
+    - F&G <= 15 (deepest extreme fear)
+    - Consecutive fear days >= 25 (persistent capitulation)
+    - Available balance >= $50
+    - 24h cooldown since last deep value buy
+
+    Buys exactly $12 of BTCUSDT — small enough to be negligible risk,
+    large enough to capture outsized returns when fear abates.
+    Research basis: 14+ consecutive fear days → 90d avg +114.8%.
+
+    Returns a scan context dict with synthetic opportunity, or None.
+    """
+    import time as _time
+    from src.state_db import get_state_db
+
+    # --- Condition 1: F&G threshold ---
+    if fng > 15:
+        logger.debug(f"DeepValueBTC: F&G={fng} > 15, skipping")
+        return None
+
+    # --- Condition 2: Consecutive fear days ---
+    try:
+        from src.sentiment import SentimentAnalyzer
+        sa = SentimentAnalyzer()
+        market = sa.get_market_sentiment()
+        consec_fear = market.get("consecutive_fear_days", 0)
+        fng_api = market.get("fear_greed", fng)  # re-fetch for freshness
+    except Exception as e:
+        logger.warning(f"DeepValueBTC: F&G re-fetch failed: {e}, using scan value")
+        consec_fear = 0
+        fng_api = fng
+
+    # Use the fresher value
+    if fng_api > 15:
+        logger.info(f"DeepValueBTC: fresh F&G={fng_api} > 15, skipping")
+        return None
+
+    if consec_fear < 25:
+        logger.info(
+            f"DeepValueBTC: consecutive_fear={consec_fear} < 25 days, skipping"
+        )
+        return None
+
+    # --- Condition 3: Balance ---
+    try:
+        balance = client.get_free_balance("USDT")
+    except Exception as e:
+        logger.warning(f"DeepValueBTC: balance check failed: {e}")
+        return None
+
+    if balance < 50:
+        logger.info(f"DeepValueBTC: balance ${balance:.2f} < $50, skipping")
+        return None
+
+    # --- Condition 4: 24h cooldown ---
+    db = get_state_db()
+    last_buy_ts = db.kv_get("deep_value_btc_last", default=0)
+    now = _time.time()
+    if isinstance(last_buy_ts, (int, float)) and last_buy_ts > 0:
+        elapsed = now - last_buy_ts
+        if elapsed < 86400:  # 24h
+            remaining = (86400 - elapsed) / 3600
+            logger.info(
+                f"DeepValueBTC: cooldown active, {remaining:.1f}h remaining"
+            )
+            return None
+
+    # --- Condition 5: Daily cap (max 1 buy per day) ---
+    today_key = _time.strftime("%Y%m%d", _time.gmtime(now + 8 * 3600))  # CST
+    today_count = db.kv_get(f"deep_value_btc_{today_key}", default=0)
+    if isinstance(today_count, (int, float)) and today_count >= 1:
+        logger.info(f"DeepValueBTC: daily cap reached for {today_key}")
+        return None
+
+    # ===== All conditions met — execute =====
+    ORDER_VALUE = 12.0  # Fixed $12 per buy
+    SYMBOL = "BTCUSDT"
+
+    try:
+        price = client.get_ticker_price(SYMBOL)
+    except Exception as e:
+        logger.error(f"DeepValueBTC: price fetch failed: {e}")
+        return None
+
+    logger.info(
+        "DeepValueBTC: TRIGGERED | F&G=%d | consec_fear=%dd | BTC=$%.2f | buy=$%.2f",
+        fng_api, consec_fear, price, ORDER_VALUE,
+    )
+    print(
+        f"🔥 DEEP_VALUE_BTC: F&G={fng_api}, fear={consec_fear}d, "
+        f"BTC=${price:.2f}, buying ${ORDER_VALUE:.2f}"
+    )
+
+    # Record cooldown + daily count
+    db.kv_set("deep_value_btc_last", now)
+    db.kv_set(f"deep_value_btc_{today_key}", 1)
+    db.audit_log(
+        action="DEEP_VALUE_BTC_BUY",
+        details={
+            "fng": fng_api,
+            "consec_fear": consec_fear,
+            "symbol": SYMBOL,
+            "price": price,
+            "order_value": ORDER_VALUE,
+        },
+        source="deep_value_btc",
+    )
+
+    # Build synthetic opportunity (FeishuNotifier already imported at top)
+    from src.market_researcher import MarketResearcher
+    from src.strategy_adaptor import StrategyAdaptor
+
+    adaptor = StrategyAdaptor()
+    adapted = adaptor.adapt(
+        fear_greed=fng_api,
+        btc_trend="BEARISH",
+        btc_price_change_24h=0,
+    )
+    adapted["global"]["score_threshold"] = 50
+    adapted["global"]["cash_reserve_pct"] = 50
+    adapted["global"]["max_position_pct"] = 5
+
+    deep_opp = {
+        "symbol": SYMBOL,
+        "price": price,
+        "score": 75,  # High conviction due to extreme conditions
+        "volume_24h": 0,
+        "change_24h": 0,
+        "signals": [{"type": "BUY", "source": "deep_value_btc"}],
+        "analysis": {"1h": {}, "deep_value": {"fng": fng_api, "consec_fear": consec_fear}},
+        "fear_mode": True,
+        "order_value": ORDER_VALUE,
+    }
+
+    return {
+        "client": client,
+        "scanner": scanner,
+        "notifier": FeishuNotifier(),
+        "risk_mgr": risk_mgr,
+        "researcher": MarketResearcher(),
+        "portfolio": portfolio,
+        "opportunities": [deep_opp],
+        "dynamic_threshold": 50,
+        "adapted": adapted,
+        "regime": "EXTREME_FEAR",
+        "fng": fng_api,
+        "fng_label": "Extreme Fear",
+        "btc_trend": "BEARISH",
+        "btc_change_24h": 0,
+        "btc_score": 30,
+        "acct": client.get_account(),
+    }
+
+
 def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, risk_mgr):
     """Fear Accumulation Fallback — buy small amounts of oversold coins during extreme fear.
 
@@ -540,6 +697,14 @@ def _step_scan_opportunities():
     )
 
     if not opportunities:
+        # ===== Deep Value BTC Pickup (highest priority) =====
+        # When F&G < 15 AND consecutive fear >= 25 days, buy small BTC.
+        # Research: 14+ days extreme fear → 90d avg +114.8% return.
+        # This is the deepest contrarian play — fixed $12, BTC only, 24h cooldown.
+        deep_btc_result = _try_deep_value_btc(fng, client, scanner, portfolio, risk_mgr)
+        if deep_btc_result:
+            return deep_btc_result
+
         # ===== Fear Accumulation Fallback =====
         # When normal scan finds nothing AND we're in extreme fear (F&G < 20),
         # try to accumulate top oversold coins with relaxed criteria + small size.
