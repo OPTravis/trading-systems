@@ -1010,13 +1010,38 @@ _state_db_lock = threading.Lock()
 def get_state_db(db_path: Optional[str] = None) -> StateDB:
     """Get singleton StateDB instance.
 
-    Supports STATE_DB_PATH env var override for testing isolation.
+    Three-layer test isolation:
+    1. STATE_DB_PATH env var — overrides db_path for test isolation.
+    2. If STATE_DB_PATH changes between calls, recreate singleton (hot-swap).
+    3. Hard guard: if TESTING env is set and path looks like production, raise.
     """
     global _state_db_instance
-    # Allow env var override for test isolation
+
     env_path = os.environ.get("STATE_DB_PATH")
     if env_path:
         db_path = env_path
+
+    # Layer 3: Hard guard — refuse production DB during tests
+    if os.environ.get("TESTING"):
+        resolved = db_path or str(DEFAULT_DB_PATH)
+        default_str = str(DEFAULT_DB_PATH)
+        if resolved == default_str:
+            raise RuntimeError(
+                f"BLOCKED: get_state_db() called during TESTING but db_path "
+                f"points to production ({default_str}). "
+                f"Set STATE_DB_PATH to a temp file in conftest."
+            )
+
+    # Layer 2: Hot-swap — if env var changed, recreate singleton
+    if _state_db_instance is not None and env_path:
+        current_path = str(_state_db_instance.db_path)
+        if current_path != env_path:
+            logger.info(
+                "StateDB hot-swap: %s -> %s (STATE_DB_PATH changed)",
+                current_path, env_path,
+            )
+            _state_db_instance = None
+
     if _state_db_instance is None:
         with _state_db_lock:
             if _state_db_instance is None:

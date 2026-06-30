@@ -57,9 +57,16 @@ def _set_env(monkeypatch, tmp_path):
 
 @pytest.fixture(autouse=True)
 def _isolate_statedb(monkeypatch, tmp_path):
-    """Redirect StateDB to temporary database for test isolation."""
+    """Redirect StateDB to temporary database for test isolation.
+
+    Three-layer protection against test contamination of production DB:
+    1. STATE_DB_PATH → temp file (already existed)
+    2. TESTING=1 → hard guard in get_state_db() refuses production path
+    3. Singleton reset → picks up new path on next call
+    """
     test_db_path = str(tmp_path / "test_state.db")
     monkeypatch.setenv("STATE_DB_PATH", test_db_path)
+    monkeypatch.setenv("TESTING", "1")
     # Reset singleton so it picks up the new path
     import src.state_db as sd_mod
 
