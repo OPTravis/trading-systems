@@ -175,3 +175,25 @@ StateDB (1049行, 48方法) → 按功能分区（保持一个类，内部整理
 3. **小步快跑：** 每个Phase独立提交，不跨Phase混合改动
 4. **向后兼容：** 保持对外API不变（函数签名、类接口）
 5. **Git分支：** 所有重构在 `refactor/` 分上进行，完成后合并
+
+---
+
+## 四、完成状态（2026-07-01）
+
+| Phase | 目标 | 状态 | Commit |
+|-------|------|------|--------|
+| Phase 0 | 安全准备 | ✅ 完成 | refactor branch, 1053 tests baseline |
+| Phase 1 | 拆分 execute_auto_trade (P0-1) | ✅ 完成 | `2d0f42b` `869b07c` — 1080→507 行 (−53%) |
+| Phase 2 | 统一交易所客户端 (P0-2) | ⏭️ 跳过 | 风险高（实盘核心路径），ROI 低 |
+| Phase 3 | 拆分 PaperTrader (P0-3) | ✅ 部分 | `9b83b06` — _fill_market 201→120 行；其余方法均 <70 行，无需拆 |
+| Phase 4 | 拆分 strategy_adaptor.adapt() (P1-2) | ✅ 完成 | `3f8f6a6` — 472→113 行 (−76%) |
+| Phase 5 | 拆分 research_phase (P1-3) | ✅ 完成 | `8105013` — 498→292 行 (−41%) |
+| Phase 6 | 拆分 StateDB (P1-1) | ⏭️ 跳过 | 被 26 模块依赖，拆分风险过高 |
+| Phase 7 | 清理与文档 (P2) | ✅ 完成 | `5f54de7` — 21 脚本归档；`.gitignore` 清理 |
+
+### 总结
+- **3 个巨型函数已拆分**：execute_auto_trade / adapt() / _step_research_top_n
+- **1 个中等函数已拆分**：_fill_market
+- **21 个一次性脚本已归档**
+- **1051 tests 全部通过**，零 regression
+- **已合并 main 并推送 GitHub**
