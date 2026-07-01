@@ -937,6 +937,7 @@ def execute_auto_trade(
     max_position_pct=15,
     max_total_exposure_pct=70,
     strategy_size_multiplier=1.0,
+    order_value=None,
 ):
     """Execute trade automatically with Kelly-optimal position sizing.
 
@@ -1068,6 +1069,16 @@ def execute_auto_trade(
     fee_rate = sizing["fee_rate"]
     kelly_result = sizing["kelly_result"]
     db = sizing["db"]
+
+    # ── Fixed order value override (DeepValueBTC / Fear Accumulation) ──
+    # When order_value is specified, use it instead of Kelly sizing.
+    # This ensures fixed-amount strategies spend exactly what they intend.
+    if order_value is not None and order_value > 0:
+        logger.info(
+            f"order_value=${order_value:.2f} override: Kelly sizing was ${invest_amount:.2f}"
+        )
+        invest_amount = float(order_value)
+        invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
     # ── Regime-aware cash reserve cap ──
     # Ensure we never invest more than (100 - cash_reserve_pct)% of USDT balance.

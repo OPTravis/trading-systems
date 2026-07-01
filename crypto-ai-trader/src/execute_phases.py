@@ -144,6 +144,7 @@ def _step_execute_trades(ctx):
             strategy_size_multiplier=ctx.get(
                 "size_multiplier", 1.0
             ),  # P0-3: pass strategy-level size_multiplier
+            order_value=ctx.get("top", {}).get("order_value"),  # DeepValueBTC / Fear Acc
         )
         if result["success"]:
             # Record trade in journal
