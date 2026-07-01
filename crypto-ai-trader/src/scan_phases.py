@@ -240,7 +240,7 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
     # Target major coins only (high liquidity, less likely to go to zero)
     MAJOR_COINS = {"BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "LINK"}
 
-    # Get RSI for each candidate
+    # Get RSI for each candidate — check both 1h (short-term timing) and 1d (structural oversold)
     candidates = []
     for opp in all_opportunities[:15]:  # check top 15 by score
         sym = opp.get("symbol", "")
@@ -251,23 +251,39 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
         if coin not in MAJOR_COINS:
             continue
         try:
-            klines = client.get_klines(sym, interval="1h", limit=50)
-            if klines and len(klines) >= 20:
-                closes = [float(k["close"]) for k in klines]
-                rsi = calculate_rsi(closes, 14)
-                if rsi < 40:  # oversold or near oversold
-                    candidates.append({
-                        "symbol": sym,
-                        "coin": coin,
-                        "rsi": rsi,
-                        "score": opp.get("score", 0),
-                        "price": opp.get("price", 0),
-                    })
+            rsi_1h = None
+            rsi_1d = None
+
+            # 1h RSI — short-term oversold timing
+            klines_1h = client.get_klines(sym, interval="1h", limit=50)
+            if klines_1h and len(klines_1h) >= 20:
+                closes_1h = [float(k["close"]) for k in klines_1h]
+                rsi_1h = calculate_rsi(closes_1h, 14)
+
+            # Daily RSI — structural oversold (stronger signal for accumulation)
+            klines_1d = client.get_klines(sym, interval="1d", limit=50)
+            if klines_1d and len(klines_1d) >= 20:
+                closes_1d = [float(k["close"]) for k in klines_1d]
+                rsi_1d = calculate_rsi(closes_1d, 14)
+
+            # Eligible if EITHER timeframe is oversold (< 40)
+            # Use daily RSI as primary sort key (structural oversold is more meaningful)
+            effective_rsi = min(filter(lambda x: x is not None, [rsi_1d, rsi_1h]), default=50)
+            if effective_rsi < 40:
+                candidates.append({
+                    "symbol": sym,
+                    "coin": coin,
+                    "rsi": effective_rsi,
+                    "rsi_1h": rsi_1h,
+                    "rsi_1d": rsi_1d,
+                    "score": opp.get("score", 0),
+                    "price": opp.get("price", 0),
+                })
         except Exception as e:
             logger.debug(f"Fear accumulation: failed to get RSI for {sym}: {e}")
 
     if not candidates:
-        logger.info("Fear accumulation: no oversold major coins found (RSI < 40), trying QFL")
+        logger.info("Fear accumulation: no oversold major coins found (RSI < 40 on 1h or 1d), trying QFL")
         # ===== QFL Fallback — structural support break detection =====
         qfl_result = _try_qfl_fallback(client, fng, balance)
         if qfl_result:
@@ -279,8 +295,10 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
     picks = candidates[:2]
 
     logger.info(
-        "Fear accumulation: F&G=%d, found %d oversold majors, picking %s",
+        "Fear accumulation: F&G=%d, found %d oversold majors, picking %s (rsi_1d=%s, rsi_1h=%s)",
         fng, len(candidates), [p["symbol"] for p in picks],
+        [f'{p.get("rsi_1d", 0):.1f}' for p in picks],
+        [f'{p.get("rsi_1h", 0):.1f}' for p in picks],
     )
     print(f"FEAR_ACCUMULATION: F&G={fng}, picks={[p['symbol'] for p in picks]}")
 
@@ -303,7 +321,7 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
         "volume_24h": 0,
         "change_24h": 0,
         "signals": [{"type": "BUY", "source": "fear_accumulation"}],
-        "analysis": {"1h": {"rsi": best["rsi"]}},
+        "analysis": {"1h": {"rsi": best.get("rsi_1h")}, "1d": {"rsi": best.get("rsi_1d")}},
         "fear_mode": True,
         "order_value": order_value,
     }
