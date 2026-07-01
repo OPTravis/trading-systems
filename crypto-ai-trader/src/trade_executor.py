@@ -19,6 +19,7 @@ import logging
 import signal
 import time
 from math import floor
+from typing import Optional
 
 import numpy as np
 
@@ -186,6 +187,101 @@ def count_active_positions(client):
     except Exception:
         logger.warning("count_active_positions: account fetch failed")
         return -1  # P1-8: fail-closed — return -1 so callers can detect error
+
+
+def _compute_kelly_sizing(
+    client,
+    symbol: str,
+    usdt_bal: float,
+    score: float,
+    stop_loss_pct: float,
+    tp_levels: list,
+    active_positions: int,
+    max_positions: int,
+) -> Optional[dict]:
+    """Compute position size using Kelly-first, tier-fallback strategy.
+
+    Returns dict with invest_pct, invest_amount, fee_rate, kelly_result, db.
+    Returns {"error": ...} if position too small or score too low.
+    """
+    from src.fee_optimizer import FeeOptimizer
+    from src.kelly_sizer import KellyPositionSizer
+    from src.state_db import get_state_db
+
+    db = get_state_db()
+    kelly = KellyPositionSizer(state_db=db)
+    fee_opt = FeeOptimizer(client)
+
+    tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
+
+    kelly_result = kelly.get_position_size(
+        symbol=symbol,
+        balance=usdt_bal,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=tp_pct,
+        signal_score=score,
+        use_historical=True,
+    )
+
+    fees = fee_opt.get_effective_fees()
+    fee_rate = fees["taker_fee"]
+    fee_reserve = 1.0 - fee_rate * 2  # buy + sell
+
+    kelly_confidence = kelly_result.get("confidence", "")
+    kelly_active = "estimated" not in kelly_confidence.lower()
+
+    if kelly_active:
+        kelly_result = kelly.adjust_for_portfolio(
+            kelly_result,
+            current_positions=active_positions,
+            max_positions=max_positions,
+        )
+        invest_pct = kelly_result["position_pct"]
+        invest_amount = usdt_bal * invest_pct
+        invest_amount *= fee_reserve
+
+        if invest_pct <= 0 or invest_amount < 10:
+            logger.info(
+                f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
+                f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
+            )
+            return {"error": f"Position too small: {invest_pct*100:.1f}% (${invest_amount:.2f})"}
+    else:
+        base_pct, _ = get_position_tier(score)
+        if base_pct == 0:
+            logger.info(f"Score {score} below threshold, skipping trade")
+            return {"error": f"Score too low: {score} (min 60)"}
+
+        _old_fee_reserve = 0.99
+        position_scale = 1.0
+        if active_positions == 4:
+            position_scale = 0.35
+        elif active_positions == 3:
+            position_scale = 0.50
+        elif active_positions == 2:
+            position_scale = 0.65
+        elif active_positions == 1:
+            position_scale = 0.80
+
+        invest_pct = base_pct * position_scale * _old_fee_reserve
+        invest_amount = usdt_bal * invest_pct
+        fee_rate = 0.001
+        kelly_result = {
+            "win_rate": 0,
+            "confidence": "FALLBACK (tier-based, insufficient history)",
+            "reward_risk": 0,
+            "reason": "Tier-based fallback: not enough trade history for Kelly",
+            "position_pct": invest_pct,
+        }
+        logger.info(f"Kelly fallback to tier-based: confidence={kelly_confidence}")
+
+    return {
+        "invest_pct": invest_pct,
+        "invest_amount": invest_amount,
+        "fee_rate": fee_rate,
+        "kelly_result": kelly_result,
+        "db": db,
+    }
 
 
 def _send_execution_notification(
@@ -959,90 +1055,19 @@ def execute_auto_trade(
         return {"success": False, "error": f"Score too low: {score} (min 60)"}
 
     # ── Position sizing: Kelly-first, tier-fallback ──
-    # KellyPositionSizer uses historical win-rate data for optimal sizing.
-    # When insufficient history (< 10 trades), falls back to tier-based sizing.
-    from src.fee_optimizer import FeeOptimizer
-    from src.kelly_sizer import KellyPositionSizer
-    from src.state_db import get_state_db
-
-    db = get_state_db()
-    kelly = KellyPositionSizer(state_db=db)
-    fee_opt = FeeOptimizer(client)
-
-    # Primary TP level as take_profit_pct for Kelly R/R calculation
-    tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
-
-    kelly_result = kelly.get_position_size(
-        symbol=symbol,
-        balance=usdt_bal,
-        stop_loss_pct=stop_loss_pct,
-        take_profit_pct=tp_pct,
-        signal_score=score,
-        use_historical=True,
+    sizing = _compute_kelly_sizing(
+        client, symbol, usdt_bal, score, stop_loss_pct, tp_levels,
+        active_positions, max_positions,
     )
-
-    # Actual fee rate (not flat 1%)
-    fees = fee_opt.get_effective_fees()
-    fee_rate = fees["taker_fee"]  # 0.001 or 0.00075 with BNB
-    fee_reserve = 1.0 - fee_rate * 2  # buy + sell
-
-    kelly_confidence = kelly_result.get("confidence", "")
-    kelly_active = "estimated" not in kelly_confidence.lower()
-
-    if kelly_active:
-        # ── Kelly-driven sizing (sufficient history) ──
-        kelly_result = kelly.adjust_for_portfolio(
-            kelly_result,
-            current_positions=active_positions,
-            max_positions=max_positions,
-        )
-        invest_pct = kelly_result["position_pct"]
-        invest_amount = usdt_bal * invest_pct
-        invest_amount *= fee_reserve
-        # NOTE: invest_pct NOT adjusted by fee_reserve here — downstream
-        # portfolio tracking (line ~696) already applies fees via fee_rate.
-        # Applying twice would double-count.
-
-        if invest_pct <= 0 or invest_amount < 10:
-            logger.info(
-                f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
-                f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
-            )
-            return {
-                "success": False,
-                "error": f"Position too small: {invest_pct*100:.1f}% (${invest_amount:.2f})",
-            }
-    else:
-        # ── Tier-based fallback (insufficient history) ──
-        base_pct, tier_label_tmp = get_position_tier(score)
-        if base_pct == 0:
-            logger.info(f"Score {score} below threshold, skipping trade")
-            return {"success": False, "error": f"Score too low: {score} (min 60)"}
-
-        # Fallback fee reserve — conservative 1% until Kelly path takes over
-        _old_fee_reserve = 0.99
-
-        position_scale = 1.0
-        if active_positions == 4:
-            position_scale = 0.35
-        elif active_positions == 3:
-            position_scale = 0.50
-        elif active_positions == 2:
-            position_scale = 0.65
-        elif active_positions == 1:
-            position_scale = 0.80
-
-        invest_pct = base_pct * position_scale * _old_fee_reserve
-        invest_amount = usdt_bal * invest_pct
-        fee_rate = 0.001  # conservative default for fallback
-        kelly_result = {
-            "win_rate": 0,
-            "confidence": "FALLBACK (tier-based, insufficient history)",
-            "reward_risk": 0,
-            "reason": "Tier-based fallback: not enough trade history for Kelly",
-            "position_pct": invest_pct,
-        }
-        logger.info(f"Kelly fallback to tier-based: confidence={kelly_confidence}")
+    if sizing is None:
+        return {"success": False, "error": "Position sizing returned None"}
+    if "error" in sizing:
+        return {"success": False, "error": sizing["error"]}
+    invest_pct = sizing["invest_pct"]
+    invest_amount = sizing["invest_amount"]
+    fee_rate = sizing["fee_rate"]
+    kelly_result = sizing["kelly_result"]
+    db = sizing["db"]
 
     # ── Regime-aware cash reserve cap ──
     # Ensure we never invest more than (100 - cash_reserve_pct)% of USDT balance.
