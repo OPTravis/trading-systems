@@ -124,7 +124,10 @@ class MarketScanner:
                 except Exception as e:
                     logger.warning(f"Failed to analyze {coin['symbol']}: {e}")
 
-        # 4. Sort by weighted score, return top 20
+        # 4. Cross-sectional Relative Value scoring (simplified stat-arb for spot)
+        self._apply_relative_value_boost(opportunities)
+
+        # 5. Sort by weighted score, return top 20
         opportunities.sort(key=lambda x: x["score"], reverse=True)
 
         # 4b. Optional LLM sentiment enrichment for top candidates (best-effort)
@@ -428,10 +431,10 @@ class MarketScanner:
         # Compute technical_score for downstream consumers (e.g. scan_orchestrator)
         if "technical" in agent_scores and hasattr(agent_scores["technical"], "data"):
             technical_score = agent_scores["technical"].data.get(
-                "f_technical", self._factor_technical(tf_1h)
+                "f_technical", self._factor_technical(tf_1h, tf_4h)
             )
         else:
-            technical_score = self._factor_technical(tf_1h)
+            technical_score = self._factor_technical(tf_1h, tf_4h)
 
         return {
             "symbol": symbol,
@@ -526,7 +529,7 @@ class MarketScanner:
         tech_data = ag.get("technical", {})
         if hasattr(tech_data, "data"):
             tech_data = tech_data.data
-        f1 = tech_data.get("f_technical", self._factor_technical(tf_1h))
+        f1 = tech_data.get("f_technical", self._factor_technical(tf_1h, tf_4h))
 
         # Factor 2: Trend (15%) — from TrendAgent
         trend_result = ag.get("trend")
@@ -653,7 +656,7 @@ class MarketScanner:
     # -- Factor 1: Technical (1h) — 30% weight -----------------------
 
     @staticmethod
-    def _factor_technical(tf_1h: Dict) -> float:
+    def _factor_technical(tf_1h: Dict, tf_4h: Optional[Dict] = None) -> float:
         """RSI + MACD + BB + VWAP + MA alignment from 1h analysis.
 
         Sub-score breakdown (max 100):
@@ -662,6 +665,7 @@ class MarketScanner:
             BB:     20 pts  — mean-reversion opportunity
             VWAP:   15 pts  — intraday value
             MA:     15 pts  — structural alignment
+            4H RSI: ±5 pts  — higher timeframe confirmation
         """
         score = 40.0  # Neutral baseline centered at 40
 
@@ -708,6 +712,16 @@ class MarketScanner:
         ma99 = tf_1h.get("ma99", 0)
         if ma7 > ma25 > ma99:
             score += 10
+
+        # 4H RSI confirmation — higher timeframe filter
+        # Research basis: 4H is the only consistently profitable timeframe
+        # When 4H RSI confirms oversold, 1H signals are more reliable
+        if tf_4h:
+            rsi_4h = tf_4h.get("rsi", 50)
+            if rsi_4h < 35:
+                score += 5  # 4H confirms oversold → higher confidence entry
+            elif rsi_4h > 65:
+                score -= 5  # 4H overbought → 1H oversold likely just a dip
 
         return max(0.0, min(100.0, score))
 
@@ -931,6 +945,65 @@ class MarketScanner:
         return max(0.0, min(100.0, base))
 
     # ------------------------------------------------------------------
+    # Cross-sectional Relative Value (simplified stat-arb for spot)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_relative_value_boost(opportunities: List[Dict]) -> None:
+        """Boost score for coins whose RSI is significantly below market median.
+
+        Simplified statistical arbitrage adapted for spot-only trading:
+        instead of simultaneously longing the undervalued asset and shorting
+        the overvalued one (true pairs trading), we only buy the undervalued
+        coin when its RSI diverges from the cross-sectional median.
+
+        Logic:
+        - Compute median 1H RSI across all scanned coins
+        - For each coin, compute RSI gap = (coin_rsi - median_rsi)
+        - Negative gap (coin more oversold than peers) → score boost
+        - Positive gap (coin less oversold) → no penalty (let other factors decide)
+        - Max boost: +5 points (proportional to gap, capped)
+        """
+        if len(opportunities) < 5:
+            return  # Need enough coins for meaningful cross-sectional comparison
+
+        # Collect RSI values
+        rsi_values = []
+        for opp in opportunities:
+            rsi = opp.get("analysis", {}).get("1h", {}).get("rsi")
+            if rsi is not None and 0 < rsi < 100:
+                rsi_values.append(rsi)
+
+        if len(rsi_values) < 5:
+            return
+
+        # Compute median RSI
+        rsi_values.sort()
+        mid = len(rsi_values) // 2
+        median_rsi = rsi_values[mid]
+
+        # Apply relative value boost
+        for opp in opportunities:
+            rsi = opp.get("analysis", {}).get("1h", {}).get("rsi")
+            if rsi is None or rsi <= 0:
+                continue
+
+            gap = rsi - median_rsi  # negative = more oversold than peers
+
+            if gap <= -15:
+                # Significantly more oversold → strong relative value signal
+                opp["score"] = round(opp["score"] + 5, 2)
+                opp.setdefault("signals", []).append(
+                    f"📊 Relative Value: RSI {rsi:.0f} vs median {median_rsi:.0f} (+5)"
+                )
+            elif gap <= -8:
+                # Moderately more oversold → mild boost
+                opp["score"] = round(opp["score"] + 2, 2)
+                opp.setdefault("signals", []).append(
+                    f"📊 Relative Value: RSI {rsi:.0f} vs median {median_rsi:.0f} (+2)"
+                )
+
+    # ------------------------------------------------------------------
     # LLM Sentiment Enrichment (optional, best-effort)
     # ------------------------------------------------------------------
 
@@ -1032,6 +1105,13 @@ class MarketScanner:
             signals.append(f"💎 RSI Oversold ({rsi:.1f})")
         elif rsi > 70:
             signals.append(f"🔥 RSI Overbought ({rsi:.1f})")
+
+        # --- 4H RSI confirmation ---
+        rsi_4h = a_4h.get("rsi", 50)
+        if rsi_4h < 35:
+            signals.append(f"✅ 4H RSI Confirmed Oversold ({rsi_4h:.1f})")
+        elif rsi_4h > 65 and rsi < 35:
+            signals.append(f"⚠️ 4H RSI Diverges ({rsi_4h:.1f}) — 1H dip, 4H not oversold")
 
         # --- MACD signals (multi-timeframe) ---
         macd_1h = a_1h.get("macd_histogram", 0)

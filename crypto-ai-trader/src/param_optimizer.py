@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Default parameters (fallback when no optimization has run)
 DEFAULT_PARAMS = {
-    "rsi_oversold": 35,
+    "rsi_oversold": 30,
     "rsi_overbought": 65,
     "stop_loss_pct": 5.0,
     "take_profit_pct": 8.0,
@@ -34,7 +34,7 @@ DEFAULT_PARAMS = {
 
 # Grid search space: parameter name → list of values to test
 SEARCH_SPACE = {
-    "rsi_oversold": [25, 30, 35, 40],
+    "rsi_oversold": [25, 28, 30, 32],
     "rsi_overbought": [60, 65, 70, 75],
     "stop_loss_pct": [3.0, 4.0, 5.0, 6.0],
     "take_profit_pct": [5.0, 8.0, 10.0, 12.0],

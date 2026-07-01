@@ -71,7 +71,7 @@ class StrategyRegistry:
         self._strategies = {
             "rsi": RSIStrategy(
                 {
-                    "rsi_oversold": opt_params.get("rsi_oversold", 35),
+                    "rsi_oversold": opt_params.get("rsi_oversold", 30),
                     "rsi_overbought": opt_params.get("rsi_overbought", 65),
                     "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
                     "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
