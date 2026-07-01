@@ -19,34 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 
-def _step_research_top_n(ctx):
-    """Step 2: Risk checks, deep research on top candidates, and bear analysis.
+def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
+                    regime, btc_trend, dynamic_threshold):
+    """Gather risk positions, apply regime guard, and filter by risk manager.
 
-    Performs:
-    - Pre-trade risk checks (ATR, position sizing, regime filters)
-    - Parallel research on top 3 candidates (news, on-chain, catalysts)
-    - Bear analysis (Devil's Advocate)
-    - Strategy determination (StrategyRegistry weighted voting)
-
-    Args:
-        ctx: Context dict from _step_scan_opportunities().
-
-    Returns:
-        Updated context dict with best candidate data, or None if none qualifies.
+    Returns (filtered_opportunities, dynamic_threshold, risk_positions).
     """
-    client = ctx["client"]
-    risk_mgr = ctx["risk_mgr"]
-    researcher = ctx["researcher"]
-    notifier = ctx["notifier"]
-    opportunities = ctx["opportunities"]
-    dynamic_threshold = ctx["dynamic_threshold"]
-    adapted = ctx["adapted"]
-    regime = ctx["regime"]
-    fng = ctx["fng"]
-    btc_trend = ctx["btc_trend"]
-    acct = ctx["acct"]
-
-    # ===== Step 5: Risk Checks =====
+    # Gather existing positions for risk check
     acct_balances = acct.get("balances", [])
     risk_positions = []
     for b in acct_balances:
@@ -65,10 +44,7 @@ def _step_research_top_n(ctx):
                     "Risk position price check failed for %s", asset, exc_info=True
                 )
 
-    # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold to near-unreachable
-    # (historical 0/7 wins in FEAR, 0/6 wins when BTC non-bullish)
-    # Instead of hard block, set threshold to 98 so only extraordinary setups pass
-    # Exception: fear_mode opportunities bypass regime guard (fear accumulation)
+    # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold
     has_fear_mode = any(o.get("fear_mode") for o in opportunities)
     if regime in ("EXTREME_FEAR",):
         if not has_fear_mode:
@@ -91,7 +67,7 @@ def _step_research_top_n(ctx):
         if atr == 0:
             try:
                 klines = client.get_klines(sym, "1h", limit=15)
-                closes = [float(k["close"]) for k in klines]  # index 4 = close price
+                closes = [float(k["close"]) for k in klines]
                 if len(closes) >= 2:
                     trs = [
                         abs(closes[i] - closes[i - 1]) for i in range(1, len(closes))
@@ -115,7 +91,6 @@ def _step_research_top_n(ctx):
         elif any("Bollinger" in s for s in prelim_signals):
             prelim_strategy = "bollinger"
 
-        # In fear regime, non-fear-buy strategies default to DCA
         fear_buy_ok = {"dca", "rsi", "bollinger"}
         if (
             adapted["regime"] in ("EXTREME_FEAR", "FEAR")
@@ -138,69 +113,70 @@ def _step_research_top_n(ctx):
             logger.info(
                 "RiskManager: %s blocked – %s", sym, "; ".join(check["reasons"])
             )
-            # Output full opportunity data even when blocked, so AI can display all fields
-            score_val = opp.get("score", "N/A")
-            # Derive technical score from the opportunity's 1h analysis data
-            analysis_1h = opp.get("analysis", {}).get("1h", {})
-            tech_val = opp.get("technical_score")
-            if tech_val is None:
-                # Calculate from available indicator fields
-                tech_score = 0.0
-                rsi = analysis_1h.get("rsi", 50)
-                if rsi < 30:
-                    tech_score += 25
-                elif rsi < 40:
-                    tech_score += 18
-                elif rsi < 50:
-                    tech_score += 12
-                macd_hist = analysis_1h.get("macd_histogram", 0)
-                if macd_hist > 0:
-                    tech_score += 25
-                bb_lower = analysis_1h.get("bb_lower", 0)
-                current_price = analysis_1h.get("current_price", 0)
-                if current_price and bb_lower and current_price < bb_lower:
-                    tech_score += 20
-                vwap = analysis_1h.get("vwap", 0)
-                if current_price and vwap and current_price > vwap:
-                    tech_score += 15
-                ma7 = analysis_1h.get("ma7", 0)
-                ma25 = analysis_1h.get("ma25", 0)
-                ma99 = analysis_1h.get("ma99", 0)
-                if ma7 > ma25 > ma99:
-                    tech_score += 15
-                tech_val = round(tech_score, 1)
-            trend_val = opp.get("trend_score", opp.get("trend_strength", "N/A"))
-            vol_val = opp.get("volume_surge", False)
-            funding_val = opp.get("funding_rate", "N/A")
-            if funding_val is not None and funding_val != "N/A":
-                # Format funding rate with appropriate precision
-                if abs(funding_val) < 0.0001:
-                    funding_val = f"{funding_val*100:.6f}%"
-                elif abs(funding_val) < 0.001:
-                    funding_val = f"{funding_val*100:.5f}%"
-                elif abs(funding_val) < 0.01:
-                    funding_val = f"{funding_val*100:.4f}%"
-                else:
-                    funding_val = f"{funding_val*100:.2f}%"
-            signals_list = opp.get("signals", [])
-            print(f"RISK_BLOCKED:{sym} – {'; '.join(check['reasons'])}")
-            print(
-                f"  評分={score_val} 技術={tech_val} 趨勢={trend_val} 成交量={vol_val} 資金費率={funding_val} 信號={signals_list}"
-            )
-    opportunities = filtered
+            _print_blocked_opp(opp, sym, check)
 
-    if not opportunities:
-        print("NO_OPPORTUNITIES")
-        clear_pending()
-        return None
+    return filtered, dynamic_threshold, risk_positions
 
-    # ===== Step 6: Deep Research on Top 3 Candidates (parallel) =====
+
+def _print_blocked_opp(opp, sym, check):
+    """Print diagnostic info for a risk-blocked opportunity."""
+    score_val = opp.get("score", "N/A")
+    analysis_1h = opp.get("analysis", {}).get("1h", {})
+    tech_val = opp.get("technical_score")
+    if tech_val is None:
+        tech_score = 0.0
+        rsi = analysis_1h.get("rsi", 50)
+        if rsi < 30:
+            tech_score += 25
+        elif rsi < 40:
+            tech_score += 18
+        elif rsi < 50:
+            tech_score += 12
+        macd_hist = analysis_1h.get("macd_histogram", 0)
+        if macd_hist > 0:
+            tech_score += 25
+        bb_lower = analysis_1h.get("bb_lower", 0)
+        current_price = analysis_1h.get("current_price", 0)
+        if current_price and bb_lower and current_price < bb_lower:
+            tech_score += 20
+        vwap = analysis_1h.get("vwap", 0)
+        if current_price and vwap and current_price > vwap:
+            tech_score += 15
+        ma7 = analysis_1h.get("ma7", 0)
+        ma25 = analysis_1h.get("ma25", 0)
+        ma99 = analysis_1h.get("ma99", 0)
+        if ma7 > ma25 > ma99:
+            tech_score += 15
+        tech_val = round(tech_score, 1)
+    trend_val = opp.get("trend_score", opp.get("trend_strength", "N/A"))
+    vol_val = opp.get("volume_surge", False)
+    funding_val = opp.get("funding_rate", "N/A")
+    if funding_val is not None and funding_val != "N/A":
+        if abs(funding_val) < 0.0001:
+            funding_val = f"{funding_val*100:.6f}%"
+        elif abs(funding_val) < 0.001:
+            funding_val = f"{funding_val*100:.5f}%"
+        elif abs(funding_val) < 0.01:
+            funding_val = f"{funding_val*100:.4f}%"
+        else:
+            funding_val = f"{funding_val*100:.2f}%"
+    signals_list = opp.get("signals", [])
+    print(f"RISK_BLOCKED:{sym} – {'; '.join(check['reasons'])}")
+    print(
+        f"  評分={score_val} 技術={tech_val} 趨勢={trend_val} 成交量={vol_val} 資金費率={funding_val} 信號={signals_list}"
+    )
+
+
+def _run_deep_research(researcher, client, top_n, fng):
+    """Run parallel research on top candidates, including fear-mode shortcuts.
+
+    Returns dict: symbol -> (opportunity, research_result).
+    """
     import time as _time
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from concurrent.futures import TimeoutError as FuturesTimeout
 
-    top_n = opportunities[:3]
-    research_results = {}  # symbol -> research dict
+    research_results = {}
 
     # Fear mode: skip heavy research, use synthetic result
     for opp in top_n:
@@ -233,9 +209,7 @@ def _step_research_top_n(ctx):
             for opp in normal_top_n
         }
         try:
-            for fut in as_completed(
-                futures, timeout=90
-            ):  # 90s covers 3 coins × 60s RESEARCH_TIMEOUT with headroom
+            for fut in as_completed(futures, timeout=90):
                 opp = futures[fut]
                 try:
                     research_results[opp["symbol"]] = (opp, fut.result())
@@ -266,6 +240,51 @@ def _step_research_top_n(ctx):
                 print(f"  📰 {n['title'][:50]} ({n['sentiment']:+.1f})")
         if res["onchain"].get("whale_activity", "UNKNOWN") != "UNKNOWN":
             print(f"  🐋 Whale: {res['onchain']['whale_activity']}")
+
+    return research_results
+
+
+def _step_research_top_n(ctx):
+    """Step 2: Risk checks, deep research on top candidates, and bear analysis.
+
+    Performs:
+    - Pre-trade risk checks (ATR, position sizing, regime filters)
+    - Parallel research on top 3 candidates (news, on-chain, catalysts)
+    - Bear analysis (Devil's Advocate)
+    - Strategy determination (StrategyRegistry weighted voting)
+
+    Args:
+        ctx: Context dict from _step_scan_opportunities().
+
+    Returns:
+        Updated context dict with best candidate data, or None if none qualifies.
+    """
+    client = ctx["client"]
+    risk_mgr = ctx["risk_mgr"]
+    researcher = ctx["researcher"]
+    notifier = ctx["notifier"]
+    opportunities = ctx["opportunities"]
+    dynamic_threshold = ctx["dynamic_threshold"]
+    adapted = ctx["adapted"]
+    regime = ctx["regime"]
+    fng = ctx["fng"]
+    btc_trend = ctx["btc_trend"]
+    acct = ctx["acct"]
+
+    # ===== Step 5: Risk Checks =====
+    opportunities, dynamic_threshold, risk_positions = _filter_by_risk(
+        opportunities, client, risk_mgr, acct, adapted,
+        regime, btc_trend, dynamic_threshold,
+    )
+
+    if not opportunities:
+        print("NO_OPPORTUNITIES")
+        clear_pending()
+        return None
+
+    # ===== Step 6: Deep Research on Top 3 Candidates (parallel) =====
+    top_n = opportunities[:3]
+    research_results = _run_deep_research(researcher, client, top_n, fng)
 
     # Select best candidate by adjusted score
     best_sym = None

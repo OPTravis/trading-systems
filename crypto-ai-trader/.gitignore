@@ -25,3 +25,9 @@ data/loss_guard.json
 data/*.json
 !data/.gitkeep
 data/backups/
+
+# Data & logs
+data/*.db
+data/*.db-*
+logs/*.bak*
+logs/*.old

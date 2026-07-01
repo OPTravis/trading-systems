@@ -181,91 +181,19 @@ class StrategyAdaptor:
         )
         return adj
 
-    def adapt(
+    def _compute_regime_settings(
         self,
         fear_greed: int,
-        btc_trend: str,
+        btc_score: Optional[float],
+        vol_regime: str,
         btc_price_change_24h: float,
-        funding_rate: Optional[float] = None,
-        btc_adx: Optional[float] = None,
-        btc_score: Optional[float] = None,
-    ) -> Dict[str, Any]:
-        """Adapt strategy based on market conditions.
+        funding_rate: Optional[float],
+    ) -> tuple:
+        """Compute regime-based settings with trend, volatility, and funding overlays.
 
-        Returns dict with:
-        {
-            regime: str,
-            strategies: {
-                [strategy_name]: {
-                    enabled: bool,
-                    reason: str,
-                    size_multiplier: float,
-                    sl_pct: float,
-                    tp_levels: [{pct, size_pct}],
-                    max_hold_hours: int,
-                }
-            },
-            global: {
-                score_threshold: int,
-                max_position_pct: float,
-                max_total_exposure_pct: float,
-                cash_reserve_pct: float,
-            },
-            volatility_regime: str,
-            changes: [str],  # human-readable list of changes made
-        }
+        Returns (settings: dict, changes: list).
         """
-        now = time.time()
-        if self._cache and (now - self._cache_ts) < self._cache_ttl:
-            return self._cache
-
         regime = self._determine_regime(fear_greed)
-        vol_regime = self._determine_volatility(btc_price_change_24h)
-
-        # HMM regime overlay (Phase 6)
-        hmm_regime = None
-        hmm_adjustments = {}
-        try:
-            from src.hmm_regime import HMMRegimeDetector
-
-            detector = HMMRegimeDetector()
-            cached = detector.get_cached_prediction()
-            if cached and cached.get("confidence", 0) > 0.4:
-                hmm_regime = cached["regime"]
-                hmm_adjustments = detector.get_strategy_adjustments(hmm_regime)
-        except Exception:
-            logger.error("HMM regime detection failed, skipping overlay", exc_info=True)
-
-        # CVaR risk overlay (Phase 8)
-        cvar_scale = 1.0
-        cvar_risk_level = None
-        try:
-            from src.cvar_risk import CVaRRiskManager
-
-            cvar_mgr = CVaRRiskManager()
-            # Compute from trade outcomes
-            conn = cvar_mgr._db._get_conn()
-            rows = conn.execute(
-                "SELECT net_pnl_pct FROM trade_outcomes WHERE status = 'closed' AND net_pnl_pct IS NOT NULL ORDER BY exit_time DESC LIMIT 100"
-            ).fetchall()
-            if rows and len(rows) >= 10:
-                returns = [r["net_pnl_pct"] for r in rows]
-                cvar_mgr.compute_cvar(returns, 0.05)
-                risk = cvar_mgr.compute_portfolio_risk([])
-                cvar_scale = risk.get("position_scale", 1.0)
-                cvar_risk_level = risk.get("risk_level")
-        except Exception:
-            logger.error(
-                "CVaR risk overlay calculation failed, defaulting to scale=1.0",
-                exc_info=True,
-            )
-
-        logger.info(
-            f"StrategyAdaptor: regime={regime} btc_trend={btc_trend} "
-            f"vol={vol_regime} F&G={fear_greed} BTC_24h={btc_price_change_24h:+.2f}%"
-            + (f" HMM={hmm_regime}" if hmm_regime else "")
-        )
-
         # Base settings — read from optimized params if available
         try:
             from src.param_optimizer import ParamOptimizer
@@ -392,6 +320,19 @@ class StrategyAdaptor:
                 settings["score_threshold"] = max(settings["score_threshold"] - 3, 50)
                 settings["cash_reserve_pct"] = max(settings["cash_reserve_pct"] - 5, 20)
 
+        return settings, changes
+
+    def _build_strategy_configs(
+        self,
+        regime: str,
+        vol_regime: str,
+        settings: dict,
+        changes: list,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build strategy configurations based on regime and volatility.
+
+        Returns strategies dict.
+        """
         # Strategy enablement
         strategies: Dict[str, Dict[str, Any]] = {}
 
@@ -476,6 +417,18 @@ class StrategyAdaptor:
                 }
                 strategies[name]["sl_pct"] = dca_sl_map.get(regime, 8.0)
 
+        return strategies
+
+    def _apply_garch_sl_tp(
+        self,
+        strategies: Dict[str, Dict[str, Any]],
+        btc_price_change_24h: float,
+        changes: list,
+    ) -> List[float]:
+        """Apply GARCH-based dynamic SL/TP to strategies.
+
+        Modifies strategies dict in place. Returns daily_returns list.
+        """
         # Apply GARCH-based dynamic SL/TP (Phase 9 — replaces fixed SL/TP)
         # FIX-9: Use 30-day historical returns instead of single 24h data point
         # P2-fix: daily_returns is also used for volatility_adjustment computation
@@ -540,31 +493,23 @@ class StrategyAdaptor:
 
         # P2-fix: Compute volatility_adjustment for adaptive trailing stop
         # Reuses daily_returns already fetched for GARCH above
-        try:
-            vol_adjustment = self.compute_volatility_adjustment(
-                btc_price_change_24h, daily_returns=daily_returns or None
-            )
-        except Exception:
-            logger.debug("volatility_adjustment computation failed, defaulting to 1.0")
-            vol_adjustment = 1.0
+        return daily_returns
 
-        result: Dict[str, Any] = {
-            "regime": regime,
-            "hmm_regime": hmm_regime,
-            "strategies": strategies,
-            "dca_params": self.DCA_REGIME_PARAMS.get(
-                regime, self.DCA_REGIME_PARAMS["NEUTRAL"]
-            ),
-            "global": {
-                "score_threshold": settings["score_threshold"],
-                "max_position_pct": settings["max_position_pct"],
-                "max_total_exposure_pct": settings["max_total_exposure_pct"],
-                "cash_reserve_pct": settings["cash_reserve_pct"],
-            },
-            "volatility_adjustment": vol_adjustment,
-            "changes": changes,
-        }
+    def _apply_risk_overlays(
+        self,
+        result: Dict[str, Any],
+        hmm_regime: Optional[str],
+        hmm_adjustments: dict,
+        cvar_scale: float,
+        cvar_risk_level: Optional[str],
+        fear_greed: int,
+        btc_trend: str,
+        changes: list,
+    ) -> None:
+        """Apply HMM, CVaR, and Bandit risk overlays to result.
 
+        Modifies result dict and strategies in place.
+        """
         # Apply HMM adjustments if available and confident
         if hmm_regime and hmm_adjustments:
             # Adjust score threshold
@@ -577,7 +522,7 @@ class StrategyAdaptor:
                 )
 
             # Adjust strategy enablement based on HMM preferred/avoid
-            for name, cfg in strategies.items():
+            for name, cfg in result["strategies"].items():
                 if name in hmm_adjustments.get("avoid_strategies", []):
                     cfg["enabled"] = False
                     cfg["reason"] = f"disabled by HMM {hmm_regime}"
@@ -594,7 +539,7 @@ class StrategyAdaptor:
 
         # Apply CVaR risk scaling (Phase 8)
         if cvar_scale != 1.0 and cvar_risk_level:
-            for name, cfg in strategies.items():
+            for name, cfg in result["strategies"].items():
                 cfg["size_multiplier"] = round(cfg["size_multiplier"] * cvar_scale, 2)
             changes.append(f"CVaR {cvar_risk_level}: all sizes ×{cvar_scale}")
 
@@ -632,7 +577,7 @@ class StrategyAdaptor:
             }
             bandit_mult = bandit.recommend_size(bandit_ctx)
             if bandit_mult != 0.8:  # only log if not default
-                for name, cfg in strategies.items():
+                for name, cfg in result["strategies"].items():
                     cfg["size_multiplier"] = round(
                         cfg["size_multiplier"] * bandit_mult, 2
                     )
@@ -641,13 +586,122 @@ class StrategyAdaptor:
             logger.debug(f"Contextual bandit unavailable: {e}")
 
         # Floor: never reduce below 20% of base after ALL overlays (including bandit)
-        for name, cfg in strategies.items():
+        for name, cfg in result["strategies"].items():
             size_mult = cfg["size_multiplier"]
             if size_mult < 0.20:
                 cfg["size_multiplier"] = 0.20
                 changes.append(
                     f"{name}: size floor applied (was {size_mult:.2f}, now 0.20)"
                 )
+
+    def adapt(
+        self,
+        fear_greed: int,
+        btc_trend: str,
+        btc_price_change_24h: float,
+        funding_rate: Optional[float] = None,
+        btc_adx: Optional[float] = None,
+        btc_score: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Adapt strategy based on market conditions.
+
+        Returns dict with regime, strategies, global settings, and risk overlays.
+        """
+        now = time.time()
+        if self._cache and (now - self._cache_ts) < self._cache_ttl:
+            return self._cache
+
+        regime = self._determine_regime(fear_greed)
+        vol_regime = self._determine_volatility(btc_price_change_24h)
+
+        # HMM regime overlay (Phase 6)
+        # HMM regime overlay (Phase 6)
+        hmm_regime = None
+        hmm_adjustments = {}
+        try:
+            from src.hmm_regime import HMMRegimeDetector
+
+            detector = HMMRegimeDetector()
+            cached = detector.get_cached_prediction()
+            if cached and cached.get("confidence", 0) > 0.4:
+                hmm_regime = cached["regime"]
+                hmm_adjustments = detector.get_strategy_adjustments(hmm_regime)
+        except Exception:
+            logger.error("HMM regime detection failed, skipping overlay", exc_info=True)
+
+
+        # CVaR risk overlay (Phase 8)
+        # CVaR risk overlay (Phase 8)
+        cvar_scale = 1.0
+        cvar_risk_level = None
+        try:
+            from src.cvar_risk import CVaRRiskManager
+
+            cvar_mgr = CVaRRiskManager()
+            # Compute from trade outcomes
+            conn = cvar_mgr._db._get_conn()
+            rows = conn.execute(
+                "SELECT net_pnl_pct FROM trade_outcomes WHERE status = 'closed' AND net_pnl_pct IS NOT NULL ORDER BY exit_time DESC LIMIT 100"
+            ).fetchall()
+            if rows and len(rows) >= 10:
+                returns = [r["net_pnl_pct"] for r in rows]
+                cvar_mgr.compute_cvar(returns, 0.05)
+                risk = cvar_mgr.compute_portfolio_risk([])
+                cvar_scale = risk.get("position_scale", 1.0)
+                cvar_risk_level = risk.get("risk_level")
+        except Exception:
+            logger.error(
+                "CVaR risk overlay calculation failed, defaulting to scale=1.0",
+                exc_info=True,
+            )
+
+
+        logger.info(
+            f"StrategyAdaptor: regime={regime} btc_trend={btc_trend} "
+            f"vol={vol_regime} F&G={fear_greed} BTC_24h={btc_price_change_24h:+.2f}%"
+            + (f" HMM={hmm_regime}" if hmm_regime else "")
+        )
+
+        # Compute regime-based settings
+        settings, changes = self._compute_regime_settings(
+            fear_greed, btc_score, vol_regime, btc_price_change_24h, funding_rate
+        )
+
+        # Build strategy configurations
+        strategies = self._build_strategy_configs(regime, vol_regime, settings, changes)
+
+        # Apply GARCH dynamic SL/TP
+        daily_returns = self._apply_garch_sl_tp(strategies, btc_price_change_24h, changes)
+
+        try:
+            vol_adjustment = self.compute_volatility_adjustment(
+                btc_price_change_24h, daily_returns=daily_returns or None
+            )
+        except Exception:
+            vol_adjustment = 1.0
+
+        result: Dict[str, Any] = {
+            "regime": regime,
+            "hmm_regime": hmm_regime,
+            "strategies": strategies,
+            "dca_params": self.DCA_REGIME_PARAMS.get(
+                regime, self.DCA_REGIME_PARAMS["NEUTRAL"]
+            ),
+            "global": {
+                "score_threshold": settings["score_threshold"],
+                "max_position_pct": settings["max_position_pct"],
+                "max_total_exposure_pct": settings["max_total_exposure_pct"],
+                "cash_reserve_pct": settings["cash_reserve_pct"],
+            },
+            "volatility_adjustment": vol_adjustment,
+            "changes": changes,
+        }
+
+        # Apply risk overlays (HMM, CVaR, Bandit, floor)
+        self._apply_risk_overlays(
+            result, hmm_regime, hmm_adjustments, cvar_scale, cvar_risk_level,
+            fear_greed, btc_trend, changes,
+        )
 
         self._cache = result
         self._cache_ts = now
