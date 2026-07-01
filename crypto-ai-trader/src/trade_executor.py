@@ -213,6 +213,110 @@ def _send_execution_notification(
     notifier.send_text("\n".join(lines))
 
 
+def _pretrade_risk_checks(client, usdt_bal: float) -> dict:
+    """Run all pre-trade risk checks and compute portfolio metrics.
+
+    Returns dict with:
+        blocked: bool — True if trade should be blocked
+        reason: str — block reason (if blocked)
+        total_invested: float — total value in non-USDT positions
+        total_portfolio: float — USDT + all non-USDT positions
+        dl_multiplier: float — daily loss tier size multiplier (1.0/0.5/0.0)
+        sd_multiplier: float — stepwise drawdown size multiplier
+    """
+    result = {
+        "blocked": False,
+        "reason": "",
+        "total_invested": 0.0,
+        "total_portfolio": usdt_bal,
+        "dl_multiplier": 1.0,
+        "sd_multiplier": 1.0,
+    }
+
+    # ── Fetch account data ONCE and compute portfolio metrics ──
+    try:
+        _account_data = client.get_account()
+        _price_map = {}
+        for b in _account_data.get("balances", []):
+            _asset = b["asset"]
+            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
+            if _qty > 0 and _asset not in ("USDT", "NTRN"):
+                try:
+                    if f"{_asset}USDT" not in _price_map:
+                        _p = float(client.get_ticker_price(f"{_asset}USDT"))
+                        _price_map[f"{_asset}USDT"] = _p
+                    else:
+                        _p = _price_map[f"{_asset}USDT"]
+                    result["total_invested"] += _qty * _p
+                    result["total_portfolio"] += _qty * _p
+                except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
+                    logger.error("Failed to get asset price for %s: %s", _asset, e)
+    except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
+        logger.error(f"Failed to fetch account data for pre-computation: {e}")
+
+    total_value = result["total_portfolio"] if result["total_portfolio"] > usdt_bal else usdt_bal
+
+    # ── Circuit breaker ──
+    try:
+        from src.circuit_breaker import CircuitBreaker
+        cb = CircuitBreaker()
+        if cb.is_tripped():
+            logger.warning("Circuit breaker tripped — blocking trade")
+            result["blocked"] = True
+            result["reason"] = "Circuit breaker tripped"
+            return result
+    except Exception as e:
+        logger.warning(f"Circuit breaker check failed: {e}")
+        result["blocked"] = True
+        result["reason"] = "Circuit breaker check failed"
+        return result
+
+    # ── Daily loss circuit breaker ──
+    try:
+        from src.daily_loss_breaker import get_daily_loss_breaker
+        dlb = get_daily_loss_breaker()
+        dl_result = dlb.check_daily_loss(portfolio_value=total_value)
+        if dlb.should_close_all():
+            logger.warning(f"Daily loss breaker tier {dl_result['tier']} — close all")
+            result["blocked"] = True
+            result["reason"] = f"Daily loss breaker tier {dl_result['tier']}: close all"
+            return result
+        if dlb.should_block_new_trades():
+            logger.warning(f"Daily loss breaker tier {dl_result['tier']} — blocked")
+            result["blocked"] = True
+            result["reason"] = f"Daily loss breaker tier {dl_result['tier']}: new trades blocked"
+            return result
+        result["dl_multiplier"] = dlb.get_position_size_multiplier()
+    except Exception as e:
+        logger.warning(f"Daily loss breaker check failed: {e}")
+        result["blocked"] = True
+        result["reason"] = f"Daily loss breaker check failed: {e}"
+        return result
+
+    # ── Stepwise drawdown ──
+    try:
+        from src.drawdown_breaker import DrawdownBreaker
+        from src.stepwise_drawdown import get_drawdown_action
+        _ddb = DrawdownBreaker(binance_client=client)
+        _dd_check = _ddb.check_drawdown(total_value)
+        _dd_pct = _dd_check.get("drawdown_pct", 0)
+        _dd_action = get_drawdown_action(_dd_pct)
+        result["sd_multiplier"] = _dd_action["size_multiplier"]
+        if result["sd_multiplier"] < 1.0:
+            logger.info(
+                f"Stepwise drawdown: {_dd_pct:.1f}% → {_dd_action['level']} "
+                f"(multiplier={result['sd_multiplier']}, {_dd_action['reason']})"
+            )
+        if _dd_action.get("block_new_trades"):
+            result["blocked"] = True
+            result["reason"] = f"Stepwise drawdown {_dd_pct:.1f}%: {_dd_action['reason']}"
+            return result
+    except Exception as e:
+        logger.warning(f"Stepwise drawdown check failed (proceeding without): {e}")
+
+    return result
+
+
 def _record_trade_portfolio(
     client, symbol, executed_qty, avg_price, strategy,
     usdt_bal, invest_amount, fee_rate,
@@ -280,6 +384,446 @@ def _record_trade_portfolio(
         )
     except Exception as e:
         logger.debug(f"Event bus publish failed: {e}")
+
+
+def _place_sl_tp_orders(
+    client,
+    notifier,
+    symbol,
+    executed_qty: float,
+    price: float,
+    p_prec: int,
+    stop_loss_pct: float,
+    tp_levels: list,
+    _step_size: float,
+    _qty_decimals: int,
+    _min_notional: float,
+    strategy_size_multiplier: float,
+) -> dict:
+    """Place SL and TP orders after a successful entry.
+
+    Strategy selection:
+      A) Small position (notional < 4× minNotional) → SL-only (full qty)
+      B) Medium+ position → Tiered TP exits (40/40/20) with full SL
+      C) If tiered fails → OCO fallback, then separate SL + TP
+
+    Returns dict with keys: results (list[str]), sl_placed_qty (float),
+    tp_placed_qty (float), oco_placed (bool).
+    """
+    results: list[str] = []
+    sl_placed_qty = 0.0
+    tp_placed_qty = 0.0
+    oco_placed = False
+
+    # Calculate SL price and buffered limit price
+    sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
+    SL_LIMIT_BUFFER_PCT = _RISK_SL_LIMIT_BUFFER_PCT  # 1.5% below stop trigger price
+    sl_limit_price = round(sl_price * (1 - SL_LIMIT_BUFFER_PCT), p_prec)
+
+    # Determine primary TP price (highest probability first TP level)
+    primary_tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
+    primary_tp_price = round(price * (1 + primary_tp_pct / 100), p_prec)
+
+    # Helper to floor qty to step size
+    def _round_qty(raw_qty):
+        """Floor to step size — never round UP to avoid exceeding balance."""
+        return round(floor(raw_qty / _step_size) * _step_size, _qty_decimals)
+
+    # --- Strategy A: Small position → SL only ---
+    full_qty_notional = executed_qty * price
+    if full_qty_notional < _min_notional * 4:
+        logger.info(
+            "Small position $%.2f < $%.2f → SL-only mode",
+            full_qty_notional,
+            _min_notional * 4,
+        )
+        sl_qty = executed_qty
+        sl = None
+        for attempt in range(2):
+            try:
+                sl = client.place_order(
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS_LIMIT",
+                    sl_qty,
+                    price=sl_limit_price,
+                    stop_price=sl_price,
+                )
+                if sl:
+                    break
+            except Exception:
+                logger.error("SL order placement failed for %s", symbol, exc_info=True)
+                if attempt == 0:
+                    time.sleep(1)
+        if sl:
+            results.append(f"SL-only: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
+            sl_placed_qty = sl_qty
+        else:
+            results.append("SL: FAILED")
+            try:
+                notifier.send_text(
+                    f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
+                )
+            except Exception:
+                logger.error(
+                    "Failed to send SL failure alert notification", exc_info=True
+                )
+
+    # --- Strategy B: Medium+ position → Tiered TP exits (40/40/20) ---
+    else:
+        tiered_ok = False
+        _tiered_results = []
+        _tiered_sl_placed = 0.0
+        _tiered_tp_placed = 0.0
+        try:
+            tp1_qty = _round_qty(executed_qty * 0.40)
+            tp3_qty = _round_qty(executed_qty * 0.20)
+            tp2_qty = _round_qty(
+                executed_qty - tp1_qty - tp3_qty
+            )  # remainder avoids rounding gaps
+            tiers = [
+                (
+                    1,
+                    tp1_qty,
+                    tp_levels[0]["pct"] if len(tp_levels) > 0 else primary_tp_pct,
+                ),
+                (
+                    2,
+                    tp2_qty,
+                    (
+                        tp_levels[1]["pct"]
+                        if len(tp_levels) > 1
+                        else tp_levels[0]["pct"] * 1.5
+                    ),
+                ),
+                (
+                    3,
+                    tp3_qty,
+                    (
+                        tp_levels[2]["pct"]
+                        if len(tp_levels) > 2
+                        else tp_levels[0]["pct"] * 2.0
+                    ),
+                ),
+            ]
+            _all_tiers_valid = True
+            for tier_num, tq, tp_pct_val in tiers:
+                if tq < _step_size:
+                    continue
+                tp_p = round(price * (1 + tp_pct_val / 100), p_prec)
+                if tq * tp_p < _min_notional:
+                    _all_tiers_valid = False
+                    break
+
+            if _all_tiers_valid:
+                # Step 1: Place SL covering FULL position
+                sl = None
+                for attempt in range(2):
+                    try:
+                        sl = client.place_order(
+                            symbol,
+                            "SELL",
+                            "STOP_LOSS_LIMIT",
+                            executed_qty,
+                            price=sl_limit_price,
+                            stop_price=sl_price,
+                        )
+                        if sl:
+                            break
+                    except Exception:
+                        logger.error(
+                            "Tiered SL placement failed for %s", symbol, exc_info=True
+                        )
+                        if attempt == 0:
+                            time.sleep(1)
+                if sl:
+                    _tiered_results.append(
+                        f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)"
+                    )
+                    _tiered_sl_placed = executed_qty
+                else:
+                    raise RuntimeError(
+                        "Tiered SL failed — falling back to OCO/Strategy C"
+                    )
+
+                # Step 2: Place TP limit sells
+                for tier_num, tq, tp_pct_val in tiers:
+                    if tq < _step_size:
+                        _tiered_results.append(f"TP{tier_num}: SKIPPED (qty too small)")
+                        continue
+                    tp_p = round(price * (1 + tp_pct_val / 100), p_prec)
+                    tp_notional = tq * tp_p
+                    if tp_notional < _min_notional:
+                        _tiered_results.append(
+                            f"TP{tier_num}(+{tp_pct_val}%): SKIPPED (notional ${tp_notional:.2f})"
+                        )
+                        continue
+                    tpo = None
+                    for attempt in range(2):
+                        try:
+                            tpo = client.place_order(
+                                symbol, "SELL", "LIMIT", tq, price=tp_p
+                            )
+                            if tpo:
+                                break
+                        except Exception:
+                            logger.error(
+                                "Tiered TP%d placement failed for %s",
+                                tier_num,
+                                symbol,
+                                exc_info=True,
+                            )
+                            if attempt == 0:
+                                time.sleep(1)
+                    if tpo:
+                        _tiered_results.append(
+                            f"TP{tier_num}(+{tp_pct_val}%): {tq} @ ${tp_p}"
+                        )
+                        _tiered_tp_placed += tq
+                    else:
+                        raise RuntimeError(
+                            f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C"
+                        )
+
+                tiered_ok = True
+                results.extend(_tiered_results)
+                sl_placed_qty = _tiered_sl_placed
+                tp_placed_qty = _tiered_tp_placed
+                logger.info(
+                    "Tiered exits placed for %s: SL=full, TP placed=%s",
+                    symbol,
+                    _tiered_tp_placed,
+                )
+        except Exception as e:
+            logger.warning(
+                "Tiered exits failed for %s: %s — trying OCO fallback", symbol, e
+            )
+            try:
+                _open = client.get_open_orders(symbol)
+                for _o in _open:
+                    logger.info(
+                        "Cancelling tiered residue: %s order %s", symbol, _o.get("id")
+                    )
+                    client.cancel_order(symbol, _o.get("id"))
+            except Exception as _ce:
+                logger.error("Failed to cancel tiered residue for %s: %s", symbol, _ce)
+
+        # --- OCO fallback (if tiered failed) ---
+        if not tiered_ok:
+            oco = None
+            try:
+                oco = client.place_oco(
+                    symbol=symbol,
+                    quantity=executed_qty,
+                    tp_price=primary_tp_price,
+                    sl_price=sl_price,
+                )
+            except Exception as e:
+                logger.warning("OCO failed, falling back to separate orders: %s", e)
+
+            if oco:
+                oco_placed = True
+                sl_placed_qty = executed_qty  # OCO covers full qty (both SL and TP)
+                tp_placed_qty = 0  # Avoid double-counting in covered calc
+                results.append(
+                    f"OCO: TP {primary_tp_pct}% @ ${primary_tp_price} | SL -{stop_loss_pct}% @ ${sl_price}"
+                )
+                logger.info("OCO placed for %s: full qty covered", symbol)
+            else:
+                # --- Strategy C: Fallback → separate SL + TP orders ---
+                logger.info("OCO unavailable, using separate SL + TP")
+
+                tp_qty_list = []
+                for i, tp in enumerate(tp_levels):
+                    raw_tp = executed_qty * tp["size_pct"] / 100
+                    tq = _round_qty(raw_tp)
+                    if tq < _step_size:
+                        tq = 0.0
+                    tp_qty_list.append(tq)
+
+                total_tp = sum(tp_qty_list)
+                if total_tp > executed_qty * 0.70:
+                    scale = (executed_qty * 0.70) / total_tp
+                    tp_qty_list = [_round_qty(q * scale) for q in tp_qty_list]
+                    total_tp = sum(tp_qty_list)
+
+                sl_qty = round(executed_qty - total_tp, _qty_decimals)
+                if sl_qty < _step_size and executed_qty >= _step_size * 3:
+                    sl_qty = max(
+                        _step_size, round(executed_qty * 0.30 / _step_size) * _step_size
+                    )
+                    sl_qty = round(sl_qty, _qty_decimals)
+                    total_tp = round(executed_qty - sl_qty, _qty_decimals)
+                    remaining = total_tp
+                    tp_qty_list = []
+                    for i, tp in enumerate(tp_levels):
+                        tq = (
+                            _round_qty(total_tp * tp["size_pct"] / 100)
+                            if total_tp > 0
+                            else 0
+                        )
+                        tq = min(tq, remaining)
+                        if tq < _step_size:
+                            tq = 0.0
+                        tp_qty_list.append(tq)
+                        remaining = round(remaining - tq, _qty_decimals)
+
+                logger.info(
+                    "Strategy C: SL=%s, TPs=%s (total=%s, executed=%s)",
+                    sl_qty,
+                    tp_qty_list,
+                    round(sl_qty + sum(tp_qty_list), _qty_decimals),
+                    executed_qty,
+                )
+
+                if sl_qty >= _step_size:
+                    sl = None
+                    for attempt in range(2):
+                        try:
+                            sl = client.place_order(
+                                symbol,
+                                "SELL",
+                                "STOP_LOSS_LIMIT",
+                                sl_qty,
+                                price=sl_limit_price,
+                                stop_price=sl_price,
+                            )
+                            if sl:
+                                break
+                        except Exception:
+                            logger.error(
+                                "Fallback SL order placement failed for %s",
+                                symbol,
+                                exc_info=True,
+                            )
+                            if attempt == 0:
+                                time.sleep(1)
+                    if sl:
+                        results.append(
+                            f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
+                        )
+                        sl_placed_qty = sl_qty
+                    else:
+                        results.append("SL: FAILED")
+                        try:
+                            notifier.send_text(
+                                f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
+                            )
+                        except Exception:
+                            logger.error(
+                                "Failed to send fallback SL failure alert",
+                                exc_info=True,
+                            )
+
+                for i, (tp, tp_qty) in enumerate(zip(tp_levels, tp_qty_list)):
+                    if tp_qty < _step_size:
+                        continue
+                    tp_price = round(price * (1 + tp["pct"] / 100), p_prec)
+                    tp_notional = tp_qty * tp_price
+                    if tp_notional < _min_notional:
+                        results.append(
+                            f"TP{i+1}(+{tp['pct']}%): SKIPPED (notional ${tp_notional:.2f})"
+                        )
+                        continue
+                    tpo = None
+                    for attempt in range(2):
+                        try:
+                            tpo = client.place_order(
+                                symbol, "SELL", "LIMIT", tp_qty, price=tp_price
+                            )
+                            if tpo:
+                                break
+                        except Exception:
+                            logger.error(
+                                "TP limit order placement failed for %s",
+                                symbol,
+                                exc_info=True,
+                            )
+                            if attempt == 0:
+                                time.sleep(1)
+                    if tpo:
+                        results.append(
+                            f"TP{i+1}(+{tp['pct']}%): {tp_qty} @ ${tp_price}"
+                        )
+                        tp_placed_qty += tp_qty
+                    else:
+                        results.append(f"TP{i+1}: FAILED")
+
+    # Check for uncovered units
+    covered = sl_placed_qty + tp_placed_qty
+    uncovered = executed_qty - covered
+    if uncovered >= _step_size and sl_placed_qty > 0 and not oco_placed:
+        extra_sl_qty = round(floor(uncovered / _step_size) * _step_size, _qty_decimals)
+        logger.info("Placing extra SL for %s uncovered units", extra_sl_qty)
+        extra_sl = None
+        for attempt in range(2):
+            try:
+                extra_sl = client.place_order(
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS_LIMIT",
+                    extra_sl_qty,
+                    price=sl_limit_price,
+                    stop_price=sl_price,
+                )
+                if extra_sl:
+                    break
+            except Exception:
+                logger.error(
+                    "Extra SL order for uncovered units failed for %s",
+                    symbol,
+                    exc_info=True,
+                )
+                if attempt == 0:
+                    time.sleep(1)
+        if extra_sl:
+            results.append(f"Extra SL: {extra_sl_qty} @ ${sl_price}")
+            sl_placed_qty += extra_sl_qty
+            covered = sl_placed_qty + tp_placed_qty
+    elif uncovered >= _step_size and sl_placed_qty == 0 and not oco_placed:
+        results.append(f"🔴 未保護: {uncovered:.4f} units (no SL placed)")
+        try:
+            notifier.send_text(
+                f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！"
+            )
+        except Exception:
+            logger.error(
+                "Failed to send 'No SL' critical alert notification", exc_info=True
+            )
+        try:
+            emergency_sell = client.place_order(
+                symbol,
+                "SELL",
+                "MARKET",
+                uncovered,
+            )
+            if emergency_sell:
+                results.append(
+                    f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)"
+                )
+                logger.warning(
+                    "Emergency market sell executed for %s (%.4f units — no SL possible)",
+                    symbol,
+                    uncovered,
+                )
+        except Exception:
+            logger.error(
+                "Emergency market sell FAILED for %s — position is naked!",
+                symbol,
+                exc_info=True,
+            )
+
+    if sl_placed_qty + tp_placed_qty < executed_qty:
+        remainder = executed_qty - sl_placed_qty - tp_placed_qty
+        if remainder >= _step_size:
+            results.append(f"注意: {remainder:.0f} 單位已由額外SL覆蓋")
+
+    return {
+        "results": results,
+        "sl_placed_qty": sl_placed_qty,
+        "tp_placed_qty": tp_placed_qty,
+        "oco_placed": oco_placed,
+    }
 
 
 def execute_auto_trade(
@@ -383,101 +927,14 @@ def execute_auto_trade(
     if usdt_bal < 10:
         return {"success": False, "error": f"Insufficient USDT: ${usdt_bal:.2f}"}
 
-    # P1-1: Fetch account data ONCE and compute portfolio metrics for reuse
-    # (previously: get_account() called 3+ times per trade for daily_loss, exposure_cap, max_loss)
-    _account_data = None
-    _total_invested = 0.0  # total value in non-USDT positions
-    _total_portfolio = usdt_bal  # USDT + all non-USDT positions
-    _account_price_map = {}  # cache asset prices to avoid duplicate get_ticker_price calls
-    try:
-        _account_data = client.get_account()
-        for b in _account_data.get("balances", []):
-            _asset = b["asset"]
-            _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
-            if _qty > 0 and _asset not in ("USDT", "NTRN"):
-                try:
-                    if f"{_asset}USDT" not in _account_price_map:
-                        _p = float(client.get_ticker_price(f"{_asset}USDT"))
-                        _account_price_map[f"{_asset}USDT"] = _p
-                    else:
-                        _p = _account_price_map[f"{_asset}USDT"]
-                    _total_invested += _qty * _p
-                    _total_portfolio += _qty * _p
-                except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
-                    logger.error(
-                        "Failed to get asset price for %s during account fetch: %s",
-                        _asset, e,
-                    )
-    except (ConnectionError, TimeoutError, ValueError, KeyError, OSError) as e:
-        logger.error(f"Failed to fetch account data for pre-computation: {e}")
-
-    # Circuit breaker: block trades when system is in failure/drawdown state
-    try:
-        from src.circuit_breaker import CircuitBreaker
-
-        cb = CircuitBreaker()
-        if cb.is_tripped():
-            logger.warning("Circuit breaker tripped — blocking trade")
-            return {"success": False, "error": "Circuit breaker tripped"}
-    except Exception as e:
-        logger.warning(f"Circuit breaker check failed: {e}")
-        return {"success": False, "error": "Circuit breaker check failed"}
-
-    # Daily loss circuit breaker: tier-based daily P&L protection
-    try:
-        from src.daily_loss_breaker import get_daily_loss_breaker
-
-        dlb = get_daily_loss_breaker()
-        # P1-1: Reuse pre-computed portfolio value (was a separate get_account() call)
-        total_value = _total_portfolio if _total_portfolio > usdt_bal else usdt_bal
-        dl_result = dlb.check_daily_loss(portfolio_value=total_value)
-        if dlb.should_close_all():
-            logger.warning(
-                f"Daily loss breaker tier {dl_result['tier']} — "
-                f"blocking trade, close all requested"
-            )
-            return {
-                "success": False,
-                "error": f"Daily loss breaker tier {dl_result['tier']}: close all",
-            }
-        if dlb.should_block_new_trades():
-            logger.warning(
-                f"Daily loss breaker tier {dl_result['tier']} — " f"blocking new trades"
-            )
-            return {
-                "success": False,
-                "error": f"Daily loss breaker tier {dl_result['tier']}: new trades blocked",
-            }
-    except Exception as e:
-        logger.warning(f"Daily loss breaker check failed: {e}")
-        return {"success": False, "error": f"Daily loss breaker check failed: {e}"}
-
-    # Capture daily loss tier multiplier (1.0 / 0.5 / 0.0)
-    _dl_multiplier = dlb.get_position_size_multiplier()
-
-    # Capture stepwise drawdown multiplier (based on portfolio drawdown from peak)
-    _sd_multiplier = 1.0
-    try:
-        from src.drawdown_breaker import DrawdownBreaker
-        from src.stepwise_drawdown import get_drawdown_action
-
-        _ddb = DrawdownBreaker(binance_client=client)
-        _dd_check = _ddb.check_drawdown(total_value)
-        _dd_pct = _dd_check.get("drawdown_pct", 0)
-        _dd_action = get_drawdown_action(_dd_pct)
-        _sd_multiplier = _dd_action["size_multiplier"]
-        if _sd_multiplier < 1.0:
-            logger.info(
-                f"Stepwise drawdown: {_dd_pct:.1f}% → {_dd_action['level']} "
-                f"(multiplier={_sd_multiplier}, {_dd_action['reason']})"
-            )
-        if _dd_action.get("block_new_trades"):
-            return {
-                "success": False,
-                "error": f"Stepwise drawdown {_dd_pct:.1f}%: {_dd_action['reason']}",
-            }
-    except Exception as e:
-        logger.warning(f"Stepwise drawdown check failed (proceeding without): {e}")
+    # ── Pre-trade risk checks (circuit breakers, daily loss, drawdown) ──
+    risk_check = _pretrade_risk_checks(client, usdt_bal)
+    if risk_check["blocked"]:
+        return {"success": False, "error": risk_check["reason"]}
+    _total_invested = risk_check["total_invested"]
+    _total_portfolio = risk_check["total_portfolio"]
+    _dl_multiplier = risk_check["dl_multiplier"]
+    _sd_multiplier = risk_check["sd_multiplier"]
 
     # Count existing positions
     active_positions = count_active_positions(client)
@@ -896,435 +1353,19 @@ def execute_auto_trade(
             tp["size_pct"] = round(tp["size_pct"] * scale)
         total_tp_pct = sum(tp["size_pct"] for tp in tp_levels)
 
-    # IMPORTANT: Place SL FIRST, then TP.
-    # ── Order placement strategy ──
-    # 1. Small positions (notional < 4x minNotional): SL-only (full qty)
-    # 2. Medium+ positions: OCO order (TP + SL in one atomic pair)
-    # 3. If OCO fails: fallback to separate SL + TP
-
-    sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
-    # P0 FIX: SL limit price buffer — ensure limit order fills even in fast markets
-    # stop_price triggers the limit, limit_price is the actual fill floor
-    SL_LIMIT_BUFFER_PCT = _RISK_SL_LIMIT_BUFFER_PCT  # 1.5% below stop trigger price
-    sl_limit_price = round(sl_price * (1 - SL_LIMIT_BUFFER_PCT), p_prec)
-    sl_placed_qty = 0.0
-    tp_placed_qty = 0.0
-    oco_placed = False
-
-    # Determine primary TP price (highest probability first TP level)
-    primary_tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
-    primary_tp_price = round(price * (1 + primary_tp_pct / 100), p_prec)
-
-    # --- Strategy A: Small position → SL only ---
-    full_qty_notional = executed_qty * price
-    if full_qty_notional < _min_notional * 4:
-        logger.info(
-            "Small position $%.2f < $%.2f → SL-only mode",
-            full_qty_notional,
-            _min_notional * 4,
-        )
-        sl_qty = executed_qty
-        sl = None
-        for attempt in range(2):
-            try:
-                sl = client.place_order(
-                    symbol,
-                    "SELL",
-                    "STOP_LOSS_LIMIT",
-                    sl_qty,
-                    price=sl_limit_price,
-                    stop_price=sl_price,
-                )
-                if sl:
-                    break
-            except Exception:
-                logger.error("SL order placement failed for %s", symbol, exc_info=True)
-                if attempt == 0:
-                    time.sleep(1)
-        if sl:
-            results.append(f"SL-only: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
-            sl_placed_qty = sl_qty
-        else:
-            results.append("SL: FAILED")
-            try:
-                notifier.send_text(
-                    f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
-                )
-            except Exception:
-                logger.error(
-                    "Failed to send SL failure alert notification", exc_info=True
-                )
-
-    # --- Strategy B: Medium+ position → Tiered TP exits (40/40/20) ---
-    else:
-        # Helper to floor qty to step size
-        def _round_qty(raw_qty):
-            """Floor to step size — never round UP to avoid exceeding balance."""
-            return round(floor(raw_qty / _step_size) * _step_size, _qty_decimals)
-
-        # Tiered exit: SL covers full position, then TP1/TP2/TP3 as limit sells.
-        # Tiers: TP1=40%, TP2=40%, TP3=20% of executed_qty.
-        tiered_ok = False
-        _tiered_results = []
-        _tiered_sl_placed = 0.0
-        _tiered_tp_placed = 0.0
-        try:
-            # Tier quantities (40 / 40 / 20)
-            tp1_qty = _round_qty(executed_qty * 0.40)
-            tp3_qty = _round_qty(executed_qty * 0.20)
-            tp2_qty = _round_qty(
-                executed_qty - tp1_qty - tp3_qty
-            )  # remainder avoids rounding gaps
-            # Validate: each tier must meet min notional OR be zero
-            tiers = [
-                (
-                    1,
-                    tp1_qty,
-                    tp_levels[0]["pct"] if len(tp_levels) > 0 else primary_tp_pct,
-                ),
-                (
-                    2,
-                    tp2_qty,
-                    (
-                        tp_levels[1]["pct"]
-                        if len(tp_levels) > 1
-                        else tp_levels[0]["pct"] * 1.5
-                    ),
-                ),
-                (
-                    3,
-                    tp3_qty,
-                    (
-                        tp_levels[2]["pct"]
-                        if len(tp_levels) > 2
-                        else tp_levels[0]["pct"] * 2.0
-                    ),
-                ),
-            ]
-            _all_tiers_valid = True
-            for tier_num, tq, tp_pct_val in tiers:
-                if tq < _step_size:
-                    continue
-                tp_p = round(price * (1 + tp_pct_val / 100), p_prec)
-                if tq * tp_p < _min_notional:
-                    _all_tiers_valid = False
-                    break
-
-            if _all_tiers_valid:
-                # Step 1: Place SL covering FULL position
-                sl = None
-                for attempt in range(2):
-                    try:
-                        sl = client.place_order(
-                            symbol,
-                            "SELL",
-                            "STOP_LOSS_LIMIT",
-                            executed_qty,
-                            price=sl_limit_price,
-                            stop_price=sl_price,
-                        )
-                        if sl:
-                            break
-                    except Exception:
-                        logger.error(
-                            "Tiered SL placement failed for %s", symbol, exc_info=True
-                        )
-                        if attempt == 0:
-                            time.sleep(1)
-                if sl:
-                    _tiered_results.append(
-                        f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)"
-                    )
-                    _tiered_sl_placed = executed_qty
-                else:
-                    raise RuntimeError(
-                        "Tiered SL failed — falling back to OCO/Strategy C"
-                    )
-
-                # Step 2: Place TP limit sells
-                for tier_num, tq, tp_pct_val in tiers:
-                    if tq < _step_size:
-                        _tiered_results.append(f"TP{tier_num}: SKIPPED (qty too small)")
-                        continue
-                    tp_p = round(price * (1 + tp_pct_val / 100), p_prec)
-                    tp_notional = tq * tp_p
-                    if tp_notional < _min_notional:
-                        _tiered_results.append(
-                            f"TP{tier_num}(+{tp_pct_val}%): SKIPPED (notional ${tp_notional:.2f})"
-                        )
-                        continue
-                    tpo = None
-                    for attempt in range(2):
-                        try:
-                            tpo = client.place_order(
-                                symbol, "SELL", "LIMIT", tq, price=tp_p
-                            )
-                            if tpo:
-                                break
-                        except Exception:
-                            logger.error(
-                                "Tiered TP%d placement failed for %s",
-                                tier_num,
-                                symbol,
-                                exc_info=True,
-                            )
-                            if attempt == 0:
-                                time.sleep(1)
-                    if tpo:
-                        _tiered_results.append(
-                            f"TP{tier_num}(+{tp_pct_val}%): {tq} @ ${tp_p}"
-                        )
-                        _tiered_tp_placed += tq
-                    else:
-                        raise RuntimeError(
-                            f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C"
-                        )
-
-                tiered_ok = True
-                results.extend(_tiered_results)
-                sl_placed_qty = _tiered_sl_placed
-                tp_placed_qty = _tiered_tp_placed
-                logger.info(
-                    "Tiered exits placed for %s: SL=full, TP placed=%s",
-                    symbol,
-                    _tiered_tp_placed,
-                )
-        except Exception as e:
-            logger.warning(
-                "Tiered exits failed for %s: %s — trying OCO fallback", symbol, e
-            )
-            # Cancel any partially-placed tiered orders so fallback has free balance
-            try:
-                _open = client.get_open_orders(symbol)
-                for _o in _open:
-                    logger.info(
-                        "Cancelling tiered residue: %s order %s", symbol, _o.get("id")
-                    )
-                    client.cancel_order(symbol, _o.get("id"))
-            except Exception as _ce:
-                logger.error("Failed to cancel tiered residue for %s: %s", symbol, _ce)
-
-        # --- OCO fallback (if tiered failed) ---
-        if not tiered_ok:
-            oco = None
-            try:
-                oco = client.place_oco(
-                    symbol=symbol,
-                    quantity=executed_qty,
-                    tp_price=primary_tp_price,
-                    sl_price=sl_price,
-                )
-            except Exception as e:
-                logger.warning("OCO failed, falling back to separate orders: %s", e)
-
-            if oco:
-                oco_placed = True
-                sl_placed_qty = executed_qty  # OCO covers full qty (both SL and TP)
-                tp_placed_qty = 0  # Avoid double-counting in covered calc
-                results.append(
-                    f"OCO: TP {primary_tp_pct}% @ ${primary_tp_price} | SL -{stop_loss_pct}% @ ${sl_price}"
-                )
-                logger.info("OCO placed for %s: full qty covered", symbol)
-            else:
-                # --- Strategy C: Fallback → separate SL + TP orders ---
-                # Fix: Calculate TP quantities first (rounded), then SL = total - sum(TP)
-                # This guarantees full coverage with no rounding gaps.
-                logger.info("OCO unavailable, using separate SL + TP")
-
-                # Step 1: Pre-calculate all TP quantities (floored to step size)
-                tp_qty_list = []
-                for i, tp in enumerate(tp_levels):
-                    raw_tp = executed_qty * tp["size_pct"] / 100
-                    tq = _round_qty(raw_tp)
-                    if tq < _step_size:
-                        tq = 0.0
-                    tp_qty_list.append(tq)
-
-                # Step 2: SL = total - sum of all rounded TP qtys (guarantees full coverage)
-                total_tp = sum(tp_qty_list)
-                # Cap total TP to 70% of position (SL gets at least 30%)
-                if total_tp > executed_qty * 0.70:
-                    scale = (executed_qty * 0.70) / total_tp
-                    tp_qty_list = [_round_qty(q * scale) for q in tp_qty_list]
-                    total_tp = sum(tp_qty_list)
-
-                sl_qty = round(executed_qty - total_tp, _qty_decimals)
-                # Safety: SL must be at least 30% for small enough positions
-                if sl_qty < _step_size and executed_qty >= _step_size * 3:
-                    sl_qty = max(
-                        _step_size, round(executed_qty * 0.30 / _step_size) * _step_size
-                    )
-                    sl_qty = round(sl_qty, _qty_decimals)
-                    total_tp = round(executed_qty - sl_qty, _qty_decimals)
-                    # Recalculate TP qtys to fit within total_tp
-                    remaining = total_tp
-                    tp_qty_list = []
-                    for i, tp in enumerate(tp_levels):
-                        tq = (
-                            _round_qty(total_tp * tp["size_pct"] / 100)
-                            if total_tp > 0
-                            else 0
-                        )
-                        tq = min(tq, remaining)  # Don't exceed remaining
-                        if tq < _step_size:
-                            tq = 0.0
-                        tp_qty_list.append(tq)
-                        remaining = round(remaining - tq, _qty_decimals)
-
-                logger.info(
-                    "Strategy C: SL=%s, TPs=%s (total=%s, executed=%s)",
-                    sl_qty,
-                    tp_qty_list,
-                    round(sl_qty + sum(tp_qty_list), _qty_decimals),
-                    executed_qty,
-                )
-
-                # Step 3: Place SL
-                if sl_qty >= _step_size:
-                    sl = None
-                    for attempt in range(2):
-                        try:
-                            sl = client.place_order(
-                                symbol,
-                                "SELL",
-                                "STOP_LOSS_LIMIT",
-                                sl_qty,
-                                price=sl_limit_price,
-                                stop_price=sl_price,
-                            )
-                            if sl:
-                                break
-                        except Exception:
-                            logger.error(
-                                "Fallback SL order placement failed for %s",
-                                symbol,
-                                exc_info=True,
-                            )
-                            if attempt == 0:
-                                time.sleep(1)
-                    if sl:
-                        results.append(
-                            f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
-                        )
-                        sl_placed_qty = sl_qty
-                    else:
-                        results.append("SL: FAILED")
-                        try:
-                            notifier.send_text(
-                                f"🚨 URGENT: SL failed for {symbol}! Manual SL needed!"
-                            )
-                        except Exception:
-                            logger.error(
-                                "Failed to send fallback SL failure alert",
-                                exc_info=True,
-                            )
-
-                # Step 4: Place TP orders (using pre-calculated rounded quantities)
-                for i, (tp, tp_qty) in enumerate(zip(tp_levels, tp_qty_list)):
-                    if tp_qty < _step_size:
-                        continue
-                    tp_price = round(price * (1 + tp["pct"] / 100), p_prec)
-                    tp_notional = tp_qty * tp_price
-                    if tp_notional < _min_notional:
-                        results.append(
-                            f"TP{i+1}(+{tp['pct']}%): SKIPPED (notional ${tp_notional:.2f})"
-                        )
-                        continue
-                    tpo = None
-                    for attempt in range(2):
-                        try:
-                            tpo = client.place_order(
-                                symbol, "SELL", "LIMIT", tp_qty, price=tp_price
-                            )
-                            if tpo:
-                                break
-                        except Exception:
-                            logger.error(
-                                "TP limit order placement failed for %s",
-                                symbol,
-                                exc_info=True,
-                            )
-                            if attempt == 0:
-                                time.sleep(1)
-                    if tpo:
-                        results.append(
-                            f"TP{i+1}(+{tp['pct']}%): {tp_qty} @ ${tp_price}"
-                        )
-                        tp_placed_qty += tp_qty
-                    else:
-                        results.append(f"TP{i+1}: FAILED")
-
-    # Check for uncovered units
-    covered = sl_placed_qty + tp_placed_qty
-    uncovered = executed_qty - covered
-    if uncovered >= _step_size and sl_placed_qty > 0 and not oco_placed:
-        extra_sl_qty = round(floor(uncovered / _step_size) * _step_size, _qty_decimals)
-        logger.info("Placing extra SL for %s uncovered units", extra_sl_qty)
-        extra_sl = None
-        for attempt in range(2):
-            try:
-                extra_sl = client.place_order(
-                    symbol,
-                    "SELL",
-                    "STOP_LOSS_LIMIT",
-                    extra_sl_qty,
-                    price=sl_limit_price,
-                    stop_price=sl_price,
-                )
-                if extra_sl:
-                    break
-            except Exception:
-                logger.error(
-                    "Extra SL order for uncovered units failed for %s",
-                    symbol,
-                    exc_info=True,
-                )
-                if attempt == 0:
-                    time.sleep(1)
-        if extra_sl:
-            results.append(f"Extra SL: {extra_sl_qty} @ ${sl_price}")
-            sl_placed_qty += extra_sl_qty
-            covered = sl_placed_qty + tp_placed_qty
-    elif uncovered >= _step_size and sl_placed_qty == 0 and not oco_placed:
-        results.append(f"🔴 未保護: {uncovered:.4f} units (no SL placed)")
-        try:
-            notifier.send_text(
-                f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！"
-            )
-        except Exception:
-            logger.error(
-                "Failed to send 'No SL' critical alert notification", exc_info=True
-            )
-        # Emergency: attempt market sell to close unprotected position
-        try:
-            emergency_sell = client.place_order(
-                symbol,
-                "SELL",
-                "MARKET",
-                uncovered,
-            )
-            if emergency_sell:
-                results.append(
-                    f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)"
-                )
-                logger.warning(
-                    "Emergency market sell executed for %s (%.4f units — no SL possible)",
-                    symbol,
-                    uncovered,
-                )
-        except Exception:
-            logger.error(
-                "Emergency market sell FAILED for %s — position is naked!",
-                symbol,
-                exc_info=True,
-            )
-
-    if sl_placed_qty + tp_placed_qty < executed_qty:
-        remainder = executed_qty - sl_placed_qty - tp_placed_qty
-        if remainder >= _step_size:
-            results.append(f"注意: {remainder:.0f} 單位已由額外SL覆蓋")
+    # ── Place SL/TP orders (delegates to extracted helper) ──
+    sltp_result = _place_sl_tp_orders(
+        client, notifier, symbol, executed_qty, price, p_prec,
+        stop_loss_pct, tp_levels, _step_size, _qty_decimals, _min_notional,
+        strategy_size_multiplier,
+    )
+    results.extend(sltp_result["results"])
+    sl_placed_qty = sltp_result["sl_placed_qty"]
+    tp_placed_qty = sltp_result["tp_placed_qty"]
+    oco_placed = sltp_result["oco_placed"]
 
     # Send execution notification (extracted helper)
+
     _send_execution_notification(
         notifier, symbol, strategy, tier_label, score,
         invest_pct, usdt_bal, invest_amount, kelly_result,
