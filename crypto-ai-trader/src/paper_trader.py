@@ -564,6 +564,98 @@ class PaperTrader:
 
     # ---- Internal fill logic ----
 
+    def _record_paper_trade(
+        self, symbol: str, side: str, quantity: float,
+        fill_price: float, slippage_pct: float, fee: float,
+        notional: float, order_id: int,
+    ) -> str:
+        """Insert a record into paper_trades table. Returns trade_id."""
+        trade_id = f"paper_{order_id}_{int(time.time())}"
+        now = time.time()
+
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO paper_trades
+               (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
+                fee_usdt, notional_usdt, status, timestamp, details)
+               VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
+            (
+                trade_id,
+                symbol,
+                side,
+                quantity,
+                fill_price,
+                slippage_pct,
+                fee,
+                notional,
+                now,
+                json.dumps(
+                    {
+                        "current_price": fill_price / (1 + slippage_pct / 100) if side == "BUY" else fill_price / (1 - slippage_pct / 100),
+                        "slippage_pct": slippage_pct,
+                        "fee_rate": PAPER_FEE_RATE,
+                    }
+                ),
+            ),
+        )
+        return trade_id
+
+    def _compute_sell_pnl(
+        self, symbol: str, fill_price: float, quantity: float, fee: float, snap_pnl: float,
+    ) -> float:
+        """Compute realized PnL for a sell and update sim_pnl."""
+        pnl = 0.0
+        try:
+            db = self._get_db()
+            conn = db._get_conn()
+            row = conn.execute(
+                "SELECT entry_price FROM paper_trades WHERE symbol = ? AND side = 'BUY' ORDER BY timestamp DESC LIMIT 1",
+                (symbol,),
+            ).fetchone()
+            if row:
+                entry = float(row["entry_price"])
+                pnl = (fill_price - entry) * quantity - fee
+                self._set_sim_pnl(snap_pnl + pnl)
+        except Exception:
+            logger.error(
+                "Failed to calculate simulated PnL for SELL trade on %s",
+                symbol,
+                exc_info=True,
+            )
+        return pnl
+
+    def _build_fill_result(
+        self, order_id: int, trade_id: str, symbol: str, side: str,
+        fill_price: float, quantity: float, notional: float,
+        fee: float, slippage_pct: float, pnl: float,
+    ) -> Dict:
+        """Build the Binance-compatible order result dict."""
+        return {
+            "orderId": order_id,
+            "clientOrderId": f"paper_{trade_id}",
+            "symbol": symbol,
+            "side": side,
+            "type": "MARKET",
+            "status": "FILLED",
+            "price": str(fill_price),
+            "origQty": str(quantity),
+            "executedQty": str(quantity),
+            "cummulativeQuoteQty": str(notional),
+            "fills": [
+                {
+                    "price": str(fill_price),
+                    "qty": str(quantity),
+                    "commission": str(fee),
+                    "commissionAsset": "USDT",
+                }
+            ],
+            "_paper": {
+                "slippage_pct": slippage_pct,
+                "fee_usdt": fee,
+                "pnl": pnl,
+            },
+        }
+
     def _fill_market(
         self, symbol: str, side: str, quantity: float, current_price: float
     ) -> Optional[Dict]:
@@ -642,55 +734,14 @@ class PaperTrader:
             # Calculate realized P&L for sells
             pnl = 0.0
             if side == "SELL":
-                base = symbol.replace("USDT", "").replace("USDC", "")
-                try:
-                    db = self._get_db()
-                    conn = db._get_conn()
-                    row = conn.execute(
-                        "SELECT entry_price FROM paper_trades WHERE symbol = ? AND side = 'BUY' ORDER BY timestamp DESC LIMIT 1",
-                        (symbol,),
-                    ).fetchone()
-                    if row:
-                        entry = float(row["entry_price"])
-                        pnl = (fill_price - entry) * quantity - fee
-                        self._set_sim_pnl(snap_pnl + pnl)
-                except Exception:
-                    logger.error(
-                        "Failed to calculate simulated PnL for SELL trade on %s",
-                        symbol,
-                        exc_info=True,
-                    )
+                pnl = self._compute_sell_pnl(symbol, fill_price, quantity, fee, snap_pnl)
 
             # Record trade
             order_id = snap_counter + 1
             self._set_sim_value("order_counter", str(order_id))
-            trade_id = f"paper_{order_id}_{int(time.time())}"
-            now = time.time()
-
-            conn = self._conn()
-            conn.execute(
-                """INSERT INTO paper_trades
-                   (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
-                    fee_usdt, notional_usdt, status, timestamp, details)
-                   VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
-                (
-                    trade_id,
-                    symbol,
-                    side,
-                    quantity,
-                    fill_price,
-                    slippage_pct,
-                    fee,
-                    notional,
-                    now,
-                    json.dumps(
-                        {
-                            "current_price": current_price,
-                            "slippage_pct": slippage_pct,
-                            "fee_rate": PAPER_FEE_RATE,
-                        }
-                    ),
-                ),
+            trade_id = self._record_paper_trade(
+                symbol, side, quantity, fill_price, slippage_pct,
+                fee, notional, order_id,
             )
 
             # ── Commit all changes atomically ──
@@ -723,34 +774,11 @@ class PaperTrader:
                 exc_info=True,
             )
 
-        fills_qty = quantity
-        fills_price = fill_price
-
-        result = {
-            "orderId": order_id,
-            "clientOrderId": f"paper_{trade_id}",
-            "symbol": symbol,
-            "side": side,
-            "type": "MARKET",
-            "status": "FILLED",
-            "price": str(fill_price),
-            "origQty": str(quantity),
-            "executedQty": str(fills_qty),
-            "cummulativeQuoteQty": str(notional),
-            "fills": [
-                {
-                    "price": str(fills_price),
-                    "qty": str(fills_qty),
-                    "commission": str(fee),
-                    "commissionAsset": "USDT",
-                }
-            ],
-            "_paper": {
-                "slippage_pct": slippage_pct,
-                "fee_usdt": fee,
-                "pnl": pnl,
-            },
-        }
+        result = self._build_fill_result(
+            order_id, trade_id, symbol, side,
+            fill_price, quantity, notional,
+            fee, slippage_pct, pnl,
+        )
 
         logger.info(
             "📝 PAPER TRADE: %s %s %.8f @ $%.6f (slip=%.4f%% fee=$%.4f) bal=$%.2f",
