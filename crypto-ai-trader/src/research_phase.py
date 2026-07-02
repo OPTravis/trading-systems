@@ -28,10 +28,13 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
     # Gather existing positions for risk check
     acct_balances = acct.get("balances", [])
     risk_positions = []
+    _usdt_total = 0.0
     for b in acct_balances:
         asset = b["asset"]
         total = float(b["free"]) + float(b["locked"])
-        if asset != "USDT" and total > 0 and asset != "NTRN":
+        if asset == "USDT":
+            _usdt_total = total
+        elif total > 0 and asset != "NTRN":
             try:
                 stats = client.get_24hr_stats(asset + "USDT")
                 price_val = float(stats.get("last_price", 0))
@@ -43,6 +46,9 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
                 logger.error(
                     "Risk position price check failed for %s", asset, exc_info=True
                 )
+
+    # Account equity = positions value + USDT cash (correct denominator for sector %)
+    _account_equity = sum(p.get("value_usdt", 0) for p in risk_positions) + _usdt_total
 
     # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold
     has_fear_mode = any(o.get("fear_mode") for o in opportunities)
@@ -105,6 +111,7 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
             positions=risk_positions,
             score=opp.get("score"),
             strategy=prelim_strategy,
+            account_equity=_account_equity,
         )
         if check["allowed"]:
             opp["_size_multiplier"] = check["adjustments"].get("size_multiplier", 1.0)
