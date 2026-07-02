@@ -1015,7 +1015,22 @@ class RiskManager:
         if positions is not None:
             try:
                 sector = SectorExposure.classify_position(symbol)
-                if not self.sector_exposure.is_sector_allowed(symbol, positions):
+                # Compute account equity (incl. USDT cash) for correct sector % calculation
+                account_equity = sum(
+                    float(p.get("value_usdt", 0)) for p in positions
+                )
+                if self.client:
+                    try:
+                        usdt_info = self.client.get_asset_balance("USDT")
+                        if usdt_info:
+                            account_equity += float(usdt_info.get("free", 0)) + float(
+                                usdt_info.get("locked", 0)
+                            )
+                    except Exception:
+                        pass  # Fall back to positions-only denominator
+                if not self.sector_exposure.is_sector_allowed(
+                    symbol, positions, account_equity=account_equity
+                ):
                     allowed = False
                     reasons.append(
                         f"Sector '{sector}' exposure at/above {SectorExposure.MAX_SECTOR_PCT}%"

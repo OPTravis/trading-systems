@@ -559,9 +559,20 @@ class SectorExposure:
     def get_sector_limit(cls, sector: str) -> int:
         return cls.SECTOR_LIMITS.get(sector, cls.MAX_SECTOR_PCT)
 
-    def check(self, positions: List[Dict]) -> Dict:
-        """Check current sector exposure against limits."""
-        if not positions:
+    def check(
+        self, positions: List[Dict], account_equity: Optional[float] = None
+    ) -> Dict:
+        """Check current sector exposure against limits.
+
+        Args:
+            positions: Current positions with ``symbol`` and ``value_usdt``.
+            account_equity: Total account value including USDT cash.  When
+                provided, sector percentages are calculated against this
+                figure (which is the correct denominator).  When *None*,
+                falls back to sum-of-positions (legacy behaviour, only kept
+                for backward compatibility).
+        """
+        if not positions and account_equity is None:
             all_sectors = list(self.SECTORS.keys()) + ["AI_INFRA", "AI_AGENT", "OTHER"]
             return {
                 "allowed_sectors": all_sectors,
@@ -571,7 +582,7 @@ class SectorExposure:
             }
 
         sector_values: Dict[str, float] = {}
-        total_value = 0.0
+        positions_value = 0.0
 
         for pos in positions:
             symbol = pos.get("symbol") or pos.get("asset", "").upper()
@@ -580,7 +591,11 @@ class SectorExposure:
                 continue
             sector = self.classify_position(symbol)
             sector_values[sector] = sector_values.get(sector, 0) + value
-            total_value += value
+            positions_value += value
+
+        # Use account_equity (incl. USDT cash) as denominator when available;
+        # fall back to invested capital only for backward compatibility.
+        total_value = account_equity if account_equity and account_equity > 0 else positions_value
 
         details: Dict[str, Dict] = {}
         allowed_sectors: List[str] = []
@@ -614,14 +629,29 @@ class SectorExposure:
         }
 
     def is_sector_allowed(
-        self, symbol: str, positions: List[Dict], new_value_usdt: float = 0
+        self,
+        symbol: str,
+        positions: List[Dict],
+        new_value_usdt: float = 0,
+        account_equity: Optional[float] = None,
     ) -> bool:
-        """Check if adding a new position would exceed sector limit."""
+        """Check if adding a new position would exceed sector limit.
+
+        Args:
+            account_equity: Total account value including USDT cash.  When
+                provided, used as the denominator for sector percentage
+                calculation (correct behaviour).  Falls back to sum of
+                positions for backward compatibility.
+        """
         sector = self.classify_position(symbol)
         if not positions:
             return True
 
-        total_value = sum(float(p.get("value_usdt", 0)) for p in positions)
+        positions_value = sum(float(p.get("value_usdt", 0)) for p in positions)
+        # Use account_equity (incl. USDT cash) as denominator when available
+        total_value = (
+            account_equity if account_equity and account_equity > 0 else positions_value
+        )
         if total_value <= 0:
             return True
 

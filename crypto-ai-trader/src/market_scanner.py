@@ -96,6 +96,7 @@ class MarketScanner:
                     "symbol": sym,
                     "quantity": data["quantity"],
                     "entry_price": data["entry_price"],
+                    "value_usdt": data["quantity"] * data["entry_price"],
                 }
                 for sym, data in db_positions.items()
             ]
@@ -105,7 +106,24 @@ class MarketScanner:
                 exc_info=True,
             )
             _real_positions = []
-        pool = self.coin_pool.get_sector_filtered_pool(pool, positions=_real_positions)
+
+        # Compute account equity (positions + USDT cash) for correct sector % calculation
+        _account_equity = sum(
+            float(p.get("value_usdt", 0)) for p in _real_positions
+        )
+        if self.client:
+            try:
+                usdt_info = self.client.get_asset_balance("USDT")
+                if usdt_info:
+                    _account_equity += float(usdt_info.get("free", 0)) + float(
+                        usdt_info.get("locked", 0)
+                    )
+            except Exception:
+                pass
+
+        pool = self.coin_pool.get_sector_filtered_pool(
+            pool, positions=_real_positions, account_equity=_account_equity
+        )
 
         logger.info(f"Scanning {len(pool)} candidate coins...")
 

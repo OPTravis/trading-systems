@@ -158,6 +158,7 @@ class DynamicCoinPool:
         pool: List[Dict],
         positions: List[Dict],
         sector_limits: Optional[Dict] = None,
+        account_equity: Optional[float] = None,
     ) -> List[Dict]:
         """Annotate pool coins with sector priority based on current exposure.
 
@@ -172,6 +173,8 @@ class DynamicCoinPool:
             positions: Current positions with ``symbol`` and ``value_usdt``.
             sector_limits: Optional override of ``{sector: max_pct}``.
                            Falls back to ``SectorExposure.MAX_SECTOR_PCT`` (30).
+            account_equity: Total account value including USDT cash.  When
+                provided, used as denominator for sector % (correct behaviour).
 
         Returns:
             Pool with added ``sector_priority`` field on each coin dict.
@@ -180,7 +183,7 @@ class DynamicCoinPool:
             return pool
 
         exposure = SectorExposure()
-        check_result = exposure.check(positions)
+        check_result = exposure.check(positions, account_equity=account_equity)
         details = check_result.get("details", {})
         default_limit = sector_limits or {}
 
