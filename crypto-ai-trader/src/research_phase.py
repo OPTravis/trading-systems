@@ -51,17 +51,19 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
     _account_equity = sum(p.get("value_usdt", 0) for p in risk_positions) + _usdt_total
 
     # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold
+    # Calibrated per investment advisor: 98 was too strict (effectively blocking all
+    # trades in extreme fear), 85 allows high-quality signals while still filtering noise.
     has_fear_mode = any(o.get("fear_mode") for o in opportunities)
     if regime in ("EXTREME_FEAR",):
         if not has_fear_mode:
-            dynamic_threshold = max(dynamic_threshold, 98)
+            dynamic_threshold = max(dynamic_threshold, 85)
             print(
-                f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (historical 0% win rate)"
+                f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (calibrated: filter noise, keep quality)"
             )
         else:
             print(f"REGIME_GUARD: {regime} — bypassed for fear accumulation mode")
     elif regime == "FEAR" and btc_trend != "BULLISH":
-        dynamic_threshold = max(dynamic_threshold, 95)
+        dynamic_threshold = max(dynamic_threshold, 80)
         print(
             f"REGIME_GUARD: {regime} + BTC {btc_trend} — threshold raised to {dynamic_threshold}"
         )
@@ -507,6 +509,25 @@ def _step_research_top_n(ctx):
         tp_levels = cfg.get("take_profit_levels", [])
         max_hold = cfg.get("max_hold_hours", 48)
         size_multiplier = 1.0
+
+    # ── Layered position sizing in fear regime ──
+    # Per investment advisor: in FEAR/EXTREME_FEAR, scale position by signal quality.
+    # Higher score = more conviction = larger position; lower score = probe only.
+    # This replaces the old binary "all-or-nothing" approach with graduated exposure.
+    _regime = adapted.get("regime", "")
+    if _regime in ("EXTREME_FEAR", "FEAR"):
+        if adjusted_score >= 90:
+            _fear_tier_mult = 1.0   # Full conviction → full position
+        elif adjusted_score >= 85:
+            _fear_tier_mult = 0.80  # Strong signal → 80% position
+        elif adjusted_score >= 80:
+            _fear_tier_mult = 0.60  # Good signal → 60% position
+        else:  # 75-80 range (just above calibrated threshold)
+            _fear_tier_mult = 0.40  # Probe position → 40% only
+        size_multiplier *= _fear_tier_mult
+        logger.info(
+            f"Layered sizing ({_regime}): score={adjusted_score:.1f} → {_fear_tier_mult:.0%} position"
+        )
 
     stop_price = price * (1 - stop_loss_pct / 100)
 
