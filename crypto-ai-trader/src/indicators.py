@@ -601,9 +601,9 @@ class Indicators:
         macd_data = Indicators.macd(closes)
         hist = macd_data["histogram"]
         # Normalize: hist magnitude relative to price
-        hist_pct = hist / closes[-1] * 1000 if closes[-1] > 0 else 0
-        # -2 → 0, 0 → 50, +2 → 100
-        macd_score = max(0, min(100, 50 + (hist_pct / 2) * 50))
+        hist_pct = hist / closes[-1] * 100 if closes[-1] > 0 else 0
+        # -3 → 0, 0 → 50, +3 → 100 (scale tuned for BTC daily hist/price %)
+        macd_score = max(0, min(100, 50 + (hist_pct / 3) * 50))
 
         # --- Factor 4: Price Structure — Higher Lows (15%) ---
         # Compare recent 3 swing lows (approximated by 10-day minima)
