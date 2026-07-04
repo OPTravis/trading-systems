@@ -77,7 +77,15 @@ class FearGreedIndex:
     def _fetch_and_cache(self) -> None:
         """Fetch latest F&G data from API and upsert into SQLite."""
         try:
-            resp = requests.get(self._url, params={"limit": 30, "format": "json"}, timeout=10)  # type: ignore[arg-type]
+            # api.alternative.me is not GFW-blocked; bypass SOCKS proxy to avoid
+            # intermittent SSL EOF errors when the proxy connection is flaky.
+            _no_proxy = {"http": None, "https": None}
+            resp = requests.get(
+                self._url,
+                params={"limit": 30, "format": "json"},
+                timeout=10,
+                proxies=_no_proxy,
+            )  # type: ignore[arg-type]
             resp.raise_for_status()
             data = resp.json().get("data", [])
             if not data:
