@@ -571,6 +571,7 @@ def _place_sl_tp_orders(
         _tiered_results = []
         _tiered_sl_placed = 0.0
         _tiered_tp_placed = 0.0
+        _tiered_sl_order_id = None  # Track SL order ID for preservation
         try:
             tp1_qty = _round_qty(executed_qty * 0.40)
             tp3_qty = _round_qty(executed_qty * 0.20)
@@ -637,6 +638,7 @@ def _place_sl_tp_orders(
                         f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)"
                     )
                     _tiered_sl_placed = executed_qty
+                    _tiered_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
                 else:
                     raise RuntimeError(
                         "Tiered SL failed — falling back to OCO/Strategy C"
@@ -694,28 +696,57 @@ def _place_sl_tp_orders(
             logger.warning(
                 "Tiered exits failed for %s: %s — trying OCO fallback", symbol, e
             )
+            # Cancel TP residue orders but PRESERVE SL if it was already placed
             try:
                 _open = client.get_open_orders(symbol)
                 for _o in _open:
+                    _oid = _o.get("orderId") or _o.get("id")
+                    _otype = _o.get("type", "")
+                    # Never cancel the SL that was successfully placed
+                    if _tiered_sl_order_id and _oid == _tiered_sl_order_id:
+                        logger.info(
+                            "Preserving tiered SL for %s (orderId=%s)", symbol, _oid
+                        )
+                        continue
+                    if _otype in ("STOP_LOSS_LIMIT", "STOP_LOSS"):
+                        logger.info(
+                            "Preserving SL order for %s (orderId=%s, type=%s)",
+                            symbol, _oid, _otype,
+                        )
+                        continue
                     logger.info(
-                        "Cancelling tiered residue: %s order %s", symbol, _o.get("id")
+                        "Cancelling tiered residue: %s order %s", symbol, _oid
                     )
-                    client.cancel_order(symbol, _o.get("id"))
+                    client.cancel_order(symbol, _oid)
             except Exception as _ce:
                 logger.error("Failed to cancel tiered residue for %s: %s", symbol, _ce)
 
+            # Carry over successfully-placed SL so fallback doesn't double-place
+            if _tiered_sl_placed > 0:
+                sl_placed_qty = _tiered_sl_placed
+                results.append(
+                    f"SL preserved from tiered: {_tiered_sl_placed} @ ${sl_price}"
+                )
+                logger.info(
+                    "SL from tiered path preserved for %s (%s units)", symbol, _tiered_sl_placed
+                )
+
         # --- OCO fallback (if tiered failed) ---
         if not tiered_ok:
+            # If SL was already placed in the tiered path, skip OCO (which would
+            # try to place a second SL) and go straight to placing TP-only orders.
+            _sl_already_placed = sl_placed_qty > 0
             oco = None
-            try:
-                oco = client.place_oco(
-                    symbol=symbol,
-                    quantity=executed_qty,
-                    tp_price=primary_tp_price,
-                    sl_price=sl_price,
-                )
-            except Exception as e:
-                logger.warning("OCO failed, falling back to separate orders: %s", e)
+            if not _sl_already_placed:
+                try:
+                    oco = client.place_oco(
+                        symbol=symbol,
+                        quantity=executed_qty,
+                        tp_price=primary_tp_price,
+                        sl_price=sl_price,
+                    )
+                except Exception as e:
+                    logger.warning("OCO failed, falling back to separate orders: %s", e)
 
             if oco:
                 oco_placed = True
@@ -772,7 +803,7 @@ def _place_sl_tp_orders(
                     executed_qty,
                 )
 
-                if sl_qty >= _step_size:
+                if sl_qty >= _step_size and not _sl_already_placed:
                     sl = None
                     for attempt in range(2):
                         try:

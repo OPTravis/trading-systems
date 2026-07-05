@@ -522,3 +522,83 @@ class TestGetPositionTier:
         pct, label = trade_executor.get_position_tier(50)
         assert pct == 0.0
         assert label == "SKIP"
+
+
+# ────────────────────────────────────────────────────────────
+# Tiered SL preservation bug (2026-07-05)
+# When tiered TP fails after SL was placed, exception handler
+# must NOT cancel the SL, and must carry it over to fallback.
+# ────────────────────────────────────────────────────────────
+
+class TestTieredSLPreservation:
+    """Bug fix: tiered exception handler was cancelling successfully-placed SL
+    and using wrong key ('id' instead of 'orderId') for cancel."""
+
+    def test_sl_preserved_when_tp_fails(self):
+        """SL placed in tiered path must survive TP failure."""
+        from src.trade_executor import _place_sl_tp_orders
+
+        client = MagicMock()
+        notifier = MagicMock()
+
+        # SL placement succeeds, TP1 fails
+        client.place_order.side_effect = [
+            {"orderId": 12345, "status": "NEW"},  # SL success
+            None,  # TP1 fails (returns None)
+        ]
+        client.get_open_orders.return_value = [
+            {"orderId": 12345, "type": "STOP_LOSS_LIMIT", "price": "82.45", "side": "SELL"},
+        ]
+        client.get_price_precision.return_value = 2
+
+        result = _place_sl_tp_orders(
+            client, notifier, "TESTUSDT",
+            executed_qty=0.3,
+            price=89.62,
+            p_prec=2,
+            stop_loss_pct=8.0,
+            tp_levels=[{"pct": 6, "size_pct": 40}, {"pct": 9, "size_pct": 40}, {"pct": 12, "size_pct": 20}],
+            _step_size=0.001,
+            _qty_decimals=3,
+            _min_notional=5.0,
+            strategy_size_multiplier=1.0,
+        )
+
+        # SL must NOT have been cancelled
+        client.cancel_order.assert_not_called()
+        # SL quantity must be carried over
+        assert result["sl_placed_qty"] == pytest.approx(0.3)
+        # OCO must NOT have been attempted (SL already placed)
+        client.place_oco.assert_not_called()
+
+    def test_cancel_uses_correct_key(self):
+        """Cancel must use 'orderId' not 'id' (Binance SDK field)."""
+        from src.trade_executor import _place_sl_tp_orders
+
+        client = MagicMock()
+        notifier = MagicMock()
+
+        # SL fails, then TP residue needs cancelling
+        client.place_order.return_value = None  # everything fails
+        client.get_open_orders.return_value = [
+            {"orderId": 99999, "type": "LIMIT", "price": "95.0", "side": "SELL"},
+        ]
+        client.get_price_precision.return_value = 2
+
+        _place_sl_tp_orders(
+            client, notifier, "TESTUSDT",
+            executed_qty=0.3,
+            price=89.62,
+            p_prec=2,
+            stop_loss_pct=8.0,
+            tp_levels=[{"pct": 6, "size_pct": 40}, {"pct": 9, "size_pct": 40}, {"pct": 12, "size_pct": 20}],
+            _step_size=0.001,
+            _qty_decimals=3,
+            _min_notional=5.0,
+            strategy_size_multiplier=1.0,
+        )
+
+        # cancel_order must have been called with orderId=99999, not None
+        client.cancel_order.assert_called()
+        call_args = client.cancel_order.call_args
+        assert call_args[0][1] == 99999 or call_args[1].get("order_id") == 99999
