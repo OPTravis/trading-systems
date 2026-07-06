@@ -11,12 +11,12 @@ llm:
     # API key loaded from DEEPSEEK_API_KEY env var
 
   fallback:
-    provider: zhipu
-    model: glm-5.1
-    base_url: https://api.z.ai/api/coding/paas/v4
-    timeout: 30          # seconds
-    # API key loaded from GLM_API_KEY env var
-    enabled: true
+    provider: deepseek
+    model: deepseek-v4-pro
+    base_url: https://api.deepseek.com/v1
+    timeout: 30
+    # Same as primary — single provider mode
+    enabled: false
 
   # Retry configuration
   retry:

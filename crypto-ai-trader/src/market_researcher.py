@@ -638,15 +638,15 @@ class MarketResearcher:
         Returns list of dicts with structured scoring:
         [{"score": 1-10, "confidence": 0.0-1.0, "sentiment": -1.0 to 1.0}, ...]
 
-        Uses glm-5.1 as primary, DeepSeek as verification.
+        Uses DeepSeek single-model for sentiment analysis.
         Both models must agree (within 2 points) for HIGH confidence.
         Falls back to keyword matching on failure.
         """
         if not articles:
             return []
 
-        glm_key = os.environ.get("GLM_API_KEY")
-        if not glm_key:
+        ds_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not ds_key:
             return [
                 self._keyword_sentiment_structured(a.get("summary", ""))
                 for a in articles
@@ -665,35 +665,17 @@ class MarketResearcher:
             + "\n".join(numbered)
         )
 
-        # --- Primary model (glm-5.1) ---
+        # --- Primary model (deepseek-v4-pro) ---
         primary_scores = self._call_llm_for_sentiment(
-            prompt, articles, "glm-5.1", "second"
+            prompt, articles, "deepseek-v4-pro", "primary"
         )
 
-        # --- Verification (DeepSeek) — best-effort ---
-        verification_scores = None
-        try:
-            verification_scores = self._call_llm_for_sentiment(
-                prompt, articles, "deepseek-v4-pro", "primary"
-            )
-        except Exception as e:
-            logger.info(
-                f"MarketResearcher: DeepSeek verification unavailable ({e}), using primary only"
-            )
-
-        # --- Cross-verify ---
-        if primary_scores and verification_scores:
-            return self._cross_verify_sentiment(
-                primary_scores, verification_scores, articles
-            )
-        elif primary_scores:
-            logger.info(
-                "MarketResearcher: DeepSeek verification unavailable, using primary only"
-            )
+        # Single DeepSeek model — no cross-verification
+        if primary_scores:
             return primary_scores
         else:
             logger.warning(
-                "MarketResearcher: both LLMs failed, falling back to keywords"
+                "MarketResearcher: DeepSeek failed, falling back to keywords"
             )
             return [
                 self._keyword_sentiment_structured(a.get("summary", ""))
@@ -727,10 +709,10 @@ class MarketResearcher:
             if result is not None:
                 content = result.get("content", "")
 
-                # glm-5.1 uses reasoning_content — if content is empty, check reasoning
+                # deepseek-v4-pro uses reasoning_content — if content is empty, check reasoning
                 if not content and result.get("reasoning_content"):
                     logger.info(
-                        "MarketResearcher: glm-5.1 returned reasoning only, extracting from reasoning_content"
+                        "MarketResearcher: deepseek returned reasoning only, extracting from reasoning_content"
                     )
                     reasoning = result["reasoning_content"]
                     import re
@@ -1116,7 +1098,7 @@ class MarketResearcher:
         return results[: days * 5]  # max 5 per day
 
     def _llm_sentiment(self, text: str, max_length: int = 500) -> Optional[float]:
-        """Use LLM (glm-5.1 primary, auto-fallback to DeepSeek) for deep sentiment analysis.
+        """Use LLM (DeepSeek) for deep sentiment analysis.
 
         Returns float -1 to +1, or None if all LLM providers unavailable.
         """
@@ -1125,9 +1107,7 @@ class MarketResearcher:
         text = text[:max_length]
 
         try:
-            from src.llm_client import get_second_opinion_client
-
-            llm = get_second_opinion_client() or get_llm_client()
+            llm = get_llm_client()
             result = llm.chat(
                 messages=[
                     {
@@ -1135,7 +1115,7 @@ class MarketResearcher:
                         "content": f"Analyze this crypto news sentiment:\n\n{text}",
                     }
                 ],
-                model="glm-5.1",
+                model="deepseek-v4-pro",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
                 max_tokens=10,
                 temperature=0.0,

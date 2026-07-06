@@ -291,7 +291,7 @@ class BearAnalyst:
     def _llm_risk_analysis(
         self, symbol: str, metrics: Dict, bear_score: float
     ) -> tuple:
-        """Call LLM (DeepSeek primary, auto-fallback to GLM-5.2) for additional bearish risk factors.
+        """Call LLM (DeepSeek) for additional bearish risk factors.
 
         Returns (risk_factors_list, confidence_str).
         """

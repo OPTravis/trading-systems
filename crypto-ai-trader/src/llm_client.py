@@ -2,8 +2,8 @@
 Centralized LLM Client with automatic fallback.
 
 Primary: DeepSeek (deepseek-v4-pro)
-Fallback: Zhipu GLM (glm-5.1)
-Second Opinion: Zhipu GLM (glm-5.1)
+Fallback: Disabled (single provider)
+Second Opinion: Disabled
 
 On timeout, rate-limit (429), 5xx, or connection errors, automatically
 tries the fallback provider.
@@ -51,11 +51,11 @@ def _load_config() -> Dict:
                 "timeout": 30,
             },
             "fallback": {
-                "provider": "zhipu",
-                "model": "glm-5.1",
-                "base_url": "https://api.z.ai/api/coding/paas/v4",
+                "provider": "deepseek",
+                "model": "deepseek-v4-pro",
+                "base_url": "https://api.deepseek.com/v1",
                 "timeout": 30,
-                "enabled": True,
+                "enabled": False,
             },
             "retry": {"max_retries": 1, "retry_delay": 1.0},
             "fallback_triggers": {
@@ -85,8 +85,8 @@ def _load_config() -> Dict:
         cfg["llm"]["primary"]["base_url"] = os.environ.get(
             "DEEPSEEK_BASE_URL", cfg["llm"]["primary"]["base_url"]
         )
-    if os.environ.get("GLM_API_KEY"):
-        cfg["llm"]["fallback"]["enabled"] = True
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        cfg["llm"]["fallback"]["enabled"] = False  # single provider
 
     _config_cache = cfg
     return cfg
@@ -124,7 +124,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 
     return {
         "provider": provider,
-        "model": pcfg.get("model", "glm-5.1"),
+        "model": pcfg.get("model", "deepseek-v4-pro"),
         "base_url": base_url,
         "timeout": pcfg.get("timeout", 30),
     }, api_key
@@ -395,39 +395,15 @@ def get_llm_client() -> LLMClient:
 
 
 # ---------------------------------------------------------------------------
-# Second opinion client (glm-5.1)
+# Second opinion client — disabled (single DeepSeek provider)
 # ---------------------------------------------------------------------------
 
-_second_client: Optional[LLMClient] = None
+_second_client = None
 
 
-def get_second_opinion_client() -> Optional[LLMClient]:
-    """Get or create a second LLM client for cross-verification.
+def get_second_opinion_client():
+    """Second opinion disabled — single DeepSeek provider mode.
 
-    Uses zhipu/glm-5.1 as the second model.
-    Returns None if GLM_API_KEY is not configured.
+    Returns None; market_researcher falls back to single-model sentiment.
     """
-    global _second_client
-    if _second_client is None:
-        if not os.environ.get("GLM_API_KEY"):
-            logger.warning("GLM_API_KEY not set — second opinion disabled")
-            return None
-        # Create a client that uses zhipu as primary
-        _second_client = LLMClient(provider_cfg_name="primary")
-        # Override to use zhipu config
-        cfg = _load_config()["llm"]
-        zhipu_cfg = {
-            "provider": "zhipu",
-            "model": "glm-5.1",
-            "base_url": os.environ.get(
-                "GLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4"
-            ),
-            "timeout": 30,
-        }
-        _second_client._primary_cfg = zhipu_cfg
-        _second_client._primary_key = os.environ.get("GLM_API_KEY", "")
-        # Set DeepSeek as fallback for zhipu
-        _second_client._fallback_cfg = cfg["primary"]  # DeepSeek
-        _second_client._fallback_key = os.environ.get("DEEPSEEK_API_KEY", "")
-        _second_client._fallback_enabled = True
-    return _second_client
+    return None
