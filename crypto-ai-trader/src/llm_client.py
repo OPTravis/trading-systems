@@ -2,8 +2,8 @@
 Centralized LLM Client with automatic fallback.
 
 Primary: DeepSeek (deepseek-v4-pro)
-Fallback: Xiaomi MiMo (mimo-v2.5-pro)
-Second Opinion: Xiaomi MiMo (mimo-v2.5-pro)
+Fallback: Zhipu GLM (glm-5.2)
+Second Opinion: Zhipu GLM (glm-5.2)
 
 On timeout, rate-limit (429), 5xx, or connection errors, automatically
 tries the fallback provider.
@@ -51,9 +51,9 @@ def _load_config() -> Dict:
                 "timeout": 30,
             },
             "fallback": {
-                "provider": "xiaomi",
-                "model": "mimo-v2.5-pro",
-                "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
+                "provider": "zhipu",
+                "model": "glm-5.2",
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
                 "timeout": 30,
                 "enabled": True,
             },
@@ -85,7 +85,7 @@ def _load_config() -> Dict:
         cfg["llm"]["primary"]["base_url"] = os.environ.get(
             "DEEPSEEK_BASE_URL", cfg["llm"]["primary"]["base_url"]
         )
-    if os.environ.get("XIAOMI_API_KEY"):
+    if os.environ.get("GLM_API_KEY"):
         cfg["llm"]["fallback"]["enabled"] = True
 
     _config_cache = cfg
@@ -111,7 +111,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
         ),
         "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
         "kimi": ("KIMI_API_KEY", "KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
-        "xiaomi": ("XIAOMI_API_KEY", "XIAOMI_BASE_URL", "https://api.xiaomi.com/v1"),
+        "zhipu": ("GLM_API_KEY", "GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
     }
 
     if provider in env_key_map:
@@ -124,7 +124,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 
     return {
         "provider": provider,
-        "model": pcfg.get("model", "mimo-v2.5-pro"),
+        "model": pcfg.get("model", "glm-5.2"),
         "base_url": base_url,
         "timeout": pcfg.get("timeout", 30),
     }, api_key
@@ -395,7 +395,7 @@ def get_llm_client() -> LLMClient:
 
 
 # ---------------------------------------------------------------------------
-# Second opinion client (mimo-v2.5-pro)
+# Second opinion client (glm-5.2)
 # ---------------------------------------------------------------------------
 
 _second_client: Optional[LLMClient] = None
@@ -404,29 +404,29 @@ _second_client: Optional[LLMClient] = None
 def get_second_opinion_client() -> Optional[LLMClient]:
     """Get or create a second LLM client for cross-verification.
 
-    Uses xiaomi/mimo-v2.5-pro as the second model.
-    Returns None if XIAOMI_API_KEY is not configured.
+    Uses zhipu/glm-5.2 as the second model.
+    Returns None if GLM_API_KEY is not configured.
     """
     global _second_client
     if _second_client is None:
-        if not os.environ.get("XIAOMI_API_KEY"):
-            logger.warning("XIAOMI_API_KEY not set — second opinion disabled")
+        if not os.environ.get("GLM_API_KEY"):
+            logger.warning("GLM_API_KEY not set — second opinion disabled")
             return None
-        # Create a client that uses xiaomi as primary
+        # Create a client that uses zhipu as primary
         _second_client = LLMClient(provider_cfg_name="primary")
-        # Override to use xiaomi config
+        # Override to use zhipu config
         cfg = _load_config()["llm"]
-        xiaomi_cfg = {
-            "provider": "xiaomi",
-            "model": "mimo-v2.5-pro",
+        zhipu_cfg = {
+            "provider": "zhipu",
+            "model": "glm-5.2",
             "base_url": os.environ.get(
-                "XIAOMI_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"
+                "GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"
             ),
             "timeout": 30,
         }
-        _second_client._primary_cfg = xiaomi_cfg
-        _second_client._primary_key = os.environ.get("XIAOMI_API_KEY", "")
-        # Set DeepSeek as fallback for xiaomi
+        _second_client._primary_cfg = zhipu_cfg
+        _second_client._primary_key = os.environ.get("GLM_API_KEY", "")
+        # Set DeepSeek as fallback for zhipu
         _second_client._fallback_cfg = cfg["primary"]  # DeepSeek
         _second_client._fallback_key = os.environ.get("DEEPSEEK_API_KEY", "")
         _second_client._fallback_enabled = True
