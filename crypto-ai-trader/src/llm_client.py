@@ -2,8 +2,8 @@
 Centralized LLM Client with automatic fallback.
 
 Primary: DeepSeek (deepseek-v4-pro)
-Fallback: Zhipu GLM (glm-5.2)
-Second Opinion: Zhipu GLM (glm-5.2)
+Fallback: Zhipu GLM (glm-5.1)
+Second Opinion: Zhipu GLM (glm-5.1)
 
 On timeout, rate-limit (429), 5xx, or connection errors, automatically
 tries the fallback provider.
@@ -52,8 +52,8 @@ def _load_config() -> Dict:
             },
             "fallback": {
                 "provider": "zhipu",
-                "model": "glm-5.2",
-                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "model": "glm-5.1",
+                "base_url": "https://api.z.ai/api/coding/paas/v4",
                 "timeout": 30,
                 "enabled": True,
             },
@@ -111,7 +111,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
         ),
         "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
         "kimi": ("KIMI_API_KEY", "KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
-        "zhipu": ("GLM_API_KEY", "GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
+        "zhipu": ("GLM_API_KEY", "GLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4"),
     }
 
     if provider in env_key_map:
@@ -124,7 +124,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 
     return {
         "provider": provider,
-        "model": pcfg.get("model", "glm-5.2"),
+        "model": pcfg.get("model", "glm-5.1"),
         "base_url": base_url,
         "timeout": pcfg.get("timeout", 30),
     }, api_key
@@ -395,7 +395,7 @@ def get_llm_client() -> LLMClient:
 
 
 # ---------------------------------------------------------------------------
-# Second opinion client (glm-5.2)
+# Second opinion client (glm-5.1)
 # ---------------------------------------------------------------------------
 
 _second_client: Optional[LLMClient] = None
@@ -404,7 +404,7 @@ _second_client: Optional[LLMClient] = None
 def get_second_opinion_client() -> Optional[LLMClient]:
     """Get or create a second LLM client for cross-verification.
 
-    Uses zhipu/glm-5.2 as the second model.
+    Uses zhipu/glm-5.1 as the second model.
     Returns None if GLM_API_KEY is not configured.
     """
     global _second_client
@@ -418,9 +418,9 @@ def get_second_opinion_client() -> Optional[LLMClient]:
         cfg = _load_config()["llm"]
         zhipu_cfg = {
             "provider": "zhipu",
-            "model": "glm-5.2",
+            "model": "glm-5.1",
             "base_url": os.environ.get(
-                "GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"
+                "GLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4"
             ),
             "timeout": 30,
         }

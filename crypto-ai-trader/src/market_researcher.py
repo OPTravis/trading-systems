@@ -638,7 +638,7 @@ class MarketResearcher:
         Returns list of dicts with structured scoring:
         [{"score": 1-10, "confidence": 0.0-1.0, "sentiment": -1.0 to 1.0}, ...]
 
-        Uses glm-5.2 as primary, DeepSeek as verification.
+        Uses glm-5.1 as primary, DeepSeek as verification.
         Both models must agree (within 2 points) for HIGH confidence.
         Falls back to keyword matching on failure.
         """
@@ -665,9 +665,9 @@ class MarketResearcher:
             + "\n".join(numbered)
         )
 
-        # --- Primary model (glm-5.2) ---
+        # --- Primary model (glm-5.1) ---
         primary_scores = self._call_llm_for_sentiment(
-            prompt, articles, "glm-5.2", "second"
+            prompt, articles, "glm-5.1", "second"
         )
 
         # --- Verification (DeepSeek) — best-effort ---
@@ -727,10 +727,10 @@ class MarketResearcher:
             if result is not None:
                 content = result.get("content", "")
 
-                # glm-5.2 uses reasoning_content — if content is empty, check reasoning
+                # glm-5.1 uses reasoning_content — if content is empty, check reasoning
                 if not content and result.get("reasoning_content"):
                     logger.info(
-                        "MarketResearcher: glm-5.2 returned reasoning only, extracting from reasoning_content"
+                        "MarketResearcher: glm-5.1 returned reasoning only, extracting from reasoning_content"
                     )
                     reasoning = result["reasoning_content"]
                     import re
@@ -1116,7 +1116,7 @@ class MarketResearcher:
         return results[: days * 5]  # max 5 per day
 
     def _llm_sentiment(self, text: str, max_length: int = 500) -> Optional[float]:
-        """Use LLM (glm-5.2 primary, auto-fallback to DeepSeek) for deep sentiment analysis.
+        """Use LLM (glm-5.1 primary, auto-fallback to DeepSeek) for deep sentiment analysis.
 
         Returns float -1 to +1, or None if all LLM providers unavailable.
         """
@@ -1135,7 +1135,7 @@ class MarketResearcher:
                         "content": f"Analyze this crypto news sentiment:\n\n{text}",
                     }
                 ],
-                model="glm-5.2",
+                model="glm-5.1",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
                 max_tokens=10,
                 temperature=0.0,

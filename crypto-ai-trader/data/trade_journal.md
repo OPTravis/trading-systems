@@ -28177,3 +28177,105 @@
 
 ## 2026-07-06 17:19 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
 - Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-06 17:19 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-06 17:19 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=75.0 | bear_score=25 veto=False
+- Research: {'score_adjustment': 0, 'confidence': 0.5, 'sentiment_summary': 'neutral', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 10.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partne
+
+## 2026-07-06 17:20 | SOLUSDT | VETOED | score=80.0 | bear_score=80 veto=True
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=70.5
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=70.5 | bear_score=65 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=90.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-06 17:20 | SOLUSDT | BUY | score=90.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
