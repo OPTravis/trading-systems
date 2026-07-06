@@ -171,7 +171,7 @@ class TradeJournal:
                 decision=decision,
                 score=score,
                 bear_result=bear_result,
-                research=research,
+                research=research_str,
             )
         except Exception as e:
             logger.warning(f"Failed to record decision to state.db: {e}")
