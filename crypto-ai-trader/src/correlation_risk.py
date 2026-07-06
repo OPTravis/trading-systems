@@ -160,6 +160,61 @@ class CorrelationRiskManager:
                 "max_correlation": 0.0,
             }
 
+        # Same-symbol DCA: adding to an existing position is not a
+        # diversification concern — correlation check only makes sense
+        # for *different* assets. Allow with reduced size for safety.
+        if new_symbol in current_positions:
+            other_positions = [p for p in current_positions if p != new_symbol]
+            if not other_positions:
+                logger.info(
+                    f"CorrelationRisk: {new_symbol} already held — "
+                    f"DCA add allowed (same-symbol, no other positions)"
+                )
+                return {
+                    "allowed": True,
+                    "reason": f"{new_symbol} already held — DCA add (same-symbol exempt)",
+                    "correlations": {new_symbol: 1.0},
+                    "avg_correlation": 0.0,
+                    "max_correlation": 0.0,
+                    "size_multiplier": 0.8,  # slight reduction for safety
+                }
+            # Has other positions too — check correlation with those, skip self
+            all_symbols = list(set(other_positions + [new_symbol]))
+            corr_matrix, histories = self._build_correlation_matrix(all_symbols)
+            correlations = {}
+            max_corr = 0.0
+            for pos in other_positions:
+                if pos in corr_matrix.get(new_symbol, {}):
+                    corr = corr_matrix[new_symbol][pos]
+                    correlations[pos] = round(corr, 3)
+                    max_corr = max(max_corr, abs(corr))
+            blocked_by_pair = [
+                f"{p} ({c:.2f})"
+                for p, c in correlations.items()
+                if abs(c) > MAX_PAIRWISE_CORR
+            ]
+            if blocked_by_pair:
+                return {
+                    "allowed": False,
+                    "reason": f"High correlation with other holdings: {', '.join(blocked_by_pair)}. Limit={MAX_PAIRWISE_CORR}",
+                    "correlations": correlations,
+                    "avg_correlation": round(max_corr, 3),
+                    "max_correlation": round(max_corr, 3),
+                    "size_multiplier": 1.0,
+                }
+            logger.info(
+                f"CorrelationRisk: {new_symbol} DCA add — "
+                f"corr with other holdings OK (max={max_corr:.2f})"
+            )
+            return {
+                "allowed": True,
+                "reason": f"{new_symbol} already held — DCA add (same-symbol exempt, other corr max={max_corr:.2f})",
+                "correlations": correlations,
+                "avg_correlation": round(max_corr, 3),
+                "max_correlation": round(max_corr, 3),
+                "size_multiplier": 0.8,  # slight reduction for safety
+            }
+
         # Include new symbol in correlation calculation
         all_symbols = list(set(current_positions + [new_symbol]))
         corr_matrix, histories = self._build_correlation_matrix(all_symbols)
