@@ -139,6 +139,16 @@ fi
 
 cd "$BASEDIR"
 
+# Dynamic scan gate: skip scan if market conditions don't warrant it
+if [ "$CMD" = "cron-scan" ]; then
+    python3 scripts/scan_gate.py >> "$LOGFILE" 2>&1
+    GATE_EXIT=$?
+    if [ $GATE_EXIT -ne 0 ]; then
+        echo "========== $(date) - $CMD SKIPPED by dynamic gate ==========" >> "$LOGFILE"
+        exit 0
+    fi
+fi
+
 echo "========== $(date) - $CMD ==========" >> "$LOGFILE"
 python3 main.py "$CMD" "$@" >> "$LOGFILE" 2>&1
 EXIT_CODE=$?

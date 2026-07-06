@@ -293,6 +293,20 @@ def _step_research_top_n(ctx):
 
     # ===== Step 6: Deep Research on Top 3 Candidates (parallel) =====
     top_n = opportunities[:3]
+
+    # Pre-filter: if best candidate can't reach threshold even with max +15
+    # research adjustment, skip expensive LLM research entirely
+    MAX_RESEARCH_ADJ = 15
+    best_raw_score = max(o["score"] for o in top_n)
+    if best_raw_score + MAX_RESEARCH_ADJ < dynamic_threshold:
+        logger.info(
+            f"Skip LLM research: best raw score {best_raw_score:.0f} + max adj 15 "
+            f"< threshold {dynamic_threshold}"
+        )
+        print(f"SKIP_RESEARCH: best_score={int(best_raw_score)} +15 < {dynamic_threshold}")
+        clear_pending()
+        return None
+
     research_results = _run_deep_research(researcher, client, top_n, fng)
 
     # Select best candidate by adjusted score

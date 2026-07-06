@@ -1692,5 +1692,75 @@
     "title": "",
     "body": "📊 每日报告 2026-07-02\n\n💰 USDT: $382.03\n📈 總資產: $400.61\n\n📦 持倉 (1):\n  🟢 BTC: 0.0 ($18.58, +3.00%)\n\n📋 掛單: 1 個 (SL:1 TP:1)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.4% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 231筆交易):\n  已實現PnL: $-221.41\n  手續費: -$6.31\n  淨已實現: $-227.72\n  塵倉浮虧: $-8.48 (12個)",
     "notified": true
+  },
+  {
+    "id": "msg_20260703091514",
+    "timestamp": "2026-07-03T09:15:14.485332",
+    "title": "",
+    "body": "📊 每日报告 2026-07-03\n\n💰 USDT: $381.56\n📈 總資產: $400.73\n\n📦 持倉 (1):\n  🟢 SOL: 0.2 ($19.17, +4.57%)\n\n📋 掛單: 2 個 (SL:1 TP:2)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.2% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 233筆交易):\n  已實現PnL: $-221.40\n  手續費: -$6.34\n  淨已實現: $-227.74\n  塵倉浮虧: $-5.01 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260703214236",
+    "timestamp": "2026-07-03T21:42:36.823314",
+    "title": "",
+    "body": "🚀 自動執行 - ALLOUSDT\n策略: BOLLINGER | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 5.8% of $381.56 = $21.98\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 57 @ $0.383000\n信號: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 57 @ $0.383328\n  OCO: TP 6.0% @ $0.406 | SL -8.0% @ $0.3524",
+    "notified": true
+  },
+  {
+    "id": "msg_20260704091515",
+    "timestamp": "2026-07-04T09:15:15.517544",
+    "title": "",
+    "body": "📊 每日报告 2026-07-04\n\n💰 USDT: $379.78\n📈 總資產: $399.13\n\n📦 持倉 (1):\n  🟢 SOL: 0.2 ($19.35, +0.96%)\n\n📋 掛單: 2 個 (SL:1 TP:2)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.2% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 239筆交易):\n  已實現PnL: $-223.18\n  手續費: -$6.37\n  淨已實現: $-229.56\n  塵倉浮虧: $-3.92 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260704234439",
+    "timestamp": "2026-07-04T23:44:39.084934",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for AAVEUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260704234440",
+    "timestamp": "2026-07-04T23:44:40.321450",
+    "title": "",
+    "body": "🔴🔴 AAVEUSDT 完全無SL！0.2990 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260704234440",
+    "timestamp": "2026-07-04T23:44:40.798851",
+    "title": "",
+    "body": "🚀 自動執行 - AAVEUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 85)\nKelly: 7.0% of $379.78 = $26.74\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 0 @ $89.420000\n信號: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 0 @ $89.620000\n  Slippage: +0.22% (fill $89.620000 vs expected $89.420000)\n  SL: FAILED\n  TP1: FAILED\n  TP2: FAILED\n  TP3(+12.0%): SKIPPED (notional $4.11)\n  🔴 未保護: 0.2990 units (no SL placed)\n  注意: 0 單位已由額外SL覆蓋",
+    "notified": true
+  },
+  {
+    "id": "msg_20260705091513",
+    "timestamp": "2026-07-05T09:15:13.339547",
+    "title": "",
+    "body": "📊 每日报告 2026-07-05\n\n💰 USDT: $352.98\n📈 總資產: $398.65\n\n📦 持倉 (2):\n  🟢 AAVE: 0.3 ($26.50, +0.60%)\n  🔴 SOL: 0.2 ($19.16, -0.99%)\n\n📋 掛單: 4 個 (SL:2 TP:4)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 88.5% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 239筆交易):\n  已實現PnL: $-223.18\n  手續費: -$6.37\n  淨已實現: $-229.56\n  塵倉浮虧: $-3.51 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260706034302",
+    "timestamp": "2026-07-06T03:43:02.957237",
+    "title": "",
+    "body": "🚀 自動執行 - GIGGLEUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 5.3% of $352.98 = $18.64\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 1 @ $28.450000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 1 @ $28.490000\n  Slippage: +0.14% (fill $28.490000 vs expected $28.450000)\n  SL preserved from tiered: 0.655 @ $26.17\n  TP1: FAILED\n  TP2: FAILED\n  TP3: FAILED",
+    "notified": true
+  },
+  {
+    "id": "msg_20260706091516",
+    "timestamp": "2026-07-06T09:15:16.761713",
+    "title": "",
+    "body": "📊 每日报告 2026-07-06\n\n💰 USDT: $353.70\n📈 總資產: $399.77\n\n📦 持倉 (2):\n  🟢 AAVE: 0.3 ($26.72, +0.83%)\n  🟢 SOL: 0.2 ($19.35, +0.97%)\n\n📋 掛單: 4 個 (SL:2 TP:4)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 88.5% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 239筆交易):\n  已實現PnL: $-223.18\n  手續費: -$6.37\n  淨已實現: $-229.56\n  塵倉浮虧: $-2.79 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260706145130",
+    "timestamp": "2026-07-06T14:51:30.194652",
+    "title": "",
+    "body": "🚀 自動執行 - AAVEUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 5.3% of $353.70 = $18.68\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 0 @ $89.940000\n信號: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 0 @ $90.000000\n  SL-only: 0.208 @ $84.54 (-6.0%)",
+    "notified": true
   }
 ]

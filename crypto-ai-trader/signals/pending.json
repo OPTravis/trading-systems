@@ -2986,5 +2986,53 @@
     "reason": "RSI Oversold",
     "strategy": "score_based",
     "notified": false
+  },
+  {
+    "id": "ALLOUSDT_20260703214238",
+    "timestamp": "2026-07-03T21:42:38.013641",
+    "type": "BUY",
+    "symbol": "ALLOUSDT",
+    "action": "OPEN",
+    "price": 0.383,
+    "quantity": 57.4,
+    "reason": "\ud83d\udcc8 Moderate Trend Score: 50 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "AAVEUSDT_20260704234441",
+    "timestamp": "2026-07-04T23:44:41.900475",
+    "type": "BUY",
+    "symbol": "AAVEUSDT",
+    "action": "OPEN",
+    "price": 89.42,
+    "quantity": 0.299,
+    "reason": "\ud83d\udcaa Strong Trend Score: 85 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "dca",
+    "notified": false
+  },
+  {
+    "id": "GIGGLEUSDT_20260706034304",
+    "timestamp": "2026-07-06T03:43:04.007653",
+    "type": "BUY",
+    "symbol": "GIGGLEUSDT",
+    "action": "OPEN",
+    "price": 28.45,
+    "quantity": 0.655,
+    "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "dca",
+    "notified": false
+  },
+  {
+    "id": "AAVEUSDT_20260706145131",
+    "timestamp": "2026-07-06T14:51:31.511621",
+    "type": "BUY",
+    "symbol": "AAVEUSDT",
+    "action": "OPEN",
+    "price": 89.94,
+    "quantity": 0.208,
+    "reason": "\ud83d\udcaa Strong Trend Score: 85 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "dca",
+    "notified": false
   }
 ]

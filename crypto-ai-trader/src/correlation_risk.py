@@ -25,13 +25,18 @@ MIN_HISTORY_DAYS = 15  # Minimum days of price history required
 CACHE_TTL_SECONDS = 3600  # Recompute correlations every hour
 
 
+# Class-level cache: persists across instances within the same process.
+# Each entry stores its own timestamp so TTL is per-key.
+_CLASS_CACHE: Dict[str, Any] = {}
+
+
 class CorrelationRiskManager:
     """Monitor and enforce correlation limits for portfolio diversification."""
 
     def __init__(self, binance_client):
         self.client = binance_client
-        self._cache: Dict[str, Any] = {}
-        self._cache_ts: float = 0
+        # Share class-level cache across instances (each scan creates a new RiskManager)
+        self._cache = _CLASS_CACHE
 
     def _get_price_history(self, symbol: str, days: int = 45) -> List[float]:
         """Fetch daily closing prices for correlation calculation."""
@@ -99,14 +104,11 @@ class CorrelationRiskManager:
         now = time.time()
         cache_key = ",".join(sorted(symbols))
 
-        # Check cache
-        if (
-            cache_key in self._cache
-            and (now - self._cache_ts) < CACHE_TTL_SECONDS
-        ):
+        # Check cache (per-key TTL)
+        cached_entry = self._cache.get(cache_key)
+        if cached_entry and (now - cached_entry["ts"]) < CACHE_TTL_SECONDS:
             logger.debug("CorrelationRisk: cache hit for %s", cache_key)
-            cached = self._cache[cache_key]
-            return cached["matrix"], cached["histories"]
+            return cached_entry["matrix"], cached_entry["histories"]
 
         # Fetch all price histories
         histories = {}
@@ -128,9 +130,12 @@ class CorrelationRiskManager:
                         histories[sym_a], histories[sym_b]
                     )
 
-        # Update cache
-        self._cache[cache_key] = {"matrix": corr_matrix, "histories": histories}
-        self._cache_ts = now
+        # Update cache (per-key timestamp)
+        self._cache[cache_key] = {
+            "matrix": corr_matrix,
+            "histories": histories,
+            "ts": now,
+        }
         logger.debug("CorrelationRisk: cache updated for %s (%d symbols)", cache_key, len(symbols))
 
         return corr_matrix, histories
