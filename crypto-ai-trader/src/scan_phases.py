@@ -699,6 +699,70 @@ def _step_scan_opportunities():
     # Clamp threshold to reasonable range
     dynamic_threshold = max(40, min(95, dynamic_threshold))
 
+    # ===== Step 3c: Surge Detection (Pre-Pump Characteristics) =====
+    surge_result = None
+    try:
+        from src.surge_detector import SurgeDetector
+
+        # Get previous F&G for delta detection
+        fng_prev = None
+        try:
+            import sqlite3
+            conn = sqlite3.connect("data/cache.db")
+            rows = conn.execute(
+                "SELECT value FROM fng_history ORDER BY rowid DESC LIMIT 2"
+            ).fetchall()
+            conn.close()
+            if len(rows) >= 2:
+                fng_prev = int(rows[1][0])
+        except Exception:
+            pass
+
+        # Get BTC RSI
+        btc_rsi_val = None
+        try:
+            klines = client.get_klines("BTCUSDT", "1d", limit=20)
+            if klines and len(klines) >= 15:
+                import pandas as pd
+                from ta.momentum import RSIIndicator
+                closes = [float(k[4]) for k in klines]
+                rsi_indicator = RSIIndicator(pd.Series(closes), window=14)
+                btc_rsi_val = float(rsi_indicator.rsi().iloc[-1])
+        except Exception:
+            pass
+
+        surge_detector = SurgeDetector(binance_client=client)
+        surge_result = surge_detector.detect(
+            dim_result=dim_result,
+            fng=fng,
+            fng_prev=fng_prev,
+            btc_rsi=btc_rsi_val,
+        )
+
+        if surge_result["alert_level"] != "SILENCE":
+            print(f"\n{'='*50}")
+            print(surge_result["summary"])
+            print(f"{'='*50}")
+
+        if surge_result["should_alert"]:
+            from src.notifier import _append_notification
+            _append_notification(
+                "surge_alert",
+                "",
+                f"🚨 暴漲預警\n\n{surge_result['summary']}\n\n"
+                f"MVRV={surge_result.get('mvrv', 'N/A')} "
+                f"SOPR={surge_result.get('sopr', 'N/A')} "
+                f"NUPL={surge_result.get('nupl', 'N/A')}",
+            )
+            logger.info(
+                f"Surge alert: {surge_result['alert_level']} "
+                f"(P1={surge_result['phase1_count']} "
+                f"P2={surge_result['phase2_count']} "
+                f"P3={surge_result['phase3_count']})"
+            )
+    except Exception as e:
+        logger.warning(f"Surge detection failed: {e}")
+
     # ===== Step 4: Market Scan =====
     scanner.get_top_movers(limit=5)
     opportunities = scanner.scan_all()
@@ -776,4 +840,5 @@ def _step_scan_opportunities():
         "btc_change_24h": btc_change_24h,
         "btc_score": btc_score,
         "acct": acct,
+        "surge_result": surge_result,
     }

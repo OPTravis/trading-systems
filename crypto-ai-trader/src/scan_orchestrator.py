@@ -177,6 +177,23 @@ def _append_scan_summary(ctx):
     body = f"🔍 {now} 扫描完成\n\n"
     body += f"{emoji} 市场情绪: {fng} ({fng_label})\n"
     body += f"📊 动态阈值: {threshold}\n"
+
+    # Append surge detection info
+    surge = ctx.get("surge_result")
+    if surge and surge.get("alert_level", "SILENCE") != "SILENCE":
+        surge_emoji = {
+            "WATCH": "🔵", "ACCUMULATE": "🟡",
+            "IMMINENT": "🔴", "CONFIRMED": "🚀",
+        }.get(surge["alert_level"], "⚪")
+        body += f"{surge_emoji} 暴涨预警: {surge['alert_level']}"
+        body += f" (P1={surge['phase1_count']} P2={surge['phase2_count']} P3={surge['phase3_count']})\n"
+        # Show top phase 3 signals if any
+        if surge["phase3_signals"]:
+            body += f"  🔥 {surge['phase3_signals'][0]}\n"
+        elif surge["phase2_signals"]:
+            body += f"  🐋 {surge['phase2_signals'][0]}\n"
+        elif surge["phase1_signals"]:
+            body += f"  📊 {surge['phase1_signals'][0]}\n"
     body += f"💡 发现机会: {opp_count}个"
 
     if opp_count > 0:
