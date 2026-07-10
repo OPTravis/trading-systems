@@ -1,6 +1,7 @@
 # Risk Management Configuration
-# Widened SL to survive crypto noise (3-5% SL was getting stopped out in <6h)
-# TP1 lowered to 4% for faster partial profit lock-in
+# Surge-aware: wider SL to survive bottom volatility, higher TP1 for better R:R
+# Previous SL 7% was getting stopped out in <6h during extreme fear volatility
+# Now SL 9% gives trades room to breathe, TP1 raised to 6% to avoid premature exits
 
 risk:
   max_position_pct: 15
@@ -13,57 +14,57 @@ risk:
 
 strategies:
   grid:
-    stop_loss_pct: 7.0
+    stop_loss_pct: 9.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 14.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 48
 
   dca:
-    stop_loss_pct: 12.0
+    stop_loss_pct: 14.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 15.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 72
 
   trend:
-    stop_loss_pct: 7.0
+    stop_loss_pct: 9.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 15.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 48
 
   rsi:
-    stop_loss_pct: 7.0
+    stop_loss_pct: 9.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 15.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 48
 
   bollinger:
-    stop_loss_pct: 7.0
+    stop_loss_pct: 9.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 15.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 48
 
   vwap:
-    stop_loss_pct: 7.0
+    stop_loss_pct: 9.0
     take_profit_levels:
-      - { pct: 4.0, size_pct: 40 }
-      - { pct: 8.0, size_pct: 40 }
-      - { pct: 15.0, size_pct: 20 }
+      - { pct: 6.0, size_pct: 40 }
+      - { pct: 12.0, size_pct: 40 }
+      - { pct: 20.0, size_pct: 20 }
     max_hold_hours: 24
 
 default:
-  stop_loss_pct: 7.0
+  stop_loss_pct: 9.0
   take_profit_levels:
-    - { pct: 4.0, size_pct: 40 }
-    - { pct: 8.0, size_pct: 40 }
-    - { pct: 15.0, size_pct: 20 }
+    - { pct: 6.0, size_pct: 40 }
+    - { pct: 12.0, size_pct: 40 }
+    - { pct: 20.0, size_pct: 20 }
   max_hold_hours: 48

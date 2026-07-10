@@ -1,7 +1,7 @@
-# Strategy Configurations - Optimized for extreme fear market
-# Grid and Trend disabled during extreme fear (F&G < 25)
-# Only DCA and RSI active for mean-reversion buying
-# SPOT ONLY — all strategies are spot trading, no futures/leverage
+# Strategy Configurations - Surge-Aware
+# Phase 1 (WATCH/SILENCE): fear_accumulation BLOCKED by surge gate
+# Only deep_value_btc ($12 micro) allowed during pure capitulation
+# Strategies wait for ACCUMULATE+ confirmation before entering
 
 strategies:
   grid:
@@ -11,7 +11,7 @@ strategies:
       grid_levels: 8
       price_range_pct: 8.0
       order_size_pct: 8
-      stop_loss_pct: 5.0
+      stop_loss_pct: 9.0
 
   dca:
     name: "Dollar Cost Averaging"
@@ -19,8 +19,8 @@ strategies:
     params:
       interval_hours: 24        # Bear market: slower averaging, preserve cash
       order_size_pct: 8
-      dip_threshold_pct: -5.0   # 4h ATR 2.44%, need -5% for real dips
-      max_dca_rounds: 6         # Keep ~$112 cash buffer for deeper dips
+      dip_threshold_pct: -7.0   # Widened from -5%: only buy real crashes, not noise
+      max_dca_rounds: 6
 
   trend:
     name: "Trend Following"
@@ -29,33 +29,33 @@ strategies:
       fast_ma: 9
       slow_ma: 21
       volume_threshold: 1.5
-      stop_loss_pct: 5.0
-      take_profit_pct: 10.0
+      stop_loss_pct: 9.0
+      take_profit_pct: 12.0
 
   rsi_reversion:
     name: "RSI Mean Reversion"
     enabled: true   # Good for fear market - buy oversold bounces
     params:
-      rsi_oversold: 35    # Slightly higher threshold to catch more signals
+      rsi_oversold: 30    # Tightened from 35: only catch deep oversold, avoid premature entries
       rsi_overbought: 65
-      stop_loss_pct: 5.0
-      take_profit_pct: 8.0
+      stop_loss_pct: 9.0
+      take_profit_pct: 12.0
 
   bollinger:
-    name: "Bollinger Band Reversion"  # Changed from Breakout to Reversion
+    name: "Bollinger Band Reversion"
     enabled: true
     params:
       period: 20
       std_dev: 2.0
       volume_threshold: 1.5
-      stop_loss_pct: 5.0
-      take_profit_pct: 8.0
+      stop_loss_pct: 9.0
+      take_profit_pct: 12.0
 
   vwap:
     name: "VWAP Distribution"
     enabled: true
     params:
-      vwap_threshold_pct: -2.0   # More sensitive entry
+      vwap_threshold_pct: -2.0
       order_size_pct: 8
-      stop_loss_pct: 5.0
-      take_profit_pct: 8.0
+      stop_loss_pct: 9.0
+      take_profit_pct: 12.0

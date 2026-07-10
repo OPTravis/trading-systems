@@ -744,6 +744,28 @@ def _step_scan_opportunities():
             print(surge_result["summary"])
             print(f"{'='*50}")
 
+        # ===== Surge-Adjusted Threshold =====
+        # Lower the entry bar as surge signals strengthen:
+        #   CONFIRMED → -12 (full conviction entries)
+        #   IMMINENT  → -8  (reversal starting, good entries)
+        #   ACCUMULATE→ -4  (smart money in, cautious entries)
+        #   WATCH     →  0  (bottoming, don't lower bar)
+        #   SILENCE   → +5  (no signals, be extra cautious)
+        surge_adj = {
+            "CONFIRMED": -12,
+            "IMMINENT": -8,
+            "ACCUMULATE": -4,
+            "WATCH": 0,
+            "SILENCE": 5,
+        }.get(surge_result["alert_level"], 0)
+        dynamic_threshold += surge_adj
+        dynamic_threshold = max(40, min(95, dynamic_threshold))
+        if surge_adj != 0:
+            logger.info(
+                f"Surge-adjusted threshold: {surge_result['alert_level']} → "
+                f"{'+' if surge_adj > 0 else ''}{surge_adj} → threshold={dynamic_threshold}"
+            )
+
         if surge_result["should_alert"]:
             from src.notifier import _append_notification
             _append_notification(
@@ -779,23 +801,39 @@ def _step_scan_opportunities():
     )
 
     if not opportunities:
+        # ===== Surge-Aware Entry Gating =====
+        # Block fear-driven entries during Phase 1 (capitulation bottom) only.
+        # Only allow entries when surge detector signals ACCUMULATE (Phase 2+)
+        # or higher — meaning smart money has confirmed the bottom.
+        # Exception: Deep Value BTC is always allowed (micro $12, long-term).
+        surge_alert = surge_result.get("alert_level", "SILENCE") if surge_result else "SILENCE"
+
         # ===== Deep Value BTC Pickup (highest priority) =====
         # When F&G < 15 AND consecutive fear >= 25 days, buy small BTC.
         # Research: 14+ days extreme fear → 90d avg +114.8% return.
         # This is the deepest contrarian play — fixed $12, BTC only, 24h cooldown.
+        # Always allowed regardless of surge level (negligible risk).
         deep_btc_result = _try_deep_value_btc(fng, client, scanner, portfolio, risk_mgr)
         if deep_btc_result:
             return deep_btc_result
 
         # ===== Fear Accumulation Fallback =====
-        # When normal scan finds nothing AND we're in extreme fear (F&G < 20),
-        # try to accumulate top oversold coins with relaxed criteria + small size.
+        # SURGE GATE: Only allow fear accumulation when surge detector
+        # confirms smart money is accumulating (ACCUMULATE+) or reversal
+        # signals are appearing (IMMINENT/CONFIRMED).
+        # During WATCH/SILENCE, the bottom isn't confirmed — buying here = catching knives.
         if fng < 20 and all_opportunities:
-            fear_result = _try_fear_accumulation(
-                all_opportunities, fng, client, scanner, portfolio, risk_mgr
-            )
-            if fear_result:
-                return fear_result
+            if surge_alert in ("SILENCE", "WATCH"):
+                logger.info(
+                    f"Surge gate: BLOCKING fear_accumulation "
+                    f"(alert={surge_alert}, bottom not confirmed)"
+                )
+            else:
+                fear_result = _try_fear_accumulation(
+                    all_opportunities, fng, client, scanner, portfolio, risk_mgr
+                )
+                if fear_result:
+                    return fear_result
 
         print("NO_OPPORTUNITIES")
         clear_pending()
