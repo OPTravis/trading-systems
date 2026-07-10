@@ -263,29 +263,55 @@ class DimensionScorer:
                 if usdc > 0:
                     signals.append(f"USDC_${usdc/1e9:.1f}B_{usdc_chg:+.2f}pct")
 
-                # Stablecoin supply change = capital inflow/outflow signal
-                # Aggregate USDT+USDC change as the primary liquidity signal
+                # --- Change-rate component (60% of stablecoin score) ---
                 avg_stbl_chg = (usdt_chg + usdc_chg) / 2 if (usdt_chg or usdc_chg) else 0
                 if avg_stbl_chg > 0.5:
-                    stbl_score += 0.3
+                    stbl_change_score = 0.3
                     signals.append(f"stbl_capital_inflow_{avg_stbl_chg:+.1f}pct")
                 elif avg_stbl_chg > 0.1:
-                    stbl_score += 0.15
+                    stbl_change_score = 0.15
                     signals.append(f"stbl_mild_inflow_{avg_stbl_chg:+.1f}pct")
                 elif avg_stbl_chg < -0.5:
-                    stbl_score -= 0.3
+                    stbl_change_score = -0.3
                     signals.append(f"stbl_capital_outflow_{avg_stbl_chg:+.1f}pct")
                 elif avg_stbl_chg < -0.1:
-                    stbl_score -= 0.15
+                    stbl_change_score = -0.15
                     signals.append(f"stbl_mild_outflow_{avg_stbl_chg:+.1f}pct")
+                else:
+                    stbl_change_score = 0.0
 
                 # Depeg alerts are a strong bearish signal
                 depegs = stbl.get("depeg_alerts", [])
                 if depegs:
                     for d in depegs:
-                        stbl_score -= 0.3
+                        stbl_change_score -= 0.3
                         signals.append(f"depeg_{d.get('symbol','?')}_{d['deviation_pct']:+.1f}pct")
                     data["depeg_alerts"] = depegs
+
+                # --- SSR (Stablecoin Supply Ratio) component (40% of stablecoin score) ---
+                # SSR = BTC market cap / total stablecoin supply
+                # Low SSR (< 10) = strong stablecoin purchasing power (bullish)
+                # High SSR (> 15) = weak purchasing power (bearish)
+                ssr_score = 0.0
+                try:
+                    if self.client and total > 0:
+                        btc_price = self.client.get_ticker_price("BTCUSDT")
+                        if btc_price and btc_price > 0:
+                            btc_mcap = btc_price * 19_700_000
+                            ssr = btc_mcap / total
+                            data["ssr"] = round(ssr, 2)
+                            signals.append(f"SSR_{ssr:.1f}")
+                            if ssr < 10:
+                                ssr_score = 0.3
+                                signals.append(f"SSR_low_bullish_{ssr:.1f}")
+                            elif ssr > 15:
+                                ssr_score = -0.3
+                                signals.append(f"SSR_high_bearish_{ssr:.1f}")
+                except Exception as e:
+                    logger.warning(f"SSR calculation failed: {e}")
+
+                # Combine: change rate 60% + SSR 40%
+                stbl_score = stbl_change_score * 0.6 + ssr_score * 0.4
 
         except Exception as e:
             logger.warning(f"Stablecoin scoring failed: {e}")
@@ -428,7 +454,12 @@ class DimensionScorer:
 
     # ------------------------------------------------------------------
     def _score_technical(self) -> Dict:
-        """D5: Technical — RSI + MACD histogram from 1h candles (aligned with scanner)."""
+        """D5: Technical — RSI + Seller Exhaustion from 1h candles.
+
+        Combines two sub-signals (each 50% weight):
+        1. RSI (Wilder's smoothing, 1h, 50 candles)
+        2. Seller Exhaustion Constant (drawdown / volatility)
+        """
         score = 0.0
         signals = []
         data: Dict[str, Any] = {}
@@ -462,20 +493,51 @@ class DimensionScorer:
                     rsi = 100
                 data["rsi_1h"] = round(rsi, 1)
 
+                rsi_score = 0.0
                 if rsi < 30:
-                    score += 0.4
+                    rsi_score = 0.4
                     signals.append(f"RSI_oversold_{rsi:.0f}")
                 elif rsi < 40:
-                    score += 0.2
+                    rsi_score = 0.2
                     signals.append(f"RSI_low_{rsi:.0f}")
                 elif rsi > 70:
-                    score -= 0.4
+                    rsi_score = -0.4
                     signals.append(f"RSI_overbought_{rsi:.0f}")
                 elif rsi > 60:
-                    score -= 0.1
+                    rsi_score = -0.1
                     signals.append(f"RSI_high_{rsi:.0f}")
                 else:
                     signals.append(f"RSI_neutral_{rsi:.0f}")
+
+                # --- Seller Exhaustion Constant ---
+                # drawdown_pct = (max_close - current) / max_close
+                # cv = std(closes) / mean(closes)
+                # exhaustion = drawdown_pct / (cv + 0.001)
+                # High exhaustion (big drop + low vol) = sellers exhausted = bullish reversal
+                exhaustion_score = 0.0
+                try:
+                    max_close = max(closes)
+                    current_close = closes[-1]
+                    drawdown_pct = (max_close - current_close) / max_close if max_close > 0 else 0
+                    mean_close = sum(closes) / len(closes)
+                    variance = sum((c - mean_close) ** 2 for c in closes) / len(closes)
+                    std_close = variance ** 0.5
+                    cv = std_close / mean_close if mean_close > 0 else 0
+                    exhaustion = drawdown_pct / (cv + 0.001)
+                    data["exhaustion"] = round(exhaustion, 3)
+                    data["drawdown_pct"] = round(drawdown_pct * 100, 2)
+                    signals.append(f"exhaustion_{exhaustion:.2f}")
+                    if exhaustion > 5:
+                        exhaustion_score = 0.3
+                        signals.append(f"exhaustion_high_bullish_{exhaustion:.2f}")
+                    elif exhaustion > 3:
+                        exhaustion_score = 0.15
+                        signals.append(f"exhaustion_mild_{exhaustion:.2f}")
+                except Exception as e:
+                    logger.warning(f"Seller exhaustion calculation failed: {e}")
+
+                # RSI and exhaustion each contribute 50% to D5 score
+                score = rsi_score * 0.5 + exhaustion_score * 0.5
 
         except Exception as e:
             logger.warning(f"Technical scoring failed: {e}")

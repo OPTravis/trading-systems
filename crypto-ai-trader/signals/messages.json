@@ -1762,5 +1762,40 @@
     "title": "",
     "body": "🚀 自動執行 - AAVEUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 5.3% of $353.70 = $18.68\n勝率: 0.0% | 信心: FALLBACK (tier-based, insufficient history)\n買入: 0 @ $89.940000\n信號: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 0 @ $90.000000\n  SL-only: 0.208 @ $84.54 (-6.0%)",
     "notified": true
+  },
+  {
+    "id": "msg_20260707091513",
+    "timestamp": "2026-07-07T09:15:13.300488",
+    "title": "",
+    "body": "📊 每日报告 2026-07-07\n\n💰 USDT: $381.10\n📈 總資產: $400.49\n\n📦 持倉 (1):\n  🟢 SOL: 0.2 ($19.39, +0.21%)\n\n📋 掛單: 2 個 (SL:1 TP:2)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.2% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 239筆交易):\n  已實現PnL: $-223.18\n  手續費: -$6.37\n  淨已實現: $-229.56\n  塵倉浮虧: $-2.61 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260708091515",
+    "timestamp": "2026-07-08T09:15:15.423853",
+    "title": "",
+    "body": "📊 每日报告 2026-07-08\n\n💰 USDT: $381.10\n📈 總資產: $400.07\n\n📦 持倉 (1):\n  🔴 SOL: 0.2 ($18.97, -2.18%)\n\n📋 掛單: 2 個 (SL:1 TP:2)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.3% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 239筆交易):\n  已實現PnL: $-223.18\n  手續費: -$6.37\n  淨已實現: $-229.56\n  塵倉浮虧: $-3.56 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260709091513",
+    "timestamp": "2026-07-09T09:15:13.990504",
+    "title": "",
+    "body": "📊 每日报告 2026-07-09\n\n💰 USDT: $398.43\n📈 總資產: $398.43\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 240筆交易):\n  已實現PnL: $-223.46\n  手續費: -$6.39\n  淨已實現: $-229.86\n  塵倉浮虧: $-4.71 (12個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260710074222",
+    "timestamp": "2026-07-10T07:42:22.199365",
+    "title": "",
+    "body": "🚀 自動執行 - SENTUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 85)\nKelly: 7.0% of $398.43 = $28.05\n勝率: 66.7% | 信心: MEDIUM\n買入: 1625 @ $0.017240\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 1627 @ $0.017230\n  SL preserved from tiered: 1625.373 @ $0.01586\n  TP1: FAILED\n  TP2: FAILED\n  TP3(+12.0%): SKIPPED (notional $4.38)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260710091516",
+    "timestamp": "2026-07-10T09:15:16.381695",
+    "title": "",
+    "body": "📊 每日报告 2026-07-10\n\n💰 USDT: $396.92\n📈 總資產: $396.92\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 240筆交易):\n  已實現PnL: $-223.46\n  手續費: -$6.39\n  淨已實現: $-229.86\n  塵倉浮虧: $-4.76 (12個)",
+    "notified": true
   }
 ]

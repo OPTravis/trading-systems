@@ -3034,5 +3034,17 @@
     "reason": "\ud83d\udcaa Strong Trend Score: 85 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
     "strategy": "dca",
     "notified": false
+  },
+  {
+    "id": "SENTUSDT_20260710074223",
+    "timestamp": "2026-07-10T07:42:23.526450",
+    "type": "BUY",
+    "symbol": "SENTUSDT",
+    "action": "OPEN",
+    "price": 0.0172,
+    "quantity": 1625.373,
+    "reason": "\u2705 Multi-TF Entry Signal (long) / \ud83d\udcc8 Moderate Trend Score: 50 / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "dca",
+    "notified": false
   }
 ]
