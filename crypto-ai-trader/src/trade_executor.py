@@ -527,11 +527,11 @@ def _place_sl_tp_orders(
 
     # --- Strategy A: Small position → SL only ---
     full_qty_notional = executed_qty * price
-    if full_qty_notional < _min_notional * 4:
+    if full_qty_notional < _min_notional * 6:
         logger.info(
             "Small position $%.2f < $%.2f → SL-only mode",
             full_qty_notional,
-            _min_notional * 4,
+            _min_notional * 6,
         )
         sl_qty = executed_qty
         sl = None
@@ -573,11 +573,11 @@ def _place_sl_tp_orders(
         _tiered_tp_placed = 0.0
         _tiered_sl_order_id = None  # Track SL order ID for preservation
         try:
-            tp1_qty = _round_qty(executed_qty * 0.40)
+            tp1_qty = _round_qty(executed_qty * 0.30)
             tp3_qty = _round_qty(executed_qty * 0.20)
-            tp2_qty = _round_qty(
-                executed_qty - tp1_qty - tp3_qty
-            )  # remainder avoids rounding gaps
+            tp2_qty = _round_qty(executed_qty * 0.30)
+            # Remaining ~20% reserved for SL (placed after TPs to avoid
+            # Binance spot balance locking conflict)
             tiers = [
                 (
                     1,
@@ -613,38 +613,11 @@ def _place_sl_tp_orders(
                     break
 
             if _all_tiers_valid:
-                # Step 1: Place SL covering FULL position
-                sl = None
-                for attempt in range(2):
-                    try:
-                        sl = client.place_order(
-                            symbol,
-                            "SELL",
-                            "STOP_LOSS_LIMIT",
-                            executed_qty,
-                            price=sl_limit_price,
-                            stop_price=sl_price,
-                        )
-                        if sl:
-                            break
-                    except Exception:
-                        logger.error(
-                            "Tiered SL placement failed for %s", symbol, exc_info=True
-                        )
-                        if attempt == 0:
-                            time.sleep(1)
-                if sl:
-                    _tiered_results.append(
-                        f"SL(full): {executed_qty} @ ${sl_price} (-{stop_loss_pct}%)"
-                    )
-                    _tiered_sl_placed = executed_qty
-                    _tiered_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
-                else:
-                    raise RuntimeError(
-                        "Tiered SL failed — falling back to OCO/Strategy C"
-                    )
-
-                # Step 2: Place TP limit sells
+                # Step 1: Place TP limit sells FIRST
+                # (On Binance SPOT, SELL orders lock actual asset balance.
+                #  If SL is placed first for full qty, TPs fail with -2010.
+                #  Place TPs first so they lock their portions, then SL
+                #  covers the remaining uncovered quantity.)
                 for tier_num, tq, tp_pct_val in tiers:
                     if tq < _step_size:
                         _tiered_results.append(f"TP{tier_num}: SKIPPED (qty too small)")
@@ -683,14 +656,57 @@ def _place_sl_tp_orders(
                             f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C"
                         )
 
+                # Step 2: Place SL for REMAINING qty (not covered by TPs)
+                sl_remaining = round(executed_qty - _tiered_tp_placed, _qty_decimals)
+                if sl_remaining >= _step_size:
+                    sl = None
+                    for attempt in range(2):
+                        try:
+                            sl = client.place_order(
+                                symbol,
+                                "SELL",
+                                "STOP_LOSS_LIMIT",
+                                sl_remaining,
+                                price=sl_limit_price,
+                                stop_price=sl_price,
+                            )
+                            if sl:
+                                break
+                        except Exception:
+                            logger.error(
+                                "Tiered SL placement failed for %s", symbol, exc_info=True
+                            )
+                            if attempt == 0:
+                                time.sleep(1)
+                    if sl:
+                        _tiered_results.append(
+                            f"SL(remaining): {sl_remaining} @ ${sl_price} (-{stop_loss_pct}%)"
+                        )
+                        _tiered_sl_placed = sl_remaining
+                        _tiered_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
+                    else:
+                        raise RuntimeError(
+                            "Tiered SL failed — falling back to OCO/Strategy C"
+                        )
+                else:
+                    logger.warning(
+                        "Tiered exits for %s: no remaining qty for SL after TPs "
+                        "(TP covered 100%%, position=%s, tp_placed=%s)",
+                        symbol, executed_qty, _tiered_tp_placed,
+                    )
+                    _tiered_results.append(
+                        f"SL: NONE (TPs covered 100% of {executed_qty})"
+                    )
+
                 tiered_ok = True
                 results.extend(_tiered_results)
                 sl_placed_qty = _tiered_sl_placed
                 tp_placed_qty = _tiered_tp_placed
                 logger.info(
-                    "Tiered exits placed for %s: SL=full, TP placed=%s",
+                    "Tiered exits placed for %s: TP placed=%s, SL=%s",
                     symbol,
                     _tiered_tp_placed,
+                    _tiered_sl_placed,
                 )
         except Exception as e:
             logger.warning(

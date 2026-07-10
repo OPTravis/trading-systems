@@ -532,28 +532,34 @@ class TestGetPositionTier:
 
 class TestTieredSLPreservation:
     """Bug fix: tiered exception handler was cancelling successfully-placed SL
-    and using wrong key ('id' instead of 'orderId') for cancel."""
+    and using wrong key ('id' instead of 'orderId') for cancel.
+
+    Note: With TP-first ordering (Binance spot balance locking fix),
+    TPs are placed before SL. These tests use positions > _min_notional*6
+    to ensure tiered path is used.
+    """
 
     def test_sl_preserved_when_tp_fails(self):
-        """SL placed in tiered path must survive TP failure."""
+        """When TPs fail after partial placement, residue must be cancelled
+        and fallback path must handle it."""
         from src.trade_executor import _place_sl_tp_orders
 
         client = MagicMock()
         notifier = MagicMock()
 
-        # SL placement succeeds, TP1 fails
+        # TP1 succeeds, TP2 fails
         client.place_order.side_effect = [
-            {"orderId": 12345, "status": "NEW"},  # SL success
-            None,  # TP1 fails (returns None)
+            {"orderId": 20001, "status": "NEW"},  # TP1 success
+            None,  # TP2 fails (returns None)
         ]
         client.get_open_orders.return_value = [
-            {"orderId": 12345, "type": "STOP_LOSS_LIMIT", "price": "82.45", "side": "SELL"},
+            {"orderId": 20001, "type": "LIMIT", "price": "95.0", "side": "SELL"},
         ]
         client.get_price_precision.return_value = 2
 
         result = _place_sl_tp_orders(
             client, notifier, "TESTUSDT",
-            executed_qty=0.3,
+            executed_qty=0.5,
             price=89.62,
             p_prec=2,
             stop_loss_pct=8.0,
@@ -564,12 +570,10 @@ class TestTieredSLPreservation:
             strategy_size_multiplier=1.0,
         )
 
-        # SL must NOT have been cancelled
-        client.cancel_order.assert_not_called()
-        # SL quantity must be carried over
-        assert result["sl_placed_qty"] == pytest.approx(0.3)
-        # OCO must NOT have been attempted (SL already placed)
-        client.place_oco.assert_not_called()
+        # The TP1 residue should have been cancelled in fallback
+        client.cancel_order.assert_called()
+        call_args = client.cancel_order.call_args
+        assert call_args[0][1] == 20001
 
     def test_cancel_uses_correct_key(self):
         """Cancel must use 'orderId' not 'id' (Binance SDK field)."""
@@ -578,7 +582,7 @@ class TestTieredSLPreservation:
         client = MagicMock()
         notifier = MagicMock()
 
-        # SL fails, then TP residue needs cancelling
+        # All TPs fail, then residue needs cancelling
         client.place_order.return_value = None  # everything fails
         client.get_open_orders.return_value = [
             {"orderId": 99999, "type": "LIMIT", "price": "95.0", "side": "SELL"},
@@ -587,7 +591,7 @@ class TestTieredSLPreservation:
 
         _place_sl_tp_orders(
             client, notifier, "TESTUSDT",
-            executed_qty=0.3,
+            executed_qty=0.5,
             price=89.62,
             p_prec=2,
             stop_loss_pct=8.0,

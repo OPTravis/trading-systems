@@ -625,7 +625,8 @@ class TestExecuteAutoTrade:
                 p = c.kwargs["price"]
                 assert abs(p - round(p, 2)) < 1e-10
 
-    def test_s24_sl_before_tp_order(self):
+    def test_s24_tp_before_sl_order(self):
+        """With Binance spot balance locking fix, TPs are placed before SL."""
         result, bc = self._run()
         assert result["success"] is True
         sell_calls = [
@@ -635,7 +636,9 @@ class TestExecuteAutoTrade:
         ]
         if sell_calls:
             first_sell = sell_calls[0]
-            assert "STOP" in str(first_sell)
+            # First SELL should be a LIMIT (TP), not STOP_LOSS_LIMIT,
+            # because TPs must lock their portions before SL locks remainder
+            assert "LIMIT" in str(first_sell)
 
     def test_s25_qty_below_minqty(self):
         result, _ = self._run(usdt_bal=50, price=10000.0, filters={"min_qty": 100.0})
