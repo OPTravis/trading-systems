@@ -6,7 +6,7 @@ Based on research report "加密貨幣暴漲前徵兆研究報告":
 - 5 dimensions → 85%, 6 dimensions → 92%
 
 Dimensions (weight):
-  1. On-Chain (25%)    — Chain TVL changes (DeFiLlama) + BTC volume
+  1. On-Chain (25%)    — Chain TVL (DeFiLlama) + MVRV (BGeometrics) + BTC volume
   2. Liquidity (25%)   — funding rate, stablecoin supply (DeFiLlama), DEX volume
   3. Macro (20%)       — BTC trend, F&G regime
   4. Sentiment (15%)   — CFGI persistence, fear/greed
@@ -21,7 +21,10 @@ D2 now includes stablecoin supply trends alongside funding rate.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+import os
+from typing import Any, Dict, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +110,38 @@ class DimensionScorer:
         }
 
     # ------------------------------------------------------------------
+    def _fetch_mvrv(self) -> Optional[float]:
+        """Fetch latest MVRV ratio from BGeometrics API.
+
+        Free tier: 10 req/h, 15 req/day. We call once per scan (2-4h interval).
+        Returns latest MVRV float or None on failure.
+        """
+        api_key = os.environ.get("BGEOMETRICS_API_KEY", "")
+        if not api_key:
+            logger.debug("BGEOMETRICS_API_KEY not set, skipping MVRV")
+            return None
+
+        try:
+            url = "https://api.bitcoin-data.com/v1/mvrv"
+            resp = requests.get(
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"startday": "today", "endday": "today"},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list) and data:
+                return float(data[-1].get("mvrv", 0))
+            logger.warning("MVRV API returned empty or unexpected format")
+            return None
+        except Exception as e:
+            logger.warning(f"MVRV fetch failed: {e}")
+            return None
+
+    # ------------------------------------------------------------------
     def _score_onchain(self) -> Dict:
-        """D1: On-Chain — DeFiLlama chain TVL + BTC volume as backup.
+        """D1: On-Chain — DeFiLlama chain TVL + MVRV + BTC volume.
 
         Uses llama-data-skill for real on-chain TVL data (chain-level),
         falls back to BTC volume proxy if llama unavailable.
@@ -177,6 +210,29 @@ class DimensionScorer:
 
         except Exception as e:
             logger.warning(f"DeFiLlama on-chain scoring failed: {e}")
+
+        # --- MVRV from BGeometrics (on-chain valuation, no Binance needed) ---
+        # MVRV < 1.0: Historical bottom (strong buy), < 1.5: undervalued
+        # MVRV 1.5-3.0: fair value, > 3.7: market top (strong sell)
+        mvrv = self._fetch_mvrv()
+        if mvrv is not None and mvrv > 0:
+            data["mvrv"] = mvrv
+            if mvrv < 1.0:
+                score += 0.4
+                signals.append(f"mvrv_bottom_{mvrv:.2f}")
+            elif mvrv < 1.2:
+                score += 0.25
+                signals.append(f"mvrv_undervalued_{mvrv:.2f}")
+            elif mvrv < 1.5:
+                score += 0.1
+                signals.append(f"mvrv_below_avg_{mvrv:.2f}")
+            elif mvrv > 3.7:
+                score -= 0.4
+                signals.append(f"mvrv_top_{mvrv:.2f}")
+            elif mvrv > 3.0:
+                score -= 0.2
+                signals.append(f"mvrv_overvalued_{mvrv:.2f}")
+            # else: 1.5-3.0 = neutral, no signal
 
         # --- Backup: BTC volume from Binance (always available) ---
         if not self.client:

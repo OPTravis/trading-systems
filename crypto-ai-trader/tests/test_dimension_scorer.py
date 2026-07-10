@@ -1,4 +1,4 @@
-"""Tests for DimensionScorer — SSR and Seller Exhaustion Constant."""
+"""Tests for DimensionScorer — SSR, Seller Exhaustion Constant, and MVRV."""
 
 import math
 from unittest.mock import MagicMock, patch
@@ -241,3 +241,72 @@ class TestScoreAllIntegration:
         assert "resonance" in result
         assert "surge_probability" in result
         assert "weighted_score" in result
+
+
+# ===========================================================================
+# MVRV (Market Value to Realized Value) tests
+# ===========================================================================
+class TestMVRVScoring:
+    """Verify MVRV integration in _score_onchain()."""
+
+    def _score_with_mvrv(self, mvrv_val):
+        """Helper: score onchain with mocked MVRV, return result."""
+        scorer = DimensionScorer(binance_client=None)
+        with patch.object(scorer, "_fetch_mvrv", return_value=mvrv_val):
+            return scorer._score_onchain()
+
+    def _score_without_mvrv(self):
+        """Baseline score without MVRV contribution."""
+        scorer = DimensionScorer(binance_client=None)
+        with patch.object(scorer, "_fetch_mvrv", return_value=None):
+            return scorer._score_onchain()
+
+    def test_mvrv_bottom_zone(self):
+        """MVRV < 1.0 should add +0.4 to score and produce bottom signal."""
+        result = self._score_with_mvrv(0.95)
+        assert result["data"]["mvrv"] == 0.95
+        assert any("mvrv_bottom" in s for s in result["signals"])
+
+    def test_mvrv_undervalued(self):
+        """MVRV 1.0-1.2 should add +0.25 and produce undervalued signal."""
+        result = self._score_with_mvrv(1.15)
+        assert result["data"]["mvrv"] == 1.15
+        assert any("mvrv_undervalued" in s for s in result["signals"])
+
+    def test_mvrv_below_average(self):
+        """MVRV 1.2-1.5 should add +0.1 and produce below_avg signal."""
+        result = self._score_with_mvrv(1.35)
+        assert result["data"]["mvrv"] == 1.35
+        assert any("mvrv_below_avg" in s for s in result["signals"])
+
+    def test_mvrv_neutral_zone(self):
+        """MVRV 1.5-3.0 should not add any MVRV signal."""
+        result = self._score_with_mvrv(2.0)
+        assert result["data"]["mvrv"] == 2.0
+        assert not any("mvrv_" in s for s in result["signals"])
+
+    def test_mvrv_top_zone(self):
+        """MVRV > 3.7 should add -0.4 and produce top signal."""
+        result = self._score_with_mvrv(3.8)
+        assert result["data"]["mvrv"] == 3.8
+        assert any("mvrv_top" in s for s in result["signals"])
+
+    def test_mvrv_overvalued(self):
+        """MVRV 3.0-3.7 should add -0.2 and produce overvalued signal."""
+        result = self._score_with_mvrv(3.2)
+        assert result["data"]["mvrv"] == 3.2
+        assert any("mvrv_overvalued" in s for s in result["signals"])
+
+    def test_mvrv_none_graceful(self):
+        """If MVRV fetch returns None, should not crash and no mvrv signal."""
+        scorer = DimensionScorer(binance_client=None)
+        with patch.object(scorer, "_fetch_mvrv", return_value=None):
+            result = scorer._score_onchain()
+        assert "mvrv" not in result["data"]
+        assert not any("mvrv_" in s for s in result["signals"])
+
+    def test_mvrv_bullish_increments_score(self):
+        """MVRV < 1.0 should produce higher score than without MVRV."""
+        baseline = self._score_without_mvrv()["score"]
+        with_mvrv = self._score_with_mvrv(0.95)["score"]
+        assert with_mvrv > baseline + 0.3  # +0.4 increment minus rounding
