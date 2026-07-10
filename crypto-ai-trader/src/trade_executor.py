@@ -426,20 +426,25 @@ def _record_trade_portfolio(
     try:
         portfolio = PortfolioManager()
         try:
+            # Sync to actual Binance free balance (already reflects the purchase).
             actual_usdt = client.get_free_balance("USDT")
             portfolio.update_balance(actual_usdt)
+            # Balance already deducted on Binance side — don't double-deduct.
+            _deduct_cash = False
         except Exception:
             logger.error(
                 "Failed to fetch actual USDT balance for portfolio tracking",
                 exc_info=True,
             )
+            # Fallback: manually deduct from previous balance
             portfolio.update_balance(usdt_bal - invest_amount * (1 + fee_rate))
+            _deduct_cash = False  # already deducted in update_balance above
         portfolio.add_position(
             symbol=symbol,
             quantity=executed_qty,
             entry_price=avg_price,
             strategy=strategy,
-            deduct_cash=True,
+            deduct_cash=_deduct_cash,
         )
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct

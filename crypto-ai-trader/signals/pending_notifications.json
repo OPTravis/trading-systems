@@ -12990,5 +12990,37 @@
     "title": "",
     "body": "🔍 11:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
+  },
+  {
+    "id": "notif_20260710174145575839",
+    "timestamp": "2026-07-10T17:41:45.575866",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ F&G=23 — 極度恐慌（築底條件）\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260710174247044803",
+    "timestamp": "2026-07-10T17:42:47.044838",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ARBUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 84)\nKelly: 5.3% of $396.92 = $20.96\n勝率: 66.7% | 信心: MEDIUM\n買入: 222 @ $0.094200\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (74.1)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 222 @ $0.094400\n  Slippage: +0.21% (fill $0.094400 vs expected $0.094200)\n  SL-only: 222.2775 @ $0.0885 (-6.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260710174248335427",
+    "timestamp": "2026-07-10T17:42:48.335460",
+    "type": "signal",
+    "title": "交易信号: ARBUSDT",
+    "body": "🟢 BUY ARBUSDT @ $0.0942 x222.2775\n原因: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (74.1)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260710174248531802",
+    "timestamp": "2026-07-10T17:42:48.531828",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:42 扫描完成\n\n😱 市场情绪: 23 (Extreme Fear)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 4个\n\n🏆 前3名:\n  1. ARBUSDT (评分: 84)\n  2. UNIUSDT (评分: 80)\n  3. BTCUSDT (评分: 76)\n",
+    "pushed": true
   }
 ]

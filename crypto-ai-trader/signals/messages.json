@@ -1797,5 +1797,12 @@
     "title": "",
     "body": "📊 每日报告 2026-07-10\n\n💰 USDT: $396.92\n📈 總資產: $396.92\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 240筆交易):\n  已實現PnL: $-223.46\n  手續費: -$6.39\n  淨已實現: $-229.86\n  塵倉浮虧: $-4.76 (12個)",
     "notified": true
+  },
+  {
+    "id": "msg_20260710174246",
+    "timestamp": "2026-07-10T17:42:46.868506",
+    "title": "",
+    "body": "🚀 自動執行 - ARBUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 84)\nKelly: 5.3% of $396.92 = $20.96\n勝率: 66.7% | 信心: MEDIUM\n買入: 222 @ $0.094200\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (74.1)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 222 @ $0.094400\n  Slippage: +0.21% (fill $0.094400 vs expected $0.094200)\n  SL-only: 222.2775 @ $0.0885 (-6.0%)",
+    "notified": true
   }
 ]
