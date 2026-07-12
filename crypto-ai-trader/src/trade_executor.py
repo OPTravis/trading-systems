@@ -523,6 +523,31 @@ def _place_sl_tp_orders(
 
     # Determine primary TP price (highest probability first TP level)
     primary_tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
+
+    # P0: Enforce TP1 minimum distance = max(3×ATR_pct, 3%)
+    # Prevents TP1 from being too close to entry (e.g. +1.6% for high-vol alts)
+    try:
+        _klines = client.get_klines(symbol, interval='1h', limit=20)
+        if _klines and len(_klines) >= 15:
+            _atr = Indicators.atr(_klines, period=14)
+            if _atr > 0 and price > 0:
+                _atr_pct = (_atr / price) * 100
+                _min_tp1 = max(_atr_pct * 3, 3.0)
+                if primary_tp_pct < _min_tp1:
+                    logger.info(
+                        "TP1 minimum distance: %.1f%% → %.1f%% (3×ATR=%.1f%%, min=3%%)",
+                        primary_tp_pct, _min_tp1, _atr_pct * 3,
+                    )
+                    primary_tp_pct = round(_min_tp1, 2)
+                    tp_levels[0]["pct"] = primary_tp_pct
+                    # Scale TP2 relative to new TP1
+                    if len(tp_levels) > 1:
+                        tp_levels[1]["pct"] = round(primary_tp_pct * 1.5, 2)
+                    if len(tp_levels) > 2:
+                        tp_levels[2]["pct"] = round(primary_tp_pct * 2.0, 2)
+    except Exception as e:
+        logger.debug("ATR fetch for TP1 min distance failed: %s", e)
+
     primary_tp_price = round(price * (1 + primary_tp_pct / 100), p_prec)
 
     # Helper to floor qty to step size
@@ -578,11 +603,9 @@ def _place_sl_tp_orders(
         _tiered_tp_placed = 0.0
         _tiered_sl_order_id = None  # Track SL order ID for preservation
         try:
-            tp1_qty = _round_qty(executed_qty * 0.30)
-            tp3_qty = _round_qty(executed_qty * 0.20)
-            tp2_qty = _round_qty(executed_qty * 0.30)
-            # Remaining ~20% reserved for SL (placed after TPs to avoid
-            # Binance spot balance locking conflict)
+            tp1_qty = _round_qty(executed_qty * 0.33)
+            tp2_qty = _round_qty(executed_qty * 0.33)
+            # Remaining ~34% reserved for SL (trailing portion after TPs fill)
             tiers = [
                 (
                     1,
@@ -595,16 +618,7 @@ def _place_sl_tp_orders(
                     (
                         tp_levels[1]["pct"]
                         if len(tp_levels) > 1
-                        else tp_levels[0]["pct"] * 1.5
-                    ),
-                ),
-                (
-                    3,
-                    tp3_qty,
-                    (
-                        tp_levels[2]["pct"]
-                        if len(tp_levels) > 2
-                        else tp_levels[0]["pct"] * 2.0
+                        else round(primary_tp_pct * 1.5, 2)
                     ),
                 ),
             ]
@@ -623,6 +637,7 @@ def _place_sl_tp_orders(
                 #  If SL is placed first for full qty, TPs fail with -2010.
                 #  Place TPs first so they lock their portions, then SL
                 #  covers the remaining uncovered quantity.)
+                _tiered_tp_orders = []  # Track for tp_sl_tracker
                 for tier_num, tq, tp_pct_val in tiers:
                     if tq < _step_size:
                         _tiered_results.append(f"TP{tier_num}: SKIPPED (qty too small)")
@@ -652,10 +667,18 @@ def _place_sl_tp_orders(
                             if attempt == 0:
                                 time.sleep(1)
                     if tpo:
+                        _tp_oid = tpo.get("orderId") if isinstance(tpo, dict) else None
                         _tiered_results.append(
                             f"TP{tier_num}(+{tp_pct_val}%): {tq} @ ${tp_p}"
                         )
                         _tiered_tp_placed += tq
+                        _tiered_tp_orders.append({
+                            "order_id": _tp_oid,
+                            "price": tp_p,
+                            "qty": tq,
+                            "tier": tier_num,
+                            "pct": tp_pct_val,
+                        })
                     else:
                         raise RuntimeError(
                             f"Tiered TP{tier_num} failed — falling back to OCO/Strategy C"
@@ -713,6 +736,27 @@ def _place_sl_tp_orders(
                     _tiered_tp_placed,
                     _tiered_sl_placed,
                 )
+
+                # Save TP/SL tracking state for trailing-check fill detection
+                try:
+                    from src.tp_sl_tracker import save_state as _save_tpsl
+                    _sl_tracking = None
+                    if _tiered_sl_placed > 0 and _tiered_sl_order_id:
+                        _sl_tracking = {
+                            "order_id": _tiered_sl_order_id,
+                            "price": sl_limit_price,
+                            "stop_price": sl_price,
+                            "qty": _tiered_sl_placed,
+                        }
+                    _save_tpsl(
+                        symbol=symbol,
+                        entry_price=price,
+                        total_qty=executed_qty,
+                        tp_orders=_tiered_tp_orders,
+                        sl_order=_sl_tracking,
+                    )
+                except Exception as _e:
+                    logger.warning("Failed to save TP/SL tracking state: %s", _e)
         except Exception as e:
             logger.warning(
                 "Tiered exits failed for %s: %s — trying OCO fallback", symbol, e

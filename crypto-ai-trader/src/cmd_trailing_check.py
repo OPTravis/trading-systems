@@ -33,6 +33,268 @@ def _is_stop_order(o):
     return 'STOP' in t.upper() or 'stop' in t.lower()
 
 
+def _check_tp_fills(client, notifier, positions):
+    """Detect TP order fills and manage SL accordingly.
+
+    For each position with tp_sl_tracker state:
+    - Check if tracked TP orders are still open
+    - When TP1 fills: cancel old SL, place new SL at entry+0.5% (breakeven)
+    - When TP2 fills: cancel old SL, place new SL at TP1 price
+
+    Returns list of action results.
+    """
+    from src.tp_sl_tracker import get_state as _get_tpsl, update_state as _upd_tpsl
+
+    results = []
+    held_assets = {p['asset'] for p in positions}
+
+    try:
+        from src.tp_sl_tracker import get_all_tracked as _get_all_tpsl
+        all_tracked = _get_all_tpsl()
+    except Exception as e:
+        logger.warning("tp_sl_tracker: failed to load tracked states: %s", e)
+        return results
+
+    for symbol, state in all_tracked.items():
+        # Normalize symbol to match positions
+        asset = symbol.replace("USDT", "") if symbol.endswith("USDT") else symbol
+        if asset not in held_assets:
+            # Position gone — clean up tracker
+            try:
+                from src.tp_sl_tracker import remove_state as _rm_tpsl
+                _rm_tpsl(symbol)
+                logger.info("tp_sl_tracker: removed stale tracking for %s (position gone)", symbol)
+            except Exception:
+                pass
+            continue
+
+        entry_price = state.get("entry_price", 0)
+        tp_orders = state.get("tp_orders", [])
+        tp_filled = state.get("tp_filled", [])
+        sl_moved = state.get("sl_moved_after_tp", 0)
+        sl_order = state.get("sl_order")
+
+        if not tp_orders:
+            continue
+
+        # Get current open orders for this symbol
+        try:
+            open_orders = client.get_open_orders(symbol)
+        except Exception as e:
+            logger.warning("tp_sl_tracker: cannot get open orders for %s: %s", symbol, e)
+            continue
+
+        open_order_ids = set()
+        for o in open_orders:
+            oid = o.get("orderId") or o.get("id")
+            if oid:
+                open_order_ids.add(str(oid))
+
+        # Detect which TPs have been filled (order_id no longer in open orders)
+        newly_filled = []
+        for i, tp in enumerate(tp_orders):
+            if i < len(tp_filled) and tp_filled[i]:
+                continue  # already detected
+            tp_oid = str(tp.get("order_id", ""))
+            if tp_oid and tp_oid not in open_order_ids:
+                # Verify with my_trades that this was a fill (not just canceled)
+                try:
+                    trades = client.get_my_trades(symbol=symbol, limit=10)
+                    recent_sell = any(
+                        float(t.get("qty", 0)) > 0
+                        and abs(float(t.get("price", 0)) - tp["price"]) / tp["price"] < 0.005
+                        for t in trades[-5:] if trades
+                    )
+                    if recent_sell:
+                        newly_filled.append(i)
+                        logger.info(
+                            "tp_sl_tracker: TP%d filled for %s @ $%.6f (detected via order gone + trade confirm)",
+                            tp["tier"], symbol, tp["price"],
+                        )
+                    else:
+                        logger.debug(
+                            "tp_sl_tracker: TP%d order gone but no matching trade — may have been canceled",
+                            tp["tier"],
+                        )
+                except Exception as te:
+                    logger.warning("tp_sl_tracker: cannot verify TP fill via my_trades: %s", te)
+                    # Assume filled if order is gone (safer to act than not)
+                    newly_filled.append(i)
+
+        if not newly_filled:
+            continue
+
+        # Update tp_filled flags
+        for idx in newly_filled:
+            if idx < len(tp_filled):
+                tp_filled[idx] = True
+        _upd_tpsl(symbol, tp_filled=tp_filled)
+
+        # ── SL management after TP fills ──
+        highest_filled_tier = max(tp_orders[i]["tier"] for i in newly_filled)
+        all_filled_tiers = [tp_orders[i]["tier"] for i in range(len(tp_orders)) if i < len(tp_filled) and tp_filled[i]]
+
+        p_prec = client.get_price_precision(symbol)
+
+        # Get current price for SL calculations
+        try:
+            stats = client.get_24hr_stats(symbol)
+            current_price = float(stats.get("last_price", 0))
+        except Exception:
+            current_price = 0
+
+        if current_price <= 0 or entry_price <= 0:
+            continue
+
+        # Determine new SL price based on which TPs have filled
+        should_move_sl = False
+        new_sl_price = 0
+        move_reason = ""
+
+        # After TP1 fills: SL → breakeven (entry + 0.5%)
+        if 1 in all_filled_tiers and sl_moved < 1:
+            new_sl_price = round(entry_price * 1.005, p_prec)  # entry + 0.5%
+            should_move_sl = True
+            move_reason = "TP1_filled_breakeven"
+
+        # After TP2 fills: SL → TP1 price
+        if 2 in all_filled_tiers and sl_moved < 2:
+            tp1_info = next((tp_orders[i] for i in range(len(tp_orders)) if tp_orders[i]["tier"] == 1), None)
+            if tp1_info:
+                new_sl_price = round(tp1_info["price"], p_prec)
+                should_move_sl = True
+                move_reason = "TP2_filled_move_to_tp1"
+
+        if not should_move_sl or new_sl_price <= 0:
+            continue
+
+        # Ensure new SL is below current price
+        if new_sl_price >= current_price:
+            logger.info(
+                "tp_sl_tracker: new SL $%.6f >= current $%.6f for %s, skipping SL move",
+                new_sl_price, current_price, symbol,
+            )
+            results.append({
+                "asset": asset,
+                "action": "tp_fill_sl_skip",
+                "reason": f"new_sl {new_sl_price} >= price {current_price}",
+            })
+            continue
+
+        # Cancel old SL order
+        old_sl_oid = sl_order.get("order_id") if sl_order else None
+        if old_sl_oid:
+            try:
+                client.cancel_order(symbol, old_sl_oid)
+                logger.info("tp_sl_tracker: canceled old SL order %s for %s", old_sl_oid, symbol)
+            except Exception as e:
+                err_str = str(e)
+                if "-2011" in err_str or "Unknown order" in err_str:
+                    logger.info("tp_sl_tracker: old SL already gone for %s (likely filled)", symbol)
+                else:
+                    logger.error("tp_sl_tracker: failed to cancel old SL for %s: %s", symbol, e)
+                    results.append({
+                        "asset": asset,
+                        "action": "tp_fill_sl_cancel_failed",
+                        "error": err_str,
+                    })
+                    continue
+
+        # Get free balance for new SL
+        try:
+            acct = client.get_account()
+            free_qty = 0.0
+            for b in acct.get("balances", []):
+                if b["asset"] == asset:
+                    free_qty = float(b["free"])
+                    break
+        except Exception:
+            free_qty = 0
+
+        if free_qty <= 0:
+            logger.info("tp_sl_tracker: no free balance for new SL for %s", symbol)
+            continue
+
+        # Check minimum notional
+        sl_notional = free_qty * new_sl_price
+        min_notional = 5.0
+        if sl_notional < min_notional:
+            results.append({
+                "asset": asset,
+                "action": "tp_fill_sl_below_notional",
+                "value": round(sl_notional, 2),
+                "new_sl_price": new_sl_price,
+            })
+            continue
+
+        # Place new SL at breakeven/TP1 level
+        sl_limit_buffer = 0.015  # 1.5% below stop
+        new_sl_limit = round(new_sl_price * (1 - sl_limit_buffer), p_prec)
+
+        new_sl_order = None
+        for attempt in range(2):
+            try:
+                new_sl_order = client.place_order(
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS_LIMIT",
+                    free_qty,
+                    price=new_sl_limit,
+                    stop_price=new_sl_price,
+                )
+                if new_sl_order:
+                    break
+            except Exception as e:
+                logger.error("tp_sl_tracker: new SL placement attempt %d failed: %s", attempt + 1, e)
+                if attempt == 0:
+                    import time as _time
+                    _time.sleep(1)
+
+        if new_sl_order:
+            new_sl_oid = new_sl_order.get("orderId") if isinstance(new_sl_order, dict) else None
+            _upd_tpsl(
+                symbol,
+                sl_order={
+                    "order_id": new_sl_oid,
+                    "price": new_sl_limit,
+                    "stop_price": new_sl_price,
+                    "qty": free_qty,
+                },
+                sl_moved_after_tp=max(all_filled_tiers),
+            )
+            msg = (
+                f"✅ TP成交SL移動 {asset}\n"
+                f"原因: {move_reason}\n"
+                f"新SL: ${new_sl_price:.6f} (qty {free_qty})\n"
+                f"舊SL已取消"
+            )
+            try:
+                notifier.send_text(msg)
+            except Exception:
+                pass
+            results.append({
+                "asset": asset,
+                "action": "tp_fill_sl_moved",
+                "reason": move_reason,
+                "new_sl_price": new_sl_price,
+                "qty": free_qty,
+            })
+            logger.info("tp_sl_tracker: SL moved for %s — %s → $%.6f", symbol, move_reason, new_sl_price)
+        else:
+            logger.error("tp_sl_tracker: FAILED to place new SL for %s after TP fill!", symbol)
+            try:
+                notifier.send_text(f"🔴 TP成交但新SL掛單失敗 {asset}！手動確認！")
+            except Exception:
+                pass
+            results.append({
+                "asset": asset,
+                "action": "tp_fill_sl_place_failed",
+                "target_sl": new_sl_price,
+            })
+
+    return results
+
+
 def cmd_trailing_check():
     """Check open positions and update trailing stop-loss orders.
 
@@ -77,10 +339,21 @@ def cmd_trailing_check():
         # Clean stale trailing data
         for sym in list(ts.get_all().keys()):
             ts.remove(sym)
+        # Also clean stale TP/SL tracker entries
+        try:
+            from src.tp_sl_tracker import get_all_tracked as _get_all_tpsl, remove_state as _rm_tpsl
+            for sym in list(_get_all_tpsl().keys()):
+                _rm_tpsl(sym)
+        except Exception:
+            pass
         print(_json.dumps({"action": "none", "reason": "no_positions"}))
         return
 
     results = []
+
+    # ── P0: Check TP fills and manage SL (breakeven / move-to-TP1) ──
+    tp_fill_results = _check_tp_fills(client, notifier, positions)
+    results.extend(tp_fill_results)
 
     for pos in positions:
         asset = pos['asset']
