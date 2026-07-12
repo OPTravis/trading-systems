@@ -275,6 +275,7 @@ class TradeOutcomeRecorder:
         conn.commit()
 
         outcome = {
+            "id": row["id"],
             "symbol": symbol,
             "entry_price": entry_price,
             "exit_price": exit_price,

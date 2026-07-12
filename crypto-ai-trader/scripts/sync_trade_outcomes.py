@@ -3,13 +3,13 @@
 Sync trade outcomes with actual portfolio state.
 
 Detects positions that were closed by SL/TP order fills on Binance
-(which don't trigger explicit code paths in ensure_tp_sl.py).
+(which don't trigger explicit code paths in the main trade executor).
 
-Logic:
-1. Get all open outcomes
-2. Check if corresponding portfolio position still exists
-3. If position gone → mark outcome as closed with exit_reason="order_fill"
-4. Update price extremes for open positions
+Key improvements over the original:
+1. Queries actual Binance trade history for real exit price & timestamp
+2. Uses context_json TP/SL levels (not hardcoded) for exit_reason classification
+3. Records SELL trades in the trades table
+4. Uses actual exit time from Binance, not sync detection time
 
 Run via cron (unified-monitor) or manually.
 """
@@ -20,9 +20,9 @@ import json
 import time
 import logging
 
-sys.path.insert(0, os.path.expanduser("~/trading-systems/crypto-ai-trader"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.binance_client import BinanceClient
+from src._binance_sdk_client import BinanceClient
 from src.state_db import get_state_db
 from src.trade_outcome_recorder import TradeOutcomeRecorder
 
@@ -30,59 +30,97 @@ logging.basicConfig(level=logging.WARNING, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _determine_exit_reason(db, sym, exit_price, entry):
-    """Determine actual exit reason from trailing_stop state and exit price.
-    
-    Checks:
-    1. trailing_stop activated + triggered → 'trailing'
-    2. exit_price near SL → 'sl'
-    3. exit_price near TP levels → 'tp1'/'tp2'/'tp3'
-    4. exceeded max_hold_hours → 'max_hold'
-    5. fallback → 'order_fill'
+def _get_actual_exit_from_binance(client, symbol, since_ts):
+    """Query Binance trade history to find actual SELL fills after entry.
+
+    Returns dict with exit_price, exit_qty, exit_time, exit_value, commission
+    or None if no sells found.
     """
-    conn = db._get_conn()
-    
-    # Check trailing_stop state
     try:
-        ts_row = conn.execute(
-            "SELECT activated, sl_price FROM trailing_stop WHERE symbol = ?", (sym,)
-        ).fetchone()
-        if ts_row and ts_row[0]:  # activated = True
-            return "trailing"
+        trades = client.get_my_trades(symbol, limit=50)
+    except Exception as e:
+        logger.warning(f"Failed to get trades for {symbol}: {e}")
+        return None
+
+    # Filter: SELL trades after the entry timestamp
+    sells = [t for t in trades if not t.get("isBuyer", False) and t["time"] / 1000 >= since_ts - 60]
+    if not sells:
+        return None
+
+    total_qty = sum(float(t["qty"]) for t in sells)
+    total_value = sum(float(t["quoteQty"]) for t in sells)
+    total_commission = sum(float(t["commission"]) for t in sells)
+    # Weighted average exit price
+    avg_price = total_value / total_qty if total_qty > 0 else 0
+    # Earliest sell = exit time (for TP1; latest = for full close)
+    exit_time = min(t["time"] for t in sells) / 1000
+    commission_asset = sells[0].get("commissionAsset", "USDT")
+
+    return {
+        "exit_price": avg_price,
+        "exit_qty": total_qty,
+        "exit_time": exit_time,
+        "exit_value": total_value,
+        "commission": total_commission,
+        "commission_asset": commission_asset,
+        "num_fills": len(sells),
+    }
+
+
+def _determine_exit_reason(exit_info, entry):
+    """Determine exit reason using actual Binance fill data and context TP/SL levels.
+
+    Args:
+        exit_info: dict from _get_actual_exit_from_binance
+        entry: trade_outcomes row dict
+    """
+    exit_price = exit_info["exit_price"]
+    entry_price = entry["entry_price"]
+
+    if entry_price <= 0 or exit_price <= 0:
+        return "order_fill"
+
+    pnl_pct = (exit_price - entry_price) / entry_price * 100
+
+    # Parse context_json for actual TP/SL levels
+    context = {}
+    try:
+        if entry.get("context_json"):
+            context = json.loads(entry["context_json"]) if isinstance(entry["context_json"], str) else entry["context_json"]
     except Exception:
         pass
-    
-    # Check if exit price is near SL (within 1% tolerance)
-    entry_price = entry.get("entry_price", 0)
-    if entry_price > 0 and exit_price > 0:
-        pnl_pct = (exit_price - entry_price) / entry_price * 100
-        
-        # SL hit: exit at a loss > 2%
-        if pnl_pct < -2.0:
+
+    sl_pct = context.get("stop_loss_pct", 0)
+    tp_levels = {
+        "tp1": context.get("tp1_pct", 0),
+        "tp2": context.get("tp2_pct", 0),
+        "tp3": context.get("tp3_pct", 0),
+    }
+
+    # Check SL first (exit at a loss)
+    if sl_pct > 0 and pnl_pct < 0:
+        expected_sl_pnl = -sl_pct
+        if abs(pnl_pct - expected_sl_pnl) < 2.0:  # within 2% tolerance
             return "sl"
-        
-        # TP hit: check against known TP levels (3%, 5%, 8%, 10%, 15%)
-        tp_levels = [3.0, 5.0, 8.0, 10.0, 15.0]
-        for tp in tp_levels:
-            if abs(pnl_pct - tp) < 1.0:  # within 1% of TP level
-                return f"tp{tp_levels.index(tp)+1}"
-    
-    # Check max_hold: if time held > 24h (conservative), likely max_hold
-    opened_at = entry.get("opened_at") or entry.get("entry_time")
-    if opened_at:
-        try:
-            from datetime import datetime
-            if isinstance(opened_at, str):
-                opened_dt = datetime.fromisoformat(opened_at)
-            else:
-                opened_dt = datetime.fromtimestamp(opened_at)
-            hold_hours = (datetime.now() - opened_dt).total_seconds() / 3600
-            if hold_hours > 24:
-                return "max_hold"
-        except Exception:
-            pass
-    
-    return "order_fill"
+
+    # Check TP levels (exit at a profit matching a TP target)
+    for tp_name, tp_pct in tp_levels.items():
+        if tp_pct > 0 and abs(pnl_pct - tp_pct) < 1.5:  # within 1.5% tolerance
+            return tp_name
+
+    # Check max_hold: if actual hold time exceeded configured max_hold
+    max_hold = context.get("max_hold_hours", 48)
+    opened_at = entry.get("entry_time", 0)
+    if opened_at and exit_info.get("exit_time"):
+        actual_hold = (exit_info["exit_time"] - opened_at) / 3600
+        if actual_hold >= max_hold * 0.95:  # within 5% of max_hold
+            return "max_hold"
+
+    # Generic fill that doesn't match known reasons
+    if pnl_pct > 0:
+        return "tp_fill"  # profitable but didn't match expected TP level
+    else:
+        return "sl_fill"  # loss but didn't match expected SL level
 
 
 def sync_outcomes():
@@ -117,6 +155,8 @@ def sync_outcomes():
     except Exception:
         pass
 
+    conn = db._get_conn()
+
     closed = 0
     updated = 0
 
@@ -132,32 +172,74 @@ def sync_outcomes():
             continue
 
         # Position gone from portfolio → outcome was closed (SL/TP order fill)
-        # Determine actual exit reason from trailing_stop state and exit price
-        current_price = price_map.get(sym, 0)
-        exit_reason = _determine_exit_reason(db, sym, current_price, entry)
-        if current_price > 0:
+        # Query actual Binance trade history for accurate exit data
+        exit_info = _get_actual_exit_from_binance(
+            client, sym, entry["entry_time"]
+        )
+
+        if exit_info:
+            exit_reason = _determine_exit_reason(exit_info, entry)
+
+            # Use TradeOutcomeRecorder but with actual exit price from Binance
             outcome = recorder.record_outcome(
                 symbol=sym,
-                exit_price=current_price,
+                exit_price=exit_info["exit_price"],
                 exit_reason=exit_reason,
             )
+
             if outcome:
+                # Fix exit_time to actual Binance fill time (not sync detection time)
+                conn.execute(
+                    "UPDATE trade_outcomes SET exit_time = ? WHERE id = ?",
+                    (exit_info["exit_time"], outcome.get("id")),
+                )
+
                 closed += 1
                 logger.info(
                     f"OUTCOME_SYNC: {sym} closed by {exit_reason} "
+                    f"@ ${exit_info['exit_price']:.6f} "
+                    f"({exit_info['num_fills']} fills) "
                     f"pnl={outcome['net_pnl_pct']:+.2f}%"
                 )
-        else:
-            # Can't get price — use entry price as fallback (0% PnL)
-            entry_price = entry["entry_price"]
-            outcome = recorder.record_outcome(
-                symbol=sym,
-                exit_price=entry_price,
-                exit_reason="order_fill_unknown_price",
-            )
-            if outcome:
-                closed += 1
 
+                # Record SELL trade in trades table
+                try:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO trades (symbol, side, qty, price, pnl, timestamp)
+                           VALUES (?, 'SELL', ?, ?, ?, ?)""",
+                        (
+                            sym,
+                            exit_info["exit_qty"],
+                            exit_info["exit_price"],
+                            outcome.get("net_pnl_absolute", 0),
+                            exit_info["exit_time"],
+                        ),
+                    )
+                    conn.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to record SELL trade for {sym}: {e}")
+
+            else:
+                logger.warning(f"OUTCOME_SYNC: record_outcome returned None for {sym}")
+        else:
+            # Can't get Binance trades — use current price as fallback
+            current_price = price_map.get(sym, 0)
+            if current_price > 0:
+                outcome = recorder.record_outcome(
+                    symbol=sym,
+                    exit_price=current_price,
+                    exit_reason="order_fill_unknown_price",
+                )
+                if outcome:
+                    closed += 1
+                    logger.warning(
+                        f"OUTCOME_SYNC: {sym} closed (fallback, no Binance trades found) "
+                        f"@ ${current_price:.6f}"
+                    )
+            else:
+                logger.warning(f"OUTCOME_SYNC: {sym} closed but no price available")
+
+    conn.commit()
     result = {"synced": len(open_entries), "closed": closed, "updated": updated}
     return result
 
