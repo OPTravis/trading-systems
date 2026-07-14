@@ -685,7 +685,7 @@ def _place_sl_tp_orders(
                         )
 
                 # Step 2: Place SL for REMAINING qty (not covered by TPs)
-                sl_remaining = round(executed_qty - _tiered_tp_placed, _qty_decimals)
+                sl_remaining = _round_qty(executed_qty - _tiered_tp_placed)
                 if sl_remaining >= _step_size:
                     sl = None
                     for attempt in range(2):
@@ -868,6 +868,7 @@ def _place_sl_tp_orders(
                     executed_qty,
                 )
 
+                _strat_c_sl_order_id = None
                 if sl_qty >= _step_size and not _sl_already_placed:
                     sl = None
                     for attempt in range(2):
@@ -891,6 +892,7 @@ def _place_sl_tp_orders(
                             if attempt == 0:
                                 time.sleep(1)
                     if sl:
+                        _strat_c_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
                         results.append(
                             f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
                         )
@@ -907,6 +909,7 @@ def _place_sl_tp_orders(
                                 exc_info=True,
                             )
 
+                _strat_c_tp_orders = []
                 for i, (tp, tp_qty) in enumerate(zip(tp_levels, tp_qty_list)):
                     if tp_qty < _step_size:
                         continue
@@ -934,12 +937,47 @@ def _place_sl_tp_orders(
                             if attempt == 0:
                                 time.sleep(1)
                     if tpo:
+                        _tp_oid = tpo.get("orderId") if isinstance(tpo, dict) else None
+                        _strat_c_tp_orders.append({
+                            "order_id": _tp_oid,
+                            "price": tp_price,
+                            "qty": tp_qty,
+                            "tier": i + 1,
+                            "pct": tp["pct"],
+                        })
                         results.append(
                             f"TP{i+1}(+{tp['pct']}%): {tp_qty} @ ${tp_price}"
                         )
                         tp_placed_qty += tp_qty
                     else:
                         results.append(f"TP{i+1}: FAILED")
+
+                # Save TP/SL tracking state for trailing-check fill detection
+                # (Strategy C fallback path — must also save tracker state)
+                if _strat_c_tp_orders:
+                    try:
+                        from src.tp_sl_tracker import save_state as _save_tpsl
+                        _sl_tracking = None
+                        if _strat_c_sl_order_id:
+                            _sl_tracking = {
+                                "order_id": _strat_c_sl_order_id,
+                                "price": sl_limit_price,
+                                "stop_price": sl_price,
+                                "qty": sl_placed_qty,
+                            }
+                        _save_tpsl(
+                            symbol=symbol,
+                            entry_price=price,
+                            total_qty=executed_qty,
+                            tp_orders=_strat_c_tp_orders,
+                            sl_order=_sl_tracking,
+                        )
+                        logger.info(
+                            "Strategy C: tp_sl_tracker saved for %s (%d TP orders)",
+                            symbol, len(_strat_c_tp_orders),
+                        )
+                    except Exception as _e:
+                        logger.warning("Strategy C: Failed to save tp_sl_tracker: %s", _e)
 
     # Check for uncovered units
     covered = sl_placed_qty + tp_placed_qty
