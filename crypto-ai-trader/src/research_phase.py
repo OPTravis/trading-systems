@@ -20,10 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
-                    regime, btc_trend, dynamic_threshold):
+                    regime, btc_trend, dynamic_threshold,
+                    surge_alert_level="SILENCE"):
     """Gather risk positions, apply regime guard, and filter by risk manager.
 
     Returns (filtered_opportunities, dynamic_threshold, risk_positions).
+
+    RegimeGuard is surge-aware: when SurgeDetector confirms bottom signals
+    (IMMINENT/CONFIRMED), the guard does not override the carefully adjusted
+    threshold from upstream. Lower surge levels still apply progressive guards.
     """
     # Gather existing positions for risk check
     acct_balances = acct.get("balances", [])
@@ -50,23 +55,51 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
     # Account equity = positions value + USDT cash (correct denominator for sector %)
     _account_equity = sum(p.get("value_usdt", 0) for p in risk_positions) + _usdt_total
 
-    # Regime-based guard: FEAR/EXTREME_FEAR — raise threshold
-    # Calibrated per investment advisor: 98 was too strict (effectively blocking all
-    # trades in extreme fear), 85 allows high-quality signals while still filtering noise.
+    # Regime-based guard: surge-aware threshold adjustment
+    # When SurgeDetector confirms bottom signals, relax the guard progressively:
+    #   IMMINENT/CONFIRMED → no guard (let upstream surge-adjusted threshold stand)
+    #   ACCUMULATE/WATCH    → light guard (base+5 = 72)
+    #   SILENCE             → full guard (base+13 = 80, or 85 for EXTREME_FEAR)
     has_fear_mode = any(o.get("fear_mode") for o in opportunities)
-    if regime in ("EXTREME_FEAR",):
-        if not has_fear_mode:
-            dynamic_threshold = max(dynamic_threshold, 85)
+
+    if regime == "EXTREME_FEAR":
+        if has_fear_mode:
+            print(f"REGIME_GUARD: {regime} — bypassed for fear accumulation mode")
+        elif surge_alert_level in ("IMMINENT", "CONFIRMED"):
             print(
-                f"REGIME_GUARD: {regime} — threshold raised to {dynamic_threshold} (calibrated: filter noise, keep quality)"
+                f"REGIME_GUARD: {regime} + SURGE={surge_alert_level} — "
+                f"surge confirmed, threshold stays at {dynamic_threshold}"
+            )
+        elif surge_alert_level in ("ACCUMULATE", "WATCH"):
+            dynamic_threshold = max(dynamic_threshold, 75)
+            print(
+                f"REGIME_GUARD: {regime} + SURGE={surge_alert_level} — "
+                f"threshold raised to {dynamic_threshold} (light guard)"
             )
         else:
-            print(f"REGIME_GUARD: {regime} — bypassed for fear accumulation mode")
+            dynamic_threshold = max(dynamic_threshold, 85)
+            print(
+                f"REGIME_GUARD: {regime} + SURGE=SILENCE — "
+                f"threshold raised to {dynamic_threshold} (full guard, no surge confirmation)"
+            )
     elif regime == "FEAR" and btc_trend != "BULLISH":
-        dynamic_threshold = max(dynamic_threshold, 80)
-        print(
-            f"REGIME_GUARD: {regime} + BTC {btc_trend} — threshold raised to {dynamic_threshold}"
-        )
+        if surge_alert_level in ("IMMINENT", "CONFIRMED"):
+            print(
+                f"REGIME_GUARD: {regime} + BTC {btc_trend} + SURGE={surge_alert_level} — "
+                f"surge confirmed, threshold stays at {dynamic_threshold}"
+            )
+        elif surge_alert_level in ("ACCUMULATE", "WATCH"):
+            dynamic_threshold = max(dynamic_threshold, 75)
+            print(
+                f"REGIME_GUARD: {regime} + BTC {btc_trend} + SURGE={surge_alert_level} — "
+                f"threshold raised to {dynamic_threshold} (light guard)"
+            )
+        else:
+            dynamic_threshold = max(dynamic_threshold, 80)
+            print(
+                f"REGIME_GUARD: {regime} + BTC {btc_trend} + SURGE=SILENCE — "
+                f"threshold raised to {dynamic_threshold} (full guard)"
+            )
 
     filtered = []
     for opp in opportunities:
@@ -280,10 +313,15 @@ def _step_research_top_n(ctx):
     btc_trend = ctx["btc_trend"]
     acct = ctx["acct"]
 
+    # Extract surge alert level for surge-aware RegimeGuard
+    _surge = ctx.get("surge_result")
+    surge_alert_level = _surge.get("alert_level", "SILENCE") if _surge else "SILENCE"
+
     # ===== Step 5: Risk Checks =====
     opportunities, dynamic_threshold, risk_positions = _filter_by_risk(
         opportunities, client, risk_mgr, acct, adapted,
         regime, btc_trend, dynamic_threshold,
+        surge_alert_level=surge_alert_level,
     )
 
     if not opportunities:
