@@ -51,7 +51,7 @@ def save_state(
         "updated_at": time.time(),
     }
     db = get_state_db()
-    db.kv_set(_key(symbol), json.dumps(state))
+    db.kv_set(_key(symbol), state)  # kv_set does json.dumps internally
     logger.info(
         "TP/SL tracker saved %s: entry=%.6f %d TPs SL=%s",
         symbol, entry_price, len(tp_orders), "yes" if sl_order else "no",
@@ -66,6 +66,9 @@ def get_state(symbol: str) -> Optional[dict]:
     raw = db.kv_get(_key(symbol), None)
     if raw is None:
         return None
+    if isinstance(raw, dict):
+        return raw
+    # Fallback: handle legacy double-encoded values
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -83,7 +86,7 @@ def update_state(symbol: str, **kwargs) -> Optional[dict]:
     state.update(kwargs)
     state["updated_at"] = time.time()
     db = get_state_db()
-    db.kv_set(_key(symbol), json.dumps(state))
+    db.kv_set(_key(symbol), state)  # kv_set does json.dumps internally
     return state
 
 
@@ -109,7 +112,11 @@ def get_all_tracked() -> dict:
         for row in rows:
             sym = row["key"].replace(f"{_PREFIX}:", "")
             try:
-                result[sym] = json.loads(row["value"])
+                parsed = json.loads(row["value"])
+                # Handle legacy double-encoded values
+                if isinstance(parsed, str):
+                    parsed = json.loads(parsed)
+                result[sym] = parsed
             except (json.JSONDecodeError, TypeError):
                 continue
         return result
