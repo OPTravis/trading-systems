@@ -25,7 +25,13 @@ KELLY_FRACTION = 0.5  # Half-Kelly: safer, smoother equity curve
 MAX_POSITION_PCT = (
     0.12  # Hard cap: never bet more than 12% of balance (winners avg 6.3% Kelly)
 )
-MIN_POSITION_PCT = 0.05  # Minimum: at least 5% to make trade worthwhile
+MIN_POSITION_PCT = 0.01  # Minimum position floor (1% — Kelly is a scale, not a gate)
+
+# Exploration positions: when SurgeDetector signals IMMINENT/CONFIRMED but Kelly
+# can't produce a reliable estimate (cold start), allow a tiny exploratory bet
+# to bootstrap historical data. Think epsilon-greedy exploration budget.
+EXPLORATION_MIN_PCT = 0.01   # 1% minimum exploration position
+EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
 
 
 class KellyPositionSizer:
@@ -104,8 +110,12 @@ class KellyPositionSizer:
         take_profit_pct: float,
         signal_score: float = 70,
         use_historical: bool = True,
+        surge_alert_level: str = "SILENCE",
     ) -> Dict:
         """Calculate optimal position size for a trade.
+
+        Kelly is a **scale** (how much to bet), not a **gate** (whether to bet).
+        Whether to trade is decided by RegimeGuard upstream. Kelly only decides size.
 
         Args:
             symbol: Trading pair
@@ -114,16 +124,19 @@ class KellyPositionSizer:
             take_profit_pct: Take profit percentage (e.g., 10.0 for 10%)
             signal_score: Signal confidence score (0-100)
             use_historical: Whether to use historical trade data for win rate
+            surge_alert_level: SurgeDetector alert level — when IMMINENT/CONFIRMED
+                and Kelly has insufficient data, allows a small exploratory position
 
         Returns:
             {
-                position_pct: float,  # fraction of balance to allocate
-                position_usdt: float,
-                kelly_fraction: float,
+                position_pct: float,
                 win_rate: float,
                 reward_risk: float,
-                confidence: str,  # HIGH/MEDIUM/LOW based on data quality
+                avg_win: float,
+                avg_loss: float,
+                confidence: str,
                 reason: str,
+                is_exploration: bool,  # True if this is a cold-start exploratory bet
             }
         """
         # Base reward-to-risk from this trade's SL/TP
@@ -164,13 +177,26 @@ class KellyPositionSizer:
         # Calculate Kelly fraction
         kelly = self.calculate_kelly_fraction(win_rate, avg_win, avg_loss)
 
-        # If Kelly is zero or negative:
-        # - With SUFFICIENT data (HIGH confidence): genuinely bad edge, block trade
-        # - With INSUFFICIENT data: use minimum position to bootstrap history
+        # If Kelly is zero or negative, decide whether to block or explore.
+        #
+        # Principle: Kelly is a scale, not a gate. RegimeGuard already decided
+        # this trade is worth considering. Kelly's job is to size it.
+        #
+        # - HIGH confidence + Kelly ≤ 0  → genuinely bad edge, block (the only
+        #   case where Kelly still acts as gate: we have enough data to know
+        #   this specific coin/strategy loses money)
+        # - Insufficient data + Surge IMMINENT/CONFIRMED → exploration position
+        #   (epsilon-greedy: small bet to bootstrap historical data)
+        # - Insufficient data + Surge SILENCE/WATCH/ACCUMULATE → block
+        #   (correct conservatism when no surge signal supports the risk)
+        is_exploration = False
         if kelly <= 0:
             if confidence == "HIGH":
                 # Sufficient data and Kelly is negative — genuinely bad edge
-                reason = f"Kelly={kelly:.1%} ≤ 0, 不建議交易 (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+                reason = (
+                    f"Kelly={kelly:.1%} ≤ 0, 不建議交易 "
+                    f"(win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+                )
                 return {
                     "position_pct": 0.0,
                     "win_rate": round(win_rate, 4),
@@ -179,44 +205,44 @@ class KellyPositionSizer:
                     "avg_loss": round(avg_loss, 4),
                     "confidence": confidence,
                     "reason": reason,
+                    "is_exploration": False,
                 }
+            elif surge_alert_level in ("IMMINENT", "CONFIRMED"):
+                # Surge signals support the trade, but Kelly has insufficient data.
+                # Allow a tiny exploratory position to bootstrap history.
+                kelly = EXPLORATION_MIN_PCT
+                is_exploration = True
+                confidence = (
+                    f"EXPLORATION (cold start, surge={surge_alert_level}, "
+                    f"bootstrapping history)"
+                )
             else:
-                # Cold start: insufficient data for reliable Kelly
-                # Use higher minimum for high-confidence cold starts
-                if signal_score >= 80:
-                    kelly = 0.10  # Higher minimum for high-confidence cold starts
-                    confidence = (
-                        "LOW (cold start, high signal — using elevated min position)"
-                    )
-                else:
-                    # Kelly ≤ 0 and signal not strong enough — block trade
-                    reason = f"Kelly={kelly:.1%} ≤ 0 with low signal ({signal_score}), 不建議交易"
-                    return {
-                        "position_pct": 0.0,
-                        "win_rate": round(win_rate, 4),
-                        "reward_risk": round(reward_risk, 2),
-                        "avg_win": round(avg_win, 4),
-                        "avg_loss": round(avg_loss, 4),
-                        "confidence": "BLOCKED",
-                        "reason": reason,
-                    }
+                # Kelly ≤ 0, no surge support — correct conservatism, block
+                reason = (
+                    f"Kelly={kelly:.1%} ≤ 0, no surge signal "
+                    f"(surge={surge_alert_level}), 保守不交易"
+                )
+                return {
+                    "position_pct": 0.0,
+                    "win_rate": round(win_rate, 4),
+                    "reward_risk": round(reward_risk, 2),
+                    "avg_win": round(avg_win, 4),
+                    "avg_loss": round(avg_loss, 4),
+                    "confidence": "BLOCKED",
+                    "reason": reason,
+                    "is_exploration": False,
+                }
 
-        # Apply minimum threshold only for positive Kelly
-        if kelly <= 0:
-            reason = f"Kelly={kelly:.1%} ≤ 0, blocking trade"
-            return {
-                "position_pct": 0.0,
-                "win_rate": round(win_rate, 4),
-                "reward_risk": round(reward_risk, 2),
-                "avg_win": round(avg_win, 4),
-                "avg_loss": round(avg_loss, 4),
-                "confidence": "BLOCKED",
-                "reason": reason,
-            }
-        if kelly < MIN_POSITION_PCT:
+        # Apply minimum floor (1%) only for normal (non-exploration) positions
+        if not is_exploration and kelly < MIN_POSITION_PCT:
             kelly = MIN_POSITION_PCT
             reason = (
-                f"Kelly={kelly:.1%} below minimum, using floor {MIN_POSITION_PCT:.0%}"
+                f"Kelly={kelly:.1%} below floor, using min {MIN_POSITION_PCT:.0%}"
+            )
+        elif is_exploration:
+            reason = (
+                f"Exploration position {kelly:.1%} "
+                f"(surge={surge_alert_level}, cold start)"
             )
         else:
             reason = (
@@ -231,6 +257,7 @@ class KellyPositionSizer:
             "avg_loss": round(avg_loss, 4),
             "confidence": confidence,
             "reason": reason,
+            "is_exploration": is_exploration,
         }
 
     def adjust_for_portfolio(

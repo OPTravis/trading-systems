@@ -198,6 +198,7 @@ def _compute_kelly_sizing(
     tp_levels: list,
     active_positions: int,
     max_positions: int,
+    surge_alert_level: str = "SILENCE",
 ) -> Optional[dict]:
     """Compute position size using Kelly-first, tier-fallback strategy.
 
@@ -221,6 +222,7 @@ def _compute_kelly_sizing(
         take_profit_pct=tp_pct,
         signal_score=score,
         use_historical=True,
+        surge_alert_level=surge_alert_level,
     )
 
     fees = fee_opt.get_effective_fees()
@@ -229,6 +231,10 @@ def _compute_kelly_sizing(
 
     kelly_confidence = kelly_result.get("confidence", "")
     kelly_active = "estimated" not in kelly_confidence.lower()
+    is_exploration = kelly_result.get("is_exploration", False)
+
+    # Binance minNotional is $5; exploration positions can go as low as that
+    _min_invest = 5 if is_exploration else 10
 
     if kelly_active:
         kelly_result = kelly.adjust_for_portfolio(
@@ -240,7 +246,7 @@ def _compute_kelly_sizing(
         invest_amount = usdt_bal * invest_pct
         invest_amount *= fee_reserve
 
-        if invest_pct <= 0 or invest_amount < 10:
+        if invest_pct <= 0 or invest_amount < _min_invest:
             logger.info(
                 f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
                 f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
@@ -281,6 +287,7 @@ def _compute_kelly_sizing(
         "fee_rate": fee_rate,
         "kelly_result": kelly_result,
         "db": db,
+        "is_exploration": is_exploration,
     }
 
 
@@ -448,6 +455,7 @@ def _record_trade_portfolio(
         )
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
+            portfolio.positions[symbol]["is_exploration"] = _is_exploration
             if bandit_context:
                 portfolio.positions[symbol]["bandit_context"] = bandit_context
                 portfolio.positions[symbol]["bandit_multiplier"] = bandit_multiplier
@@ -1072,6 +1080,7 @@ def execute_auto_trade(
     max_total_exposure_pct=70,
     strategy_size_multiplier=1.0,
     order_value=None,
+    surge_alert_level="SILENCE",
 ):
     """Execute trade automatically with Kelly-optimal position sizing.
 
@@ -1193,6 +1202,7 @@ def execute_auto_trade(
     sizing = _compute_kelly_sizing(
         client, symbol, usdt_bal, score, stop_loss_pct, tp_levels,
         active_positions, max_positions,
+        surge_alert_level=surge_alert_level,
     )
     if sizing is None:
         return {"success": False, "error": "Position sizing returned None"}
@@ -1203,6 +1213,37 @@ def execute_auto_trade(
     fee_rate = sizing["fee_rate"]
     kelly_result = sizing["kelly_result"]
     db = sizing["db"]
+    _is_exploration = sizing.get("is_exploration", False)
+
+    # ── Exploration exposure cap ──
+    # Total exploration positions must not exceed 5% of USDT balance.
+    # This prevents too many small cold-start bets from accumulating.
+    if _is_exploration:
+        _MAX_EXPLORATION_PCT = 0.05  # 5% of balance max for all exploration positions
+        _current_exploration = 0.0
+        try:
+            for _sym, _pos in portfolio.positions.items():
+                if _pos.get("is_exploration", False):
+                    _current_exploration += _pos.get("invest_pct", 0) * usdt_bal
+        except Exception:
+            pass
+        _exploration_room = usdt_bal * _MAX_EXPLORATION_PCT - _current_exploration
+        if _exploration_room <= 0:
+            logger.info(
+                f"Exploration cap reached: ${_current_exploration:.2f} / "
+                f"{_MAX_EXPLORATION_PCT*100:.0f}% of ${usdt_bal:.2f}. "
+                f"Skipping new exploration position."
+            )
+            return {
+                "success": False,
+                "error": f"Exploration cap reached ({_current_exploration:.1%} of balance)",
+            }
+        if invest_amount > _exploration_room:
+            logger.info(
+                f"Exploration cap partial: ${invest_amount:.2f} → ${_exploration_room:.2f}"
+            )
+            invest_amount = _exploration_room
+            invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
     # ── Fixed order value override (DeepValueBTC / Fear Accumulation) ──
     # When order_value is specified, use it instead of Kelly sizing.
@@ -1352,11 +1393,13 @@ def execute_auto_trade(
     except Exception as e:
         logger.warning(f"Single trade loss limit check failed (proceeding without): {e}")
 
-    # Final minimum check — caps may have reduced below Binance minimum
-    if invest_amount < 10:
+    # Final minimum check — caps may have reduced below exchange minimum
+    # Binance minNotional is $5 for most pairs; exploration positions use that floor
+    _final_min = 5 if _is_exploration else 10
+    if invest_amount < _final_min:
         return {
             "success": False,
-            "error": f"Caps reduced position below $10 minimum: ${invest_amount:.2f}",
+            "error": f"Caps reduced position below ${_final_min} minimum: ${invest_amount:.2f}",
         }
 
     # Tier label for logging (informational only for Kelly mode)
@@ -1565,6 +1608,7 @@ def execute_auto_trade(
         "score": score,
         "invest_pct": round(invest_pct * 100, 1),
         "active_positions": active_positions + 1,
+        "is_exploration": _is_exploration,
         "kelly": {
             "position_pct": round(kelly_result["position_pct"] * 100, 1),
             "win_rate": round(kelly_result.get("win_rate", 0) * 100, 1),

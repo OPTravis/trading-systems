@@ -145,6 +145,11 @@ def _step_execute_trades(ctx):
                 "size_multiplier", 1.0
             ),  # P0-3: pass strategy-level size_multiplier
             order_value=ctx.get("top", {}).get("order_value"),  # DeepValueBTC / Fear Acc
+            surge_alert_level=(
+                ctx.get("surge_result", {}).get("alert_level", "SILENCE")
+                if ctx.get("surge_result")
+                else "SILENCE"
+            ),
         )
         if result["success"]:
             # Record trade in journal
@@ -234,9 +239,10 @@ def _step_execute_trades(ctx):
             except Exception as e:
                 logger.warning(f"Trade outcome entry recording failed: {e}")
 
-            print(
-                f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Tier: {result['tier']} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}"
-            )
+                _explore_tag = " 🔬EXPLORATION" if result.get("is_exploration") else ""
+                print(
+                    f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}{_explore_tag}"
+                )
             # Write signal to pending.json for heartbeat notification
             send_signal(
                 signal_type="BUY",
