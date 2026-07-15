@@ -32,6 +32,7 @@ MIN_POSITION_PCT = 0.01  # Minimum position floor (1% — Kelly is a scale, not 
 # to bootstrap historical data. Think epsilon-greedy exploration budget.
 EXPLORATION_MIN_PCT = 0.01   # 1% minimum exploration position
 EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
+BINANCE_MIN_NOTIONAL = 5.0   # Binance minNotional for most pairs (USDT)
 
 
 class KellyPositionSizer:
@@ -210,7 +211,12 @@ class KellyPositionSizer:
             elif surge_alert_level in ("IMMINENT", "CONFIRMED"):
                 # Surge signals support the trade, but Kelly has insufficient data.
                 # Allow a tiny exploratory position to bootstrap history.
-                kelly = EXPLORATION_MIN_PCT
+                # Ensure we meet exchange minimum notional ($5 on Binance).
+                kelly = max(
+                    EXPLORATION_MIN_PCT,
+                    BINANCE_MIN_NOTIONAL / balance if balance > 0 else EXPLORATION_MIN_PCT,
+                )
+                kelly = min(kelly, EXPLORATION_MAX_PCT)
                 is_exploration = True
                 confidence = (
                     f"EXPLORATION (cold start, surge={surge_alert_level}, "

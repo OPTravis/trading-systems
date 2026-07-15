@@ -246,6 +246,15 @@ def _compute_kelly_sizing(
         invest_amount = usdt_bal * invest_pct
         invest_amount *= fee_reserve
 
+        # Exploration positions: bump to Binance min if just barely under
+        if is_exploration and invest_amount < _min_invest:
+            invest_amount = float(_min_invest)
+            invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
+            logger.info(
+                f"Exploration bumped to Binance min: ${invest_amount:.2f} "
+                f"({invest_pct*100:.2f}%)"
+            )
+
         if invest_pct <= 0 or invest_amount < _min_invest:
             logger.info(
                 f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
