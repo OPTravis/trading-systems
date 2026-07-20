@@ -725,7 +725,36 @@ def cmd_trailing_check():
             })
             continue
 
-        sl_price = round(current_price * 0.95, p_prec)  # -5% default SL
+        # FIX: Use entry price for SL, not current price.
+        # Previous code used current_price * 0.95 which is wrong — if price already
+        # dropped 3% from entry, effective SL becomes -8% from entry.
+        # Now: look up entry price from trailing stop state or portfolio.
+        fallback_entry = current_price  # conservative fallback
+        try:
+            ts_state = ts.get(asset)
+            _ep = ts_state.get("entry_price", 0) if ts_state and isinstance(ts_state, dict) else 0
+            if _ep and isinstance(_ep, (int, float)) and _ep > 0:
+                fallback_entry = _ep
+            else:
+                from src.entry_price import get_avg_entry_price
+                _ep2 = get_avg_entry_price(client, symbol, current_qty=qty_to_protect)
+                if _ep2 and _ep2 > 0:
+                    fallback_entry = _ep2
+        except Exception:
+            pass
+
+        # Default SL: 8% from entry (wider than old 5% to reduce noise stops)
+        # But never place SL above current price (would trigger immediately)
+        default_sl_pct = 8.0
+        sl_price = round(fallback_entry * (1 - default_sl_pct / 100), p_prec)
+        if sl_price >= current_price:
+            # Entry was above current price (already in loss) — use current * 0.92
+            sl_price = round(current_price * 0.92, p_prec)
+            logger.warning(
+                "Uncovered SL for %s: entry=%.6f but current=%.6f already below. "
+                "Placing SL at -8%% from current (%.6f).",
+                asset, fallback_entry, current_price, sl_price,
+            )
         try:
             sl_result = client.place_order(
                 symbol, "SELL", "STOP_LOSS_LIMIT",

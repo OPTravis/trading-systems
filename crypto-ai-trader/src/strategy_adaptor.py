@@ -482,9 +482,9 @@ class StrategyAdaptor:
                     cfg["tp_levels"][0]["pct"] = base_tp
                     # Scale TP2/TP3 relative to TP1 to avoid inverted order
                     if len(cfg["tp_levels"]) > 1:
-                        cfg["tp_levels"][1]["pct"] = round(base_tp * 1.5, 2)
+                        cfg["tp_levels"][1]["pct"] = round(base_tp * 1.6, 2)
                     if len(cfg["tp_levels"]) > 2:
-                        cfg["tp_levels"][2]["pct"] = round(base_tp * 2.0, 2)
+                        cfg["tp_levels"][2]["pct"] = round(base_tp * 2.5, 2)
                 changes.append(
                     f"GARCH {vol_result['vol_regime']}({len(daily_returns)}d): SL={abs(dynamic['sl_pct'])*100:.1f}%, TP={dynamic['tp_pct']*100:.1f}%"
                 )

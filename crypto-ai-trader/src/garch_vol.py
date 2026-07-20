@@ -16,27 +16,29 @@ MIN_DATA_POINTS = 30
 ROLLING_WINDOW = 20
 
 VOL_REGIMES = {
+    # R:R ≥ 1:1.5 for TP1, 1:2.5 for TP2, 1:4 for TP3
+    # Previously SL > TP1 (inverted), causing negative expected value
     "low": {
-        "sl_pct": -0.06,
-        "tp_pct": 0.05,
+        "sl_pct": -0.05,
+        "tp_pct": 0.08,
         "trailing_activation": 0.02,
         "trailing_step": 0.015,
     },
     "normal": {
-        "sl_pct": -0.08,
-        "tp_pct": 0.06,
+        "sl_pct": -0.06,
+        "tp_pct": 0.10,
         "trailing_activation": 0.03,
         "trailing_step": 0.02,
     },
     "high": {
-        "sl_pct": -0.10,
-        "tp_pct": 0.08,
+        "sl_pct": -0.08,
+        "tp_pct": 0.13,
         "trailing_activation": 0.04,
         "trailing_step": 0.03,
     },
     "extreme": {
-        "sl_pct": -0.12,
-        "tp_pct": 0.10,
+        "sl_pct": -0.10,
+        "tp_pct": 0.15,
         "trailing_activation": 0.06,
         "trailing_step": 0.04,
     },

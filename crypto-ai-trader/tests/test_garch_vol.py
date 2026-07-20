@@ -126,13 +126,13 @@ class TestGetDynamicSlTp:
 
     def test_low_vol_tight_params(self):
         result = garch.get_dynamic_sl_tp("BTCUSDT", 50000.0, 0.005)
-        assert result["sl_pct"] == -0.06
-        assert result["tp_pct"] == 0.05
+        assert result["sl_pct"] == -0.05
+        assert result["tp_pct"] == 0.08
 
     def test_extreme_vol_wide_params(self):
         result = garch.get_dynamic_sl_tp("BTCUSDT", 50000.0, 0.10)
-        assert result["sl_pct"] == -0.12
-        assert result["tp_pct"] == 0.10
+        assert result["sl_pct"] == -0.10
+        assert result["tp_pct"] == 0.15
 
     def test_has_trailing_fields(self):
         result = garch.get_dynamic_sl_tp("ETHUSDT", 3000.0, 0.01)
@@ -145,7 +145,7 @@ class TestGetDynamicSlTp:
         ann_vol = daily_vol * math.sqrt(365)
         assert garch.get_vol_regime(ann_vol) == "low"
         result = garch.get_dynamic_sl_tp("BTCUSDT", 50000.0, daily_vol)
-        assert result["sl_pct"] == -0.06
+        assert result["sl_pct"] == -0.05
 
 
 # ---------------------------------------------------------------------------
