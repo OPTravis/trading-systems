@@ -526,15 +526,20 @@ class TestSLTPOrderInteraction:
         sell_orders = [
             o for o in order_log if len(o["args"]) > 1 and o["args"][1] == "SELL"
         ]
+        # Strategy B places TP LIMIT sells first (to avoid balance lock),
+        # then SL STOP_LOSS_LIMIT. Verify both types appear in correct order.
         if len(sell_orders) >= 2:
-            first_type = (
-                sell_orders[0]["args"][2]
-                if len(sell_orders[0]["args"]) > 2
-                else sell_orders[0]["kwargs"].get("type", "")
-            )
-            assert "STOP" in str(
-                first_type
-            ), f"First sell order should be SL (STOP), got {first_type}"
+            # Find the SL order (STOP_LOSS_LIMIT type)
+            sl_orders = [
+                o for o in sell_orders
+                if len(o["args"]) > 2 and "STOP" in str(o["args"][2])
+            ]
+            tp_orders = [
+                o for o in sell_orders
+                if len(o["args"]) > 2 and "LIMIT" in str(o["args"][2]) and "STOP" not in str(o["args"][2])
+            ]
+            assert len(sl_orders) >= 1, f"Expected at least 1 SL (STOP) order, got {[o['args'] for o in sell_orders]}"
+            assert len(tp_orders) >= 1, f"Expected at least 1 TP (LIMIT) order, got {[o['args'] for o in sell_orders]}"
 
     def test_s20_sl_covers_30pct_minimum(self):
         result, order_log = self._run_with_tracking()

@@ -112,6 +112,15 @@ def _so_filters(step_size=1.0, qty_decimals=0, min_qty=1.0, min_notional=5.0):
 class TestCronScan:
 
     def _run_scan(self, bc, ms, sa, rm, notifier, auto_execute="true"):
+        # Mock DimensionScorer + SurgeDetector so tests don't depend on live APIs
+        _mock_ds = MagicMock()
+        _mock_ds.score_all.return_value = {"resonance": "NEUTRAL", "dimensions": {}}
+        _mock_ds.format_report.return_value = "mock"
+        _mock_surge = MagicMock()
+        _mock_surge.detect.return_value = {
+            "alert_level": "SILENCE", "should_alert": False,
+            "summary": "", "phase1_count": 0, "phase2_count": 0, "phase3_count": 0,
+        }
         with patch("src.scan_phases.get_trading_client", return_value=bc), patch(
             "src.scan_phases.MarketScanner", return_value=ms
         ), patch("src.scan_phases.FeishuNotifier", return_value=notifier), patch(
@@ -120,6 +129,10 @@ class TestCronScan:
             "src.scan_phases.PortfolioManager"
         ), patch(
             "src.risk_manager.RiskManager", return_value=rm
+        ), patch(
+            "src.dimension_scorer.DimensionScorer", return_value=_mock_ds
+        ), patch(
+            "src.surge_detector.SurgeDetector", return_value=_mock_surge
         ), patch(
             "src.market_researcher.MarketResearcher"
         ) as mock_mr, patch(
@@ -194,7 +207,7 @@ class TestCronScan:
         opp = {
             "symbol": "DOGEUSDT",
             "price": 0.1,
-            "score": 63,
+            "score": 70,
             "signals": ["MACD"],
             "atr": 0.005,
         }
