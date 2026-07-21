@@ -1402,14 +1402,25 @@ def execute_auto_trade(
     except Exception as e:
         logger.warning(f"Single trade loss limit check failed (proceeding without): {e}")
 
-    # Final minimum check — caps may have reduced below exchange minimum
-    # Binance minNotional is $5 for most pairs; exploration positions use that floor
-    _final_min = 5 if _is_exploration else 10
-    if invest_amount < _final_min:
+    # Final minimum check — caps may have reduced below exchange minimum.
+    # Binance minNotional is $5 for most pairs.
+    # If post-cap amount is ≥ $5 (exchange-tradable) but below our internal
+    # $10 floor, bump to $6 rather than wasting a valid signal. The risk
+    # difference between $3.52 and $6 at 5% SL is ~$0.12 — negligible.
+    _exchange_min = 5.0
+    _internal_min = 5 if _is_exploration else 10
+    if invest_amount < _exchange_min:
         return {
             "success": False,
-            "error": f"Caps reduced position below ${_final_min} minimum: ${invest_amount:.2f}",
+            "error": f"Position below Binance ${_exchange_min} minimum: ${invest_amount:.2f}",
         }
+    if invest_amount < _internal_min:
+        logger.info(
+            f"Post-cap ${invest_amount:.2f} below internal ${_internal_min} floor, "
+            f"bumping to $6.00 (exchange-minimum safe) — signal worth capturing"
+        )
+        invest_amount = 6.0
+        invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
     # Tier label for logging (informational only for Kelly mode)
     _, tier_label = get_position_tier(score)

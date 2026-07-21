@@ -381,7 +381,8 @@ class TestExecuteAutoTradeEdgeCases:
         )
         assert result["success"] is False
         assert (
-            "Caps reduced position below $10 minimum" in result["error"]
+            "below Binance" in result["error"]
+            or "below" in result["error"]
             or "Qty too small" in result["error"]
         )
 

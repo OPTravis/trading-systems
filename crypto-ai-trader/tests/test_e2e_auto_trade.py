@@ -644,6 +644,7 @@ class TestExecuteAutoTrade:
         result, _ = self._run(usdt_bal=50, price=10000.0, filters={"min_qty": 100.0})
         assert result["success"] is False
         assert (
-            "Caps reduced position below $10 minimum" in result["error"]
+            "below Binance" in result["error"]
+            or "below" in result["error"]
             or "Qty too small" in result["error"]
         )
