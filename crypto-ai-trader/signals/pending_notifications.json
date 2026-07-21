@@ -13902,5 +13902,21 @@
     "title": "",
     "body": "🔍 18:13 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 🔥 六維共振=BULL（4/6 看漲）\n💡 发现机会: 14个\n\n🏆 前3名:\n  1. LAUSDT (评分: 76)\n  2. ZAMAUSDT (评分: 75)\n  3. ENAUSDT (评分: 73)\n",
     "pushed": true
+  },
+  {
+    "id": "notif_20260721181853779434",
+    "timestamp": "2026-07-21T18:18:53.779464",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ F&G=25 — 極度恐慌（築底條件）\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ 🔥 六維共振=BULL（4/6 看漲）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721182007168119",
+    "timestamp": "2026-07-21T18:20:07.168160",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 18:20 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 🔥 六維共振=BULL（4/6 看漲）\n💡 发现机会: 15个\n\n🏆 前3名:\n  1. LTCUSDT (评分: 78)\n  2. ZAMAUSDT (评分: 76)\n  3. LAUSDT (评分: 76)\n",
+    "pushed": true
   }
 ]

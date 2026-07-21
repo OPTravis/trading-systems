@@ -1473,6 +1473,13 @@ def execute_auto_trade(
     raw_qty = invest_amount / price
     qty = round(raw_qty / _step_size) * _step_size
     qty = round(qty, _qty_decimals)
+
+    # Ensure qty meets minNotional after rounding (step size can shave
+    # a fraction below $5, e.g. 0.105 LTC × $47.43 = $4.98 < $5.00)
+    if qty * price < _min_notional:
+        qty = round((qty + _step_size) / _step_size) * _step_size
+        qty = round(qty, _qty_decimals)
+
     if qty < _min_qty:
         return {
             "success": False,

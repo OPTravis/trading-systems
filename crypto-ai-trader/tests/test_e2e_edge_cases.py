@@ -377,7 +377,7 @@ class TestExecuteAutoTradeEdgeCases:
 
     def test_s16_qty_below_minqty_error(self):
         result, _ = self._run(
-            usdt_bal=50, filters={"min_qty": 100.0, "step_size": 1.0, "qty_decimals": 0}
+            usdt_bal=50, filters={"minQty": 100.0, "stepSize": 1.0, "qty_decimals": 0, "minNotional": 5.0}
         )
         assert result["success"] is False
         assert (
