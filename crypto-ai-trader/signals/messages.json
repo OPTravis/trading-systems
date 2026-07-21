@@ -1881,5 +1881,33 @@
     "title": "",
     "body": "📊 每日报告 2026-07-20\n\n💰 USDT: $396.06\n📈 總資產: $396.06\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 244筆交易):\n  已實現PnL: $-223.13\n  手續費: -$6.44\n  淨已實現: $-229.56\n  塵倉浮虧: $-1.38 (13個)",
     "notified": true
+  },
+  {
+    "id": "msg_20260721091514",
+    "timestamp": "2026-07-21T09:15:14.126884",
+    "title": "",
+    "body": "📊 每日报告 2026-07-21\n\n💰 USDT: $396.06\n📈 總資產: $396.06\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 244筆交易):\n  已實現PnL: $-223.13\n  手續費: -$6.44\n  淨已實現: $-229.56\n  塵倉浮虧: $-0.46 (13個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260721181304",
+    "timestamp": "2026-07-21T18:13:04.315812",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for LAUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260721181304",
+    "timestamp": "2026-07-21T18:13:04.673362",
+    "title": "",
+    "body": "🔴🔴 LAUSDT 完全無SL！86.7000 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260721181305",
+    "timestamp": "2026-07-21T18:13:05.156226",
+    "title": "",
+    "body": "🚀 自動執行 - LAUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 76)\nKelly: 1.3% of $396.06 = $5.00\n勝率: 55.6% | 信心: EXPLORATION (cold start, surge=IMMINENT, bootstrapping history)\n買入: 87 @ $0.057700\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 87 @ $0.057700\n  SL: FAILED\n  🔴 未保護: 86.7000 units (no SL placed)\n  🟡 Emergency market sell: 86.7000 units (no SL possible)\n  注意: 87 單位已由額外SL覆蓋",
+    "notified": true
   }
 ]

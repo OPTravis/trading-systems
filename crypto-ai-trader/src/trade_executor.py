@@ -433,6 +433,7 @@ def _record_trade_portfolio(
     client, symbol, executed_qty, avg_price, strategy,
     usdt_bal, invest_amount, fee_rate,
     invest_pct, bandit_context, bandit_multiplier,
+    is_exploration=False,
 ):
     """Track executed trade in portfolio state and publish events.
 
@@ -464,7 +465,7 @@ def _record_trade_portfolio(
         )
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
-            portfolio.positions[symbol]["is_exploration"] = _is_exploration
+            portfolio.positions[symbol]["is_exploration"] = is_exploration
             if bandit_context:
                 portfolio.positions[symbol]["bandit_context"] = bandit_context
                 portfolio.positions[symbol]["bandit_multiplier"] = bandit_multiplier
@@ -1028,37 +1029,52 @@ def _place_sl_tp_orders(
             sl_placed_qty += extra_sl_qty
             covered = sl_placed_qty + tp_placed_qty
     elif uncovered >= _step_size and sl_placed_qty == 0 and not oco_placed:
-        results.append(f"🔴 未保護: {uncovered:.4f} units (no SL placed)")
-        try:
-            notifier.send_text(
-                f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！"
+        _uncovered_notional = uncovered * price
+        if _uncovered_notional < 10.0:
+            # Small position (< $10): SL not possible due to minNotional,
+            # but max loss is negligible. Let it ride without emergency sell.
+            results.append(
+                f"🟡 No SL (small pos ${_uncovered_notional:.2f} < $10 — accepted risk)"
             )
-        except Exception:
-            logger.error(
-                "Failed to send 'No SL' critical alert notification", exc_info=True
-            )
-        try:
-            emergency_sell = client.place_order(
+            logger.info(
+                "Position %s has no SL (notional $%.2f < $10, "
+                "SL not viable on exchange). Letting ride — max loss ~$%.2f",
                 symbol,
-                "SELL",
-                "MARKET",
-                uncovered,
+                _uncovered_notional,
+                _uncovered_notional,
             )
-            if emergency_sell:
-                results.append(
-                    f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)"
+        else:
+            results.append(f"🔴 未保護: {uncovered:.4f} units (no SL placed)")
+            try:
+                notifier.send_text(
+                    f"🔴🔴 {symbol} 完全無SL！{uncovered:.4f} 單位裸露！手動處理！"
                 )
-                logger.warning(
-                    "Emergency market sell executed for %s (%.4f units — no SL possible)",
+            except Exception:
+                logger.error(
+                    "Failed to send 'No SL' critical alert notification", exc_info=True
+                )
+            try:
+                emergency_sell = client.place_order(
                     symbol,
+                    "SELL",
+                    "MARKET",
                     uncovered,
                 )
-        except Exception:
-            logger.error(
-                "Emergency market sell FAILED for %s — position is naked!",
-                symbol,
-                exc_info=True,
-            )
+                if emergency_sell:
+                    results.append(
+                        f"🟡 Emergency market sell: {uncovered:.4f} units (no SL possible)"
+                    )
+                    logger.warning(
+                        "Emergency market sell executed for %s (%.4f units — no SL possible)",
+                        symbol,
+                        uncovered,
+                    )
+            except Exception:
+                logger.error(
+                    "Emergency market sell FAILED for %s — position is naked!",
+                    symbol,
+                    exc_info=True,
+                )
 
     if sl_placed_qty + tp_placed_qty < executed_qty:
         remainder = executed_qty - sl_placed_qty - tp_placed_qty
@@ -1409,11 +1425,18 @@ def execute_auto_trade(
     # difference between $3.52 and $6 at 5% SL is ~$0.12 — negligible.
     _exchange_min = 5.0
     _internal_min = 5 if _is_exploration else 10
+
+    # Size multipliers (strategy/daily_loss/drawdown/bandit) can compress
+    # even a $5 exploration position to $1-2.  Rather than wasting a signal
+    # that passed every filter, bump back to exchange minimum.
     if invest_amount < _exchange_min:
-        return {
-            "success": False,
-            "error": f"Position below Binance ${_exchange_min} minimum: ${invest_amount:.2f}",
-        }
+        logger.info(
+            f"Post-cap ${invest_amount:.2f} below exchange min ${_exchange_min}, "
+            f"bumping to $5.00 — signal passed all filters, worth capturing"
+        )
+        invest_amount = 5.0
+        invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
+
     if invest_amount < _internal_min:
         logger.info(
             f"Post-cap ${invest_amount:.2f} below internal ${_internal_min} floor, "
@@ -1610,6 +1633,7 @@ def execute_auto_trade(
         client, symbol, executed_qty, avg_price, strategy,
         usdt_bal, invest_amount, fee_rate,
         invest_pct, _bandit_context, _bandit_multiplier,
+        is_exploration=_is_exploration,
     )
 
     logger.info(

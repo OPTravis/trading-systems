@@ -3070,5 +3070,17 @@
     "reason": "\ud83d\udcc8 Moderate Trend Score: 60 / \ud83d\ude80 1h Strong Uptrend / \ud83d\udd25 RSI Overbought (73.2)",
     "strategy": "dca",
     "notified": false
+  },
+  {
+    "id": "LAUSDT_20260721181306",
+    "timestamp": "2026-07-21T18:13:06.316036",
+    "type": "BUY",
+    "symbol": "LAUSDT",
+    "action": "OPEN",
+    "price": 0.0577,
+    "quantity": 86.7,
+    "reason": "\u2705 Multi-TF Entry Signal (long) / \ud83d\ude80 Multi-TF Bullish Alignment / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "dca",
+    "notified": false
   }
 ]
