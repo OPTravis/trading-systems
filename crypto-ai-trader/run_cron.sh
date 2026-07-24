@@ -141,8 +141,10 @@ cd "$BASEDIR"
 
 # Dynamic scan gate: skip scan if market conditions don't warrant it
 if [ "$CMD" = "cron-scan" ]; then
+    set +e
     python3 scripts/scan_gate.py >> "$LOGFILE" 2>&1
     GATE_EXIT=$?
+    set -e
     if [ $GATE_EXIT -ne 0 ]; then
         echo "========== $(date) - $CMD SKIPPED by dynamic gate ==========" >> "$LOGFILE"
         exit 0
@@ -150,9 +152,16 @@ if [ "$CMD" = "cron-scan" ]; then
 fi
 
 echo "========== $(date) - $CMD ==========" >> "$LOGFILE"
+set +e
 python3 main.py "$CMD" "$@" >> "$LOGFILE" 2>&1
 EXIT_CODE=$?
+set -e
 echo "========== Exit: $EXIT_CODE ==========" >> "$LOGFILE"
+
+# Record failure for monitoring
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "{\"timestamp\":\"$(date -Iseconds)\",\"job\":\"$CMD\",\"exit_code\":$EXIT_CODE}" >> "$LOGDIR/cron_failures.jsonl"
+fi
 
 # Auto-push notifications after scan to prevent backlog
 if [ "$CMD" = "cron-scan" ] && [ $EXIT_CODE -eq 0 ]; then
