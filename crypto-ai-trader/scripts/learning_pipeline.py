@@ -96,6 +96,15 @@ def main():
     }
     print(json.dumps(summary, indent=2))
 
+    # Write status file for post-run monitoring
+    status_file = PROJECT / "logs" / "weekly_learning_status.json"
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    status_file.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    # Exit non-zero on failure so wrapper can detect
+    if not summary["all_ok"]:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

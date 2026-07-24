@@ -13,6 +13,7 @@ import os
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
 
@@ -100,6 +101,24 @@ def main():
 
     report = "\n".join(lines)
     print(report)
+
+    # Write status file for post-run monitoring
+    status = {
+        "pipeline": "weekly_backtest",
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "total_return_pct": total_return,
+        "total_trades": total_trades,
+        "degradation": degradation,
+        "has_degradation": len(degradation) > 0,
+        "all_ok": len(degradation) == 0,
+    }
+    status_file = Path.home() / "trading-systems" / "crypto-ai-trader" / "logs" / "weekly_backtest_status.json"
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    status_file.write_text(json.dumps(status, indent=2), encoding="utf-8")
+
+    # Exit non-zero on degradation so wrapper can detect
+    if status["has_degradation"]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
