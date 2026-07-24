@@ -83,7 +83,7 @@ def main():
 
     # Step 4: Parameter optimization (longest step)
     print("Step 4/4: Parameter optimization...", flush=True)
-    r4 = run_step("param_optimization", [PYTHON, "scripts/optimize_params.py"], timeout=900)
+    r4 = run_step("param_optimization", [PYTHON, "scripts/optimize_params.py"], timeout=1800)
     steps.append(r4)
 
     # Summary

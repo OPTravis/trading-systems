@@ -30136,3 +30136,424 @@
 
 ## 2026-07-21 18:24 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
 - Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-21 18:26 | ONDOUSDT | BUY | score=77.8
+- Price: $0.407400
+- Quantity: 12.3
+- Reasons: [📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (86.1)]
+- Signals: [📈 Moderate Trend Score: 60, 🚀 1h Strong Uptrend, 🔥 RSI Overbought (86.1), ✅ MACD Bullish (1h+4h), 📈 Above VWAP, 🎯 Above Upper Bollinger Band, 🌊 1h Volume Surge (1.5x avg), 😊 Strong Positive Sentiment (8.0), 📊 OBV Rising Trend, 🚀 Consolidation Breakout (0d range + Volume), 🤖 LLM: We are asked to give a 1-sentence sentiment assessment (bullish/bearish/neutral) with a brief reason]
+- Strategy: dca
+
+
+## 2026-07-21 18:26 | ONDOUSDT | BUY | score=77.8 | bear_score=25 veto=False
+- Research: {'symbol': 'ONDOUSDT', 'coin': 'ONDO', 'news': [], 'onchain': {'whale_activity': 'DORMANT', 'exchange_flow': 'NET_INFLOW', 'volume_trend': 'ACTIVE', 'funding_rate': None, 'oi_change': None}, 'catalyst
+
+## 2026-07-21 21:43 | BTCUSDT | BUY | score=77.0
+- Price: $66,406.760000
+- Quantity: 8e-05
+- Reasons: [📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)]
+- Signals: [📈 Moderate Trend Score: 50, 🚀 1h Strong Uptrend, ✅ MACD Bullish (1h+4h), 📈 Above VWAP, 🌊 1h Volume Surge (1.5x avg), 📊 OBV Rising Trend, 🚀 Consolidation Breakout (0d range), 🤖 LLM: We are asked: "You are a crypto trading analyst. Based on this data, give a 1-sentence sentiment ass]
+- Strategy: dca
+
+
+## 2026-07-21 21:43 | BTCUSDT | BUY | score=77.0 | bear_score=15 veto=False
+- Research: {'symbol': 'BTCUSDT', 'coin': 'BTC', 'news': [], 'onchain': {'whale_activity': 'ACCUMULATING', 'exchange_flow': 'BALANCED', 'volume_trend': 'ACTIVE', 'funding_rate': None, 'oi_change': None}, 'catalys
+
+## 2026-07-22 03:41 | OPNUSDT | BUY | score=76.8
+- Price: $0.066000
+- Quantity: 75.8
+- Reasons: [✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / ✅ MACD Bullish (1h+4h)]
+- Signals: [✅ Multi-TF Entry Signal (long), 🚀 Multi-TF Bullish Alignment, ✅ MACD Bullish (1h+4h), 📈 Above VWAP, 😊 Strong Positive Sentiment (8.0), 📊 OBV Rising Trend, 🚀 Consolidation Breakout (0d range + Volume), 🤖 LLM: We are asked to give a 1-sentence sentiment assessment (bullish/bearish/neutral) with a brief reason]
+- Strategy: dca
+
+
+## 2026-07-22 03:41 | OPNUSDT | BUY | score=76.8 | bear_score=5 veto=False
+- Research: {'symbol': 'OPNUSDT', 'coin': 'OPN', 'news': [], 'onchain': {'whale_activity': 'DORMANT', 'exchange_flow': 'BALANCED', 'volume_trend': 'ACTIVE', 'funding_rate': None, 'oi_change': None}, 'catalysts': 
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:01 | DOGEUSDT | BUY | score=70.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | DOGEUSDT | BUY | score=70.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:01 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 18:01 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:02 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=75.0 | bear_score=25 veto=False
+- Research: {'score_adjustment': 0, 'confidence': 0.5, 'sentiment_summary': 'neutral', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 10.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partne
+
+## 2026-07-24 18:03 | SOLUSDT | VETOED | score=80.0 | bear_score=80 veto=True
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=70.5
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=70.5 | bear_score=65 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=90.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=90.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=85.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | SOLUSDT | BUY | score=85.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | ETHUSDT | BUY | score=85.0
+- Price: $3,500.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | ETHUSDT | BUY | score=85.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | SOL0USDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-07-24 18:03 | SOL0USDT | BUY | score=80.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:03 | HIGHUSDT | BUY | score=90.0
+- Price: $200.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:03 | HIGHUSDT | BUY | score=90.0 | bear_score=30 veto=False
+- Research: {'score_adjustment': 5.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 18:04 | SOLUSDT | BUY | score=86.0
+- Price: $150.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: trend
+
+
+## 2026-07-24 18:04 | SOLUSDT | BUY | score=86.0 | bear_score=25 veto=False
+- Research: {'score_adjustment': 8.0, 'confidence': 0.7, 'sentiment_summary': 'Bullish outlook with strong volume', 'news': [{'title': 'SOL ecosystem growth', 'sentiment': 0.8, 'url': ''}], 'catalysts': ['Partner
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:47 | DOGEUSDT | BUY | score=70.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | DOGEUSDT | BUY | score=70.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:47 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:47 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:48 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:48 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:48 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:48 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI Oversold]
+- Signals: [RSI Oversold]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | DOGEUSDT | BUY | score=70.0
+- Price: $0.100000
+- Quantity: 10.0
+- Reasons: [MACD]
+- Signals: [MACD]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | DOGEUSDT | BUY | score=70.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | BTCUSDT | BUY | score=80.0
+- Price: $50,000.000000
+- Quantity: 10.0
+- Reasons: [Trend]
+- Signals: [Trend]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | BTCUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=72.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [VWAP]
+- Signals: [VWAP]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=72.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=75.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:55 | SOLUSDT | BUY | score=75.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:56 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:56 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}
+
+## 2026-07-24 21:57 | SOLUSDT | BUY | score=80.0
+- Price: $100.000000
+- Quantity: 10.0
+- Reasons: [RSI]
+- Signals: [RSI]
+- Strategy: score_based
+
+
+## 2026-07-24 21:57 | SOLUSDT | BUY | score=80.0 | bear_score=5 veto=False
+- Research: {'score_adjustment': 0.0, 'confidence': 0.5, 'sentiment_summary': 'mock', 'news': [], 'catalysts': [], 'onchain': {}}

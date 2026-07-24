@@ -13918,5 +13918,365 @@
     "title": "",
     "body": "🔍 18:20 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 🔥 六維共振=BULL（4/6 看漲）\n💡 发现机会: 15个\n\n🏆 前3名:\n  1. LTCUSDT (评分: 78)\n  2. ZAMAUSDT (评分: 76)\n  3. LAUSDT (评分: 76)\n",
     "pushed": true
+  },
+  {
+    "id": "notif_20260721182531306893",
+    "timestamp": "2026-07-21T18:25:31.306929",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ F&G=25 — 極度恐慌（築底條件）\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ 🔥 六維共振=BULL（4/6 看漲）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721182636371048",
+    "timestamp": "2026-07-21T18:26:36.371091",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ONDOUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721182636732199",
+    "timestamp": "2026-07-21T18:26:36.732231",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ONDOUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 1.3% of $396.06 = $5.00\n勝率: 55.6% | 信心: EXPLORATION (cold start, surge=IMMINENT, bootstrapping history)\n買入: 12 @ $0.407400\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (86.1)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 12 @ $0.407600\n  SL: FAILED\n  🟡 No SL (small pos $5.01 < $10 — accepted risk)\n  注意: 12 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721182637986548",
+    "timestamp": "2026-07-21T18:26:37.986581",
+    "type": "signal",
+    "title": "交易信号: ONDOUSDT",
+    "body": "🟢 BUY ONDOUSDT @ $0.4074 x12.3\n原因: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (86.1)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721182638167452",
+    "timestamp": "2026-07-21T18:26:38.167489",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 18:26 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 🔥 六維共振=BULL（4/6 看漲）\n💡 发现机会: 16个\n\n🏆 前3名:\n  1. ONDOUSDT (评分: 78)\n  2. LTCUSDT (评分: 78)\n  3. LAUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721214127113381",
+    "timestamp": "2026-07-21T21:41:27.113415",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ F&G=25 — 極度恐慌（築底條件）\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721214312109104",
+    "timestamp": "2026-07-21T21:43:12.109140",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for BTCUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721214312399694",
+    "timestamp": "2026-07-21T21:43:12.399724",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - BTCUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 1.3% of $391.05 = $5.00\n勝率: 55.6% | 信心: EXPLORATION (cold start, surge=IMMINENT, bootstrapping history)\n買入: 0 @ $66406.760000\n信號: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 0 @ $66380.980000\n  SL: FAILED\n  🟡 No SL (small pos $5.31 < $10 — accepted risk)\n  注意: 0 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721214313570241",
+    "timestamp": "2026-07-21T21:43:13.570273",
+    "type": "signal",
+    "title": "交易信号: BTCUSDT",
+    "body": "🟢 BUY BTCUSDT @ $66406.7600 x8e-05\n原因: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260721214313713752",
+    "timestamp": "2026-07-21T21:43:13.713775",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:43 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 10个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 77)\n  2. XRPUSDT (评分: 76)\n  3. ENAUSDT (评分: 75)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722014159903452",
+    "timestamp": "2026-07-22T01:41:59.903476",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722034047803736",
+    "timestamp": "2026-07-22T03:40:47.803767",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ F&G=25 — 極度恐慌（築底條件）\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722034158524827",
+    "timestamp": "2026-07-22T03:41:58.524859",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for OPNUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722034158858760",
+    "timestamp": "2026-07-22T03:41:58.858792",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - OPNUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 76)\nKelly: 1.3% of $385.77 = $5.00\n勝率: 50.0% | 信心: EXPLORATION (cold start, surge=IMMINENT, bootstrapping history)\n買入: 76 @ $0.066000\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 76 @ $0.066000\n  SL: FAILED\n  🟡 No SL (small pos $5.00 < $10 — accepted risk)\n  注意: 76 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722034159882839",
+    "timestamp": "2026-07-22T03:41:59.882871",
+    "type": "signal",
+    "title": "交易信号: OPNUSDT",
+    "body": "🟢 BUY OPNUSDT @ $0.0660 x75.8\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / ✅ MACD Bullish (1h+4h)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722034200045726",
+    "timestamp": "2026-07-22T03:42:00.045753",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:42 扫描完成\n\n😱 市场情绪: 25 (Extreme Fear)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=1 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 3个\n\n🏆 前3名:\n  1. OPNUSDT (评分: 77)\n  2. SUIUSDT (评分: 73)\n  3. XRPUSDT (评分: 72)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722054146208514",
+    "timestamp": "2026-07-22T05:41:46.208543",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722074214894402",
+    "timestamp": "2026-07-22T07:42:14.894435",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722091514285799",
+    "timestamp": "2026-07-22T09:15:14.285831",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-07-22\n\n💰 USDT: $380.76\n📈 總資產: $396.13\n\n📦 持倉 (2):\n  🟢 OPN: 155.9 ($10.40, +7.06%)\n  🟢 ONDO: 12.3 ($4.97, +12.21%)\n\n📋 掛單: 1 個 (SL:1 TP:1)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 96.1% > 60% → 可考慮加倉\n  🎯 ONDO 24h +12.2% → 考慮鎖利\n\n📋 資金審計 (FIFO, 246筆交易):\n  已實現PnL: $-222.71\n  手續費: -$6.44\n  淨已實現: $-229.15\n  塵倉浮虧: $-0.29 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722114051565665",
+    "timestamp": "2026-07-22T11:40:51.565699",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722134116718873",
+    "timestamp": "2026-07-22T13:41:16.718897",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:41 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722154314421859",
+    "timestamp": "2026-07-22T15:43:14.421883",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:43 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722194041164887",
+    "timestamp": "2026-07-22T19:40:41.164911",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722214056574012",
+    "timestamp": "2026-07-22T21:40:56.574035",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260722234112491854",
+    "timestamp": "2026-07-22T23:41:12.491889",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:41 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723034039911554",
+    "timestamp": "2026-07-23T03:40:39.911585",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723054041829504",
+    "timestamp": "2026-07-23T05:40:41.829536",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723074058460802",
+    "timestamp": "2026-07-23T07:40:58.460826",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:40 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723091513350263",
+    "timestamp": "2026-07-23T09:15:13.350295",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-07-23\n\n💰 USDT: $396.72\n📈 總資產: $396.72\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 246筆交易):\n  已實現PnL: $-222.71\n  手續費: -$6.44\n  淨已實現: $-229.15\n  塵倉浮虧: $-0.39 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723094107531166",
+    "timestamp": "2026-07-23T09:41:07.531209",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:41 扫描完成\n\n😐 市场情绪: 50 (Neutral (Hash Ribbon))\n📊 动态阈值: 50\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723114240944499",
+    "timestamp": "2026-07-23T11:42:40.944532",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723154241282979",
+    "timestamp": "2026-07-23T15:42:41.283013",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723174341151305",
+    "timestamp": "2026-07-23T17:43:41.151338",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260723214230575256",
+    "timestamp": "2026-07-23T21:42:30.575285",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724014136900170",
+    "timestamp": "2026-07-24T01:41:36.900207",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724034124718029",
+    "timestamp": "2026-07-24T03:41:24.718063",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724054138755060",
+    "timestamp": "2026-07-24T05:41:38.755096",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724074140514309",
+    "timestamp": "2026-07-24T07:41:40.514343",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:41 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724091516332371",
+    "timestamp": "2026-07-24T09:15:16.332404",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-07-24\n\n💰 USDT: $396.72\n📈 總資產: $396.72\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 246筆交易):\n  已實現PnL: $-222.71\n  手續費: -$6.44\n  淨已實現: $-229.15\n  塵倉浮虧: $-1.98 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724094212935517",
+    "timestamp": "2026-07-24T09:42:12.935553",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724134203385312",
+    "timestamp": "2026-07-24T13:42:03.385337",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724154220205167",
+    "timestamp": "2026-07-24T15:42:20.205193",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724174211638087",
+    "timestamp": "2026-07-24T17:42:11.638112",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724194209876803",
+    "timestamp": "2026-07-24T19:42:09.876829",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:42 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260724214310976217",
+    "timestamp": "2026-07-24T21:43:10.976245",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:43 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
   }
 ]

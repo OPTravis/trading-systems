@@ -206,6 +206,7 @@ class BacktestEngine:
     def __init__(self, binance_client, initial_capital: float = 10000):
         self.client = binance_client
         self.initial_capital = initial_capital
+        self._klines_cache: dict = {}  # Cache: key → klines list
 
     # ------------------------------------------------------------------
     # Public API
@@ -361,7 +362,7 @@ class BacktestEngine:
                     enable_trailing_stop=enable_trailing_stop,
                 )
                 results[sym] = result
-                time.sleep(0.5)  # rate limit courtesy
+                # No sleep — klines cache eliminates repeated API calls
             except Exception as e:
                 logger.error("Backtest failed for %s: %s", sym, e)
                 results[sym] = self._empty_result(sym)
@@ -513,6 +514,22 @@ class BacktestEngine:
         拉取指定時間範圍的 K 線。
         Binance 限制每次最多 1500 根，超過時分批拉取並拼接。
         """
+        # Check cache first — same (symbol, interval, date range) returns cached data
+        # This is critical for grid search where 50+ combos re-fetch identical klines
+        cache_key = f"{symbol}_{interval}"
+        if start_dt is not None:
+            cache_key += f"_{start_dt.strftime('%Y%m%d')}"
+        if end_dt is not None:
+            cache_key += f"_{end_dt.strftime('%Y%m%d')}"
+        if cache_key in self._klines_cache:
+            cached = self._klines_cache[cache_key]
+            # Filter to requested time range (cache may be a superset)
+            start_ts = int(start_dt.timestamp() * 1000) if start_dt else 0
+            end_ts_val = int(end_dt.timestamp() * 1000) if end_dt else float('inf')
+            filtered = [k for k in cached if start_ts <= k["open_time"] <= end_ts_val]
+            if filtered:
+                return filtered
+
         all_klines: List[Dict] = []
         # 預估需要的 K 線數量
         interval_ms = self._interval_to_ms(interval)
@@ -572,6 +589,8 @@ class BacktestEngine:
         all_klines = [k for k in all_klines if k["open_time"] <= end_ts]
 
         logger.info("Fetched %d klines for %s %s", len(all_klines), symbol, interval)
+        # Store in cache for reuse by subsequent grid search combos
+        self._klines_cache[cache_key] = all_klines
         return all_klines
 
     @staticmethod

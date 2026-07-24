@@ -115,7 +115,10 @@ class ParamOptimizer:
         from src.backtest import BacktestEngine
 
         client = self._get_client()
-        engine = BacktestEngine(client)
+        # Reuse cached engine instance to leverage klines cache across grid combos
+        if not hasattr(self, '_backtest_engine') or self._backtest_engine is None:
+            self._backtest_engine = BacktestEngine(client)
+        engine = self._backtest_engine
 
         # Override engine parameters
         engine.SCORE_THRESHOLD = params.get("score_threshold", 65)
@@ -160,7 +163,10 @@ class ParamOptimizer:
         from src.backtest import BacktestEngine
 
         client = self._get_client()
-        engine = BacktestEngine(client)
+        # Reuse cached engine instance
+        if not hasattr(self, '_backtest_engine') or self._backtest_engine is None:
+            self._backtest_engine = BacktestEngine(client)
+        engine = self._backtest_engine
 
         # Override engine parameters
         engine.SCORE_THRESHOLD = params.get("score_threshold", 65)
@@ -188,7 +194,7 @@ class ParamOptimizer:
         symbols: Optional[List[str]] = None,
         search_space: Optional[Dict] = None,
         days: int = BACKTEST_DAYS,
-        max_combos: int = 50,
+        max_combos: int = 30,
     ) -> List[Dict]:
         """Run grid search over parameter combinations.
 
@@ -238,7 +244,7 @@ class ParamOptimizer:
                 if (i + 1) % 10 == 0:
                     logger.info(f"  Grid search progress: {i+1}/{len(all_combos)}")
 
-                time.sleep(0.5)  # Rate limit
+                # No sleep needed — klines are cached, no API rate limit concern
             except Exception as e:
                 logger.warning(f"  Backtest failed for {params}: {e}")
                 continue
@@ -271,7 +277,6 @@ class ParamOptimizer:
             try:
                 oos = self._run_walkforward_with_params(params, sym)
                 oos_results[sym] = oos
-                time.sleep(0.5)
             except Exception as e:
                 logger.warning(f"Walk-forward failed for {sym}: {e}")
                 oos_results[sym] = {"oos_sharpe": -999, "robustness_pct": 0}
