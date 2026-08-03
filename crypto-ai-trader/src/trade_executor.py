@@ -1133,6 +1133,27 @@ def execute_auto_trade(
         )
         return {"success": False, "reason": "shutdown_in_progress"}
 
+    # Safety: Check if symbol is blacklisted (strategy degradation)
+    # Skip during testing — conftest sets TESTING=1
+    if not os.environ.get("TESTING"):
+        try:
+            import yaml
+            _cfg_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..", "config", "risk_params.yaml"
+            )
+            with open(_cfg_path) as _f:
+                _cfg = yaml.safe_load(_f) or {}
+            _disabled = set(_cfg.get("trading", {}).get("disabled_symbols", []))
+            if symbol in _disabled:
+                logger.warning(
+                    f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
+                    f"symbol {symbol} is disabled (blacklisted)"
+                )
+                return {"success": False, "reason": f"symbol_blacklisted: {symbol}"}
+        except Exception:
+            pass  # Fail open — if config can't be read, don't block trades
+
     logger.info(
         f"[trade_id={_trade_id}] execute_auto_trade START symbol={symbol} "
         f"strategy={strategy} score={score} price=${price:.6f}"

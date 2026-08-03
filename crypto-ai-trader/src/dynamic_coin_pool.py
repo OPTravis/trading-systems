@@ -15,6 +15,26 @@ from .risk_manager import SectorExposure
 
 logger = logging.getLogger(__name__)
 
+
+def _load_disabled_symbols() -> set:
+    """Load disabled symbols from risk_params.yaml trading.disabled_symbols."""
+    try:
+        import os
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "config", "risk_params.yaml"
+        )
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        symbols = cfg.get("trading", {}).get("disabled_symbols", [])
+        if symbols:
+            logger.info("DynamicCoinPool: disabled symbols: %s", symbols)
+        return set(symbols)
+    except Exception:
+        return set()
+
 # Tokens to always exclude from the pool
 STABLECOINS = {"USDCUSDT", "TUSDUSDT", "BUSDUSDT", "FDUSDUSDT", "DAIUSDT", "USDPUSDT"}
 
@@ -78,6 +98,9 @@ class DynamicCoinPool:
             logger.warning("DynamicCoinPool: no 24hr stats returned from client")
             return []
 
+        # Load disabled symbols from config (trading blacklist)
+        _disabled = _load_disabled_symbols()
+
         pool: List[Dict] = []
 
         for ticker in raw:
@@ -99,6 +122,11 @@ class DynamicCoinPool:
 
             # Leverage tokens (UP/DOWN/BULL/BEAR suffixes)
             if _LEVERAGE_TOKEN_RE.match(symbol):
+                continue
+
+            # Disabled symbols (strategy degradation blacklist)
+            if symbol in _disabled:
+                logger.info("DynamicCoinPool: skipping disabled symbol %s", symbol)
                 continue
 
             # --- Quantitative filters ---

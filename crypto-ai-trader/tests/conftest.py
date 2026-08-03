@@ -260,5 +260,13 @@ def _reset_risk_manager_singleton():
     yield
     rm_mod._risk_manager_instance = None
 
+
+@pytest.fixture(autouse=True)
+def _disable_blacklist(monkeypatch):
+    """Disable trading blacklist during tests so SOLUSDT etc. can be used."""
+    # Patch dynamic_coin_pool blacklist loader
+    import src.dynamic_coin_pool as dcp_mod
+    monkeypatch.setattr(dcp_mod, "_load_disabled_symbols", lambda: set())
+
 # Prevent pytest from importing standalone scripts that pollute global state
 collect_ignore = ["test_integration_recent_changes.py"]

@@ -1,0 +1,14 @@
+{
+  "pipeline": "weekly_backtest",
+  "timestamp": "2026-08-03T09:30:30",
+  "total_return_pct": -16.68,
+  "total_trades": 1230,
+  "degradation": [
+    "SOL: -18.0% (DD 31.2%)",
+    "ETH: -19.8% (DD 31.9%)",
+    "AVAX: -24.6% (DD 30.5%)",
+    "LINK: -16.1% (DD 27.9%)"
+  ],
+  "has_degradation": true,
+  "all_ok": false
+}

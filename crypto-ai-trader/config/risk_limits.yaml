@@ -1,70 +1,70 @@
 # Risk Management Configuration
-# Surge-aware: wider SL to survive bottom volatility, higher TP1 for better R:R
-# Previous SL 7% was getting stopped out in <6h during extreme fear volatility
-# Now SL 9% gives trades room to breathe, TP1 raised to 6% to avoid premature exits
+# Updated 2026-08-03: Tightened SL from 9%/14% to 5%/7% due to strategy degradation
+# Weekly Backtest showed 30% drawdowns with previous wide SLs
+# Tighter SLs cap downside but may increase stop-out frequency
 
 risk:
-  max_position_pct: 15
-  max_total_exposure_pct: 70
-  cash_reserve_pct: 30
-  max_daily_loss_pct: 5
-  max_drawdown_pct: 15
-  max_open_positions: 5
+  max_position_pct: 10          # Lowered from 15 → 10 (reduce exposure)
+  max_total_exposure_pct: 50    # Lowered from 70 → 50
+  cash_reserve_pct: 50          # Raised from 30 → 50
+  max_daily_loss_pct: 3         # Lowered from 5 → 3
+  max_drawdown_pct: 10          # Lowered from 15 → 10
+  max_open_positions: 3         # Lowered from 5 → 3
   max_hold_hours: 48
 
 strategies:
   grid:
-    stop_loss_pct: 9.0
+    stop_loss_pct: 5.0           # Tightened from 9.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 48
 
   dca:
-    stop_loss_pct: 14.0
+    stop_loss_pct: 7.0           # Tightened from 14.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 72
 
   trend:
-    stop_loss_pct: 9.0
+    stop_loss_pct: 5.0           # Tightened from 9.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 48
 
   rsi:
-    stop_loss_pct: 9.0
+    stop_loss_pct: 5.0           # Tightened from 9.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 48
 
   bollinger:
-    stop_loss_pct: 9.0
+    stop_loss_pct: 5.0           # Tightened from 9.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 48
 
   vwap:
-    stop_loss_pct: 9.0
+    stop_loss_pct: 5.0           # Tightened from 9.0
     take_profit_levels:
-      - { pct: 6.0, size_pct: 40 }
-      - { pct: 12.0, size_pct: 40 }
-      - { pct: 20.0, size_pct: 20 }
+      - { pct: 4.0, size_pct: 50 }
+      - { pct: 8.0, size_pct: 30 }
+      - { pct: 15.0, size_pct: 20 }
     max_hold_hours: 24
 
 default:
-  stop_loss_pct: 9.0
+  stop_loss_pct: 5.0             # Tightened from 9.0
   take_profit_levels:
-    - { pct: 6.0, size_pct: 40 }
-    - { pct: 12.0, size_pct: 40 }
-    - { pct: 20.0, size_pct: 20 }
+    - { pct: 4.0, size_pct: 50 }
+    - { pct: 8.0, size_pct: 30 }
+    - { pct: 15.0, size_pct: 20 }
   max_hold_hours: 48
