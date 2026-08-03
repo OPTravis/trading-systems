@@ -57,6 +57,72 @@ except Exception as e:
     _RISK_MAX_ACTIVE_POSITIONS = _DEFAULT_MAX_ACTIVE_POSITIONS
     _RISK_SL_LIMIT_BUFFER_PCT = _DEFAULT_SL_LIMIT_BUFFER_PCT
 
+# ── BTC Trend Filter (200-day SMA) ──────────────────────────────────
+# Prevents opening new positions when BTC is below its 200-day SMA,
+# indicating a bear market. Cached for 1 hour to avoid excessive API calls.
+_btc_trend_cache = {"timestamp": 0, "above_sma": True, "btc_price": 0, "sma_200": 0}
+_BTC_TREND_CACHE_TTL = 3600  # 1 hour
+
+
+def _check_btc_trend() -> tuple:
+    """Check if BTC is above its 200-day SMA.
+
+    Returns:
+        (allowed: bool, info: dict) — allowed=True if trading is permitted,
+        info contains btc_price, sma_200, and deviation_pct.
+    """
+    global _btc_trend_cache
+
+    now = time.time()
+    if now - _btc_trend_cache["timestamp"] < _BTC_TREND_CACHE_TTL:
+        return (
+            _btc_trend_cache["above_sma"],
+            {
+                "btc_price": _btc_trend_cache["btc_price"],
+                "sma_200": _btc_trend_cache["sma_200"],
+                "cached": True,
+            },
+        )
+
+    try:
+        from src.binance_client import BinanceClient
+
+        client = BinanceClient(testnet=False)
+        klines = client.get_klines("BTCUSDT", "1d", limit=210)
+        if len(klines) < 200:
+            logger.warning(
+                f"BTC trend filter: insufficient data ({len(klines)}/200), allowing trades"
+            )
+            return True, {"error": "insufficient_data", "bars": len(klines)}
+
+        closes = [k["close"] for k in klines]
+        btc_price = closes[-1]
+        sma_200 = sum(closes[-200:]) / 200
+        above_sma = btc_price >= sma_200
+        deviation = ((btc_price / sma_200) - 1) * 100
+
+        _btc_trend_cache = {
+            "timestamp": now,
+            "above_sma": above_sma,
+            "btc_price": btc_price,
+            "sma_200": sma_200,
+        }
+
+        logger.info(
+            f"BTC trend filter: BTC=${btc_price:,.0f} vs 200SMA=${sma_200:,.0f} "
+            f"({deviation:+.1f}%) → {'ABOVE (allow)' if above_sma else 'BELOW (block)'}"
+        )
+        return above_sma, {
+            "btc_price": btc_price,
+            "sma_200": sma_200,
+            "deviation_pct": deviation,
+            "cached": False,
+        }
+    except Exception as e:
+        logger.warning(f"BTC trend filter check failed: {e}, allowing trades (fail open)")
+        return True, {"error": str(e)}
+
+
 # P2-6: Graceful shutdown flag — SIGTERM handler sets this to prevent new trades
 _shutting_down = False
 
@@ -1153,6 +1219,21 @@ def execute_auto_trade(
                 return {"success": False, "reason": f"symbol_blacklisted: {symbol}"}
         except Exception:
             pass  # Fail open — if config can't be read, don't block trades
+
+    # Safety: BTC trend filter — block new trades when BTC is below 200-day SMA
+    # Skip during testing — conftest sets TESTING=1
+    if not os.environ.get("TESTING"):
+        _trend_allowed, _trend_info = _check_btc_trend()
+        if not _trend_allowed:
+            _dev = _trend_info.get("deviation_pct", 0)
+            logger.warning(
+                f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
+                f"BTC below 200-day SMA (deviation: {_dev:+.1f}%), bear market protection"
+            )
+            return {
+                "success": False,
+                "reason": f"btc_trend_filter: BTC {_dev:+.1f}% below 200-day SMA",
+            }
 
     logger.info(
         f"[trade_id={_trade_id}] execute_auto_trade START symbol={symbol} "
