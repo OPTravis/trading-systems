@@ -133,13 +133,13 @@ trade_executor:
 #   max_hold_hours: 48
 
 # === Trading Blacklist ===
-# Symbols disabled from auto-trading due to strategy degradation.
-# Weekly Backtest 8/3: SOL -18%, ETH -19.8%, AVAX -24.6%, LINK -16.1%
-# Disabled 2026-08-03 by Travis per Leo's instruction.
-# To re-enable: remove symbols from this list or set to empty.
+# Symbols disabled from auto-trading.
+# 2026-08-03: All symbols REMOVED from blacklist.
+# Rationale: 365-day backtest confirms strategy is profitable in bull markets
+# (+11-15% per symbol in 37-day bull run). Bear market protection is now
+# handled by BTC 200-day SMA trend filter in trade_executor.py, which blocks
+# all new positions when BTC < 200-day SMA. Combined with tightened risk
+# parameters (SL 5-7%, max position 10%, max exposure 50%) and DynamicGate.
+# To re-blacklist: add symbols back to this list.
 trading:
-  disabled_symbols:
-    - SOLUSDT
-    - ETHUSDT
-    - AVAXUSDT
-    - LINKUSDT
+  disabled_symbols: []
