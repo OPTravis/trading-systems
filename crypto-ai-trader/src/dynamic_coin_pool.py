@@ -100,6 +100,10 @@ class DynamicCoinPool:
 
         # Load disabled symbols from config (trading blacklist)
         _disabled = _load_disabled_symbols()
+        if _disabled:
+            logger.info("DynamicCoinPool: disabled symbols active: %s", _disabled)
+        else:
+            logger.info("DynamicCoinPool: no disabled symbols (blacklist empty)")
 
         pool: List[Dict] = []
 
