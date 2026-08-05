@@ -17,7 +17,7 @@ LOGFILE="$LOGDIR/${CMD}.log"
 PROXY_PORT=17890
 CONFIG_FILE="/etc/sing-box/config.json"
 
-# 节点列表：server:port
+# 节点列表：server:port (旧 shadowsocks 节点)
 NODES=(
     "cn02.somethingstranges.com:8101"
     "cn01.somethingstranges.com:8101"
@@ -27,6 +27,18 @@ NODES=(
 NODE_PASSWORD="${SINGBOX_PASSWORD:-passwd}"
 NODE_METHOD="chacha20-ietf"
 NODE_OBFS_OPTS="obfs=http;obfs-host=28760-8mLb0x2l.download.microsoft.com"
+
+# Hysteria2 备用节点（日本/新加坡/台湾，避免美国 IP 被 Binance 限制）
+HY2_PASSWORD="d27c8d67-d4e0-4bf7-9e59-495b862ee71c"
+HY2_NODES=(
+    "f111.f2nas.com:12040"
+    "f112.f2nas.com:16939"
+    "f113.f2nas.com:12071"
+    "f116.f2nas.com:15884"
+    "f117.f2nas.com:15210"
+    "f126.f2nas.com:11288"
+    "f127.f2nas.com:18293"
+)
 
 test_proxy() {
     # 测试代理是否可用：先检查端口，再试 Binance API
@@ -108,7 +120,55 @@ EOF
         fi
     done
 
-    echo "[$(date)] [PROXY] ⚠️ All nodes failed! Proxy not available." >> "$LOGFILE"
+    # All SS nodes failed, try Hysteria2 fallback nodes
+    echo "[$(date)] [PROXY] All SS nodes failed, trying Hysteria2 nodes..." >> "$LOGFILE"
+
+    for node in "${HY2_NODES[@]}"; do
+        local server="${node%%:*}"
+        local port="${node##*:}"
+        
+        echo "[$(date)] [PROXY] Testing HY2 node: $node" >> "$LOGFILE"
+        
+        # Write Hysteria2 config
+        cat > "$CONFIG_FILE" << EOF
+{
+  "log": { "level": "info" },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "listen": "127.0.0.1",
+      "listen_port": $PROXY_PORT
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "server": "$server",
+      "server_port": $port,
+      "password": "$HY2_PASSWORD",
+      "tls": {
+        "enabled": true,
+        "server_name": "$server"
+      }
+    }
+  ]
+}
+EOF
+        
+        nohup sing-box run -c "$CONFIG_FILE" > /dev/null 2>&1 &
+        sleep 3
+        
+        if test_proxy; then
+            echo "[$(date)] [PROXY] ✅ Switched to HY2 $node, proxy working." >> "$LOGFILE"
+            return 0
+        else
+            echo "[$(date)] [PROXY] ❌ HY2 node $node proxy test failed." >> "$LOGFILE"
+            pkill sing-box 2>/dev/null || true
+            sleep 1
+        fi
+    done
+
+    echo "[$(date)] [PROXY] ⚠️ All nodes (SS + HY2) failed! Proxy not available." >> "$LOGFILE"
     return 1
 }
 
