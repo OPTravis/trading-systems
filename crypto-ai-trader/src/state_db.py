@@ -67,11 +67,12 @@ class StateDB:
 
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(
-                str(self.db_path), check_same_thread=False
+                str(self.db_path), check_same_thread=False, timeout=30
             )
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn.execute("PRAGMA busy_timeout=30000")
             self._local.conn_created = now
 
             # Run integrity check on new connections (throttled to once per hour)

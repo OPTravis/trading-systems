@@ -618,7 +618,7 @@ class MarketScanner:
                 self._learner_ts = _now
             except Exception:
                 logger.error(
-                    "Failed to load learned weights from OnlineLearner, falling back to defaults",
+                    "Failed to load learned weights from OnlineLearner (after retries), falling back to defaults",
                     exc_info=True,
                 )
                 _w = {

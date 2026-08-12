@@ -17,6 +17,7 @@ Storage: state.db kv key='learned_factor_weights'
 """
 
 import json
+import sqlite3
 import logging
 import time
 from typing import Dict, List, Optional
@@ -75,23 +76,49 @@ class OnlineLearner:
             db = get_state_db()
         self._db = db
 
-    def get_current_weights(self) -> Dict[str, float]:
-        """Get current factor weights (learned or default)."""
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'learned_factor_weights'"
-        ).fetchone()
+    def get_current_weights(self, _retry: int = 0) -> Dict[str, float]:
+        """Get current factor weights (learned or default).
 
-        if row:
-            try:
-                weights = json.loads(row["value"])
-                # Validate: must have all factors
-                if all(f in weights for f in FACTOR_NAMES):
-                    return weights
-            except (json.JSONDecodeError, TypeError):
-                logger.error("Failed to parse factor weights from DB", exc_info=True)
+        Includes retry logic for transient SQLite errors (disk I/O on
+        network filesystems).
+        """
+        try:
+            conn = self._db._get_conn()
+            row = conn.execute(
+                "SELECT value FROM kv WHERE key = 'learned_factor_weights'"
+            ).fetchone()
 
-        return dict(DEFAULT_WEIGHTS)
+            if row:
+                try:
+                    weights = json.loads(row["value"])
+                    # Validate: must have all factors
+                    if all(f in weights for f in FACTOR_NAMES):
+                        return weights
+                except (json.JSONDecodeError, TypeError):
+                    logger.error("Failed to parse factor weights from DB", exc_info=True)
+
+            return dict(DEFAULT_WEIGHTS)
+
+        except sqlite3.OperationalError as e:
+            if _retry < 2:
+                logger.warning(
+                    f"OnlineLearner: SQLite error (attempt {_retry+1}/3): {e}, retrying..."
+                )
+                # Force connection recycle on retry
+                try:
+                    if hasattr(self._db._local, "conn") and self._db._local.conn:
+                        self._db._local.conn.close()
+                        self._db._local.conn = None
+                except Exception:
+                    pass
+                import time as _time
+                _time.sleep(1 * (_retry + 1))  # 1s, 2s backoff
+                return self.get_current_weights(_retry=_retry + 1)
+            else:
+                logger.error(
+                    f"OnlineLearner: SQLite error after 3 attempts, using defaults: {e}"
+                )
+                return dict(DEFAULT_WEIGHTS)
 
     def _compute_optimal_weights(
         self, min_trades: int = 5, max_trades: Optional[int] = None
