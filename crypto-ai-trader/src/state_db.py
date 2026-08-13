@@ -53,11 +53,11 @@ class StateDB:
         if hasattr(self._local, "conn") and self._local.conn is not None:
             conn_age = getattr(self._local, "conn_created", 0)
             if now - conn_age > 300:  # 5 minutes
-                # Run WAL checkpoint before recycling connection
+                # Commit pending transaction before recycling connection
                 try:
-                    self._local.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    self._local.conn.commit()
                 except Exception as e:
-                    logger.warning(f"StateDB: WAL checkpoint failed: {e}")
+                    logger.warning(f"StateDB: commit before recycle failed: {e}")
                 try:
                     self._local.conn.close()
                 except Exception:
@@ -70,8 +70,8 @@ class StateDB:
                 str(self.db_path), check_same_thread=False, timeout=30
             )
             self._local.conn.row_factory = sqlite3.Row
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-            self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn.execute("PRAGMA journal_mode=DELETE")
+            self._local.conn.execute("PRAGMA synchronous=FULL")
             self._local.conn.execute("PRAGMA busy_timeout=30000")
             self._local.conn_created = now
 
@@ -140,7 +140,7 @@ class StateDB:
                 )
             return True
         except Exception as e:
-            logger.warning(f"StateDB: WAL checkpoint failed: {e}")
+            logger.warning(f"StateDB: commit before recycle failed: {e}")
             return False
 
     def close(self):
