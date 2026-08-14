@@ -793,6 +793,9 @@ def _step_scan_opportunities():
     # Previously skipped BTC/ETH/SOL because they were already in portfolio
     acct = client.get_account()
 
+    # Save threshold before time-decay for regime guard coordination
+    _pre_decay_threshold = dynamic_threshold
+
     # ===== Time-Decay Threshold Relaxation =====
     # After 7+ consecutive days with 0 trades, progressively lower threshold
     # This prevents the system from being permanently locked out in extended Fear markets
@@ -913,7 +916,7 @@ def _step_scan_opportunities():
         print("SWITCH: No switch opportunities found")
 
     # Store pre-time-decay threshold for regime guard coordination
-    ctx_pre_decay = _pre_decay_threshold if '_pre_decay_threshold' in locals() else dynamic_threshold
+    ctx_pre_decay = _pre_decay_threshold
 
     # ===== Write back no_signal_tracker =====
     try:

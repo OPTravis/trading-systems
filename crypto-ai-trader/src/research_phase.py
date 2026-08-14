@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
                     regime, btc_trend, dynamic_threshold,
-                    surge_alert_level="SILENCE"):
+                    surge_alert_level="SILENCE",
+                    time_decay_active=False):
     """Gather risk positions, apply regime guard, and filter by risk manager.
 
     Returns (filtered_opportunities, dynamic_threshold, risk_positions).
@@ -83,13 +84,13 @@ def _filter_by_risk(opportunities, client, risk_mgr, acct, adapted,
                 f"threshold raised to {dynamic_threshold} (full guard, no surge confirmation)"
             )
     elif regime == "FEAR" and btc_trend != "BULLISH":
-        if _time_decay_active:
+        if time_decay_active:
             # Time-decay has already lowered the threshold for prolonged no-signal period.
             # Regime guard should not override this — the whole point of time-decay is to
             # break out of the "permanently locked out" deadlock.
             print(
-                f"REGIME_GUARD: {regime} + BTC {btc_trend} — SKIPPED (time-decay active, "
-                f"threshold {dynamic_threshold} from pre-decay {pre_time_decay})"
+                f"REGIME_GUARD: {regime} + BTC {btc_trend} — SKIPPED "
+                f"(time-decay active, threshold={dynamic_threshold})"
             )
         elif surge_alert_level in ("IMMINENT", "CONFIRMED"):
             print(
@@ -332,6 +333,7 @@ def _step_research_top_n(ctx):
         opportunities, client, risk_mgr, acct, adapted,
         regime, btc_trend, dynamic_threshold,
         surge_alert_level=surge_alert_level,
+        time_decay_active=_time_decay_active,
     )
 
     if not opportunities:
