@@ -367,12 +367,28 @@ def _compute_kelly_sizing(
                 f"({invest_pct*100:.2f}%)"
             )
 
-        if invest_pct <= 0 or invest_amount < _min_invest:
+        # Kelly is a scale not a gate. A floor position (1% from insufficient
+        # history, not a proven loser) should be bumped to an exchange-tradable
+        # size rather than discarded — the signal already passed every upstream
+        # filter. Mirror the post-cap bump logic: $6 (above $5 Binance min).
+        if invest_pct <= 0:
             logger.info(
-                f"Kelly position too small: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
+                f"Kelly position zero: {invest_pct*100:.2f}% (${invest_amount:.2f}). "
                 f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
             )
-            return {"error": f"Position too small: {invest_pct*100:.1f}% (${invest_amount:.2f})"}
+            return {"error": f"Position zero: {invest_pct*100:.1f}% (${invest_amount:.2f})"}
+        if invest_amount < _min_invest:
+            _bumped = 6.0  # exchange-minimum safe, signal passed all filters
+            if _bumped < usdt_bal:
+                invest_amount = _bumped
+                invest_pct = invest_amount / usdt_bal
+                logger.info(
+                    f"Kelly floor bumped to ${invest_amount:.2f} ({invest_pct*100:.2f}%) "
+                    f"to meet exchange minimum (was below ${_min_invest}); "
+                    f"win_rate={kelly_result.get('win_rate',0):.1%} confidence={kelly_confidence}"
+                )
+            else:
+                return {"error": f"Balance too small for minimum position (${usdt_bal:.2f})"}
     else:
         base_pct, _ = get_position_tier(score)
         if base_pct == 0:
