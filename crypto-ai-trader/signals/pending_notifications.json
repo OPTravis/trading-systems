@@ -15822,5 +15822,13 @@
     "title": "",
     "body": "🔍 18:51 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": false
+  },
+  {
+    "id": "notif_20260814201116990615",
+    "timestamp": "2026-08-14T20:11:16.990651",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 20:11 扫描完成\n\n😟 市场情绪: 29 (Fear)\n📊 动态阈值: 72\n💡 发现机会: 4个\n\n🏆 前3名:\n  1. PLUMEUSDT (评分: 78)\n  2. PROMUSDT (评分: 74)\n  3. RLUSDUSDT (评分: 74)\n",
+    "pushed": false
   }
 ]
