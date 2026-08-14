@@ -912,6 +912,9 @@ def _step_scan_opportunities():
     else:
         print("SWITCH: No switch opportunities found")
 
+    # Store pre-time-decay threshold for regime guard coordination
+    ctx_pre_decay = _pre_decay_threshold if '_pre_decay_threshold' in locals() else dynamic_threshold
+
     # ===== Write back no_signal_tracker =====
     try:
         if _tracker and "last_scan_date" in _tracker:
@@ -932,6 +935,7 @@ def _step_scan_opportunities():
         "portfolio": portfolio,
         "opportunities": opportunities,
         "dynamic_threshold": dynamic_threshold,
+        "pre_time_decay_threshold": ctx_pre_decay,
         "adapted": adapted,
         "regime": regime,
         "fng": fng,
