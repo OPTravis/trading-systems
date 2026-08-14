@@ -188,8 +188,8 @@ class KellyPositionSizer:
         #   this specific coin/strategy loses money)
         # - Insufficient data + Surge IMMINENT/CONFIRMED → exploration position
         #   (epsilon-greedy: small bet to bootstrap historical data)
-        # - Insufficient data + Surge SILENCE/WATCH/ACCUMULATE → block
-        #   (correct conservatism when no surge signal supports the risk)
+        # - Insufficient data + Surge SILENCE/WATCH/ACCUMULATE → floor (1%)
+        #   NOT a block: Kelly is scale not gate; upstream already approved.
         is_exploration = False
         if kelly <= 0:
             if confidence == "HIGH":
@@ -223,21 +223,16 @@ class KellyPositionSizer:
                     f"bootstrapping history)"
                 )
             else:
-                # Kelly ≤ 0, no surge support — correct conservatism, block
+                # Kelly <= 0 with insufficient history and no surge support.
+                # Kelly is a SCALE not a GATE: upstream (signal score threshold,
+                # RegimeGuard, RiskManager, BTC trend gate) already decided this
+                # trade is worth taking. Do NOT block here — fall through to the
+                # MIN_POSITION_PCT floor. Only HIGH-confidence proven-losers block.
+                kelly = 0.0  # floor logic below applies minimum size
                 reason = (
-                    f"Kelly={kelly:.1%} ≤ 0, no surge signal "
-                    f"(surge={surge_alert_level}), 保守不交易"
+                    f"Kelly<=0 (insufficient history, surge={surge_alert_level}); "
+                    f"Kelly is scale not gate, sizing to floor"
                 )
-                return {
-                    "position_pct": 0.0,
-                    "win_rate": round(win_rate, 4),
-                    "reward_risk": round(reward_risk, 2),
-                    "avg_win": round(avg_win, 4),
-                    "avg_loss": round(avg_loss, 4),
-                    "confidence": "BLOCKED",
-                    "reason": reason,
-                    "is_exploration": False,
-                }
 
         # Apply minimum floor (1%) only for normal (non-exploration) positions
         if not is_exploration and kelly < MIN_POSITION_PCT:
