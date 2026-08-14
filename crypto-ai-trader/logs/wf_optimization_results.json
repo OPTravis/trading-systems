@@ -1,0 +1,2174 @@
+{
+  "AVAXUSDT": {
+    "configs_tested": 6,
+    "configs_valid": 6,
+    "best_config": {
+      "config_name": "B_report_rec",
+      "config_desc": "Report recommendation: wider TP, trend+trailing",
+      "params": {
+        "sl_atr": 2.5,
+        "tp1": 3.0,
+        "tp2": 5.0,
+        "tp3": 8.0,
+        "score": 55,
+        "max_sl_pct": 15.0,
+        "trend": true,
+        "trailing": true
+      },
+      "oos_avg_return_pct": 0.0,
+      "oos_avg_sharpe": 0.0,
+      "oos_avg_max_dd_pct": 0.0,
+      "oos_avg_win_rate": 0.0,
+      "oos_avg_pf": 0,
+      "oos_total_trades": 0,
+      "oos_positive_splits": 0,
+      "oos_total_splits": 0,
+      "robustness_pct": 0.0,
+      "elapsed_seconds": 25.5,
+      "splits": [
+        {
+          "split": 1,
+          "train": {
+            "start": "2026-02-04",
+            "end": "2026-03-18",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-03-18",
+            "end": "2026-04-05",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        },
+        {
+          "split": 2,
+          "train": {
+            "start": "2026-04-05",
+            "end": "2026-05-17",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-05-17",
+            "end": "2026-06-04",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        },
+        {
+          "split": 3,
+          "train": {
+            "start": "2026-06-04",
+            "end": "2026-07-16",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-07-16",
+            "end": "2026-08-03",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        }
+      ]
+    },
+    "all_results": [
+      {
+        "config_name": "A_baseline",
+        "config_desc": "Current defaults (no trend/trailing)",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": false,
+          "trailing": false
+        },
+        "oos_avg_return_pct": -6.0,
+        "oos_avg_sharpe": -2.02,
+        "oos_avg_max_dd_pct": 12.58,
+        "oos_avg_win_rate": 53.6,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 24.6,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": -5.31,
+              "sharpe": -5.37,
+              "win_rate": 38.5,
+              "trades": 39,
+              "max_dd": 15.86
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": -8.35,
+              "sharpe": -4.13,
+              "sortino": -6.2,
+              "calmar": -5.18,
+              "win_rate": 53.7,
+              "trades": 95,
+              "max_dd": 15.99,
+              "profit_factor": 0.51
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 1.81,
+              "sharpe": -0.6,
+              "win_rate": 71.3,
+              "trades": 167,
+              "max_dd": 12.48
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": -6.94,
+              "sharpe": -1.57,
+              "sortino": -1.69,
+              "calmar": -7.02,
+              "win_rate": 50.0,
+              "trades": 78,
+              "max_dd": 10.91,
+              "profit_factor": 0.44
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": -8.44,
+              "sharpe": -1.81,
+              "win_rate": 59.1,
+              "trades": 132,
+              "max_dd": 25.45
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": -2.71,
+              "sharpe": -0.35,
+              "sortino": -0.42,
+              "calmar": -3.93,
+              "win_rate": 57.1,
+              "trades": 63,
+              "max_dd": 10.84,
+              "profit_factor": 0.68
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "B_report_rec",
+        "config_desc": "Report recommendation: wider TP, trend+trailing",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "C_wider_sl",
+        "config_desc": "Even wider SL for high volatility",
+        "params": {
+          "sl_atr": 3.0,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 26.0,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "D_tight_score",
+        "config_desc": "Higher score threshold to reduce noise",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 60,
+          "max_sl_pct": 12.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "E_aggressive_tp",
+        "config_desc": "Very wide TP for AVAX volatility",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.5,
+          "tp2": 6.0,
+          "tp3": 10.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 24.9,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "F_trend_only",
+        "config_desc": "Just add trend filter to baseline",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": true,
+          "trailing": false
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.1,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      }
+    ],
+    "sorted_by_return": [
+      {
+        "config_name": "B_report_rec",
+        "config_desc": "Report recommendation: wider TP, trend+trailing",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "C_wider_sl",
+        "config_desc": "Even wider SL for high volatility",
+        "params": {
+          "sl_atr": 3.0,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 26.0,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "D_tight_score",
+        "config_desc": "Higher score threshold to reduce noise",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 60,
+          "max_sl_pct": 12.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "E_aggressive_tp",
+        "config_desc": "Very wide TP for AVAX volatility",
+        "params": {
+          "sl_atr": 2.5,
+          "tp1": 3.5,
+          "tp2": 6.0,
+          "tp3": 10.0,
+          "score": 55,
+          "max_sl_pct": 15.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 24.9,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "F_trend_only",
+        "config_desc": "Just add trend filter to baseline",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": true,
+          "trailing": false
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.1,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "A_baseline",
+        "config_desc": "Current defaults (no trend/trailing)",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": false,
+          "trailing": false
+        },
+        "oos_avg_return_pct": -6.0,
+        "oos_avg_sharpe": -2.02,
+        "oos_avg_max_dd_pct": 12.58,
+        "oos_avg_win_rate": 53.6,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 24.6,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": -5.31,
+              "sharpe": -5.37,
+              "win_rate": 38.5,
+              "trades": 39,
+              "max_dd": 15.86
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": -8.35,
+              "sharpe": -4.13,
+              "sortino": -6.2,
+              "calmar": -5.18,
+              "win_rate": 53.7,
+              "trades": 95,
+              "max_dd": 15.99,
+              "profit_factor": 0.51
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 1.81,
+              "sharpe": -0.6,
+              "win_rate": 71.3,
+              "trades": 167,
+              "max_dd": 12.48
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": -6.94,
+              "sharpe": -1.57,
+              "sortino": -1.69,
+              "calmar": -7.02,
+              "win_rate": 50.0,
+              "trades": 78,
+              "max_dd": 10.91,
+              "profit_factor": 0.44
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": -8.44,
+              "sharpe": -1.81,
+              "win_rate": 59.1,
+              "trades": 132,
+              "max_dd": 25.45
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": -2.71,
+              "sharpe": -0.35,
+              "sortino": -0.42,
+              "calmar": -3.93,
+              "win_rate": 57.1,
+              "trades": 63,
+              "max_dd": 10.84,
+              "profit_factor": 0.68
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "LINKUSDT": {
+    "configs_tested": 4,
+    "configs_valid": 4,
+    "best_config": {
+      "config_name": "B_high_threshold",
+      "config_desc": "Higher score threshold to reduce frequency",
+      "params": {
+        "sl_atr": 2.0,
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 6.0,
+        "score": 70,
+        "max_sl_pct": 10.0,
+        "trend": true,
+        "trailing": true
+      },
+      "oos_avg_return_pct": 0.0,
+      "oos_avg_sharpe": 0.0,
+      "oos_avg_max_dd_pct": 0.0,
+      "oos_avg_win_rate": 0.0,
+      "oos_avg_pf": 0,
+      "oos_total_trades": 0,
+      "oos_positive_splits": 0,
+      "oos_total_splits": 0,
+      "robustness_pct": 0.0,
+      "elapsed_seconds": 26.2,
+      "splits": [
+        {
+          "split": 1,
+          "train": {
+            "start": "2026-02-04",
+            "end": "2026-03-18",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-03-18",
+            "end": "2026-04-05",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        },
+        {
+          "split": 2,
+          "train": {
+            "start": "2026-04-05",
+            "end": "2026-05-17",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-05-17",
+            "end": "2026-06-04",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        },
+        {
+          "split": 3,
+          "train": {
+            "start": "2026-06-04",
+            "end": "2026-07-16",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0
+          },
+          "test": {
+            "start": "2026-07-16",
+            "end": "2026-08-03",
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "sortino": Infinity,
+            "calmar": 0,
+            "win_rate": 0,
+            "trades": 0,
+            "max_dd": 0.0,
+            "profit_factor": 0
+          }
+        }
+      ]
+    },
+    "all_results": [
+      {
+        "config_name": "A_baseline",
+        "config_desc": "Current defaults (no trend/trailing)",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": false,
+          "trailing": false
+        },
+        "oos_avg_return_pct": -5.83,
+        "oos_avg_sharpe": -2.39,
+        "oos_avg_max_dd_pct": 11.9,
+        "oos_avg_win_rate": 55.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 23.9,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": -4.98,
+              "sharpe": -4.71,
+              "win_rate": 40.0,
+              "trades": 40,
+              "max_dd": 18.41
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": -8.26,
+              "sharpe": -3.25,
+              "sortino": -4.14,
+              "calmar": -5.67,
+              "win_rate": 54.4,
+              "trades": 90,
+              "max_dd": 14.54,
+              "profit_factor": 0.49
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 6.79,
+              "sharpe": 0.56,
+              "win_rate": 75.6,
+              "trades": 164,
+              "max_dd": 11.34
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": -4.83,
+              "sharpe": -1.0,
+              "sortino": -1.11,
+              "calmar": -6.03,
+              "win_rate": 49.4,
+              "trades": 83,
+              "max_dd": 10.47,
+              "profit_factor": 0.57
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": -0.84,
+              "sharpe": -1.55,
+              "win_rate": 60.0,
+              "trades": 110,
+              "max_dd": 15.02
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": -4.4,
+              "sharpe": -2.92,
+              "sortino": -3.73,
+              "calmar": -5.58,
+              "win_rate": 61.3,
+              "trades": 80,
+              "max_dd": 10.7,
+              "profit_factor": 0.62
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "B_high_threshold",
+        "config_desc": "Higher score threshold to reduce frequency",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 70,
+          "max_sl_pct": 10.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 26.2,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "C_wider_tp",
+        "config_desc": "Wider TP to improve profit factor",
+        "params": {
+          "sl_atr": 1.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 65,
+          "max_sl_pct": 8.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.6,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "D_trailing_focus",
+        "config_desc": "Tight SL + trailing to cap losses",
+        "params": {
+          "sl_atr": 1.5,
+          "tp1": 2.5,
+          "tp2": 4.5,
+          "tp3": 7.0,
+          "score": 65,
+          "max_sl_pct": 8.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      }
+    ],
+    "sorted_by_return": [
+      {
+        "config_name": "B_high_threshold",
+        "config_desc": "Higher score threshold to reduce frequency",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 70,
+          "max_sl_pct": 10.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 26.2,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "C_wider_tp",
+        "config_desc": "Wider TP to improve profit factor",
+        "params": {
+          "sl_atr": 1.5,
+          "tp1": 3.0,
+          "tp2": 5.0,
+          "tp3": 8.0,
+          "score": 65,
+          "max_sl_pct": 8.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.6,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "D_trailing_focus",
+        "config_desc": "Tight SL + trailing to cap losses",
+        "params": {
+          "sl_atr": 1.5,
+          "tp1": 2.5,
+          "tp2": 4.5,
+          "tp3": 7.0,
+          "score": 65,
+          "max_sl_pct": 8.0,
+          "trend": true,
+          "trailing": true
+        },
+        "oos_avg_return_pct": 0.0,
+        "oos_avg_sharpe": 0.0,
+        "oos_avg_max_dd_pct": 0.0,
+        "oos_avg_win_rate": 0.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 25.5,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": 0.0,
+              "sharpe": 0.0,
+              "sortino": Infinity,
+              "calmar": 0,
+              "win_rate": 0,
+              "trades": 0,
+              "max_dd": 0.0,
+              "profit_factor": 0
+            }
+          }
+        ]
+      },
+      {
+        "config_name": "A_baseline",
+        "config_desc": "Current defaults (no trend/trailing)",
+        "params": {
+          "sl_atr": 2.0,
+          "tp1": 2.0,
+          "tp2": 4.0,
+          "tp3": 6.0,
+          "score": 50,
+          "max_sl_pct": 12.0,
+          "trend": false,
+          "trailing": false
+        },
+        "oos_avg_return_pct": -5.83,
+        "oos_avg_sharpe": -2.39,
+        "oos_avg_max_dd_pct": 11.9,
+        "oos_avg_win_rate": 55.0,
+        "oos_avg_pf": 0,
+        "oos_total_trades": 0,
+        "oos_positive_splits": 0,
+        "oos_total_splits": 0,
+        "robustness_pct": 0.0,
+        "elapsed_seconds": 23.9,
+        "splits": [
+          {
+            "split": 1,
+            "train": {
+              "start": "2026-02-04",
+              "end": "2026-03-18",
+              "return_pct": -4.98,
+              "sharpe": -4.71,
+              "win_rate": 40.0,
+              "trades": 40,
+              "max_dd": 18.41
+            },
+            "test": {
+              "start": "2026-03-18",
+              "end": "2026-04-05",
+              "return_pct": -8.26,
+              "sharpe": -3.25,
+              "sortino": -4.14,
+              "calmar": -5.67,
+              "win_rate": 54.4,
+              "trades": 90,
+              "max_dd": 14.54,
+              "profit_factor": 0.49
+            }
+          },
+          {
+            "split": 2,
+            "train": {
+              "start": "2026-04-05",
+              "end": "2026-05-17",
+              "return_pct": 6.79,
+              "sharpe": 0.56,
+              "win_rate": 75.6,
+              "trades": 164,
+              "max_dd": 11.34
+            },
+            "test": {
+              "start": "2026-05-17",
+              "end": "2026-06-04",
+              "return_pct": -4.83,
+              "sharpe": -1.0,
+              "sortino": -1.11,
+              "calmar": -6.03,
+              "win_rate": 49.4,
+              "trades": 83,
+              "max_dd": 10.47,
+              "profit_factor": 0.57
+            }
+          },
+          {
+            "split": 3,
+            "train": {
+              "start": "2026-06-04",
+              "end": "2026-07-16",
+              "return_pct": -0.84,
+              "sharpe": -1.55,
+              "win_rate": 60.0,
+              "trades": 110,
+              "max_dd": 15.02
+            },
+            "test": {
+              "start": "2026-07-16",
+              "end": "2026-08-03",
+              "return_pct": -4.4,
+              "sharpe": -2.92,
+              "sortino": -3.73,
+              "calmar": -5.58,
+              "win_rate": 61.3,
+              "trades": 80,
+              "max_dd": 10.7,
+              "profit_factor": 0.62
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

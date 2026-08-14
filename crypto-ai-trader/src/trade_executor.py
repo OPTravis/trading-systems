@@ -567,6 +567,16 @@ def _record_trade_portfolio(
                 "strategy": strategy,
             },
         )
+        # Reset no-signal tracker when trade is executed
+        try:
+            import json as _json
+            from datetime import datetime as _dt
+            _tp = os.path.join(os.path.dirname(__file__), "..", "data", "no_signal_tracker.json")
+            _td = {"last_trade_date": _dt.now().strftime("%Y-%m-%d"), "last_scan_date": _dt.now().strftime("%Y-%m-%d"), "consecutive_no_signal_days": 0, "threshold_reductions_applied": []}
+            with open(_tp, "w") as _fw:
+                _json.dump(_td, _fw, indent=2)
+        except Exception:
+            pass
     except Exception as e:
         logger.debug(f"Event bus publish failed: {e}")
 

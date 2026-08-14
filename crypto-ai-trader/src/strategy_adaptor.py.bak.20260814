@@ -328,7 +328,6 @@ class StrategyAdaptor:
         vol_regime: str,
         settings: dict,
         changes: list,
-        btc_adx: float = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Build strategy configurations based on regime and volatility.
 
@@ -678,7 +677,7 @@ class StrategyAdaptor:
         )
 
         # Build strategy configurations
-        strategies = self._build_strategy_configs(regime, vol_regime, settings, changes, btc_adx=btc_adx)
+        strategies = self._build_strategy_configs(regime, vol_regime, settings, changes)
 
         # Apply GARCH dynamic SL/TP
         daily_returns = self._apply_garch_sl_tp(strategies, btc_price_change_24h, changes)

@@ -756,7 +756,7 @@ def _step_scan_opportunities():
             "IMMINENT": -8,
             "ACCUMULATE": -4,
             "WATCH": 0,
-            "SILENCE": 2,
+            "SILENCE": 5,
         }.get(surge_result["alert_level"], 0)
         dynamic_threshold += surge_adj
         dynamic_threshold = max(40, min(95, dynamic_threshold))
@@ -792,57 +792,6 @@ def _step_scan_opportunities():
     # held_symbols filter REMOVED — allow re-evaluation of held positions for DCA/加倉
     # Previously skipped BTC/ETH/SOL because they were already in portfolio
     acct = client.get_account()
-
-    # ===== Time-Decay Threshold Relaxation =====
-    # After 7+ consecutive days with 0 trades, progressively lower threshold
-    # This prevents the system from being permanently locked out in extended Fear markets
-    import json as _json
-    _tracker_path = os.path.join(os.path.dirname(__file__), "..", "data", "no_signal_tracker.json")
-    from datetime import datetime
-    _now_iso = datetime.now().isoformat()
-    try:
-        if os.path.exists(_tracker_path):
-            with open(_tracker_path) as _f:
-                _tracker = _json.load(_f)
-        else:
-            _tracker = {"last_trade_date": None, "last_scan_date": None, "consecutive_no_signal_days": 0}
-
-        _today = datetime.now().strftime("%Y-%m-%d")
-        _last_scan = _tracker.get("last_scan_date")
-        if _last_scan and _last_scan < _today:
-            _last_dt = datetime.strptime(_last_scan, "%Y-%m-%d")
-            _today_dt = datetime.strptime(_today, "%Y-%m-%d")
-            _gap = (_today_dt - _last_dt).days
-            _tracker["consecutive_no_signal_days"] = _tracker.get("consecutive_no_signal_days", 0) + _gap
-        elif not _last_scan:
-            _tracker["consecutive_no_signal_days"] = 0
-        _tracker["last_scan_date"] = _today
-
-        _no_signal_days = _tracker.get("consecutive_no_signal_days", 0)
-        _time_decay_adj = 0
-        if _no_signal_days >= 21:
-            _time_decay_adj = -10
-        elif _no_signal_days >= 14:
-            _time_decay_adj = -7
-        elif _no_signal_days >= 7:
-            _time_decay_adj = -3
-
-        if _time_decay_adj < 0:
-            _orig_threshold = dynamic_threshold
-            dynamic_threshold = max(65, dynamic_threshold + _time_decay_adj)
-            print(
-                f"TIME_DECAY: {_no_signal_days}d no signal → "
-                f"threshold {dynamic_threshold} ({_time_decay_adj:+d}, floor 65)"
-            )
-            logger.info(
-                f"TIME_DECAY: {_no_signal_days}d no signal → "
-                f"threshold {dynamic_threshold} ({_time_decay_adj:+d}, floor 65)"
-            )
-
-    except Exception as e:
-        logger.warning(f"Time-decay tracker error: {e}")
-        _tracker = {}
-        _no_signal_days = 0
 
     # Apply adapted threshold
     all_opportunities = opportunities  # save raw before filter
@@ -911,17 +860,6 @@ def _step_scan_opportunities():
             )
     else:
         print("SWITCH: No switch opportunities found")
-
-    # ===== Write back no_signal_tracker =====
-    try:
-        if _tracker and "last_scan_date" in _tracker:
-            _final_opps = len(opportunities) if opportunities else 0
-            # If opportunities found and might lead to trades, don't increment counter
-            # The counter tracks "no actionable signal" days
-            with open(_tracker_path, "w") as _fw:
-                _json.dump(_tracker, _fw, indent=2)
-    except Exception:
-        pass
 
     return {
         "client": client,
