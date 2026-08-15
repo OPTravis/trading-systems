@@ -316,7 +316,7 @@ class TradeOutcomeRecorder:
             # Fallback: reconstruct context from row data
             if bandit_context is None:
                 try:
-                    ctx_data = json.loads(row.get("context_json", "{}"))
+                    ctx_data = json.loads(dict(row).get("context_json", "{}") or "{}")
                     bandit_context = {
                         "hmm_regime": ctx_data.get("regime", "sideways").lower(),
                         "fear_greed": float(ctx_data.get("fng_score", 50)),

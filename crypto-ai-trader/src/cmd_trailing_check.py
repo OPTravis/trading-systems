@@ -375,6 +375,27 @@ def cmd_trailing_check():
             results.append({"asset": asset, "action": "skip", "reason": str(e)})
             continue
 
+        # Skip trailing stop for small positions (<$30) — they use SL-only mode
+        # with fixed SL/TP; trailing would tighten SL too aggressively and shake out
+        # positions on minor wicks (observed: PLUME stopped at +0.23% after 2.5h)
+        position_notional = pos['total'] * current_price
+        if position_notional < 30.0:
+            # If this symbol was previously tracked (e.g. position was larger before),
+            # clean up the stale trailing state
+            if asset in ts.get_all():
+                ts.remove(asset)
+                logger.info(
+                    "TrailingStop: removed tracking for %s (position $%.2f < $30 floor, "
+                    "SL-only mode)",
+                    asset, position_notional,
+                )
+            results.append({
+                "asset": asset,
+                "action": "trailing_skip_small_position",
+                "notional": round(position_notional, 2),
+            })
+            continue
+
         # Get ATR from klines
         try:
             klines_raw = client.get_klines(symbol, interval='1h', limit=20)

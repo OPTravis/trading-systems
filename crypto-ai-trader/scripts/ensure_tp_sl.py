@@ -159,10 +159,78 @@ def main():
         if stale:
             db = get_state_db()
             conn = db._get_conn()
+            recorder = TradeOutcomeRecorder(db=db)
             for sym in stale:
+                pos_data = positions[sym]
+                entry_price = pos_data.get('entry_price', 0)
+                qty = pos_data.get('quantity', 0)
+                sl_target = pos_data.get('stop_loss', 0)
+                tp_target = pos_data.get('take_profit', 0)
+
+                # Fetch recent Binance trades to find actual exit price
+                exit_price = 0
+                exit_reason = "unknown"
+                try:
+                    my_trades = client.get_my_trades(symbol=sym, limit=10)
+                    # Find the most recent SELL trade
+                    for t in reversed(my_trades):
+                        is_buyer = t.get('isBuyer', True)
+                        if not is_buyer:  # SELL
+                            exit_price = float(t.get('price', 0))
+                            sell_qty = float(t.get('qty', 0))
+                            # Determine exit reason based on price vs SL/TP
+                            if sl_target and exit_price <= sl_target * 1.002:
+                                exit_reason = "sl"
+                            elif entry_price and exit_price > entry_price:
+                                exit_reason = "tp_breach"
+                            else:
+                                exit_reason = "trailing"
+                            break
+                except Exception as e:
+                    logger.warning(f"Cannot fetch trade history for {sym}: {e}")
+
+                # Fallback: use current market price
+                if exit_price <= 0:
+                    try:
+                        ticker = client.get_ticker_price(symbol=sym)
+                        exit_price = float(ticker)
+                        exit_reason = "sync_cleanup"
+                    except Exception:
+                        exit_price = entry_price  # last resort
+                        exit_reason = "sync_cleanup"
+
+                # Write SELL to trades table
+                if exit_price > 0 and qty > 0:
+                    pnl = (exit_price - entry_price) * qty if entry_price > 0 else 0
+                    try:
+                        conn.execute(
+                            "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
+                            "VALUES (?, 'SELL', ?, ?, ?, ?)",
+                            (sym, qty, exit_price, pnl, time.time()),
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to write SELL trade for {sym}: {e}")
+
+                    # Record outcome for self-learning
+                    try:
+                        recorder.record_outcome(
+                            symbol=sym,
+                            exit_price=exit_price,
+                            exit_reason=exit_reason,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record outcome for {sym}: {e}")
+
+                    pnl_pct = (exit_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+                    fixes.append(
+                        f"{sym}: 平倉已記錄 SELL {qty} @ ${exit_price:.6f} "
+                        f"({exit_reason}, PnL {pnl_pct:+.2f}%)"
+                    )
+                else:
+                    fixes.append(f"{sym}: DB已清理（Binance無持倉，無法取得成交價）")
+
                 conn.execute('DELETE FROM portfolio WHERE symbol = ?', (sym,))
                 conn.execute('DELETE FROM trailing_stop WHERE symbol = ?', (sym,))
-                fixes.append(f"{sym}: DB已清理（Binance無持倉）")
             conn.commit()
             # Refresh positions
             positions = {k: v for k, v in positions.items() if k not in stale}
