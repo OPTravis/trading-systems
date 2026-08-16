@@ -482,7 +482,7 @@ class TestExecuteAutoTrade:
         assert "Score too low" in result["error"]
 
     def test_s15_max_positions(self):
-        result, _ = self._run(active_positions=5)
+        result, _ = self._run(active_positions=3)  # Updated: max_open_positions=3 (2026-08-17)
         assert result["success"] is False
         assert "Max positions" in result["error"]
 
@@ -491,8 +491,8 @@ class TestExecuteAutoTrade:
         [
             (1, 0.80),
             (2, 0.65),
-            (3, 0.50),
-            (4, 0.35),
+            # 2026-08-17: max_open_positions reduced from 5 to 3
+            # active=3 and active=4 now blocked by max_positions check
         ],
     )
     def test_s16_position_scaling(self, active, expected_scale):

@@ -265,7 +265,7 @@ class KellyPositionSizer:
         self,
         kelly_result: Dict,
         current_positions: int,
-        max_positions: int = 5,
+        max_positions: int = 3,  # Aligned with risk_limits.yaml (2026-08-17)
     ) -> Dict:
         """Light adjustment for portfolio context. Main scaling is in trade_executor."""
         kelly = kelly_result["position_pct"]

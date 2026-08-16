@@ -43,7 +43,12 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         config_path: Optional[str] = None,
         binance_client: Optional["ExchangeClient"] = None,
     ):
-        # Load risk config
+        # Load risk config — auto-detect risk_limits.yaml if no path given
+        if config_path is None:
+            _default_path = Path(__file__).parent.parent / "config" / "risk_limits.yaml"
+            if _default_path.exists():
+                config_path = str(_default_path)
+                logger.info("Auto-loaded risk config from %s", config_path)
         if config_path and Path(config_path).exists():
             with open(config_path) as f:
                 config_data = yaml.safe_load(f)
@@ -126,7 +131,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             "max_total_exposure_pct": 80,
             "max_daily_loss_pct": 5,
             "max_leverage": 1,
-            "max_open_positions": 5,
+            "max_open_positions": 3,  # Aligned with risk_limits.yaml (2026-08-17)
             "stop_loss": {"default_pct": 5},
             "take_profit": {"default_pct": 6},
             "trailing_stop": {"activation_pct": 2, "distance_pct": 1},
