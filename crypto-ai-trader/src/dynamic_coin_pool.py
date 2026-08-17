@@ -36,7 +36,13 @@ def _load_disabled_symbols() -> set:
         return set()
 
 # Tokens to always exclude from the pool
-STABLECOINS = {"USDCUSDT", "TUSDUSDT", "BUSDUSDT", "FDUSDUSDT", "DAIUSDT", "USDPUSDT"}
+STABLECOINS = {
+    "USDCUSDT", "TUSDUSDT", "BUSDUSDT", "FDUSDUSDT", "DAIUSDT", "USDPUSDT",
+    # 2026-08-17: RLUSD was bought by grid (counted as position, blocked slots);
+    # EUR pairs surfaced as candidates. Extend exclusion to all USD/EUR pegged pairs.
+    "RLUSDUSDT", "USDSUSDT", "USDEUSDT", "XUSDUSDT", "USD1USDT", "SUSDUSDT",
+    "PYUSDUSDT", "GUSDUSDT", "EURUSDT", "EURIUSDT", "AEURUSDT", "EURCUSDT",
+}
 
 WRAPPED_TOKENS = {
     "WETHUSDT",

@@ -262,11 +262,21 @@ def get_position_tier(score):
         return 0.0, "SKIP"
 
 
+# Assets that are fiat/stablecoin pegged — hold no trading position meaning.
+# Excluded from position counting so parked cash (e.g. RLUSD) never blocks slots.
+NON_POSITION_ASSETS = {
+    "USDT", "NTRN",
+    "USDC", "TUSD", "BUSD", "FDUSD", "DAI", "USDP", "RLUSD", "USDS", "USDE",
+    "XUSD", "USD1", "SUSD", "PYUSD", "GUSD",
+    "EUR", "EURI", "AEUR", "EURC",
+}
+
+
 def count_active_positions(client):
     """Count number of active positions (non-USDT balances with value > $1).
 
-    Filters out NTRN (delisted) and dust coins worth less than $1.
-    Uses batch ticker fetch (1 API call) instead of per-asset calls.
+    Filters out NTRN (delisted), stablecoin assets, and dust coins worth less
+    than $1. Uses batch ticker fetch (1 API call) instead of per-asset calls.
     """
     try:
         acct = client.get_account()
@@ -285,7 +295,7 @@ def count_active_positions(client):
         count = 0
         for b in acct["balances"]:
             free = float(b["free"]) + float(b["locked"])
-            if free > 0 and b["asset"] not in ("USDT", "NTRN"):
+            if free > 0 and b["asset"] not in NON_POSITION_ASSETS:
                 sym = b["asset"] + "USDT"
                 price = price_map.get(sym, 0)
                 if price > 0 and free * price >= 5.0:
@@ -480,7 +490,7 @@ def _pretrade_risk_checks(client, usdt_bal: float) -> dict:
         for b in _account_data.get("balances", []):
             _asset = b["asset"]
             _qty = float(b.get("free", 0)) + float(b.get("locked", 0))
-            if _qty > 0 and _asset not in ("USDT", "NTRN"):
+            if _qty > 0 and _asset not in NON_POSITION_ASSETS:
                 try:
                     if f"{_asset}USDT" not in _price_map:
                         _p = float(client.get_ticker_price(f"{_asset}USDT"))
