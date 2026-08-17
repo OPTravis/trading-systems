@@ -901,7 +901,19 @@ class BinanceClient:
 
             except ccxt.ExchangeError as e:
                 # Business error — do NOT retry
-                logger.error("Order failed (API error): %s", _sanitize_error(str(e)))
+                err_text = str(e)
+                logger.error("Order failed (API error): %s", _sanitize_error(err_text))
+                # Self-learning: symbol not permitted for this account
+                # (e.g. tokenized stocks/ETFs) -> persist to restricted registry
+                try:
+                    from src.restricted_symbols import (
+                        is_not_permitted_error, mark_symbol_restricted,
+                    )
+
+                    if is_not_permitted_error(err_text):
+                        mark_symbol_restricted(symbol, reason="-2010 not permitted")
+                except Exception:
+                    pass  # registry update is best-effort, never block trading
                 return None
 
             except Exception as e:

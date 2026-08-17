@@ -111,6 +111,16 @@ class DynamicCoinPool:
         else:
             logger.info("DynamicCoinPool: no disabled symbols (blacklist empty)")
 
+        # Account-restricted symbols (tokenized securities / -2010 self-learned)
+        from src.restricted_symbols import get_restricted_symbols
+
+        _restricted = get_restricted_symbols()
+        if _restricted:
+            logger.info(
+                "DynamicCoinPool: excluding %d account-restricted symbols: %s",
+                len(_restricted), sorted(_restricted),
+            )
+
         pool: List[Dict] = []
 
         for ticker in raw:
@@ -137,6 +147,11 @@ class DynamicCoinPool:
             # Disabled symbols (strategy degradation blacklist)
             if symbol in _disabled:
                 logger.info("DynamicCoinPool: skipping disabled symbol %s", symbol)
+                continue
+
+            # Account-restricted symbols (tokenized securities, -2010 learned)
+            if symbol in _restricted:
+                logger.info("DynamicCoinPool: skipping restricted symbol %s", symbol)
                 continue
 
             # --- Quantitative filters ---
