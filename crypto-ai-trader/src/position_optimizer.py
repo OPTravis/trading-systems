@@ -664,6 +664,28 @@ class PositionOptimizer:
             decision["sell_order_id"] = sell_order.get("orderId")
             decision["buy_order_id"] = buy_order.get("orderId")
             logger.info(f"Switch executed: {from_symbol} -> {to_symbol}")
+
+            # FIX 2026-08-18: create a trade_outcomes entry for switch buys.
+            # execute_phases records entries for scan-driven buys, but switch
+            # buys had no entry → later exits logged "No open entry" and the
+            # self-learning loop missed switch trades entirely (e.g. ALLO 08-18).
+            try:
+                from src.trade_outcome_recorder import TradeOutcomeRecorder
+
+                TradeOutcomeRecorder().record_entry(
+                    symbol=to_symbol,
+                    entry_price=float(to_price),
+                    qty=float(buy_qty),
+                    score=float(decision.get("to_score", 0) or 0),
+                    strategy="switch",
+                )
+                logger.info(f"Outcome entry recorded for switch buy: {to_symbol}")
+            except Exception as entry_err:
+                logger.warning(
+                    "Failed to record outcome entry for switch buy %s: %s",
+                    to_symbol,
+                    entry_err,
+                )
             return True
 
         except Exception as e:

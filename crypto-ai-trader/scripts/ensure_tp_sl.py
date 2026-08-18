@@ -610,6 +610,24 @@ def main():
                     fixes.append(
                         f"{sym}: TP已過(${current_price:.4f} >= ${tp_target:.4f})，已市價平倉鎖利 +{pnl_pct:.1f}%"
                     )
+                    # FIX 2026-08-18: write SELL row to trades table so the ledger
+                    # stays complete (previously outcome-only + row deletion left no
+                    # PnL trace in trades, e.g. ALLO +7.1% on 08-18 went unrecorded).
+                    if entry > 0:
+                        trade_pnl = (current_price - entry) * qty
+                    else:
+                        trade_pnl = 0.0
+                    try:
+                        db = get_state_db()
+                        conn = db._get_conn()
+                        conn.execute(
+                            "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
+                            "VALUES (?, 'SELL', ?, ?, ?, ?)",
+                            (sym, sell_qty, current_price, trade_pnl, time.time()),
+                        )
+                        conn.commit()
+                    except Exception as e:
+                        logger.warning(f"Failed to write SELL trade for {sym}: {e}")
                     # Record trade outcome for self-learning
                     try:
                         db = get_state_db()
@@ -716,6 +734,20 @@ def main():
                             f"{sym}: 超過max_hold({hold_hours:.0f}h>{max_hold/3600:.0f}h)，"
                             f"已強制平倉 PnL {pnl_pct:+.1f}%"
                         )
+                        # FIX 2026-08-18: write SELL row to trades table (same gap as tp_breach)
+                        if entry > 0:
+                            trade_pnl = (current_price - entry) * qty
+                        else:
+                            trade_pnl = 0.0
+                        try:
+                            conn.execute(
+                                "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
+                                "VALUES (?, 'SELL', ?, ?, ?, ?)",
+                                (sym, sell_qty, current_price, trade_pnl, time.time()),
+                            )
+                            conn.commit()
+                        except Exception as e:
+                            logger.warning(f"Failed to write SELL trade for {sym}: {e}")
                         # Record trade outcome for self-learning
                         try:
                             db = get_state_db()
