@@ -6,6 +6,7 @@ Check open positions and update trailing stop-loss orders.
 
 import json as _json
 import logging
+import math
 import os
 import time
 
@@ -743,24 +744,40 @@ def cmd_trailing_check():
         # the STOP_LOSS_LIMIT order is validated at its limit price, not
         # current. $5.25 at current → $4.99 at SL limit → rejected by both
         # our wrapper and the exchange. Fourth variant of the zero-buffer
-        # -1013 edge family; skip cleanly instead of failing loudly.
-        notional = qty_to_protect * current_price * 0.95
-        if notional < 5.0 * 1.02:
-            results.append({
-                "asset": asset, "action": "no_sl_below_notional",
-                "qty": qty_to_protect, "value": round(notional, 2),
-                "msg": f"價值 ${notional:.2f} < $5 最低掛單門檻",
-            })
-            continue
-
-        # FIX 2026-08-17: Use current_price × 0.95 for SL (5% from current).
-        # Previous code used 8% from entry price which was unreliable:
-        # 1. entry price lookup often failed (ts_state empty for new merged positions)
-        # 2. When fallback_entry fell back to current_price, 8% from current exceeded risk limit
-        # 3. Nil batch-3 got SL at -9.8% from entry (should be max -5%)
-        # Now: always use current_price * 0.95 — simple, predictable, within 5% risk limit.
+        # -1013 edge family.
+        # FIX 2026-08-19 (#5 cont.): when the -5% stop is not viable, try a
+        # TIGHTER stop — raise it until SL notional clears minNotional, but
+        # never closer than 1% to current (instant-trigger guard). A tight
+        # stop beats a naked position: ETHUSDT $5.23 (22:34) would otherwise
+        # ride unprotected forever since its -5% notional is $4.97 < $5.
+        # Entry sizing (trade_executor) now prevents fresh cases; this is
+        # the safety net for anything already open or switched-in.
         default_sl_pct = 5.0
         sl_price = round(current_price * (1 - default_sl_pct / 100), p_prec)
+        notional = qty_to_protect * sl_price
+        if notional < 5.0 * 1.02:
+            _min_viable = (5.0 * 1.02) / qty_to_protect if qty_to_protect > 0 else 0
+            _tick = 10 ** (-p_prec)
+            try:
+                _tight = math.ceil(_min_viable / _tick) * _tick if _tick > 0 else _min_viable
+            except Exception:
+                _tight = _min_viable
+            _tight = round(_tight, p_prec)
+            if 0 < _tight <= current_price * 0.99:
+                logger.warning(
+                    "No-SL position %s: -5%% stop notional $%.2f < $5.10, "
+                    "placing TIGHT SL @ $%.6f (-%.2f%% from current $%.6f)",
+                    asset, notional, _tight,
+                    (1 - _tight / current_price) * 100, current_price,
+                )
+                sl_price = _tight
+            else:
+                results.append({
+                    "asset": asset, "action": "no_sl_below_notional",
+                    "qty": qty_to_protect, "value": round(notional, 2),
+                    "msg": f"價值 ${notional:.2f} < $5 最低掛單門檻（連緊止損都不可行）",
+                })
+                continue
         logger.info(
             "Uncovered SL for %s: current=%.6f, placing SL at -%.1f%% (%.6f)",
             asset, current_price, default_sl_pct, sl_price,
