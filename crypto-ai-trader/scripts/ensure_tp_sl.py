@@ -613,11 +613,35 @@ def main():
                     # FIX 2026-08-18: write SELL row to trades table so the ledger
                     # stays complete (previously outcome-only + row deletion left no
                     # PnL trace in trades, e.g. ALLO +7.1% on 08-18 went unrecorded).
+                    # FIX 2026-08-19: network-FS disk I/O flakes made BOTH the SELL
+                    # insert and outcome close die silently (20:30 EDEN close: trade
+                    # filled on exchange, DB untouched — patched by hand). All three
+                    # bookkeeping ops now retry once, and a double failure is LOUD:
+                    # escalated to errors[] (visible in cron output JSON) plus a
+                    # Feishu alert, instead of an invisible logger.warning.
                     if entry > 0:
                         trade_pnl = (current_price - entry) * qty
                     else:
                         trade_pnl = 0.0
-                    try:
+
+                    def _db_retry(label, fn, attempts=2):
+                        last_err = None
+                        for i in range(attempts):
+                            try:
+                                fn()
+                                return True
+                            except Exception as e:
+                                last_err = e
+                                logger.warning(
+                                    f"{label} failed for {sym} (attempt {i + 1}/{attempts}): {e}"
+                                )
+                                time.sleep(1.0)
+                        errors.append(
+                            f"{sym}: {label}失敗{attempts}次 ({last_err}) — 交易已成交，DB帳務缺口需人工修補"
+                        )
+                        return False
+
+                    def _insert_sell_row():
                         db = get_state_db()
                         conn = db._get_conn()
                         conn.execute(
@@ -626,10 +650,8 @@ def main():
                             (sym, sell_qty, current_price, trade_pnl, time.time()),
                         )
                         conn.commit()
-                    except Exception as e:
-                        logger.warning(f"Failed to write SELL trade for {sym}: {e}")
-                    # Record trade outcome for self-learning
-                    try:
+
+                    def _record_outcome():
                         db = get_state_db()
                         recorder = TradeOutcomeRecorder(db=db)
                         recorder.record_outcome(
@@ -637,14 +659,27 @@ def main():
                             exit_price=current_price,
                             exit_reason="tp_breach",
                         )
-                    except Exception as e:
-                        logger.warning(f"Outcome recording failed for {sym}: {e}")
-                    # Remove from DB
-                    db = get_state_db()
-                    conn = db._get_conn()
-                    conn.execute("DELETE FROM portfolio WHERE symbol = ?", (sym,))
-                    conn.execute("DELETE FROM trailing_stop WHERE symbol = ?", (sym,))
-                    conn.commit()
+
+                    def _delete_rows():
+                        db = get_state_db()
+                        conn = db._get_conn()
+                        conn.execute("DELETE FROM portfolio WHERE symbol = ?", (sym,))
+                        conn.execute("DELETE FROM trailing_stop WHERE symbol = ?", (sym,))
+                        conn.commit()
+
+                    _ok_sell = _db_retry("SELL trade INSERT", _insert_sell_row)
+                    _ok_outcome = _db_retry("outcome close", _record_outcome)
+                    _db_retry("portfolio cleanup", _delete_rows)
+
+                    if not (_ok_sell and _ok_outcome):
+                        try:
+                            from src.notifier import FeishuNotifier
+                            FeishuNotifier().send_text(
+                                f"🟠 ensure_tp_sl: {sym} 平倉已成交但DB寫入失敗 "
+                                f"(sell={_ok_sell}, outcome={_ok_outcome})，請核對 trades/outcomes/portfolio"
+                            )
+                        except Exception as ne:
+                            logger.error(f"DB-failure alert send failed: {ne}")
                 else:
                     # MARKET orders usually fill immediately; if not FILLED, log error
                     status = result.get("status") if result else "None"
