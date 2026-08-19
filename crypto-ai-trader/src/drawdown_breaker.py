@@ -70,14 +70,29 @@ class DrawdownBreaker:
             }
 
     def _save_state(self):
-        """Save state to SQLite drawdown table (sole source of truth)."""
-        try:
-            from src.state_db import get_state_db
+        """Save state to SQLite drawdown table (sole source of truth).
 
-            db = get_state_db()
-            db.drawdown_set(self._state)
-        except Exception as e:
-            logger.error(f"DrawdownBreaker: SQLite save failed: {e}")
+        Retries once on transient errors (e.g. disk I/O error on network FS),
+        since drawdown state is recomputed frequently and a single lost save
+        is harmless but log noise is not.
+        """
+        import time as _time
+
+        from src.state_db import get_state_db
+
+        db = get_state_db()
+        for attempt in (1, 2):
+            try:
+                db.drawdown_set(self._state)
+                return
+            except Exception as e:
+                if attempt == 1:
+                    _time.sleep(0.5)
+                    logger.warning(
+                        f"DrawdownBreaker: SQLite save failed (retrying): {e}"
+                    )
+                else:
+                    logger.error(f"DrawdownBreaker: SQLite save failed: {e}")
 
     def check_drawdown(self, current_balance: float) -> Dict:
         """Check if portfolio drawdown exceeds the 10% hard stop.
