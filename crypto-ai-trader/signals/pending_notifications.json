@@ -16526,5 +16526,37 @@
     "title": "",
     "body": "🔍 14:33 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 5个\n\n🏆 前3名:\n  1. EDENUSDT (评分: 74)\n  2. ALLOUSDT (评分: 68)\n  3. ETHUSDT (评分: 67)\n",
     "pushed": true
+  },
+  {
+    "id": "notif_20260819163323574426",
+    "timestamp": "2026-08-19T16:33:23.574480",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819163325037046",
+    "timestamp": "2026-08-19T16:33:25.037096",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 1.3% of $389.82 = $5.00\n勝率: 38.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 100 @ $0.052230\n信號: 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 90 / 📈 Above VWAP\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 100 @ $0.052210\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)\n  注意: 100 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819163335895533",
+    "timestamp": "2026-08-19T16:33:35.895569",
+    "type": "signal",
+    "title": "交易信号: EDENUSDT",
+    "body": "🟢 BUY EDENUSDT @ $0.0522 x99.6\n原因: 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 90 / 📈 Above VWAP\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819163336634712",
+    "timestamp": "2026-08-19T16:33:36.634748",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 16:33 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 6个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 80)\n  2. EDENUSDT (评分: 76)\n  3. ETHUSDT (评分: 75)\n",
+    "pushed": true
   }
 ]

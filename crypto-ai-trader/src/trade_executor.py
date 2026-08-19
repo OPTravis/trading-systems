@@ -681,6 +681,7 @@ def _place_sl_tp_orders(
     sl_placed_qty = 0.0
     tp_placed_qty = 0.0
     oco_placed = False
+    small_pos_accepted = False
 
     # Calculate SL price and buffered limit price
     sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
@@ -1181,6 +1182,7 @@ def _place_sl_tp_orders(
         if _uncovered_notional < 10.0:
             # Small position (< $10): SL not possible due to minNotional,
             # but max loss is negligible. Let it ride without emergency sell.
+            small_pos_accepted = True
             results.append(
                 f"🟡 No SL (small pos ${_uncovered_notional:.2f} < $10 — accepted risk)"
             )
@@ -1226,7 +1228,7 @@ def _place_sl_tp_orders(
 
     if sl_placed_qty + tp_placed_qty < executed_qty:
         remainder = executed_qty - sl_placed_qty - tp_placed_qty
-        if remainder >= _step_size:
+        if remainder >= _step_size and not small_pos_accepted:
             results.append(f"注意: {remainder:.0f} 單位已由額外SL覆蓋")
 
     return {

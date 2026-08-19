@@ -3322,5 +3322,17 @@
     "reason": "\u2705 Multi-TF Entry Signal (long) / \ud83d\udcc8 Moderate Trend Score: 60 / \ud83d\ude80 1h Strong Uptrend",
     "strategy": "grid",
     "notified": false
+  },
+  {
+    "id": "EDENUSDT_20260819163335",
+    "timestamp": "2026-08-19T16:33:35.164511",
+    "type": "BUY",
+    "symbol": "EDENUSDT",
+    "action": "OPEN",
+    "price": 0.0522,
+    "quantity": 99.6,
+    "reason": "\ud83d\ude80 Multi-TF Bullish Alignment / \ud83d\udcaa Strong Trend Score: 90 / \ud83d\udcc8 Above VWAP",
+    "strategy": "dca",
+    "notified": false
   }
 ]

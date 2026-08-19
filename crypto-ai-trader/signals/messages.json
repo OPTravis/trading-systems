@@ -2266,5 +2266,19 @@
     "title": "",
     "body": "📊 每日报告 2026-08-19\n\n💰 USDT: $389.82\n📈 總資產: $395.59\n\n📦 持倉 (1):\n  🟢 SOL: 0.1 ($5.77, +1.33%)\n\n📋 掛單: 1 個 (SL:1 TP:1)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 98.5% > 60% → 可考慮加倉\n\n📋 資金審計 (FIFO, 269筆交易):\n  已實現PnL: $-220.79\n  手續費: -$6.54\n  淨已實現: $-227.33\n  塵倉浮虧: $-0.93 (13個)",
     "notified": true
+  },
+  {
+    "id": "msg_20260819163323",
+    "timestamp": "2026-08-19T16:33:23.000168",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819163324",
+    "timestamp": "2026-08-19T16:33:24.180082",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 1.3% of $389.82 = $5.00\n勝率: 38.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 100 @ $0.052230\n信號: 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 90 / 📈 Above VWAP\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 100 @ $0.052210\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)\n  注意: 100 單位已由額外SL覆蓋",
+    "notified": true
   }
 ]

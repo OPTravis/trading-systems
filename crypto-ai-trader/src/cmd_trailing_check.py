@@ -215,10 +215,13 @@ def _check_tp_fills(client, notifier, positions):
             logger.info("tp_sl_tracker: no free balance for new SL for %s", symbol)
             continue
 
-        # Check minimum notional
+        # Check minimum notional — validated at the LIMIT price, which sits
+        # sl_limit_buffer (1.5%) below the stop, plus margin for Binance's
+        # internal reference price. Mirrors the -1013 fix in trade_executor
+        # (three lock variants, same root cause: zero-buffer notional edges).
         sl_notional = free_qty * new_sl_price
         min_notional = 5.0
-        if sl_notional < min_notional:
+        if sl_notional * (1 - 0.015) < min_notional * 1.02:
             results.append({
                 "asset": asset,
                 "action": "tp_fill_sl_below_notional",
