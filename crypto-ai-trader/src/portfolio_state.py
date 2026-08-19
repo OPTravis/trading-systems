@@ -246,30 +246,81 @@ class StateMixin:
                             exc_info=True,
                         )
 
-                    if existing_entry and existing_entry > 0:
+                    # ── bug #6 fix: cost-basis resolution, market price is a
+                    # last-resort TEMPORARY placeholder, never a locked-in entry.
+                    # A previous market_estimate could have polluted the stored
+                    # entry (ETH: 2099.84 vs real 1935.41) and then locked itself
+                    # in via the db_existing path. Estimate-flagged entries are
+                    # retried on every sync until a real cost basis is found.
+                    _sym_key = f"{asset}USDT"
+                    _est_key = f"entry_est:{_sym_key}"
+                    is_estimate = False
+                    try:
+                        is_estimate = bool(self._db.kv_get(_est_key))
+                    except Exception:
+                        pass
+
+                    if existing_entry and existing_entry > 0 and not is_estimate:
                         entry_price = existing_entry
                     else:
+                        entry_price = None
+                        # 1) exchange trade history (weighted avg of open lots)
                         try:
                             from src.entry_price import get_avg_entry_price
 
                             avg_entry = get_avg_entry_price(
-                                binance_client, f"{asset}USDT", total
+                                binance_client, _sym_key, total
                             )
                             if avg_entry and avg_entry > 0:
                                 entry_price = avg_entry
                                 entry_source = "trade_history"
-                            else:
-                                entry_price = price
-                                entry_source = "market_estimate"
-                                logger.warning(
-                                    f"Could not determine avg entry for {asset}, using market price ${price:.4f}"
-                                )
                         except Exception as e:
+                            logger.warning(
+                                f"entry_price via exchange history failed for {asset}: {e}"
+                            )
+                        # 2) local DB ledger fallback (bug #6: exchange history
+                        #    can be incomplete — e.g. ETH qty 0.0269 vs 0.0027 —
+                        #    while our own trades table holds the real fills)
+                        if entry_price is None:
+                            try:
+                                from src.entry_price import (
+                                    get_avg_entry_price_from_db,
+                                )
+
+                                db_entry = get_avg_entry_price_from_db(
+                                    self._db, _sym_key, total
+                                )
+                                if db_entry and db_entry > 0:
+                                    entry_price = db_entry
+                                    entry_source = "db_ledger"
+                            except Exception as e:
+                                logger.warning(
+                                    f"entry_price via DB ledger failed for {asset}: {e}"
+                                )
+                        # 3) last resort: market price, flagged for retry
+                        if entry_price is None:
                             entry_price = price
                             entry_source = "market_estimate"
                             logger.warning(
-                                f"entry_price calculation failed for {asset}: {e}, using market price"
+                                f"Could not determine cost basis for {asset}; using market price "
+                                f"${price:.4f} as TEMPORARY entry (flagged for retry on next sync)"
                             )
+                            try:
+                                self._db.kv_set(_est_key, time.time())
+                            except Exception:
+                                pass
+
+                        # A real cost basis was found: clear the estimate flag
+                        if entry_source != "market_estimate":
+                            try:
+                                self._db.kv_remove(_est_key)
+                            except Exception:
+                                pass
+                            if is_estimate:
+                                logger.info(
+                                    f"{_sym_key}: replaced estimated entry with real "
+                                    f"cost basis ${entry_price:.4f} ({entry_source})"
+                                )
 
                     # Check if position already exists in DB (avoid phantom BUY records)
                     sym_key = f"{asset}USDT"
