@@ -739,9 +739,13 @@ def cmd_trailing_check():
         if qty_to_protect <= 0 or current_price <= 0:
             continue
 
-        # Check minimum notional ($5 on Binance)
-        notional = qty_to_protect * current_price
-        if notional < 5.0:
+        # Check minimum notional at the SL PRICE (5% below current) —
+        # the STOP_LOSS_LIMIT order is validated at its limit price, not
+        # current. $5.25 at current → $4.99 at SL limit → rejected by both
+        # our wrapper and the exchange. Fourth variant of the zero-buffer
+        # -1013 edge family; skip cleanly instead of failing loudly.
+        notional = qty_to_protect * current_price * 0.95
+        if notional < 5.0 * 1.02:
             results.append({
                 "asset": asset, "action": "no_sl_below_notional",
                 "qty": qty_to_protect, "value": round(notional, 2),
