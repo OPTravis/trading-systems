@@ -74,3 +74,36 @@ def test_auto_detect_called_when_param_none():
         )
         detect.assert_called_once()
         assert res["is_exploration"] is True
+
+
+def _run_capped(regime_improving, used):
+    k = _sizer()
+    with patch.object(KellyPositionSizer, "_get_trade_history", return_value=list(FAKE_TRADES)), \
+         patch.object(KellyPositionSizer, "_detect_regime_improving", return_value=regime_improving), \
+         patch.object(KellyPositionSizer, "_exploration_entries_last_30d", return_value=used):
+        return k.get_position_size(
+            symbol="TESTUSDT",
+            balance=390.0,
+            stop_loss_pct=5.0,
+            take_profit_pct=6.0,
+            signal_score=76,
+            use_historical=True,
+            regime_improving=regime_improving,
+        )
+
+
+def test_escape_blocked_at_cap():
+    """Slow-bleed guard: 5 exploration entries in 30d -> stay blocked."""
+    from src.kelly_sizer import EXPLORATION_CAP_30D
+
+    res = _run_capped(True, used=EXPLORATION_CAP_30D)
+    assert res["position_pct"] == 0.0
+    assert res["is_exploration"] is False
+
+
+def test_escape_allowed_below_cap():
+    from src.kelly_sizer import EXPLORATION_CAP_30D
+
+    res = _run_capped(True, used=EXPLORATION_CAP_30D - 1)
+    assert res["is_exploration"] is True
+    assert "regime warming" in res["confidence"]

@@ -32,7 +32,6 @@ MIN_POSITION_PCT = 0.01  # Minimum position floor (1% — Kelly is a scale, not 
 # to bootstrap historical data. Think epsilon-greedy exploration budget.
 EXPLORATION_MIN_PCT = 0.01   # 1% minimum exploration position
 EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
-EXPLORATION_CAP_30D = 5      # max regime-warming exploration entries / 30d
 BINANCE_MIN_NOTIONAL = 5.0   # Binance minNotional for most pairs (USDT)
 
 
@@ -68,68 +67,6 @@ class KellyPositionSizer:
             except Exception as e:
                 logger.warning(f"Failed to get trade history from DB: {e}")
         return []
-
-    def _exploration_entries_last_30d(self) -> int:
-        """Count regime-warming exploration entries in the last 30 days.
-
-        Slow-bleed guard: if F&G hovers 40-50 while the market drifts
-        down, every closed position would re-trigger another exploratory
-        entry — cumulative drag plus statistical noise. The confidence
-        string is persisted in trade_outcomes.context_json, so one query
-        traces which entries came from this mechanism.
-        """
-        if not self.db:
-            return 0
-        try:
-            import time as _time
-
-            cutoff = _time.time() - 30 * 86400
-            conn = self.db._get_conn()
-            row = conn.execute(
-                """SELECT COUNT(*) FROM trade_outcomes
-                   WHERE context_json LIKE '%regime warming%'
-                     AND entry_time >= ?""",
-                (cutoff,),
-            ).fetchone()
-            return int(row[0]) if row else 0
-        except Exception as e:
-            logger.warning(f"Exploration cap check failed (fail-open): {e}")
-            return 0
-
-    def _detect_regime_improving(self) -> bool:
-        """Conservative check that the macro regime is warming up.
-
-        True only when ALL hold:
-          1. F&G >= 40 (out of deep fear) AND not below yesterday's value
-          2. BTC trend gate tier is not DEEP_BEAR (multiplier > 0)
-
-        Used solely to escape the HIGH-confidence Kelly deadlock: while the
-        system is frozen, no new trades close, so the rolling win-rate window
-        never refreshes -- a stale "proven loser" verdict can veto entries
-        forever even after the regime has changed.
-        """
-        try:
-            from src.data_feed_fng import FearGreedIndex
-
-            hist = FearGreedIndex().get_history(limit=2)
-            if not hist:
-                return False
-            fng_now = float(hist[0].get("value", 0))
-            fng_prev = float(hist[1].get("value", fng_now)) if len(hist) > 1 else fng_now
-            if fng_now < 40 or fng_now < fng_prev:
-                return False
-        except Exception:
-            return False
-        try:
-            # lazy import: avoid circular dependency at module load time
-            from src.trade_executor import _check_btc_trend
-
-            multiplier, _info = _check_btc_trend()
-            if multiplier <= 0:
-                return False
-        except Exception:
-            return False
-        return True
 
     def calculate_kelly_fraction(
         self,
@@ -175,7 +112,6 @@ class KellyPositionSizer:
         signal_score: float = 70,
         use_historical: bool = True,
         surge_alert_level: str = "SILENCE",
-        regime_improving: Optional[bool] = None,
     ) -> Dict:
         """Calculate optimal position size for a trade.
 
@@ -252,66 +188,26 @@ class KellyPositionSizer:
         #   this specific coin/strategy loses money)
         # - Insufficient data + Surge IMMINENT/CONFIRMED → exploration position
         #   (epsilon-greedy: small bet to bootstrap historical data)
-        # - Insufficient data + Surge SILENCE/WATCH/ACCUMULATE → floor (1%)
-        #   NOT a block: Kelly is scale not gate; upstream already approved.
+        # - Insufficient data + Surge SILENCE/WATCH/ACCUMULATE → block
+        #   (correct conservatism when no surge signal supports the risk)
         is_exploration = False
-        regime_escape = False
         if kelly <= 0:
             if confidence == "HIGH":
-                # Sufficient data and Kelly is negative — genuinely bad edge.
-                # One exception: if the macro regime is verifiably warming up
-                # (F&G recovering + BTC gate not DEEP_BEAR), the stale
-                # win-rate verdict should not veto entries forever. Allow ONE
-                # tiny exploratory position to refresh the learning loop.
-                if regime_improving is None:
-                    regime_improving = self._detect_regime_improving()
-                _used = self._exploration_entries_last_30d()
-                if _used >= EXPLORATION_CAP_30D:
-                    logger.info(
-                        f"Kelly deadlock escape: cap reached "
-                        f"({_used}/{EXPLORATION_CAP_30D} in 30d) — staying blocked"
-                    )
-                    return {
-                        "position_pct": 0.0,
-                        "win_rate": round(win_rate, 4),
-                        "reward_risk": round(reward_risk, 2),
-                        "avg_win": round(avg_win, 4),
-                        "avg_loss": round(avg_loss, 4),
-                        "confidence": confidence,
-                        "reason": (
-                            f"escape cap reached ({_used}/{EXPLORATION_CAP_30D} in 30d), "
-                            f"win_rate={win_rate:.1%} stale verdict stands"
-                        ),
-                        "is_exploration": False,
-                    }
-                elif regime_improving:
-                    kelly = max(
-                        EXPLORATION_MIN_PCT,
-                        BINANCE_MIN_NOTIONAL / balance if balance > 0 else EXPLORATION_MIN_PCT,
-                    )
-                    kelly = min(kelly, EXPLORATION_MAX_PCT)
-                    is_exploration = True
-                    regime_escape = True
-                    confidence = "EXPLORATION (regime warming, refreshing stale stats)"
-                    logger.info(
-                        "Kelly deadlock escape: regime warming "
-                        f"(win_rate={win_rate:.1%}), sizing exploratory {kelly:.1%}"
-                    )
-                else:
-                    reason = (
-                        f"Kelly={kelly:.1%} ≤ 0, 不建議交易 "
-                        f"(win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
-                    )
-                    return {
-                        "position_pct": 0.0,
-                        "win_rate": round(win_rate, 4),
-                        "reward_risk": round(reward_risk, 2),
-                        "avg_win": round(avg_win, 4),
-                        "avg_loss": round(avg_loss, 4),
-                        "confidence": confidence,
-                        "reason": reason,
-                        "is_exploration": False,
-                    }
+                # Sufficient data and Kelly is negative — genuinely bad edge
+                reason = (
+                    f"Kelly={kelly:.1%} ≤ 0, 不建議交易 "
+                    f"(win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+                )
+                return {
+                    "position_pct": 0.0,
+                    "win_rate": round(win_rate, 4),
+                    "reward_risk": round(reward_risk, 2),
+                    "avg_win": round(avg_win, 4),
+                    "avg_loss": round(avg_loss, 4),
+                    "confidence": confidence,
+                    "reason": reason,
+                    "is_exploration": False,
+                }
             elif surge_alert_level in ("IMMINENT", "CONFIRMED"):
                 # Surge signals support the trade, but Kelly has insufficient data.
                 # Allow a tiny exploratory position to bootstrap history.
@@ -327,16 +223,21 @@ class KellyPositionSizer:
                     f"bootstrapping history)"
                 )
             else:
-                # Kelly <= 0 with insufficient history and no surge support.
-                # Kelly is a SCALE not a GATE: upstream (signal score threshold,
-                # RegimeGuard, RiskManager, BTC trend gate) already decided this
-                # trade is worth taking. Do NOT block here — fall through to the
-                # MIN_POSITION_PCT floor. Only HIGH-confidence proven-losers block.
-                kelly = 0.0  # floor logic below applies minimum size
+                # Kelly ≤ 0, no surge support — correct conservatism, block
                 reason = (
-                    f"Kelly<=0 (insufficient history, surge={surge_alert_level}); "
-                    f"Kelly is scale not gate, sizing to floor"
+                    f"Kelly={kelly:.1%} ≤ 0, no surge signal "
+                    f"(surge={surge_alert_level}), 保守不交易"
                 )
+                return {
+                    "position_pct": 0.0,
+                    "win_rate": round(win_rate, 4),
+                    "reward_risk": round(reward_risk, 2),
+                    "avg_win": round(avg_win, 4),
+                    "avg_loss": round(avg_loss, 4),
+                    "confidence": "BLOCKED",
+                    "reason": reason,
+                    "is_exploration": False,
+                }
 
         # Apply minimum floor (1%) only for normal (non-exploration) positions
         if not is_exploration and kelly < MIN_POSITION_PCT:
@@ -345,16 +246,10 @@ class KellyPositionSizer:
                 f"Kelly={kelly:.1%} below floor, using min {MIN_POSITION_PCT:.0%}"
             )
         elif is_exploration:
-            if regime_escape:
-                reason = (
-                    f"Exploration position {kelly:.1%} "
-                    f"(regime warming, refreshing stale win-rate stats)"
-                )
-            else:
-                reason = (
-                    f"Exploration position {kelly:.1%} "
-                    f"(surge={surge_alert_level}, cold start)"
-                )
+            reason = (
+                f"Exploration position {kelly:.1%} "
+                f"(surge={surge_alert_level}, cold start)"
+            )
         else:
             reason = (
                 f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
@@ -375,7 +270,7 @@ class KellyPositionSizer:
         self,
         kelly_result: Dict,
         current_positions: int,
-        max_positions: int = 3,  # Aligned with risk_limits.yaml (2026-08-17)
+        max_positions: int = 5,
     ) -> Dict:
         """Light adjustment for portfolio context. Main scaling is in trade_executor."""
         kelly = kelly_result["position_pct"]

@@ -1,13 +1,14 @@
 {
   "pipeline": "weekly_backtest",
-  "timestamp": "2026-08-10T09:30:31",
-  "total_return_pct": -18.74,
-  "total_trades": 1177,
+  "timestamp": "2026-08-17T09:30:34",
+  "total_return_pct": -17.31,
+  "total_trades": 1187,
   "degradation": [
-    "SOL: -20.1% (DD 30.4%)",
-    "ETH: -16.9% (DD 28.2%)",
-    "AVAX: -27.3% (DD 30.6%)",
-    "LINK: -20.4% (DD 28.1%)"
+    "SOL: -13.7% (DD 25.1%)",
+    "ETH: -15.6% (DD 25.4%)",
+    "AVAX: -23.8% (DD 35.8%)",
+    "BNB: -10.2% (DD 16.1%)",
+    "LINK: -23.3% (DD 26.4%)"
   ],
   "has_degradation": true,
   "all_ok": false
