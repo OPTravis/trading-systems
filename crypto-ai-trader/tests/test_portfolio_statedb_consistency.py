@@ -185,6 +185,9 @@ def test_close_position_removes_from_db():
     pm.cash_balance = 5000.0
     pm._last_save_time = 0
 
+    # Persistence test, not sizing: $1000 ADA on $5000 cash = 20% trips the
+    # 10% production cap; loosen so the close-removal path is what's tested
+    pm.config["max_position_pct"] = 100
     pm.add_position("ADAUSDT", quantity=1000.0, entry_price=1.0, strategy="test")
     assert db.portfolio_get("ADAUSDT") is not None
 

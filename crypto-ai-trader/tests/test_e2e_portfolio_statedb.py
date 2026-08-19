@@ -451,6 +451,11 @@ class TestEdgeCases:
         pm = portfolio_with_db
         pm.cash_balance = 50000.0
         pm.config["max_open_positions"] = 2
+        # This test targets the position-COUNT guard, not sizing; loosen the
+        # pct cap so the 3rd add fails on count, not on position size
+        # (risk_limits.yaml tightened max_position_pct to 10 on 08-03, which
+        # made BTC $6000/$50000 = 12% trip first and masked the real path)
+        pm.config["max_position_pct"] = 100
 
         pm.add_position("BTCUSDT", quantity=0.1, entry_price=60000.0, strategy="test")
         pm.add_position("ETHUSDT", quantity=1.0, entry_price=3000.0, strategy="test")
@@ -513,6 +518,9 @@ class TestTradeHistory:
         """Multiple closes should all be recorded."""
         pm = portfolio_with_db
         pm.cash_balance = 100000.0
+        # Persistence test, not sizing: loosen pct cap (production
+        # risk_limits.yaml cap of 10% rejects the 0.2 BTC re-entry)
+        pm.config["max_position_pct"] = 100
 
         pm.add_position("BTCUSDT", quantity=0.1, entry_price=60000.0, strategy="test")
         pm.close_position("BTCUSDT", close_price=65000.0)
@@ -618,6 +626,12 @@ class TestFullCycle:
         db = StateDB(tmp_db_path)
         with patch("src.state_db.get_state_db", return_value=db):
             pm = PortfolioManager(config_path=None, binance_client=None)
+            # Persistence-cycle test, not sizing/count: $600 BNB on ~$1000
+            # cash trips the 10% production cap, and the mock sync already
+            # holds 3 non-dust positions tripping the count cap (both
+            # tightened in risk_limits.yaml on 08-03)
+            pm.config["max_position_pct"] = 100
+            pm.config["max_open_positions"] = 10
             pm.add_position(
                 "BNBUSDT", quantity=1.0, entry_price=600.0, strategy="manual"
             )
