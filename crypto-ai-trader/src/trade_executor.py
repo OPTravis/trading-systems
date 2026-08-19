@@ -1715,7 +1715,19 @@ def execute_auto_trade(
     # price (NOTIONAL filter, applyMinToMarket=true), not our reference
     # price — bumping to exactly minNotional leaves zero buffer and fails
     # -1013 when price drifts even 0.01% (EDENUSDT 2026-08-19).
-    _notional_target = _min_notional * 1.02 + 0.10
+    # FIX 2026-08-19 (#5, -1013 family): the entry SL order is validated at
+    # its LIMIT price = fill × (1 - sl_pct%) × (1 - SL_LIMIT_BUFFER). Sizing
+    # only to the MARKET-buy minimum leaves the SL at ~$4.9 → rejected →
+    # naked position until a trailing-check can place a viable stop, which
+    # for fresh near-min entries (ETHUSDT 22:34, $5.23) never happens.
+    # Size so the SL-limit notional ALSO clears minNotional with margin.
+    _sl_limit_factor = max(
+        (1 - stop_loss_pct / 100.0) * (1 - _RISK_SL_LIMIT_BUFFER_PCT), 0.50
+    )
+    _notional_target = max(
+        _min_notional * 1.02 + 0.10,
+        (_min_notional * 1.02) / _sl_limit_factor,
+    )
     while qty * price < _notional_target:
         qty = round((qty + _step_size) / _step_size) * _step_size
         qty = round(qty, _qty_decimals)

@@ -403,6 +403,8 @@ class TestExecuteAutoTrade:
         tp_levels=None,
         filters=None,
         buy_result=None,
+        kelly_result=None,
+        sl_pct=2.0,
     ):
         bc = _make_bc(usdt_free=usdt_bal, scan_symbol=symbol)
         if buy_result is not None:
@@ -445,17 +447,21 @@ class TestExecuteAutoTrade:
             mock_dlb_inst.get_position_size_multiplier.return_value = 1.0
             mock_ddb.return_value.check_drawdown.return_value = {"drawdown_pct": 0}
             mock_fee.return_value.get_effective_fees.return_value = {"taker_fee": 0.001}
-            mock_kelly.return_value.get_position_size.return_value = {
+            mock_kelly.return_value.get_position_size.return_value = kelly_result or {
                 "position_pct": 0,
                 "confidence": "estimated",
             }
+            # passthrough so kelly_active tests get a real dict back
+            mock_kelly.return_value.adjust_for_portfolio.side_effect = (
+                lambda res, *a, **k: res
+            )
             from main import execute_auto_trade
 
             result = execute_auto_trade(
                 symbol,
                 price,
                 "trend",
-                2.0,
+                sl_pct,
                 tps,
                 price * 0.98,
                 24,
@@ -601,6 +607,56 @@ class TestExecuteAutoTrade:
             },
         )
         assert result["success"] is True
+
+    def test_s26_sl_limit_notional_contract(self):
+        """2026-08-19 (#5, -1013 family): entry sizing must clear minNotional
+        at the SL LIMIT price too (fill x (1-sl_pct) x (1-buffer)). Sizing to
+        the MARKET minimum only left the SL at ~$4.9 -> rejected -> the fresh
+        position rides naked (ETHUSDT 22:34: $5.23 entry, SL notional $4.90).
+        Drives the Kelly exploration path (1.3% of $390 = $5.07 -> bumped at
+        the qty floor), the exact incident shape."""
+        # Real KellyPositionSizer returns position_pct as a fraction (0.013 = 1.3%).
+        # Passing 1.3 once made this test read 129.7% -> exploration cap $19.50 ->
+        # bandit-dependent sizing that masked the bug (flaky false-negative).
+        # Pin the ContextualBandit multiplier too: unmocked, it reads real
+        # machine state and changes sizing between runs/environments.
+        with patch("src.contextual_bandit.get_contextual_bandit") as _mb:
+            _mb.return_value.recommend_size.return_value = 0.8  # DEFAULT_SIZE
+            result, bc = self._run(
+                symbol="ETHUSDT",
+                price=1935.41,
+                usdt_bal=390,
+                kelly_result={
+                    "position_pct": 0.013,
+                    "confidence": "regime warming (win_rate 45.7%)",
+                    "is_exploration": True,
+                },
+                sl_pct=5.0,
+                filters={
+                    "step_size": 0.0001,
+                    "qty_decimals": 4,
+                    "min_qty": 0.0001,
+                    "min_notional": 5.0,
+                },
+            )
+        assert result["success"] is True
+        buy_call = bc.place_market_buy.call_args
+        buy_qty = buy_call.args[1] if len(buy_call.args) > 1 else buy_call.kwargs["quantity"]
+        sl_calls = [
+            c
+            for c in bc.place_order.call_args_list
+            if len(c.args) > 1
+            and c.args[1] == "SELL"
+            and c.kwargs.get("stop_price")
+            and c.kwargs.get("price")
+        ]
+        assert sl_calls, "SL order must be attempted for a fresh entry"
+        for c in sl_calls:
+            sl_limit_notional = buy_qty * c.kwargs["price"]
+            assert sl_limit_notional >= 5.0, (
+                f"SL limit notional ${sl_limit_notional:.2f} < minNotional $5 — "
+                "position would ride naked (see 2026-08-19 ETHUSDT)"
+            )
 
     def test_s20_tp_skipped_notional_too_low(self):
         result, _ = self._run(
