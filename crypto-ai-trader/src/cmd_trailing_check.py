@@ -339,6 +339,24 @@ def cmd_trailing_check():
                 continue  # can't price, skip
             positions.append({"asset": asset, "symbol": symbol, "free": free, "locked": locked, "total": total})
 
+    # ── Reconcile ledger: book exchange SELL fills that nobody recorded ──
+    # (bug family: SL firing leaves outcome 'open' and no SELL trade row;
+    #  must run BEFORE the no-positions early return — a fully closed
+    #  position has no positions entry to trigger it later)
+    try:
+        from scripts.reconcile_fills import reconcile_fills
+
+        recon = reconcile_fills(client=client)
+        recon_summary = []
+        recon_summary.extend(recon.get("patched", []))
+        recon_summary.extend(recon.get("closed_only", []))
+        recon_summary.extend(recon.get("errors", []))
+        recon_summary.extend(recon.get("anomalies", []))
+        if recon_summary:
+            print(_json.dumps({"reconcile_fills": recon_summary}, default=str))
+    except Exception as e:
+        logger.warning("reconcile_fills failed (non-fatal): %s", e)
+
     if not positions:
         # Clean stale trailing data
         for sym in list(ts.get_all().keys()):
