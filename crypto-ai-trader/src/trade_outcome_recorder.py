@@ -114,33 +114,46 @@ class TradeOutcomeRecorder:
             }
         )
 
-        rowid = (
-            self._db._get_conn()
-            .execute(
-                """INSERT INTO trade_outcomes
-            (symbol, entry_time, entry_date, entry_price, qty, score, strategy,
-             factors_json, context_json, status,
-             peak_price, trough_price, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
-                (
-                    symbol,
-                    now,
-                    date_str,
-                    entry_price,
-                    qty,
-                    score,
-                    strategy,
-                    factors_json,
-                    context_json,
-                    entry_price,
-                    entry_price,  # peak = trough = entry initially
-                    now,
-                    now,
-                ),
-            )
-            .lastrowid
-        )
-        self._db._get_conn().commit()
+        # Network-FS flake: SQLite 'disk I/O error' is transient (cf. b9d56d0
+        # DrawdownBreaker fix). A dropped entry row silently breaks cap counts
+        # and outcome accounting — retry once before giving up.
+        rowid = None
+        for _attempt in range(2):
+            try:
+                conn = self._db._get_conn()
+                rowid = conn.execute(
+                    """INSERT INTO trade_outcomes
+                (symbol, entry_time, entry_date, entry_price, qty, score, strategy,
+                 factors_json, context_json, status,
+                 peak_price, trough_price, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
+                    (
+                        symbol,
+                        now,
+                        date_str,
+                        entry_price,
+                        qty,
+                        score,
+                        strategy,
+                        factors_json,
+                        context_json,
+                        entry_price,
+                        entry_price,  # peak = trough = entry initially
+                        now,
+                        now,
+                    ),
+                ).lastrowid
+                conn.commit()
+                break
+            except Exception as _e:
+                if _attempt == 0 and "i/o" in str(_e).lower():
+                    logger.warning(
+                        f"OUTCOME_ENTRY insert I/O flake for {symbol}, "
+                        f"retrying once: {_e}"
+                    )
+                    time.sleep(0.5)
+                    continue
+                raise
 
         logger.info(
             f"OUTCOME_ENTRY: {symbol} entry=${entry_price:.6f} qty={qty} "

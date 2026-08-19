@@ -311,6 +311,34 @@ def count_active_positions(client):
         return -1  # P1-8: fail-closed — return -1 so callers can detect error
 
 
+def _symbol_already_held(client, symbol: str) -> bool:
+    """True if the account holds a non-dust balance of this symbol.
+
+    Duplicate-entry guard: a fresh auto-execute on a held symbol is a
+    duplicate (sub-agent rescan, overlapping scans, or same-symbol repeat
+    within hours). DCA tranches run through a separate engine and switch
+    buys go through _execute_switch — neither is affected.
+    """
+    base = symbol.replace("/USDT", "").replace("USDT", "")
+    try:
+        acct = client.get_account()
+        for b in acct["balances"]:
+            if b["asset"] == base:
+                total = float(b["free"]) + float(b["locked"])
+                if total <= 0:
+                    return False
+                try:
+                    stats = client.get_24hr_stats(symbol)
+                    price = float(stats.get("last_price", 0))
+                    return price <= 0 or total * price >= 5.0
+                except Exception:
+                    return True  # can't price the balance — assume held
+        return False
+    except Exception as e:
+        logger.warning(f"symbol-held check failed for {symbol}: {e}")
+        return False  # don't block trades on a guard failure
+
+
 def _compute_kelly_sizing(
     client,
     symbol: str,
@@ -1412,6 +1440,18 @@ def execute_auto_trade(
         return {
             "success": False,
             "error": f"Max positions reached: {active_positions}/{max_positions}",
+        }
+
+    # Duplicate-entry guard — must come after position counting so the
+    # log trail shows both the count and the held-symbol skip.
+    if _symbol_already_held(client, symbol):
+        logger.info(
+            f"Duplicate-entry guard: already holding {symbol}, "
+            f"skipping fresh auto-execute (rescan/overlap protection)"
+        )
+        return {
+            "success": False,
+            "error": f"Already holding {symbol} — duplicate entry blocked",
         }
 
     # Score below minimum threshold — no trade regardless of Kelly
