@@ -1668,9 +1668,13 @@ def execute_auto_trade(
     qty = round(raw_qty / _step_size) * _step_size
     qty = round(qty, _qty_decimals)
 
-    # Ensure qty meets minNotional after rounding (step size can shave
-    # a fraction below $5, e.g. 0.105 LTC × $47.43 = $4.98 < $5.00)
-    if qty * price < _min_notional:
+    # Ensure qty meets minNotional WITH a safety margin after rounding.
+    # Binance validates MARKET order notional against its own 5-min avg
+    # price (NOTIONAL filter, applyMinToMarket=true), not our reference
+    # price — bumping to exactly minNotional leaves zero buffer and fails
+    # -1013 when price drifts even 0.01% (EDENUSDT 2026-08-19).
+    _notional_target = _min_notional * 1.02 + 0.10
+    while qty * price < _notional_target:
         qty = round((qty + _step_size) / _step_size) * _step_size
         qty = round(qty, _qty_decimals)
 

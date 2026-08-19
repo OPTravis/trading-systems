@@ -40,6 +40,16 @@ def diagnose_and_fix(error_msg: str, context: Optional[dict] = None) -> dict:
         result["fix_result"] = fix_result["msg"]
         return result
 
+    # Pattern 1b: Exchange NOTIONAL filter — order value below exchange
+    # minimum (Binance -1013). Must precede the balance pattern: the
+    # upstream wrapper text says "balance insufficient" even for filter
+    # failures, which caused misdiagnosis (EDENUSDT 2026-08-19).
+    if "notional" in error_lower or "-1013" in error_msg:
+        result["diagnosed"] = True
+        result["diagnosis"] = "Exchange NOTIONAL filter — order below exchange minimum"
+        result["fix_result"] = "Sizing now bumps with margin; retry next cycle"
+        return result
+
     # Pattern 2: Insufficient balance (free=0, locked balance)
     if (
         "insufficient" in error_lower
