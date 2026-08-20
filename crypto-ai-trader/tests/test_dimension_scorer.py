@@ -1,6 +1,8 @@
 """Tests for DimensionScorer — SSR, Seller Exhaustion Constant, and MVRV."""
 
 import math
+import unittest
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -310,3 +312,53 @@ class TestMVRVScoring:
         baseline = self._score_without_mvrv()["score"]
         with_mvrv = self._score_with_mvrv(0.95)["score"]
         assert with_mvrv > baseline + 0.3  # +0.4 increment minus rounding
+
+class TestMvrvFetchParams(unittest.TestCase):
+    """Regression (2026-08-20): literal startday=today returns [] upstream.
+
+    _fetch_mvrv must use explicit ISO dates with a 3-day lookback so the
+    latest published point (>= 1d lag) is included.
+    """
+
+    def test_lookback_dates_and_parse(self):
+        from datetime import date, timedelta
+        import src.dimension_scorer as ds_mod
+
+        ds = DimensionScorer.__new__(DimensionScorer)
+        captured = {}
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return [{"d": "2026-08-19", "mvrv": 1.3248}, {"d": "2026-08-20", "mvrv": 1.31}]
+
+        def fake_get(url, headers=None, params=None, timeout=None):
+            captured["params"] = params
+            return FakeResp()
+
+        with patch.object(ds_mod.requests, "get", side_effect=fake_get), \
+             patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
+            val = ds._fetch_mvrv()
+
+        self.assertEqual(val, 1.31)  # last point, not first
+        self.assertNotIn("today", str(captured["params"].values()))
+        expect_start = (date.today() - timedelta(days=3)).isoformat()
+        self.assertEqual(captured["params"]["startday"], expect_start)
+
+    def test_empty_still_none(self):
+        import src.dimension_scorer as ds_mod
+
+        ds = DimensionScorer.__new__(DimensionScorer)
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return []
+
+        with patch.object(ds_mod.requests, "get", return_value=FakeResp()), \
+             patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
+            self.assertIsNone(ds._fetch_mvrv())

@@ -123,10 +123,17 @@ class DimensionScorer:
 
         try:
             url = "https://api.bitcoin-data.com/v1/mvrv"
+            # 2026-08-20: literal startday=today returns [] (upstream now
+            # publishes with a >=1d lag / exclusive boundary). Use explicit
+            # ISO dates with a 3-day lookback and take the latest point.
+            from datetime import date, timedelta
+
+            _end = date.today()
+            _start = _end - timedelta(days=3)
             resp = requests.get(
                 url,
                 headers={"Authorization": f"Bearer {api_key}"},
-                params={"startday": "today", "endday": "today"},
+                params={"startday": _start.isoformat(), "endday": _end.isoformat()},
                 timeout=8,
             )
             resp.raise_for_status()
