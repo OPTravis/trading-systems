@@ -49,8 +49,49 @@ class StateMixin:
             with self._db.transaction():
                 # Save cash_balance FIRST (foreign-key-like dependency for audit)
                 self._db.portfolio_set_cash_balance(self.cash_balance)
-                # Save all positions
-                for sym, pos in self.positions.items():
+                # FIX 2026-08-20 (bug#8): _save_state used to blind-upsert the
+                # whole in-memory snapshot and DELETE every DB row not in it.
+                # With several cron processes alive at once, a PortfolioManager
+                # holding a snapshot older than a concurrent writer would
+                # resurrect externally-closed rows and bulldoze externally-added
+                # ones (20:32 ACE: stale 27.8 + new BUY 52 -> phantom 79.8).
+                # Guard: each row is written only if the DB has not changed
+                # since we loaded it; newer external state is adopted instead.
+                db_rows = self._db.portfolio_get_all()
+                _write_ts = time.time()
+                for sym, pos in list(self.positions.items()):
+                    db_row = db_rows.get(sym)
+                    known_ts = pos.get("_db_updated_at")  # None => authoritative
+                    if db_row is not None and known_ts is not None:
+                        if float(db_row.get("updated_at") or 0) > float(known_ts) + 1e-6:
+                            # Another process wrote this row after our snapshot:
+                            # do NOT clobber — adopt the DB version and say so.
+                            logger.warning(
+                                "_save_state: %s changed in DB after our snapshot "
+                                "(db updated_at=%.3f > known=%.3f) — adopting DB row, "
+                                "skipping stale upsert",
+                                sym, float(db_row.get("updated_at") or 0), float(known_ts),
+                            )
+                            self.positions[sym] = {
+                                **pos,
+                                "quantity": db_row.get("quantity", pos.get("quantity")),
+                                "entry_price": db_row.get("entry_price", pos.get("entry_price")),
+                                "stop_loss": db_row.get("stop_loss", pos.get("stop_loss")),
+                                "take_profit": db_row.get("take_profit", pos.get("take_profit")),
+                                "_db_updated_at": db_row.get("updated_at"),
+                            }
+                            continue
+                    if db_row is None and known_ts is not None:
+                        # We loaded this symbol earlier but the row is gone:
+                        # another process closed it (e.g. ensure_tp_sl TP close).
+                        # Never resurrect — drop it from memory and log.
+                        logger.warning(
+                            "_save_state: %s was removed from DB after our snapshot "
+                            "(external close) — dropping stale in-memory row",
+                            sym,
+                        )
+                        self.positions.pop(sym, None)
+                        continue
                     self._db.portfolio_set(
                         sym,
                         {
@@ -64,13 +105,30 @@ class StateMixin:
                             "take_profit": pos.get("take_profit"),
                         },
                     )
-                # Remove closed positions from DB
+                    pos["_db_updated_at"] = _write_ts
+                # Remove closed positions from DB — but only rows this manager
+                # actually knows it closed (in _closed_symbols) or that predate
+                # its last snapshot; externally-added rows are left alone.
                 db_positions = self._db.portfolio_get_all()
+                snapshot_ts = float(getattr(self, "_positions_snapshot_ts", 0) or 0)
+                closed = getattr(self, "_closed_symbols", None) or set()
                 for sym in db_positions:
                     if sym not in self.positions:
-                        self._db.portfolio_remove(sym)
+                        row_ts = float(db_positions[sym].get("updated_at") or 0)
+                        if sym in closed or row_ts <= snapshot_ts:
+                            self._db.portfolio_remove(sym)
+                            closed.discard(sym)
+                        else:
+                            logger.warning(
+                                "_save_state: protecting externally-added row %s "
+                                "(updated_at=%.3f > snapshot %.3f) — not deleting",
+                                sym, row_ts, snapshot_ts,
+                            )
+                self._closed_symbols = closed
         except Exception as e:
             logger.error(f"Failed to save portfolio to StateDB: {e}")
+            from src.state_db import record_db_failure as _rdf
+            _rdf("portfolio_state._save_state", f"save failed: {e}")
             raise
 
     def _load_state_from_db(self):
@@ -108,6 +166,7 @@ class StateMixin:
                         "symbol": sym,
                         "quantity": data["quantity"],
                         "entry_price": entry_price,
+                        "_db_updated_at": data.get("updated_at"),  # freshness stamp (bug#8)
                         "current_price": entry_price,
                         "strategy": data.get("strategy", ""),
                         "created_at": data.get("opened_at", datetime.now().isoformat()),
@@ -118,6 +177,10 @@ class StateMixin:
                         "highest_price": entry_price,
                     }
                 logger.info(f"Loaded {len(self.positions)} positions from StateDB")
+            # bug#8: record when this snapshot was taken + forget stale
+            # close-markers so a fresh load starts from DB truth.
+            self._positions_snapshot_ts = time.time()
+            self._closed_symbols = set()
             # Load cash_balance from SQLite kv store
             db_cash = self._db.portfolio_get_cash_balance()
             self.cash_balance = db_cash
@@ -399,6 +462,10 @@ class StateMixin:
             # Set cash balance
             self.cash_balance = usdt_balance
             self._last_save_time = 0
+            # Exchange snapshot is authoritative: stamp snapshot NOW (after the
+            # account fetch, before the save) so pre-sync rows get pruned while
+            # rows written by other processes DURING the sync are protected.
+            self._positions_snapshot_ts = time.time()
             self._save_state(force=True)
 
         except Exception as e:

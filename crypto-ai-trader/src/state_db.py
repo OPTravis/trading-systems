@@ -21,6 +21,7 @@ import os
 import sqlite3
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -57,7 +58,9 @@ class StateDB:
                 try:
                     self._local.conn.commit()
                 except Exception as e:
-                    logger.warning(f"StateDB: commit before recycle failed: {e}")
+                    # LOUD: closing anyway discards any uncommitted writes.
+                    logger.error(f"StateDB: commit before recycle failed: {e}")
+                    record_db_failure("state_db.recycle", f"commit before recycle failed: {e}")
                 try:
                     self._local.conn.close()
                 except Exception:
@@ -70,9 +73,33 @@ class StateDB:
                 str(self.db_path), check_same_thread=False, timeout=30
             )
             self._local.conn.row_factory = sqlite3.Row
-            self._local.conn.execute("PRAGMA journal_mode=DELETE")
-            self._local.conn.execute("PRAGMA synchronous=FULL")
+            # FIX 2026-08-20 (bug#8): busy_timeout FIRST (so the journal-mode
+            # switch itself can wait out concurrent writers), then WAL.
+            # The old config forced journal_mode=DELETE: every commit needed an
+            # EXCLUSIVE file lock + multiple fsyncs while up to three cron
+            # processes (trailing-check */5, ensure_tp_sl, long-running
+            # cron-scan) collided on the same sqlite file at :00/:30 cron
+            # boundaries. WAL lets readers and the writer proceed concurrently
+            # and removes the exclusive-lock fsync storm.
             self._local.conn.execute("PRAGMA busy_timeout=30000")
+            try:
+                mode_row = self._local.conn.execute(
+                    "PRAGMA journal_mode=WAL"
+                ).fetchone()
+                mode = str(mode_row[0]).lower() if mode_row else "unknown"
+                if mode != "wal":
+                    # Switch refused (concurrent holder or unsupported FS).
+                    # Continue on current mode — busy_timeout still applies —
+                    # but say so LOUDLY so ops can see it in cron logs.
+                    logger.warning(
+                        "StateDB: journal_mode stayed '%s' (WAL switch refused: "
+                        "concurrent holder or unsupported FS) — continuing with "
+                        "busy_timeout=30000 only",
+                        mode,
+                    )
+            except Exception as e:
+                logger.warning(f"StateDB: journal_mode=WAL failed: {e}")
+            self._local.conn.execute("PRAGMA synchronous=FULL")
             self._local.conn_created = now
 
             # Run integrity check on new connections (throttled to once per hour)
@@ -140,7 +167,7 @@ class StateDB:
                 )
             return True
         except Exception as e:
-            logger.warning(f"StateDB: commit before recycle failed: {e}")
+            logger.warning(f"StateDB: wal_checkpoint failed: {e}")
             return False
 
     def close(self):
@@ -210,7 +237,7 @@ class StateDB:
         """
         try:
             if backup_path is None:
-                from datetime import datetime
+                from datetime import datetime, timezone
 
                 date_str = datetime.now().strftime("%Y%m%d")
                 backup_path = str(self.db_path.parent / f"state.db.backup.{date_str}")
@@ -1048,3 +1075,75 @@ def get_state_db(db_path: Optional[str] = None) -> StateDB:
             if _state_db_instance is None:
                 _state_db_instance = StateDB(db_path)
     return _state_db_instance
+
+# ==================== DB reliability (bug#8, 2026-08-20) ====================
+# The 20:30 ACE incident: exchange fill OK, all three bookkeeping writes
+# "succeeded" from the process's point of view (no exception -> errors=[]),
+# yet nothing landed in data/state.db. Exception-only retry cannot see a
+# write that is acknowledged and then lost by the storage layer — so critical
+# writes must be VERIFIED by reading them back, and a verified loss must be
+# LOUD (error log + cron_failures.jsonl + non-zero exit upstream).
+
+_PROJECT_ROOT = Path(__file__).parent.parent
+_CRON_FAILURES_FILE = _PROJECT_ROOT / "logs" / "cron_failures.jsonl"
+
+
+def record_db_failure(job: str, detail: str) -> None:
+    """Append a DB-write failure to logs/cron_failures.jsonl (same channel
+    the cron wrappers already use for non-zero exits), so silent bookkeeping
+    gaps become visible to monitoring."""
+    try:
+        # env override keeps tests from polluting the production log
+        import os as _os
+        _target = _os.environ.get("CRON_FAILURES_FILE")
+        _file = Path(_target) if _target else _CRON_FAILURES_FILE
+        _file.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "job": job,
+            "type": "db_write_failure",
+            "detail": detail[:2000],
+        }
+        with open(_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:  # never let failure-recording kill the writer
+        logger.error(f"record_db_failure could not append: {e}")
+
+
+def db_write_with_verify(
+    db,
+    write_fn,
+    verify_fn,
+    label: str,
+    attempts: int = 3,
+    backoff_sec: float = 1.0,
+) -> bool:
+    """Run a critical DB write, then CONFIRM it landed by reading it back.
+
+    - write_fn(): performs execute+commit (may raise -> retried)
+    - verify_fn(): returns truthy iff the effect is durably visible
+    - A write that "succeeds" but does not verify counts as a FAILED attempt
+      (this is the class of failure that produced bug#8's errors=[] output).
+    - On final failure: logger.error + record_db_failure() + return False.
+      Caller is expected to escalate further (errors[] in cron JSON, Feishu,
+      non-zero exit code).
+    """
+    last_err = None
+    for i in range(attempts):
+        try:
+            write_fn()
+            if verify_fn():
+                return True
+            last_err = "committed but read-back verification found no effect"
+            logger.error(
+                f"{label}: attempt {i + 1}/{attempts} SILENT WRITE LOSS "
+                f"(commit returned but data not visible) — retrying"
+            )
+        except Exception as e:
+            last_err = e
+            logger.warning(f"{label}: attempt {i + 1}/{attempts} failed: {e}")
+        time.sleep(backoff_sec)
+    logger.error(f"{label}: FAILED {attempts}x ({last_err}) — data gap requires attention")
+    record_db_failure(label, f"failed {attempts}x: {last_err}")
+    return False
+

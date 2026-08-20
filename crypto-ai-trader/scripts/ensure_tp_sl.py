@@ -37,7 +37,7 @@ def _is_stop_order(o):
     return 'STOP' in t.upper() or 'stop' in t.lower()
 
 from src.binance_client import BinanceClient
-from src.state_db import get_state_db
+from src.state_db import get_state_db, db_write_with_verify
 from src.trade_outcome_recorder import TradeOutcomeRecorder
 
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
@@ -137,6 +137,10 @@ def main():
     positions = get_positions_with_targets()
     fixes = []
     errors = []
+    # critical_failures > 0 => script exits non-zero so run_ensure_tp_sl.sh
+    # appends to logs/cron_failures.jsonl (monitoring) — bug#8: previously
+    # the script always exited 0 even when bookkeeping writes were lost.
+    critical_failures = 0
 
     # ── Sync check: remove DB positions that no longer exist on Binance ──
     try:
@@ -624,22 +628,14 @@ def main():
                     else:
                         trade_pnl = 0.0
 
-                    def _db_retry(label, fn, attempts=2):
-                        last_err = None
-                        for i in range(attempts):
-                            try:
-                                fn()
-                                return True
-                            except Exception as e:
-                                last_err = e
-                                logger.warning(
-                                    f"{label} failed for {sym} (attempt {i + 1}/{attempts}): {e}"
-                                )
-                                time.sleep(1.0)
-                        errors.append(
-                            f"{sym}: {label}失敗{attempts}次 ({last_err}) — 交易已成交，DB帳務缺口需人工修補"
-                        )
-                        return False
+                    # FIX 2026-08-20 (bug#8): exception-only retry could not
+                    # see writes that commit() acknowledges but the storage
+                    # layer then loses (20:30 ACE close: errors=[] yet no row
+                    # landed). Every critical write is now followed by a
+                    # read-back verification; a verified loss retries and, on
+                    # final failure, escalates LOUDLY: errors[] (cron JSON) +
+                    # logger.error + logs/cron_failures.jsonl + non-zero exit.
+                    _sell_ts = time.time()
 
                     def _insert_sell_row():
                         db = get_state_db()
@@ -647,9 +643,18 @@ def main():
                         conn.execute(
                             "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
                             "VALUES (?, 'SELL', ?, ?, ?, ?)",
-                            (sym, sell_qty, current_price, trade_pnl, time.time()),
+                            (sym, sell_qty, current_price, trade_pnl, _sell_ts),
                         )
                         conn.commit()
+
+                    def _verify_sell_row():
+                        db = get_state_db()
+                        row = db._get_conn().execute(
+                            "SELECT 1 FROM trades WHERE symbol = ? AND side = 'SELL' "
+                            "AND ABS(timestamp - ?) < 5 LIMIT 1",
+                            (sym, _sell_ts),
+                        ).fetchone()
+                        return row is not None
 
                     def _record_outcome():
                         db = get_state_db()
@@ -660,6 +665,15 @@ def main():
                             exit_reason="tp_breach",
                         )
 
+                    def _verify_outcome_closed():
+                        db = get_state_db()
+                        row = db._get_conn().execute(
+                            "SELECT status FROM trade_outcomes WHERE symbol = ? "
+                            "AND status = 'closed' ORDER BY updated_at DESC LIMIT 1",
+                            (sym,),
+                        ).fetchone()
+                        return row is not None
+
                     def _delete_rows():
                         db = get_state_db()
                         conn = db._get_conn()
@@ -667,16 +681,41 @@ def main():
                         conn.execute("DELETE FROM trailing_stop WHERE symbol = ?", (sym,))
                         conn.commit()
 
-                    _ok_sell = _db_retry("SELL trade INSERT", _insert_sell_row)
-                    _ok_outcome = _db_retry("outcome close", _record_outcome)
-                    _db_retry("portfolio cleanup", _delete_rows)
+                    def _verify_rows_gone():
+                        db = get_state_db()
+                        row = db._get_conn().execute(
+                            "SELECT 1 FROM portfolio WHERE symbol = ? LIMIT 1", (sym,)
+                        ).fetchone()
+                        return row is None
 
-                    if not (_ok_sell and _ok_outcome):
+                    _ok_sell = db_write_with_verify(
+                        db=get_state_db(), write_fn=_insert_sell_row,
+                        verify_fn=_verify_sell_row,
+                        label=f"ensure_tp_sl[{sym}] SELL trade INSERT",
+                        attempts=3, backoff_sec=1.0,
+                    )
+                    _ok_outcome = db_write_with_verify(
+                        db=get_state_db(), write_fn=_record_outcome,
+                        verify_fn=_verify_outcome_closed,
+                        label=f"ensure_tp_sl[{sym}] outcome close",
+                        attempts=3, backoff_sec=1.0,
+                    )
+                    _ok_cleanup = db_write_with_verify(
+                        db=get_state_db(), write_fn=_delete_rows,
+                        verify_fn=_verify_rows_gone,
+                        label=f"ensure_tp_sl[{sym}] portfolio cleanup",
+                        attempts=3, backoff_sec=1.0,
+                    )
+                    if not (_ok_sell and _ok_outcome and _ok_cleanup):
+                        critical_failures += 1
+
+                    if not (_ok_sell and _ok_outcome and _ok_cleanup):
                         try:
                             from src.notifier import FeishuNotifier
                             FeishuNotifier().send_text(
-                                f"🟠 ensure_tp_sl: {sym} 平倉已成交但DB寫入失敗 "
-                                f"(sell={_ok_sell}, outcome={_ok_outcome})，請核對 trades/outcomes/portfolio"
+                                f"🔴 ensure_tp_sl: {sym} 平倉已成交但DB寫入失敗 "
+                                f"(sell={_ok_sell}, outcome={_ok_outcome}, "
+                                f"cleanup={_ok_cleanup})，請核對 trades/outcomes/portfolio"
                             )
                         except Exception as ne:
                             logger.error(f"DB-failure alert send failed: {ne}")
@@ -684,6 +723,7 @@ def main():
                     # MARKET orders usually fill immediately; if not FILLED, log error
                     status = result.get("status") if result else "None"
                     errors.append(f"{sym}: 市價平倉失敗，訂單狀態: {status}")
+                    critical_failures += 1
             except Exception as e:
                 errors.append(f"{sym}: TP過價自動平倉失敗 ({e})")
 
@@ -808,7 +848,8 @@ def main():
     # ── Output ──
     result = {"fixes": fixes, "errors": errors}
     print(json.dumps(result, ensure_ascii=False))
+    return 1 if critical_failures > 0 else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

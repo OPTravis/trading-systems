@@ -29,23 +29,49 @@ def _asset_of(symbol: str) -> str:
     return symbol[:-4] if symbol.endswith("USDT") else symbol
 
 
-def _db_retry(label: str, fn, errors, attempts=2):
-    """Run a DB write with one retry; escalate to errors[] on double failure
-    (same pattern as scripts/ensure_tp_sl.py)."""
-    last_err = None
-    for i in range(attempts):
-        try:
-            fn()
-            return True
-        except Exception as e:
-            last_err = e
-            logger.warning(f"{label} failed (attempt {i + 1}/{attempts}): {e}")
-            time.sleep(1.0)
-    errors.append(
-        f"{label} failed {attempts}x ({last_err}) — exchange fill exists but "
-        f"DB bookkeeping gap needs manual patch"
+def _sell_booked(db, symbol: str, fill_ts: float) -> bool:
+    """Read-back check: was the SELL row durably written?"""
+    try:
+        row = db._get_conn().execute(
+            "SELECT 1 FROM trades WHERE symbol = ? AND side = 'SELL' "
+            "AND ABS(timestamp - ?) < 0.001 LIMIT 1",
+            (symbol, fill_ts),
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
+def _outcome_closed(db, oid: int) -> bool:
+    """Read-back check: is the outcome row actually closed?"""
+    try:
+        row = db._get_conn().execute(
+            "SELECT 1 FROM trade_outcomes WHERE id = ? AND status = 'closed'",
+            (oid,),
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
+def _verified_write(db, write_fn, verify_fn, label: str, errors, attempts: int = 3) -> bool:
+    """Run a critical ledger write THROUGH src.state_db.db_write_with_verify
+    (commit + read-back verification + loud escalation via cron_failures.jsonl)
+    and mirror the final failure into this job's errors[] output.
+    bug#8: exception-only retry could not detect writes that commit() had
+    acknowledged but the storage layer then dropped."""
+    from src.state_db import db_write_with_verify
+
+    ok = db_write_with_verify(
+        db=db, write_fn=write_fn, verify_fn=verify_fn,
+        label=label, attempts=attempts, backoff_sec=1.0,
     )
-    return False
+    if not ok:
+        errors.append(
+            f"{label} failed {attempts}x — exchange fill exists but "
+            f"DB bookkeeping gap needs manual patch"
+        )
+    return ok
 
 
 def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
@@ -173,7 +199,13 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
 
             if dry_run:
                 out["closed_only"].append(f"[dry] {symbol}#{oid} close-only @ ${exit_price:.6f}")
-            elif _db_retry(f"{symbol}#{oid} outcome close", _close, out["errors"]):
+            elif _verified_write(
+                db,
+                write_fn=_close,
+                verify_fn=lambda: _outcome_closed(db, oid),
+                label=f"reconcile_fills {symbol}#{oid} outcome close",
+                errors=out["errors"],
+            ):
                 out["closed_only"].append(
                     f"{symbol}#{oid}: outcome closed @ ${exit_price:.6f} ({exit_reason})"
                 )
@@ -205,8 +237,20 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
             )
             continue
 
-        ok_sell = _db_retry(f"{symbol}#{oid} SELL trade INSERT", _insert_sell, out["errors"])
-        ok_out = _db_retry(f"{symbol}#{oid} outcome close", _close_outcome, out["errors"])
+        ok_sell = _verified_write(
+            db,
+            write_fn=_insert_sell,
+            verify_fn=lambda: _sell_booked(db, symbol, last_fill_ts),
+            label=f"reconcile_fills {symbol}#{oid} SELL trade INSERT",
+            errors=out["errors"],
+        )
+        ok_out = _verified_write(
+            db,
+            write_fn=_close_outcome,
+            verify_fn=lambda: _outcome_closed(db, oid),
+            label=f"reconcile_fills {symbol}#{oid} outcome close",
+            errors=out["errors"],
+        )
         if ok_sell and ok_out:
             out["patched"].append(
                 f"{symbol}#{oid}: booked SELL {exit_qty:.6f} @ ${exit_price:.6f} "

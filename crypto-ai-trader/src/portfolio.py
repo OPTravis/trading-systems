@@ -347,6 +347,10 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             if symbol not in self.positions:
                 return {"success": False, "error": f"No position for {symbol}"}
             pos = self.positions.pop(symbol)
+            # bug#8: mark as closed BY THIS MANAGER so _save_state's delete
+            # step removes it even if its DB updated_at is newer than our
+            # snapshot (we wrote that update ourselves before closing).
+            self._closed_symbols = getattr(self, "_closed_symbols", set()) | {symbol}
 
         pos["closed_at"] = datetime.now().isoformat()
 
