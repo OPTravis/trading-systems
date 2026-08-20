@@ -9,7 +9,7 @@ import os
 from src.notifier import FeishuNotifier, send_signal, _append_notification
 from src.paper_trader import get_trading_client, is_paper_mode
 from src.pending_confirmation import clear_pending, save_pending
-from src.trade_executor import execute_auto_trade
+from src.trade_executor import execute_auto_trade, _RISK_MAX_ACTIVE_POSITIONS
 from src.trade_journal import TradeJournal
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def _step_execute_trades(ctx):
     lines = [
         f"🎯 {ctx['symbol']} (Score: {ctx['score']}→{int(ctx['adjusted_score'])} | {ctx['tier_label']})",
         f"市場: {ctx['regime']} | F&G: {ctx['fng']} ({ctx['fng_label']}) | BTC: {ctx['btc_trend']}",
-        f"活躍持倉: {ctx['active_pos']}/3",
+        f"活躍持倉: {ctx['active_pos']}/{_RISK_MAX_ACTIVE_POSITIONS}",
         "",
         f"策略: {ctx['strategy'].upper()} (自適應)",
         f"當前價格: ${ctx['price']:.6f}",

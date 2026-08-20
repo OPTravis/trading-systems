@@ -117,7 +117,7 @@ stepwise_drawdown:
 trade_executor:
   min_stop_loss_pct: 3.0             # hard minimum SL%; never allow SL below this
   max_single_loss_pct: 5.0           # maximum single trade loss as % of position
-  max_active_positions: 3            # maximum concurrent open positions (aligned with risk_limits.yaml 2026-08-17)
+  max_active_positions: 5            # maximum concurrent open positions (3->5 CONFIRMED_BULL 2026-08-20; aligned with risk_limits.yaml — fix: this is the REAL executor gate, risk_limits.yaml only feeds Portfolio display)
   sl_limit_buffer_pct: 0.015         # 1.5% buffer below SL trigger price (ensures limit fill)
 
 # === Risk Limits (from risk_limits.yaml — reference only) ===
