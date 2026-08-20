@@ -22,11 +22,25 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+# MVRV is a daily-published metric (>=1d upstream lag) and the BGeometrics
+# free tier allows only 15 requests/day. Hourly scans would burn 24+/day,
+# so the last successful fetch is cached; failures are never cached.
+_MVRV_CACHE: Dict[str, Any] = {"value": None, "fetched_at": 0.0}
+MVRV_CACHE_TTL_SEC = 6 * 3600  # data updates once daily; 6h staleness is fine
+
+
+def _reset_mvrv_cache() -> None:
+    """Test hook: clear the MVRV cache."""
+    _MVRV_CACHE["value"] = None
+    _MVRV_CACHE["fetched_at"] = 0.0
 
 
 class DimensionScorer:
@@ -121,6 +135,11 @@ class DimensionScorer:
             logger.debug("BGEOMETRICS_API_KEY not set, skipping MVRV")
             return None
 
+        if _MVRV_CACHE["value"] is not None and (
+            time.time() - _MVRV_CACHE["fetched_at"] < MVRV_CACHE_TTL_SEC
+        ):
+            return float(_MVRV_CACHE["value"])
+
         try:
             url = "https://api.bitcoin-data.com/v1/mvrv"
             # 2026-08-20: literal startday=today returns [] (upstream now
@@ -139,7 +158,10 @@ class DimensionScorer:
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, list) and data:
-                return float(data[-1].get("mvrv", 0))
+                val = float(data[-1].get("mvrv", 0))
+                _MVRV_CACHE["value"] = val
+                _MVRV_CACHE["fetched_at"] = time.time()
+                return val
             logger.warning("MVRV API returned empty or unexpected format")
             return None
         except Exception as e:

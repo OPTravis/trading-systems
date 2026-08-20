@@ -338,6 +338,7 @@ class TestMvrvFetchParams(unittest.TestCase):
             captured["params"] = params
             return FakeResp()
 
+        ds_mod._reset_mvrv_cache()
         with patch.object(ds_mod.requests, "get", side_effect=fake_get), \
              patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
             val = ds._fetch_mvrv()
@@ -359,6 +360,45 @@ class TestMvrvFetchParams(unittest.TestCase):
             def json(self):
                 return []
 
+        ds_mod._reset_mvrv_cache()
         with patch.object(ds_mod.requests, "get", return_value=FakeResp()), \
              patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
             self.assertIsNone(ds._fetch_mvrv())
+
+    def test_cache_hit_skips_api_call(self):
+        """Within TTL, _fetch_mvrv must serve from cache without any HTTP."""
+        import src.dimension_scorer as ds_mod
+
+        ds_mod._reset_mvrv_cache()
+        ds_mod._MVRV_CACHE["value"] = 1.5
+        ds_mod._MVRV_CACHE["fetched_at"] = ds_mod.time.time()
+
+        def _boom(*a, **kw):
+            raise AssertionError("HTTP should not be called within TTL")
+
+        ds = DimensionScorer.__new__(DimensionScorer)
+        with patch.object(ds_mod.requests, "get", side_effect=_boom), \
+             patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
+            self.assertEqual(ds._fetch_mvrv(), 1.5)
+
+    def test_cache_expiry_refetches(self):
+        """After TTL, the next call must hit the API again (daily refresh)."""
+        import src.dimension_scorer as ds_mod
+
+        ds_mod._reset_mvrv_cache()
+        ds_mod._MVRV_CACHE["value"] = 1.5
+        ds_mod._MVRV_CACHE["fetched_at"] = (
+            ds_mod.time.time() - ds_mod.MVRV_CACHE_TTL_SEC - 1
+        )
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return [{"d": "2026-08-19", "mvrv": 1.4}]
+
+        ds = DimensionScorer.__new__(DimensionScorer)
+        with patch.object(ds_mod.requests, "get", return_value=FakeResp()), \
+             patch.dict(ds_mod.os.environ, {"BGEOMETRICS_API_KEY": "k"}):
+            self.assertEqual(ds._fetch_mvrv(), 1.4)
