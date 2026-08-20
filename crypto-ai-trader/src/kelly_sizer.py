@@ -32,7 +32,12 @@ MIN_POSITION_PCT = 0.01  # Minimum position floor (1% — Kelly is a scale, not 
 # to bootstrap historical data. Think epsilon-greedy exploration budget.
 EXPLORATION_MIN_PCT = 0.01   # 1% minimum exploration position
 EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
-EXPLORATION_CAP_30D = 5      # max regime-warming exploration entries / 30d
+# 2026-08-20 weekly review: raised 5 -> 8. Regime turned (BTC CONFIRMED_BULL,
+# F&G 62 Greed) and escape entries so far 4W/1L (+~$1.5 net on ~$5 positions).
+# The cap exists to stop runaway exploration in a fake warming; 8/30d with
+# 1-2% sizing keeps worst-case added exposure ~$50 while letting the stale
+# win-rate window refresh during a genuine regime turn.
+EXPLORATION_CAP_30D = 8      # max regime-warming exploration entries / 30d
 BINANCE_MIN_NOTIONAL = 5.0   # Binance minNotional for most pairs (USDT)
 
 

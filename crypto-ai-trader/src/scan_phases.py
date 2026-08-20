@@ -919,11 +919,34 @@ def _step_scan_opportunities():
     ctx_pre_decay = _pre_decay_threshold
 
     # ===== Write back no_signal_tracker =====
+    # Race guard (bug#7 2026-08-20): trade_executor may have RESET the tracker
+    # on disk mid-scan (after a successful auto-execute). Blindly writing back
+    # the stale in-memory copy would silently erase that reset and keep the
+    # time-decay counter frozen at its pre-trade value (-10 forever while the
+    # system actually trades daily). Re-read disk state first and keep
+    # whichever last_trade_date is newer.
     try:
         if _tracker and "last_scan_date" in _tracker:
-            _final_opps = len(opportunities) if opportunities else 0
-            # If opportunities found and might lead to trades, don't increment counter
-            # The counter tracks "no actionable signal" days
+            _mem_trade_date = _tracker.get("last_trade_date")
+            _disk_trade_date = None
+            try:
+                if os.path.exists(_tracker_path):
+                    with open(_tracker_path) as _f:
+                        _disk = _json.load(_f)
+                    _disk_trade_date = _disk.get("last_trade_date")
+            except Exception:
+                _disk = None
+            if _disk_trade_date and (
+                not _mem_trade_date or _disk_trade_date > _mem_trade_date
+            ):
+                # A trade executed during this scan — preserve the executor reset
+                _disk["last_scan_date"] = _tracker["last_scan_date"]
+                _tracker = _disk
+                logger.info(
+                    "TIME_DECAY: mid-scan trade detected (last_trade_date=%s) — "
+                    "preserving executor tracker reset",
+                    _disk_trade_date,
+                )
             with open(_tracker_path, "w") as _fw:
                 _json.dump(_tracker, _fw, indent=2)
     except Exception:
