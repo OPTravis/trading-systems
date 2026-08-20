@@ -31,11 +31,27 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+# 2026-08-21 bug#10: per-endpoint cache. Same root cause as 5dce933 —
+# literal startday="today" returns [] since upstream publishes with a >=1d
+# lag. Surge detect() fires 3 endpoints per scan and hourly bull-window
+# scans would burn 72 req/day against a 15/day quota. Success cached 8h
+# (data updates ~daily), failure cached 2h (bounded retry).
+_BGE_CACHE: Dict[str, Dict[str, Any]] = {}
+BGE_CACHE_TTL_SEC = 8 * 3600
+BGE_FAIL_TTL_SEC = 2 * 3600
+
+
+def reset_bge_cache() -> None:
+    """Test hook: clear the per-endpoint BGeometrics cache."""
+    _BGE_CACHE.clear()
 
 
 class SurgeDetector:
@@ -283,14 +299,12 @@ class SurgeDetector:
             "should_alert": should_alert,
             "summary": summary.strip(),
         }
-
     def _fetch_bgeometrics(self, endpoint: str) -> Optional[float]:
-        """Fetch latest value from BGeometrics API.
+        """Fetch latest value from BGeometrics API, with per-endpoint cache.
 
-        Free tier: 10 req/h, 15 req/day.
-        surge_detector.detect() calls this 3 times (mvrv/sopr/nupl).
-        Combined with DimensionScorer._fetch_mvrv(), that's 4 calls/scan.
-        At max 12 scans/day → 48 calls/day, within 15*31=465 monthly budget.
+        Free tier: 10 req/h, 15 req/day. Surge detect() calls this 3x
+        (mvrv/sopr/nupl) per scan; with hourly bull-window scans an
+        uncached path would burn ~72 req/day. Success TTL 8h, fail TTL 2h.
 
         Args:
             endpoint: One of "/mvrv", "/sopr", "/nupl".
@@ -302,29 +316,45 @@ class SurgeDetector:
         if not api_key:
             return None
 
+        now = time.time()
+        cached = _BGE_CACHE.get(endpoint)
+        if cached:
+            ttl = BGE_CACHE_TTL_SEC if cached.get("value") is not None else BGE_FAIL_TTL_SEC
+            if now - cached.get("fetched_at", 0) < ttl:
+                return cached.get("value")
+
         try:
             url = f"https://api.bitcoin-data.com/v1{endpoint}"
+            # 2026-08-21 bug#10 (same as 5dce933): literal startday=today
+            # returns [] — upstream now publishes with a >=1d lag. Use
+            # explicit ISO dates with a 3-day lookback, take latest point.
+            _end = date.today()
+            _start = _end - timedelta(days=3)
             resp = requests.get(
                 url,
                 headers={"Authorization": f"Bearer {api_key}"},
-                params={"startday": "today", "endday": "today"},
+                params={"startday": _start.isoformat(), "endday": _end.isoformat()},
                 timeout=8,
             )
             if resp.status_code != 200:
                 logger.debug(f"BGeometrics {endpoint} returned {resp.status_code}")
+                _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
                 return None
 
             data = resp.json()
             if isinstance(data, list) and data:
-                # Extract the value from the most recent entry
-                # Response format: [{"d": "2026-07-09", "mvrv": 1.2019, ...}]
+                # Response format: [{"d": "2026-08-19", "mvrv": 1.3248, ...}]
                 latest = data[-1]
-                # The value key matches the endpoint name
                 val_key = endpoint.strip("/")
                 val = latest.get(val_key)
                 if val is not None:
-                    return float(val)
+                    val = float(val)
+                    _BGE_CACHE[endpoint] = {"value": val, "fetched_at": now}
+                    return val
+            logger.warning(f"BGeometrics {endpoint} returned empty or unexpected format")
+            _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
             return None
         except Exception as e:
             logger.debug(f"BGeometrics {endpoint} fetch failed: {e}")
+            _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
             return None

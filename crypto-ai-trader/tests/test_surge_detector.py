@@ -303,3 +303,74 @@ class TestSummary:
         result = detector.detect(fng=15, btc_rsi=25)
         assert "MVRV" in result["summary"]
         assert "F&G" in result["summary"]
+
+
+class TestBGeometricsCache:
+    """bug#10: literal startday=today fix + per-endpoint cache + fail TTL."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, monkeypatch):
+        monkeypatch.setenv("BGEOMETRICS_API_KEY", "test-key")
+        from src.surge_detector import reset_bge_cache
+        reset_bge_cache()
+        yield
+        reset_bge_cache()
+
+    def _fetch(self):
+        from src.surge_detector import SurgeDetector
+        return SurgeDetector()._fetch_bgeometrics("/mvrv")
+
+    @patch("src.surge_detector.requests.get")
+    def test_date_params_3day_lookback_no_literal_today(self, mock_get):
+        from datetime import date, timedelta
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = [{"d": "2026-08-19", "mvrv": 1.32}]
+        val = self._fetch()
+        assert val == 1.32
+        params = mock_get.call_args.kwargs["params"]
+        assert params["startday"] == (date.today() - timedelta(days=3)).isoformat()
+        assert params["endday"] == date.today().isoformat()
+        assert "today" not in params.values()
+
+    @patch("src.surge_detector.requests.get")
+    def test_success_cached_single_http_call(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = [{"d": "2026-08-19", "mvrv": 1.32}]
+        assert self._fetch() == 1.32
+        assert self._fetch() == 1.32
+        assert mock_get.call_count == 1
+
+    @patch("src.surge_detector.requests.get")
+    def test_success_ttl_expiry_refetches(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = [{"d": "2026-08-19", "mvrv": 1.32}]
+        self._fetch()
+        from src.surge_detector import _BGE_CACHE, BGE_CACHE_TTL_SEC
+        _BGE_CACHE["/mvrv"]["fetched_at"] -= BGE_CACHE_TTL_SEC + 60
+        self._fetch()
+        assert mock_get.call_count == 2
+
+    @patch("src.surge_detector.requests.get")
+    def test_failure_cached_short_ttl(self, mock_get):
+        mock_get.return_value.status_code = 429
+        mock_get.return_value.json.return_value = []
+        assert self._fetch() is None
+        assert self._fetch() is None  # cached None, no extra HTTP
+        assert mock_get.call_count == 1
+        from src.surge_detector import _BGE_CACHE, BGE_FAIL_TTL_SEC
+        assert _BGE_CACHE["/mvrv"]["value"] is None
+        _BGE_CACHE["/mvrv"]["fetched_at"] -= BGE_FAIL_TTL_SEC + 60
+        assert self._fetch() is None  # retried after fail TTL
+        assert mock_get.call_count == 2
+
+    @patch("src.surge_detector.requests.get")
+    def test_empty_list_cached_as_failure(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = []
+        assert self._fetch() is None
+        assert self._fetch() is None
+        assert mock_get.call_count == 1
+
+    def test_no_api_key_returns_none(self, monkeypatch):
+        monkeypatch.delenv("BGEOMETRICS_API_KEY", raising=False)
+        assert self._fetch() is None

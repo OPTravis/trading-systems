@@ -36,6 +36,13 @@ FREQ_MAP = {
 
 LAST_SCAN_FILE = "data/last_scan_ts.json"
 
+# 2026-08-21: hourly calendar fires land on the 1h boundary measured from
+# last gate pass (saved at scan start). Without grace, elapsed=59m59s
+# skips the fire and the effective cadence falls back to every OTHER hour
+# (observed 00:26 fire skipped after 23:26 scan). 10-minute grace keeps
+# the gate's waste-prevention role while letting boundary fires through.
+GATE_GRACE_HOURS = 10 / 60
+
 
 def get_last_scan_ts():
     """Get last scan timestamp from file."""
@@ -107,12 +114,14 @@ def main():
     last_ts = get_last_scan_ts()
     elapsed_hours = (time.time() - last_ts) / 3600 if last_ts else 999
 
-    if elapsed_hours < interval_hours:
-        remaining = interval_hours - elapsed_hours
+    threshold = max(interval_hours - GATE_GRACE_HOURS, 0)
+    if elapsed_hours < threshold:
+        remaining = threshold - elapsed_hours
         logger.info(
             f"DynamicGate: SKIP — F&G={fng} ({label}), "
-            f"elapsed={elapsed_hours:.1f}h < interval={interval_hours}h, "
-            f"next scan in {remaining:.1f}h"
+            f"elapsed={elapsed_hours:.2f}h < threshold={threshold:.2f}h "
+            f"(interval={interval_hours}h − {GATE_GRACE_HOURS*60:.0f}m grace), "
+            f"next scan in {remaining:.2f}h"
         )
         sys.exit(1)
     else:
