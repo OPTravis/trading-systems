@@ -30,7 +30,8 @@ def _sizer():
 def _run(regime_improving):
     k = _sizer()
     with patch.object(KellyPositionSizer, "_get_trade_history", return_value=list(FAKE_TRADES)), \
-         patch.object(KellyPositionSizer, "_detect_regime_improving", return_value=regime_improving):
+         patch.object(KellyPositionSizer, "_detect_regime_improving", return_value=regime_improving), \
+         patch.object(KellyPositionSizer, "_btc_confirmed_bull", return_value=False):
         return k.get_position_size(
             symbol="TESTUSDT",
             balance=390.0,
@@ -61,6 +62,7 @@ def test_regime_warming_allows_tiny_exploration():
 def test_auto_detect_called_when_param_none():
     k = _sizer()
     with patch.object(KellyPositionSizer, "_get_trade_history", return_value=list(FAKE_TRADES)), \
+         patch.object(KellyPositionSizer, "_btc_confirmed_bull", return_value=False), \
          patch.object(
              KellyPositionSizer, "_detect_regime_improving", return_value=True
          ) as detect:
@@ -79,6 +81,7 @@ def test_auto_detect_called_when_param_none():
 def _run_capped(regime_improving, used):
     k = _sizer()
     with patch.object(KellyPositionSizer, "_get_trade_history", return_value=list(FAKE_TRADES)), \
+         patch.object(KellyPositionSizer, "_btc_confirmed_bull", return_value=False), \
          patch.object(KellyPositionSizer, "_detect_regime_improving", return_value=regime_improving), \
          patch.object(KellyPositionSizer, "_exploration_entries_last_30d", return_value=used):
         return k.get_position_size(

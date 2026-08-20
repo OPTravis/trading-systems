@@ -38,6 +38,14 @@ EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
 # 1-2% sizing keeps worst-case added exposure ~$50 while letting the stale
 # win-rate window refresh during a genuine regime turn.
 EXPLORATION_CAP_30D = 8      # max regime-warming exploration entries / 30d
+
+# 2026-08-20 Leo directive ("confirmed bull — don't miss any chances"):
+# when the BTC trend gate tier is CONFIRMED_BULL, size off the most recent
+# regime-matched window instead of the all-history window that is dominated
+# by bear-market losses. Confidence still reflects the TOTAL sample size.
+# Self-correcting: if the bull fails, recent losses drag this window
+# negative and sizing collapses back to floor/exploration paths.
+BULL_REGIME_WINDOW = 20       # rolling trade window used in CONFIRMED_BULL
 BINANCE_MIN_NOTIONAL = 5.0   # Binance minNotional for most pairs (USDT)
 
 
@@ -51,7 +59,7 @@ class KellyPositionSizer:
         self._cache_ttl = 300  # 5 minutes
 
     def _get_trade_history(
-        self, symbol: Optional[str] = None, min_trades: int = 5
+        self, symbol: Optional[str] = None, min_trades: int = 5, limit: int = 100
     ) -> List[Dict]:
         """Fetch recent trade history for win rate calculation."""
         if self.db:
@@ -63,7 +71,7 @@ class KellyPositionSizer:
                        FROM trade_outcomes
                        WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
                        ORDER BY entry_time DESC LIMIT ?""",
-                    (100,),
+                    (limit,),
                 ).fetchall()
                 trades = [
                     {"symbol": r[0], "pnl": r[1], "is_win": r[2], "strategy": r[3]}
@@ -100,6 +108,21 @@ class KellyPositionSizer:
         except Exception as e:
             logger.warning(f"Exploration cap check failed (fail-open): {e}")
             return 0
+
+    def _btc_confirmed_bull(self) -> bool:
+        """True when the BTC trend gate tier is CONFIRMED_BULL.
+
+        Drives the regime-matched rolling window (BULL_REGIME_WINDOW).
+        Any failure → False (bear-conservative, falls back to full window).
+        """
+        try:
+            # lazy import: avoid circular dependency at module load time
+            from src.trade_executor import _check_btc_trend
+
+            _multiplier, info = _check_btc_trend()
+            return info.get("tier") == "CONFIRMED_BULL"
+        except Exception:
+            return False
 
     def _detect_regime_improving(self) -> bool:
         """Conservative check that the macro regime is warming up.
@@ -221,8 +244,21 @@ class KellyPositionSizer:
             30  # need this many for Kelly to be statistically reliable
         )
 
+        bull_window = False
         if use_historical:
-            trades = self._get_trade_history(symbol)
+            hist = self._get_trade_history(symbol, limit=200)
+            n_total = len(hist)
+            if self._btc_confirmed_bull() and n_total > BULL_REGIME_WINDOW:
+                # CONFIRMED_BULL: edge from recent regime-matched window,
+                # confidence from the total sample (statistical reliability).
+                trades = hist[:BULL_REGIME_WINDOW]
+                bull_window = True
+                logger.info(
+                    f"Kelly regime window: CONFIRMED_BULL — using last "
+                    f"{len(trades)}/{n_total} trades for edge stats"
+                )
+            else:
+                trades = hist
             if len(trades) >= 5:
                 wins = [t["pnl"] for t in trades if t["pnl"] > 0]
                 losses = [t["pnl"] for t in trades if t["pnl"] < 0]
@@ -232,7 +268,7 @@ class KellyPositionSizer:
                     avg_win = np.mean(wins) if wins else 0
                     avg_loss = abs(np.mean(losses)) if losses else 0
                     confidence = (
-                        "HIGH" if len(trades) >= MIN_RELIABLE_TRADES else "MEDIUM"
+                        "HIGH" if n_total >= MIN_RELIABLE_TRADES else "MEDIUM"
                     )
 
         # Fallback: estimate win rate from signal score
@@ -362,7 +398,9 @@ class KellyPositionSizer:
                 )
         else:
             reason = (
-                f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f})"
+                f"Kelly={kelly:.1%} (win_rate={win_rate:.1%}, R/R={reward_risk:.1f}"
+                + (f", CONFIRMED_BULL window={BULL_REGIME_WINDOW}" if bull_window else "")
+                + ")"
             )
 
         return {

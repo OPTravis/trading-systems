@@ -9,7 +9,7 @@ risk:
   cash_reserve_pct: 50          # Raised from 30 → 50
   max_daily_loss_pct: 3         # Lowered from 5 → 3
   max_drawdown_pct: 10          # Lowered from 15 → 10
-  max_open_positions: 3         # Lowered from 5 → 3
+  max_open_positions: 5         # Restored 3 → 5 (CONFIRMED_BULL 2026-08-20, Leo: don't miss chances)
   max_hold_hours: 48
 
 strategies:
