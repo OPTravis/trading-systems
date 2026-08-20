@@ -765,6 +765,7 @@ def _place_sl_tp_orders(
         )
         sl_qty = executed_qty
         sl = None
+        sl_via_fallback = False
         for attempt in range(2):
             try:
                 sl = client.place_order(
@@ -781,8 +782,34 @@ def _place_sl_tp_orders(
                 logger.error("SL order placement failed for %s", symbol, exc_info=True)
                 if attempt == 0:
                     time.sleep(1)
+        # Fallback 2026-08-21: wide-SL symbols (e.g. ZEC, high price/vol) get
+        # STOP_LOSS_LIMIT rejected by PERCENT_PRICE_BY_SIDE filter (limit price
+        # too far below market). Retry with STOP_LOSS (market-on-trigger) which
+        # carries no limit price and bypasses that filter. Defense-only path:
+        # normal symbols never reach here.
+        if not sl:
+            try:
+                logger.warning(
+                    "SL STOP_LOSS_LIMIT failed for %s - fallback to STOP_LOSS "
+                    "(market on trigger)",
+                    symbol,
+                )
+                sl = client.place_order(
+                    symbol,
+                    "SELL",
+                    "STOP_LOSS",
+                    sl_qty,
+                    stop_price=sl_price,
+                )
+                if sl:
+                    sl_via_fallback = True
+            except Exception:
+                logger.error(
+                    "STOP_LOSS fallback failed for %s", symbol, exc_info=True
+                )
         if sl:
-            results.append(f"SL-only: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
+            mode_tag = "SL-fallback (market trigger)" if sl_via_fallback else "SL-only"
+            results.append(f"{mode_tag}: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
             sl_placed_qty = sl_qty
         else:
             results.append("SL: FAILED")
