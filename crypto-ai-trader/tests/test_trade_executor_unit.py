@@ -606,3 +606,78 @@ class TestTieredSLPreservation:
         client.cancel_order.assert_called()
         call_args = client.cancel_order.call_args
         assert call_args[0][1] == 99999 or call_args[1].get("order_id") == 99999
+
+
+# ────────────────────────────────────────────────────────────
+# _place_sl_tp_orders — SL-only fallback (bug#11, 81a5e46)
+# ────────────────────────────────────────────────────────────
+class TestSlOnlyPercentPriceFallback:
+    """Small-position path: STOP_LOSS_LIMIT rejected by PERCENT_PRICE_BY_SIDE
+    (ZEC-style wide SL on high-vol symbols) must degrade to STOP_LOSS
+    (market-on-trigger, no limit price) instead of leaving the position
+    naked / force-closing it."""
+
+    # Small position: 0.04 × $581.29 ≈ $23.25 < 6 × $5 min notional
+    PARAMS = dict(
+        symbol="ZECUSDT",
+        executed_qty=0.04,
+        price=581.29,
+        p_prec=2,
+        stop_loss_pct=5.0,
+        tp_levels=[{"pct": 10.0}],
+        _step_size=0.001,
+        _qty_decimals=3,
+        _min_notional=5.0,
+        strategy_size_multiplier=1.0,
+    )
+
+    def _run(self, client, notifier):
+        with patch.object(trade_executor.time, "sleep"):
+            return trade_executor._place_sl_tp_orders(
+                client, notifier, **self.PARAMS
+            )
+
+    def test_sl_limit_success_never_uses_fallback(self):
+        client, notifier = MagicMock(), MagicMock()
+        client.get_klines.return_value = []
+        client.place_order.return_value = {"orderId": 111}
+        out = self._run(client, notifier)
+        assert any(r.startswith("SL-only") for r in out["results"])
+        assert out["sl_placed_qty"] == 0.04
+        assert client.place_order.call_count == 1
+        assert client.place_order.call_args.args[2] == "STOP_LOSS_LIMIT"
+
+    def test_percent_price_rejection_falls_back_to_market_stop(self):
+        client, notifier = MagicMock(), MagicMock()
+        client.get_klines.return_value = []
+        calls = []
+
+        def place(symbol, side, otype, qty, **kw):
+            calls.append((otype, kw))
+            if otype == "STOP_LOSS_LIMIT":
+                raise Exception("-1013 PERCENT_PRICE_BY_SIDE filter")
+            return {"orderId": 222}
+
+        client.place_order.side_effect = place
+        out = self._run(client, notifier)
+        # 2 rejected STOP_LOSS_LIMIT attempts + 1 STOP_LOSS fallback
+        assert sum(1 for t, _ in calls if t == "STOP_LOSS_LIMIT") == 2
+        assert calls[-1][0] == "STOP_LOSS"
+        # market-on-trigger: stop price preserved, NO limit price kwarg
+        kw = calls[-1][1]
+        assert "price" not in kw
+        assert kw["stop_price"] == round(581.29 * 0.95, 2)
+        assert any("SL-fallback (market trigger)" in r for r in out["results"])
+        assert out["sl_placed_qty"] == 0.04
+
+    def test_all_paths_failed_urgent_alert(self):
+        client, notifier = MagicMock(), MagicMock()
+        client.get_klines.return_value = []
+        client.place_order.side_effect = Exception("-1013 filter")
+        out = self._run(client, notifier)
+        assert any("SL: FAILED" in r for r in out["results"])
+        assert out["sl_placed_qty"] == 0.0
+        # two alerts expected: "URGENT: SL failed" + naked-position escalation
+        msgs = [c.args[0] for c in notifier.send_text.call_args_list]
+        assert any("URGENT" in m for m in msgs)
+        assert any("裸露" in m for m in msgs)
