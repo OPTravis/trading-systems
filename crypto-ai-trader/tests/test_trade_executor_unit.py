@@ -681,3 +681,113 @@ class TestSlOnlyPercentPriceFallback:
         msgs = [c.args[0] for c in notifier.send_text.call_args_list]
         assert any("URGENT" in m for m in msgs)
         assert any("裸露" in m for m in msgs)
+
+
+# ────────────────────────────────────────────────────────────
+# _place_sl_tp_orders — tiered & Strategy-C fallback (bug#12)
+# ────────────────────────────────────────────────────────────
+class TestTieredAndStrategyCFallback:
+    """Medium+ positions: -1013 on tiered SL or Strategy-C SL must degrade to
+    STOP_LOSS (market-on-trigger) instead of cancelling TPs → OCO → C →
+    emergency-sell (XPL 05:29 8/21 burned slippage on this chain)."""
+
+    # XPL 05:29 style: notional $40.6 ≥ 6×$5 → tiered path
+    PARAMS = dict(
+        symbol="XPLUSDT",
+        executed_qty=463.3,
+        price=0.08765,
+        p_prec=5,
+        stop_loss_pct=5.0,
+        tp_levels=[{"pct": 14.0, "size_pct": 40}, {"pct": 23.0, "size_pct": 40}, {"pct": 37.0, "size_pct": 20}],
+        _step_size=0.1,
+        _qty_decimals=1,
+        _min_notional=5.0,
+        strategy_size_multiplier=1.0,
+    )
+
+    def _run(self, client, notifier):
+        with patch.object(trade_executor.time, "sleep"):
+            return trade_executor._place_sl_tp_orders(
+                client, notifier, **self.PARAMS
+            )
+
+    def test_tiered_sl_minus1013_falls_back_in_place(self):
+        """Tiered SL rejected → fallback at the SAME site; TPs stay live,
+        no residue-cancel churn, no OCO/Strategy-C round trip."""
+        client, notifier = MagicMock(), MagicMock()
+        client.get_open_orders.return_value = []
+        calls = []
+
+        def place(symbol, side, otype, qty, **kw):
+            calls.append((otype, kw))
+            if otype == "STOP_LOSS_LIMIT":
+                raise Exception("(400, -1013, 'Filter failure: PERCENT_PRICE_BY_SIDE')")
+            return {"orderId": len(calls)}
+
+        client.place_order.side_effect = place
+        out = self._run(client, notifier)
+        # 2 TPs (LIMIT) + 2 rejected SLL + 1 STOP_LOSS fallback — and nothing else
+        assert [t for t, _ in calls] == ["LIMIT", "LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS"]
+        assert "price" not in calls[-1][1]  # market-on-trigger: no limit price
+        assert any("SL(remaining) [market-trigger fallback]" in r for r in out["results"])
+        assert out["sl_placed_qty"] > 0
+        assert out["tp_placed_qty"] > 0
+        # TPs must NOT be cancelled when fallback succeeds at the tiered site
+        client.cancel_order.assert_not_called()
+        client.place_oco.assert_not_called()
+
+    def test_strategy_c_sl_falls_back_after_tiered_tp_failure(self):
+        """Tiered TP fails → OCO fails → Strategy C SL -1013 → STOP_LOSS saves
+        the position (no 'SL: FAILED', no naked alerts)."""
+        client, notifier = MagicMock(), MagicMock()
+        client.get_open_orders.return_value = []
+        calls = []
+        limit_calls = 0
+
+        def place(symbol, side, otype, qty, **kw):
+            nonlocal limit_calls
+            calls.append((otype, kw))
+            if otype == "LIMIT":
+                limit_calls += 1
+                if limit_calls <= 2:  # tiered TP1 fails BOTH attempts → tiered path fails
+                    raise Exception("tiered TP fail")
+                return {"orderId": len(calls)}
+            if otype == "STOP_LOSS_LIMIT":
+                raise Exception("(400, -1013, 'Filter failure: PERCENT_PRICE_BY_SIDE')")
+            return {"orderId": len(calls)}
+
+        client.place_order.side_effect = place
+        client.place_oco.side_effect = Exception("(400, -1013, 'Filter failure: PERCENT_PRICE_BY_SIDE')")
+        out = self._run(client, notifier)
+        assert client.place_oco.called  # chain really reached OCO → C
+        assert any("SL-fallback (market trigger)" in r for r in out["results"])
+        assert out["sl_placed_qty"] > 0
+        assert not any("SL: FAILED" in r for r in out["results"])
+        msgs = [c.args[0] for c in notifier.send_text.call_args_list]
+        assert not any("URGENT" in m or "裸露" in m for m in msgs)
+        # final SL call is market-on-trigger with stop preserved
+        sl_calls = [k for t, k in calls if t == "STOP_LOSS"]
+        assert sl_calls and "price" not in sl_calls[-1]
+
+    def test_strategy_c_total_failure_alerts(self):
+        """Everything rejected incl. STOP_LOSS → 'SL: FAILED' + URGENT alerts."""
+        client, notifier = MagicMock(), MagicMock()
+        client.get_open_orders.return_value = []
+        limit_calls = 0
+
+        def place(symbol, side, otype, qty, **kw):
+            nonlocal limit_calls
+            if otype == "LIMIT":
+                limit_calls += 1
+                if limit_calls <= 2:  # tiered TP1 fails both attempts
+                    raise Exception("tiered TP fail")
+                return {"orderId": 1}
+            raise Exception("(400, -1013, 'filter')")
+
+        client.place_order.side_effect = place
+        client.place_oco.side_effect = Exception("oco fail")
+        out = self._run(client, notifier)
+        assert any("SL: FAILED" in r for r in out["results"])
+        assert out["sl_placed_qty"] == 0.0
+        msgs = [c.args[0] for c in notifier.send_text.call_args_list]
+        assert any("URGENT" in m or "裸露" in m for m in msgs)

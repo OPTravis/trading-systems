@@ -686,6 +686,51 @@ def _record_trade_portfolio(
         logger.warning(f"no_signal_tracker reset failed after successful trade: {e}")
 
 
+def _place_sl_with_1013_fallback(
+    client, symbol, qty, sl_price, sl_limit_price, *, tag=""
+):
+    """STOP_LOSS_LIMIT first (2 tries); on failure STOP_LOSS (market-on-trigger).
+
+    Wide-SL symbols get STOP_LOSS_LIMIT rejected by PERCENT_PRICE_BY_SIDE
+    (limit price below avgPrice*askMultiplierDown, e.g. ZEC/ACE/XPL 8/21).
+    The market-on-trigger variant carries no limit price and passes the
+    filter. Defense-only: normal symbols never reach the fallback.
+    Returns (order_or_None, used_fallback).
+    """
+    _t = f" ({tag})" if tag else ""
+    sl = None
+    for attempt in range(2):
+        try:
+            sl = client.place_order(
+                symbol, "SELL", "STOP_LOSS_LIMIT", qty,
+                price=sl_limit_price, stop_price=sl_price,
+            )
+            if sl:
+                break
+        except Exception:
+            logger.error(
+                "SL STOP_LOSS_LIMIT placement failed for %s%s", symbol, _t, exc_info=True
+            )
+            if attempt == 0:
+                time.sleep(1)
+    used_fallback = False
+    if not sl:
+        try:
+            logger.warning(
+                "SL STOP_LOSS_LIMIT failed for %s%s - fallback to STOP_LOSS "
+                "(market on trigger)",
+                symbol, _t,
+            )
+            sl = client.place_order(
+                symbol, "SELL", "STOP_LOSS", qty, stop_price=sl_price,
+            )
+            if sl:
+                used_fallback = True
+        except Exception:
+            logger.error("STOP_LOSS fallback failed for %s%s", symbol, _t, exc_info=True)
+    return sl, used_fallback
+
+
 def _place_sl_tp_orders(
     client,
     notifier,
@@ -764,49 +809,9 @@ def _place_sl_tp_orders(
             _min_notional * 6,
         )
         sl_qty = executed_qty
-        sl = None
-        sl_via_fallback = False
-        for attempt in range(2):
-            try:
-                sl = client.place_order(
-                    symbol,
-                    "SELL",
-                    "STOP_LOSS_LIMIT",
-                    sl_qty,
-                    price=sl_limit_price,
-                    stop_price=sl_price,
-                )
-                if sl:
-                    break
-            except Exception:
-                logger.error("SL order placement failed for %s", symbol, exc_info=True)
-                if attempt == 0:
-                    time.sleep(1)
-        # Fallback 2026-08-21: wide-SL symbols (e.g. ZEC, high price/vol) get
-        # STOP_LOSS_LIMIT rejected by PERCENT_PRICE_BY_SIDE filter (limit price
-        # too far below market). Retry with STOP_LOSS (market-on-trigger) which
-        # carries no limit price and bypasses that filter. Defense-only path:
-        # normal symbols never reach here.
-        if not sl:
-            try:
-                logger.warning(
-                    "SL STOP_LOSS_LIMIT failed for %s - fallback to STOP_LOSS "
-                    "(market on trigger)",
-                    symbol,
-                )
-                sl = client.place_order(
-                    symbol,
-                    "SELL",
-                    "STOP_LOSS",
-                    sl_qty,
-                    stop_price=sl_price,
-                )
-                if sl:
-                    sl_via_fallback = True
-            except Exception:
-                logger.error(
-                    "STOP_LOSS fallback failed for %s", symbol, exc_info=True
-                )
+        sl, sl_via_fallback = _place_sl_with_1013_fallback(
+            client, symbol, sl_qty, sl_price, sl_limit_price, tag="SL-only"
+        )
         if sl:
             mode_tag = "SL-fallback (market trigger)" if sl_via_fallback else "SL-only"
             results.append(f"{mode_tag}: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)")
@@ -914,28 +919,14 @@ def _place_sl_tp_orders(
                 # Step 2: Place SL for REMAINING qty (not covered by TPs)
                 sl_remaining = _round_qty(executed_qty - _tiered_tp_placed)
                 if sl_remaining >= _step_size:
-                    sl = None
-                    for attempt in range(2):
-                        try:
-                            sl = client.place_order(
-                                symbol,
-                                "SELL",
-                                "STOP_LOSS_LIMIT",
-                                sl_remaining,
-                                price=sl_limit_price,
-                                stop_price=sl_price,
-                            )
-                            if sl:
-                                break
-                        except Exception:
-                            logger.error(
-                                "Tiered SL placement failed for %s", symbol, exc_info=True
-                            )
-                            if attempt == 0:
-                                time.sleep(1)
+                    sl, _sl_fb = _place_sl_with_1013_fallback(
+                        client, symbol, sl_remaining, sl_price, sl_limit_price,
+                        tag="tiered",
+                    )
                     if sl:
+                        _sl_tag = " [market-trigger fallback]" if _sl_fb else ""
                         _tiered_results.append(
-                            f"SL(remaining): {sl_remaining} @ ${sl_price} (-{stop_loss_pct}%)"
+                            f"SL(remaining){_sl_tag}: {sl_remaining} @ ${sl_price} (-{stop_loss_pct}%)"
                         )
                         _tiered_sl_placed = sl_remaining
                         _tiered_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
@@ -1097,31 +1088,15 @@ def _place_sl_tp_orders(
 
                 _strat_c_sl_order_id = None
                 if sl_qty >= _step_size and not _sl_already_placed:
-                    sl = None
-                    for attempt in range(2):
-                        try:
-                            sl = client.place_order(
-                                symbol,
-                                "SELL",
-                                "STOP_LOSS_LIMIT",
-                                sl_qty,
-                                price=sl_limit_price,
-                                stop_price=sl_price,
-                            )
-                            if sl:
-                                break
-                        except Exception:
-                            logger.error(
-                                "Fallback SL order placement failed for %s",
-                                symbol,
-                                exc_info=True,
-                            )
-                            if attempt == 0:
-                                time.sleep(1)
+                    sl, _sl_fb = _place_sl_with_1013_fallback(
+                        client, symbol, sl_qty, sl_price, sl_limit_price,
+                        tag="strategy-C",
+                    )
                     if sl:
                         _strat_c_sl_order_id = sl.get("orderId") if isinstance(sl, dict) else None
+                        _sl_tag = "SL-fallback (market trigger)" if _sl_fb else "SL"
                         results.append(
-                            f"SL: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
+                            f"{_sl_tag}: {sl_qty} @ ${sl_price} (-{stop_loss_pct}%)"
                         )
                         sl_placed_qty = sl_qty
                     else:
