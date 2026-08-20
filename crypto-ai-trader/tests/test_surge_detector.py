@@ -256,6 +256,19 @@ class TestAlertLevels:
 class TestBGeometricsFetch:
     """BGeometrics API integration tests."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_bge_cache(self):
+        """Module-level cache leaks across tests in full-suite runs.
+
+        Other suites populate /mvrv with success or fail-TTL entries;
+        without a reset the requests.get mocks never get called.
+        """
+        from src.surge_detector import reset_bge_cache
+
+        reset_bge_cache()
+        yield
+        reset_bge_cache()
+
     def test_fetch_returns_none_without_key(self, detector):
         """No API key → returns None gracefully."""
         with patch.dict(os.environ, {}, clear=True):

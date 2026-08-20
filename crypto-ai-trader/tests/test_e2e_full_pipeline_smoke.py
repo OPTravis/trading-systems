@@ -571,19 +571,23 @@ class TestE2EPipeline:
     # ── Regime Guards ────────────────────────────────────────────
 
     def test_extreme_fear_regime_raises_threshold(self, capsys):
-        """EXTREME_FEAR regime raises threshold to 98, blocking most trades."""
+        """EXTREME_FEAR + surge SILENCE raises threshold to 85 (full guard).
+
+        Guard is surge-aware since 4b63560 (Plan A): EXTREME_FEAR + SILENCE
+        -> max(threshold, 85). Score 84 < 85 -> blocked.
+        """
         ctx = self._run_full_pipeline(
-            opportunities=[_make_opportunity(score=85)],
+            opportunities=[_make_opportunity(score=78)],
             strategy_regime="EXTREME_FEAR",
             threshold=60,
         )
         output = capsys.readouterr().out
         assert "REGIME_GUARD" in output
-        # Score 85 < 98 (extreme fear threshold), so trade blocked
+        # Final 78+5(research)=83 < 85 (extreme fear full guard) → blocked
         ctx["mock_exec"].assert_not_called()
 
     def test_fear_regime_non_bullish_raises_threshold(self, capsys):
-        """FEAR + non-BULLISH BTC raises threshold to 95."""
+        """FEAR + non-BULLISH BTC + surge SILENCE raises threshold to 80."""
         # Override risk manager to return NEUTRAL trend (not BULLISH)
         rm = _make_risk_manager()
         rm.trend_filter.check_trend.return_value = {
@@ -595,7 +599,7 @@ class TestE2EPipeline:
             "factors": {},
         }
         ctx = self._run_full_pipeline(
-            opportunities=[_make_opportunity(score=80)],
+            opportunities=[_make_opportunity(score=73)],
             strategy_regime="FEAR",
             threshold=60,
             risk_manager=rm,
