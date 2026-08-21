@@ -295,6 +295,58 @@ def _run_deep_research(researcher, client, top_n, fng):
     return research_results
 
 
+def _select_best_candidate(research_results, client, dynamic_threshold):
+    """Pick best candidate by adjusted score, preferring NON-HELD symbols.
+
+    Rationale (2026-08-21): a held best would be blocked by the
+    duplicate-entry guard in execute_auto_trade anyway (dead end, zero
+    trades for the round). A non-held runner-up that passes threshold is a
+    live fresh entry and beats the dead-end re-entry. Held candidates are
+    still tracked for DCA/加倉 signal visibility (the DCA engine runs a
+    separate path; switches go via position_optimizer).
+
+    Returns (best_sym, best_adj_score, fallback_used).
+    """
+    from src.trade_executor import _symbol_already_held
+
+    best_sym = None
+    best_adj_score = -1.0
+    held_sym = None
+    held_adj_score = -1.0
+    for sym, (opp, res) in research_results.items():
+        adj_score = max(0, min(100, opp["score"] + res["score_adjustment"]))
+        if adj_score < dynamic_threshold:
+            continue  # below threshold — neither held nor fresh qualifies
+        if _symbol_already_held(client, sym):
+            if adj_score > held_adj_score:
+                held_adj_score = adj_score
+                held_sym = sym
+            continue
+        if adj_score > best_adj_score:
+            best_adj_score = adj_score
+            best_sym = sym
+
+    fallback_used = False
+    if best_sym is None and held_sym is not None:
+        # No fresh candidate qualifies — proceed with held best (the
+        # duplicate-entry guard or DCA engine will decide downstream).
+        # Preserves original behavior for held-only rounds.
+        best_sym = held_sym
+        best_adj_score = held_adj_score
+    elif best_sym and held_sym and held_adj_score > best_adj_score:
+        fallback_used = True
+        logger.info(
+            "FRESH_ENTRY_FALLBACK: held %s (%d) outranks fresh %s (%d) but is "
+            "duplicate-blocked — executing fresh entry instead",
+            held_sym, int(held_adj_score), best_sym, int(best_adj_score),
+        )
+        print(
+            f"FRESH_ENTRY_FALLBACK: {held_sym} (held, {int(held_adj_score)}) blocked by "
+            f"duplicate guard → executing {best_sym} ({int(best_adj_score)}) instead"
+        )
+    return best_sym, best_adj_score, fallback_used
+
+
 def _step_research_top_n(ctx):
     """Step 2: Risk checks, deep research on top candidates, and bear analysis.
 
@@ -359,14 +411,16 @@ def _step_research_top_n(ctx):
 
     research_results = _run_deep_research(researcher, client, top_n, fng)
 
-    # Select best candidate by adjusted score
-    best_sym = None
-    best_adj_score = -1.0
-    for sym, (opp, res) in research_results.items():
-        adj_score = max(0, min(100, opp["score"] + res["score_adjustment"]))
-        if adj_score > best_adj_score:
-            best_adj_score = adj_score
-            best_sym = sym
+    # Select best candidate by adjusted score, preferring NON-HELD symbols.
+    # Rationale (2026-08-21): a held best would be blocked by the
+    # duplicate-entry guard in execute_auto_trade anyway (dead end, zero
+    # trades for the round). A non-held runner-up that passes threshold is
+    # a live fresh entry and beats the dead-end re-entry. Held candidates
+    # are still evaluated above for DCA/加倉 signal visibility (the DCA
+    # engine runs a separate path; switches via position_optimizer).
+    best_sym, best_adj_score, fallback_used = _select_best_candidate(
+        research_results, client, dynamic_threshold
+    )
 
     if not best_sym or best_adj_score < dynamic_threshold:
         reason = (
