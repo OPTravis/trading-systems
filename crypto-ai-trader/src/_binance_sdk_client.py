@@ -700,6 +700,18 @@ class BinanceClient:
                     continue
                 # Business error from API - do NOT retry
                 logger.error(f"Order failed (API error): {e}")
+                # Self-learning: symbol not permitted for this account
+                # (e.g. tokenized stocks/ETFs) -> persist to restricted registry
+                # (mirrors ccxt_client.py behaviour; SDK path must self-learn too)
+                try:
+                    from src.restricted_symbols import (
+                        is_not_permitted_error, mark_symbol_restricted,
+                    )
+
+                    if is_not_permitted_error(str(e)):
+                        mark_symbol_restricted(symbol, reason="-2010 not permitted")
+                except Exception:
+                    pass  # registry update is best-effort, never block trading
                 return None
             except requests.exceptions.RequestException as e:
                 # Network/timeout error - retry
