@@ -228,6 +228,11 @@ if [ "$CMD" = "cron-scan" ] && [ $EXIT_CODE -eq 0 ]; then
     python3 scripts/push_notifications.py >> "$LOGFILE" 2>&1 || true
 fi
 
+# bug#15: backup local state.db to fuse-side rolling copy (survives sandbox restarts)
+if [ -n "$STATE_DB_PATH" ] && [ -f "$STATE_DB_PATH" ]; then
+    cp -f "$STATE_DB_PATH" "$BASEDIR/data/state.db.autobak" 2>/dev/null || true
+fi
+
 # Rotate log if > 1MB (prevents stale breaker/notification messages from persisting)
 if [ -f "$LOGFILE" ] && [ $(stat -c%s "$LOGFILE" 2>/dev/null || echo 0) -gt 1048576 ]; then
     mv "$LOGFILE" "$LOGFILE.old"
