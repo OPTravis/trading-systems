@@ -14,9 +14,10 @@ from pathlib import Path
 class TestTestIsolation:
     """Verify that tests CANNOT touch the production state DB."""
 
-    PRODUCTION_DB = str(
-        Path(__file__).parent.parent / "data" / "state.db"
-    )
+    # bug#15: production DB moved to local ext4 (/root/trading-state);
+    # state_db.DEFAULT_DB_PATH resolves there when the file exists.
+    from src.state_db import DEFAULT_DB_PATH
+    PRODUCTION_DB = str(DEFAULT_DB_PATH)
 
     def test_state_db_path_is_not_production(self):
         """During tests, STATE_DB_PATH must point to a temp file."""

@@ -27,8 +27,16 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Default DB path: project_root/data/state.db
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "state.db"
+# Default DB path (bug#15, 2026-08-21): the live DB lives on local ext4 at
+# /root/trading-state/state.db. The old project-relative data/state.db sits
+# on the hpvs_fs network mount where SQLite repeatedly corrupts — it is NOT
+# a valid fallback. Scripts without a wrapper (missing `set -a; source .env`)
+# used to silently connect to the corrupt file and crash with
+# "file is not a database". Keep the legacy path only as a last resort for
+# non-cloud environments where /root/trading-state does not exist.
+_ROOT_DB = Path("/root/trading-state/state.db")
+_LEGACY_DB = Path(__file__).parent.parent / "data" / "state.db"
+DEFAULT_DB_PATH = _ROOT_DB if _ROOT_DB.exists() else _LEGACY_DB
 
 
 class StateDB:
