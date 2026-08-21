@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # so the last successful fetch is cached; failures are never cached.
 _MVRV_CACHE: Dict[str, Any] = {"value": None, "fetched_at": 0.0}
 MVRV_CACHE_TTL_SEC = 6 * 3600  # data updates once daily; 6h staleness is fine
+MVRV_FAIL_TTL_SEC = 3600  # bug#14: recent fetch failure (e.g. 429) — retry at most hourly
 
 
 def _reset_mvrv_cache() -> None:
@@ -140,6 +141,30 @@ class DimensionScorer:
         ):
             return float(_MVRV_CACHE["value"])
 
+        # bug#14 (2026-08-21): mem cache dies with each hourly cron process,
+        # so every scan refetched MVRV and burned the shared 15/day quota.
+        # Cross-process disk layer (src/bge_cache.py, shared with
+        # surge_detector's /mvrv /sopr /nupl entries) fixes that.
+        from src import bge_cache
+
+        disk = bge_cache.load_entry("/mvrv")
+        if disk:
+            if disk.get("value") is not None and (
+                time.time() - disk.get("fetched_at", 0) < MVRV_CACHE_TTL_SEC
+            ):
+                _MVRV_CACHE["value"] = disk["value"]
+                _MVRV_CACHE["fetched_at"] = disk["fetched_at"]
+                return float(disk["value"])
+            if disk.get("value") is None and (
+                time.time() - disk.get("fetched_at", 0) < MVRV_FAIL_TTL_SEC
+            ):
+                return None  # recent failure (e.g. 429 quota) — don't re-burn
+
+        def _remember(value):
+            _MVRV_CACHE["value"] = value
+            _MVRV_CACHE["fetched_at"] = time.time()
+            bge_cache.save_entry("/mvrv", value)
+
         try:
             url = "https://api.bitcoin-data.com/v1/mvrv"
             # 2026-08-20: literal startday=today returns [] (upstream now
@@ -159,13 +184,14 @@ class DimensionScorer:
             data = resp.json()
             if isinstance(data, list) and data:
                 val = float(data[-1].get("mvrv", 0))
-                _MVRV_CACHE["value"] = val
-                _MVRV_CACHE["fetched_at"] = time.time()
+                _remember(val)
                 return val
             logger.warning("MVRV API returned empty or unexpected format")
+            _remember(None)
             return None
         except Exception as e:
             logger.warning(f"MVRV fetch failed: {e}")
+            _remember(None)
             return None
 
     # ------------------------------------------------------------------

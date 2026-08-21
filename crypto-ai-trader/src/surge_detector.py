@@ -323,6 +323,23 @@ class SurgeDetector:
             if now - cached.get("fetched_at", 0) < ttl:
                 return cached.get("value")
 
+        # bug#14 (2026-08-21): mem cache dies with each hourly cron process.
+        # Cross-process DISK layer (src/bge_cache.py) lets hourly scans reuse
+        # the previous process's results instead of re-burning quota
+        # (~96 req/day -> <=6). Freshness judged here with our own TTLs.
+        from src import bge_cache
+
+        disk = bge_cache.load_entry(endpoint)
+        if disk:
+            ttl = BGE_CACHE_TTL_SEC if disk.get("value") is not None else BGE_FAIL_TTL_SEC
+            if now - disk.get("fetched_at", 0) < ttl:
+                _BGE_CACHE[endpoint] = {"value": disk.get("value"), "fetched_at": disk.get("fetched_at")}
+                return disk.get("value")
+
+        def _remember(value: Optional[float], ts: float) -> None:
+            _BGE_CACHE[endpoint] = {"value": value, "fetched_at": ts}
+            bge_cache.save_entry(endpoint, value, ts)
+
         try:
             url = f"https://api.bitcoin-data.com/v1{endpoint}"
             # 2026-08-21 bug#10 (same as 5dce933): literal startday=today
@@ -338,7 +355,7 @@ class SurgeDetector:
             )
             if resp.status_code != 200:
                 logger.debug(f"BGeometrics {endpoint} returned {resp.status_code}")
-                _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
+                _remember(None, now)
                 return None
 
             data = resp.json()
@@ -349,12 +366,12 @@ class SurgeDetector:
                 val = latest.get(val_key)
                 if val is not None:
                     val = float(val)
-                    _BGE_CACHE[endpoint] = {"value": val, "fetched_at": now}
+                    _remember(val, now)
                     return val
             logger.warning(f"BGeometrics {endpoint} returned empty or unexpected format")
-            _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
+            _remember(None, now)
             return None
         except Exception as e:
             logger.debug(f"BGeometrics {endpoint} fetch failed: {e}")
-            _BGE_CACHE[endpoint] = {"value": None, "fetched_at": now}
+            _remember(None, now)
             return None

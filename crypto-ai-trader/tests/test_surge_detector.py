@@ -253,6 +253,21 @@ class TestAlertLevels:
         assert result["phase1_count"] >= 1
 
 
+def _age_disk_entry(endpoint: str, seconds: float) -> None:
+    """bug#14 helper: age one disk entry (mem + disk are written together)."""
+    import json
+    import os
+
+    p = os.environ.get("BGE_CACHE_PATH")
+    if not p or not os.path.exists(p):
+        return
+    data = json.loads(open(p, encoding="utf-8").read())
+    entry = data.get("entries", {}).get(endpoint)
+    if entry:
+        entry["fetched_at"] -= seconds
+        open(p, "w", encoding="utf-8").write(json.dumps(data))
+
+
 class TestBGeometricsFetch:
     """BGeometrics API integration tests."""
 
@@ -358,8 +373,11 @@ class TestBGeometricsCache:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = [{"d": "2026-08-19", "mvrv": 1.32}]
         self._fetch()
+        # bug#14: entries now live in mem AND on disk (written together, so
+        # they age together); expire both to simulate a real TTL rollover.
         from src.surge_detector import _BGE_CACHE, BGE_CACHE_TTL_SEC
         _BGE_CACHE["/mvrv"]["fetched_at"] -= BGE_CACHE_TTL_SEC + 60
+        _age_disk_entry("/mvrv", BGE_CACHE_TTL_SEC + 60)
         self._fetch()
         assert mock_get.call_count == 2
 
@@ -373,6 +391,7 @@ class TestBGeometricsCache:
         from src.surge_detector import _BGE_CACHE, BGE_FAIL_TTL_SEC
         assert _BGE_CACHE["/mvrv"]["value"] is None
         _BGE_CACHE["/mvrv"]["fetched_at"] -= BGE_FAIL_TTL_SEC + 60
+        _age_disk_entry("/mvrv", BGE_FAIL_TTL_SEC + 60)
         assert self._fetch() is None  # retried after fail TTL
         assert mock_get.call_count == 2
 

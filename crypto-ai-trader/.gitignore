@@ -31,3 +31,5 @@ data/*.db
 data/*.db-*
 logs/*.bak*
 logs/*.old
+# bug#14: BGeometrics disk cache is runtime state, not source
+data/bgeometrics_cache.json

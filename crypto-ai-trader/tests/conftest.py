@@ -15,6 +15,35 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @pytest.fixture(autouse=True)
+def _isolate_bge_disk_cache(monkeypatch, tmp_path):
+    """bug#14: BGeometrics disk cache must not leak across tests (or into
+    the production data/ file). Point BGE_CACHE_PATH at a per-test tmp file
+    and reset both modules' in-memory caches."""
+    monkeypatch.setenv("BGE_CACHE_PATH", str(tmp_path / "bge_cache.json"))
+    try:
+        import src.surge_detector as sd_mod
+        sd_mod._BGE_CACHE.clear()
+    except Exception:
+        pass
+    try:
+        import src.dimension_scorer as ds_mod
+        ds_mod._reset_mvrv_cache()
+    except Exception:
+        pass
+    yield
+    try:
+        import src.surge_detector as sd_mod
+        sd_mod._BGE_CACHE.clear()
+    except Exception:
+        pass
+    try:
+        import src.dimension_scorer as ds_mod
+        ds_mod._reset_mvrv_cache()
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
 def _reset_daily_loss_breaker(monkeypatch, tmp_path):
     """Reset DailyLossBreaker singleton state between tests to prevent cross-test contamination."""
     try:
