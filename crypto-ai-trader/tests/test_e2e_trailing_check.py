@@ -634,19 +634,25 @@ class TestUncoveredProtection:
             assert data.get("action") in ("none",)
 
     def test_s24_uncovered_sl_error(self, capsys):
+        # bug#19 follow-up (8/22): place exceptions are retried 3x inside the
+        # loop; persistent failure surfaces as uncovered_sl_failed (not
+        # uncovered_sl_error). The retry itself is asserted via call count.
         bc, ts = self._setup_uncovered(free_qty=100, sl_covered=0, tp_covered=0)
         bc.place_order.side_effect = Exception("API error")
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
         data = json.loads(out)
+        assert bc.place_order.call_count == 3  # retried, not single-shot
         if "results" in data:
-            assert any(r.get("action") == "uncovered_sl_error" for r in data["results"])
+            assert any(r.get("action") == "uncovered_sl_failed" for r in data["results"])
         else:
             assert data.get("action") in ("none",)
 
     def test_s25_uncovered_calc_subtracts_orders(self, capsys):
-        # P1 fix: only SL coverage counts, not TP
-        # free=100, sl_covered=30, tp_covered=30 → uncovered=70 (TP doesn't protect downside)
+        # bug#19 (8/22): TP-locked qty counts as covered — tiered TP is the
+        # executor's designed exit ladder, not "unprotected". Cannibalizing
+        # TPs to build SL coverage flipped every position SL-only (ACE case).
+        # free=100, sl_covered=30, tp_covered=30 → uncovered=40 (TP+SL both count)
         bc, ts = self._setup_uncovered(free_qty=100, sl_covered=30, tp_covered=30)
         rm, _ = _run_trailing(bc, ts)
         out = capsys.readouterr().out
@@ -656,7 +662,7 @@ class TestUncoveredProtection:
                 r for r in data["results"] if "uncovered" in r.get("action", "")
             ]
             if uncovered_actions:
-                assert uncovered_actions[0].get("qty") == 70  # 100 - 30 SL
+                assert uncovered_actions[0].get("qty") == 40  # 100 - 30 SL - 30 TP
         else:
             assert data.get("action") in ("none",)
 

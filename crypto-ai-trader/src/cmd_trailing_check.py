@@ -711,7 +711,17 @@ def cmd_trailing_check():
         sl_covered = sum(_order_qty(o) for o in sl_orders)
         tp_covered = sum(_order_qty(o) for o in tp_orders)
 
-        uncovered_by_sl = total_qty - sl_covered  # units with no SL protection
+        # bug#19 (8/22 ACE case): coins locked in TP SELL orders are NOT
+        # unprotected — tiered TP1/TP2 is the executor's designed exit
+        # ladder. Treating them as uncovered made this loop cannibalize a
+        # TP every 5-min cycle (19:15 TP1, 19:20 TP2, then eating the TP
+        # ensure_tp_sl re-added at 19:35/20:00), flipping every position to
+        # SL-only that stops out on noise — directly against the "upside >
+        # drawdown" mandate. TP-locked qty now counts as covered. Crash tail
+        # (SL fired, TPs left hanging) is backstopped by ensure_tp_sl's OCO
+        # restructure (*/30min) and the adaptive trailing trigger's
+        # cancel-all + market sell.
+        uncovered_by_sl = total_qty - sl_covered - tp_covered  # units with NO exit order at all
 
         # Case 1: Position fully locked in TP but no SL — cancel lowest TP to make room for SL
         if uncovered_by_sl > 0 and free_qty < uncovered_by_sl and tp_orders:
@@ -810,11 +820,26 @@ def cmd_trailing_check():
             "Uncovered SL for %s: current=%.6f, placing SL at -%.1f%% (%.6f)",
             asset, current_price, default_sl_pct, sl_price,
         )
+        # 8/22 19:30: single attempt failed CRITICAL → 58 units naked for a
+        # full 5-min cycle before the next run self-healed. Add 3-attempt
+        # retry with backoff (mirrors the consolidation path's retry).
+        sl_result = None
+        for place_attempt in range(3):
+            try:
+                sl_result = client.place_order(
+                    symbol, "SELL", "STOP_LOSS_LIMIT",
+                    qty_to_protect, price=sl_price, stop_price=sl_price
+                )
+                if sl_result:
+                    break
+            except Exception as place_e:
+                logger.error(
+                    "SL place attempt %d/3 failed for %s: %s",
+                    place_attempt + 1, asset, place_e,
+                )
+                sl_result = None
+            time.sleep(2)
         try:
-            sl_result = client.place_order(
-                symbol, "SELL", "STOP_LOSS_LIMIT",
-                qty_to_protect, price=sl_price, stop_price=sl_price
-            )
             if sl_result:
                 logger.warning(
                     "SL placed for unprotected position: %s %.4f units @ $%.6f",
@@ -828,7 +853,10 @@ def cmd_trailing_check():
                     "current_price": current_price,
                 })
             else:
-                logger.critical("Failed to place SL for %s %.4f units", asset, qty_to_protect)
+                logger.critical("Failed to place SL for %s %.4f units after 3 attempts", asset, qty_to_protect)
+                notifier.send_text(
+                    f"⚠️ 無保護倉位SL落單3次失敗 {asset} ({qty_to_protect:.4f} 單位)，下輪重試，請留意"
+                )
                 results.append({
                     "asset": asset, "action": "uncovered_sl_failed",
                     "qty": qty_to_protect,
