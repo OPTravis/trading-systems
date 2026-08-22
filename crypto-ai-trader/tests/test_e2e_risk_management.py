@@ -26,7 +26,10 @@ DAILY_LOSS_LIMIT = -50
 STREAK_LIMIT = 3
 DRAWDOWN_THRESHOLD = 0.15
 
-DB_PATH = PROJECT_ROOT / "data" / "state.db"
+# bug#18 follow-up (8/22): tests must NEVER touch the live DB
+# (/root/trading-state/state.db via get_state_db singleton) nor the corrupt
+# fuse-side data/state.db. Use a dedicated throwaway DB in tests/.
+DB_PATH = PROJECT_ROOT / "tests" / "_tmp_state.db"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,6 +38,9 @@ DB_PATH = PROJECT_ROOT / "data" / "state.db"
 
 def reset_db():
     """Wipe all risk-related tables for a clean test run."""
+    from src.state_db import StateDB
+
+    StateDB(db_path=str(DB_PATH))  # ensure schema on fresh file
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("DELETE FROM drawdown")
     conn.execute("DELETE FROM risk_guard")
@@ -66,7 +72,9 @@ def test_drawdown_circuit_breaker():
     reset_db()
 
     # Manually seed drawdown table: current = 1000, peak = 1200 => drawdown = 16.7%
-    db = get_state_db()
+    from src.state_db import StateDB
+
+    db = StateDB(db_path=str(DB_PATH))  # test DB, NOT the live singleton
     db.drawdown_set(
         {
             "high_watermark": 1200.0,
@@ -107,7 +115,9 @@ def test_risk_guard_cooldown():
     """更新 risk_guard（streak=3, daily_pnl=-55），檢查是否進入冷卻期。"""
     reset_db()
 
-    db = get_state_db()
+    from src.state_db import StateDB
+
+    db = StateDB(db_path=str(DB_PATH))  # test DB, NOT the live singleton
     db.risk_set({"daily_pnl": -55.0, "streak": 3, "last_reset": time.time()})
 
     guard = ConsecutiveLossGuard()
@@ -134,7 +144,11 @@ def test_portfolio_manager_no_cash():
     """檢查現金不足時（cash=0）PortfolioManager 的行為。"""
     reset_db()
 
+    from src.state_db import StateDB
+
     pm = PortfolioManager(config_path=None, binance_client=None)
+    pm._db = StateDB(db_path=str(DB_PATH))  # isolate writes from live DB
+    pm._load_state_from_db()
     pm.cash_balance = 0.0
     pm.positions = {}
     pm._save_state()
