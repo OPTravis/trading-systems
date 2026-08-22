@@ -1164,3 +1164,60 @@ class BinanceClient:
         except Exception as e:
             logger.error(f"Failed to get my trades for {symbol}: {e}")
             return []
+
+    # ==================== Dust & Convert (ported from ccxt_client, bug#21) ====================
+
+    def transfer_dust(self, asset: list) -> Dict:
+        """Convert dust assets to BNB.
+        POST /sapi/v1/asset/dust — rate limit: 1 request/hour.
+        Returns raw Binance response: {totalServiceCharge, totalTransfered, transferResult}.
+        """
+        try:
+            return self.client.transfer_dust(asset=asset)
+        except Exception as e:
+            logger.error(f"Dust transfer failed: {e}")
+            raise
+
+    def bnb_convertible_assets(self) -> Dict:
+        """Get assets convertible to BNB via dust transfer.
+        POST /sapi/v1/asset/dust-btc
+        """
+        try:
+            return self.client.bnb_convertible_assets()
+        except Exception as e:
+            logger.error(f"Failed to get BNB convertible assets: {e}")
+            raise
+
+    def list_all_convert_pairs(self, fromAsset: str, toAsset: str) -> list:
+        """List available Binance Convert pairs.
+        GET /sapi/v1/convert/exchangeInfo
+        """
+        try:
+            return self.client.list_all_convert_pairs(
+                fromAsset=fromAsset, toAsset=toAsset
+            )
+        except Exception as e:
+            logger.error(f"Failed to list convert pairs {fromAsset}->{toAsset}: {e}")
+            return []
+
+    def convert_get_quote(self, fromAsset: str, toAsset: str, fromAmount: str) -> Dict:
+        """Request a Binance Convert quote.
+        POST /sapi/v1/convert/getQuote
+        """
+        try:
+            return self.client.send_quote_request(
+                fromAsset=fromAsset, toAsset=toAsset, fromAmount=fromAmount
+            )
+        except Exception as e:
+            logger.error(f"Failed to get convert quote {fromAsset}->{toAsset}: {e}")
+            raise
+
+    def convert_accept_quote(self, quoteId: str) -> Dict:
+        """Accept a Binance Convert quote.
+        POST /sapi/v1/convert/acceptQuote
+        """
+        try:
+            return self.client.accept_quote(quoteId=quoteId)
+        except Exception as e:
+            logger.error(f"Failed to accept convert quote {quoteId}: {e}")
+            raise

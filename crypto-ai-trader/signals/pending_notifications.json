@@ -17894,5 +17894,61 @@
     "title": "",
     "body": "🔍 17:12 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
     "pushed": true
+  },
+  {
+    "id": "notif_20260822191157719248",
+    "timestamp": "2026-08-22T19:11:57.719288",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 11.5% of $405.90 = $46.67\n勝率: 60.0% | 信心: HIGH\n買入: 171 @ $0.272400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 171 @ $0.271400\n  Slippage: -0.37% (fill $0.271400 vs expected $0.272400)\n  TP1(+13.0%): 56.5 @ $0.3078\n  TP2(+20.8%): 56.5 @ $0.3291\n  SL(remaining): 58.2 @ $0.2506 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822191202079872",
+    "timestamp": "2026-08-22T19:12:02.079910",
+    "type": "signal",
+    "title": "交易信号: ACEUSDT",
+    "body": "🟢 BUY ACEUSDT @ $0.2724 x171.2287\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822191202708614",
+    "timestamp": "2026-08-22T19:12:02.708648",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:12 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 72\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. ACEUSDT (评分: 74)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822211231964689",
+    "timestamp": "2026-08-22T21:12:31.964721",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:12 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822232326716953",
+    "timestamp": "2026-08-22T23:23:26.716987",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 12.0% of $403.07 = $48.27\n勝率: 60.0% | 信心: HIGH\n買入: 195 @ $0.247500\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 195 @ $0.249508\n  Slippage: +0.81% (fill $0.249508 vs expected $0.247500)\n  TP1(+13.0%): 64.3 @ $0.2797\n  TP2(+20.8%): 64.3 @ $0.299\n  SL(remaining): 66.4 @ $0.2277 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822232331179305",
+    "timestamp": "2026-08-22T23:23:31.179340",
+    "type": "signal",
+    "title": "交易信号: ACEUSDT",
+    "body": "🟢 BUY ACEUSDT @ $0.2475 x195.0\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822232331774529",
+    "timestamp": "2026-08-22T23:23:31.774563",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:23 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 72\n💡 发现机会: 1个\n\n🏆 前3名:\n  1. ACEUSDT (评分: 77)\n",
+    "pushed": true
   }
 ]

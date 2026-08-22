@@ -171,6 +171,7 @@ class LLMClient:
         max_tokens: int = 512,
         system_prompt: Optional[str] = None,
         response_format_json: bool = False,
+        reasoning_effort: Optional[str] = "none",
     ) -> Optional[Dict[str, Any]]:
         """Send a chat completion request with automatic fallback.
 
@@ -181,6 +182,9 @@ class LLMClient:
             max_tokens: Max response tokens.
             system_prompt: If provided, prepended as system message.
             response_format_json: If True, request JSON output format.
+            reasoning_effort: "none" (default) disables chain-of-thought for
+                DeepSeek v4 reasoning models, so small max_tokens budgets are
+                not consumed by thinking. Set None to leave model default.
 
         Returns:
             {"content": str, "provider": str, "model": str} or None on total failure.
@@ -199,6 +203,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             response_format_json=response_format_json,
+            reasoning_effort=reasoning_effort,
         )
         if result is not None:
             self.stats["primary_calls"] += 1
@@ -223,6 +228,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             response_format_json=response_format_json,
+            reasoning_effort=reasoning_effort,
         )
         if result is not None:
             self.stats["fallback_calls"] += 1
@@ -242,6 +248,7 @@ class LLMClient:
         temperature: float,
         max_tokens: int,
         response_format_json: bool,
+        reasoning_effort: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Attempt a single provider with retries."""
         import time as _time
@@ -263,6 +270,11 @@ class LLMClient:
         }
         if response_format_json:
             payload["response_format"] = {"type": "json_object"}
+        # DeepSeek v4 reasoning models: without this, thinking consumes the
+        # entire max_tokens budget and content comes back empty (bug#20).
+        # Other providers may reject the param, so only send it to deepseek.
+        if reasoning_effort and provider_name == "deepseek":
+            payload["reasoning_effort"] = reasoning_effort
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -365,7 +377,16 @@ class LLMClient:
             choice = data["choices"][0]["message"]
             content = choice.get("content", "") or ""
             if not content.strip():
-                content = choice.get("reasoning_content", "") or ""
+                # Reasoning-only response (budget exhausted by thinking, or
+                # model misbehaving). reasoning_content is a draft, never an
+                # answer — treat as failure so caller/fallback can handle it.
+                logger.warning(
+                    "LLMClient: empty content from %s (finish=%s) — rejecting "
+                    "reasoning-only response",
+                    provider,
+                    data["choices"][0].get("finish_reason"),
+                )
+                return None
             model_used = data.get("model", "unknown")
             return {
                 "content": content.strip(),

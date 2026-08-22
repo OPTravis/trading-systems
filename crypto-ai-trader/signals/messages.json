@@ -2595,5 +2595,19 @@
     "title": "",
     "body": "🚀 自動執行 - POLUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 76)\nKelly: 12.0% of $358.58 = $42.94\n勝率: 60.0% | 信心: HIGH\n買入: 388 @ $0.110620\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (78.6)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 388 @ $0.111870\n  Slippage: +1.13% (fill $0.111870 vs expected $0.110620)\n  TP1(+13.0%): 127.9 @ $0.125\n  TP2(+20.8%): 127.9 @ $0.13363\n  SL(remaining): 132.0 @ $0.10177 (-8.0%)",
     "notified": true
+  },
+  {
+    "id": "msg_20260822191157",
+    "timestamp": "2026-08-22T19:11:57.142775",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 11.5% of $405.90 = $46.67\n勝率: 60.0% | 信心: HIGH\n買入: 171 @ $0.272400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 171 @ $0.271400\n  Slippage: -0.37% (fill $0.271400 vs expected $0.272400)\n  TP1(+13.0%): 56.5 @ $0.3078\n  TP2(+20.8%): 56.5 @ $0.3291\n  SL(remaining): 58.2 @ $0.2506 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822232326",
+    "timestamp": "2026-08-22T23:23:26.121350",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 12.0% of $403.07 = $48.27\n勝率: 60.0% | 信心: HIGH\n買入: 195 @ $0.247500\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 195 @ $0.249508\n  Slippage: +0.81% (fill $0.249508 vs expected $0.247500)\n  TP1(+13.0%): 64.3 @ $0.2797\n  TP2(+20.8%): 64.3 @ $0.299\n  SL(remaining): 66.4 @ $0.2277 (-8.0%)",
+    "notified": true
   }
 ]

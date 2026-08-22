@@ -709,18 +709,6 @@ class MarketResearcher:
             if result is not None:
                 content = result.get("content", "")
 
-                # deepseek-v4-pro uses reasoning_content — if content is empty, check reasoning
-                if not content and result.get("reasoning_content"):
-                    logger.info(
-                        "MarketResearcher: deepseek returned reasoning only, extracting from reasoning_content"
-                    )
-                    reasoning = result["reasoning_content"]
-                    import re
-
-                    match = re.search(r"\[.*?\]", reasoning, re.DOTALL)
-                    if match:
-                        content = match.group()
-
                 if not content:
                     logger.warning(
                         f"MarketResearcher: {client_type} returned empty content"
@@ -1117,7 +1105,7 @@ class MarketResearcher:
                 ],
                 model="deepseek-v4-pro",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
-                max_tokens=10,
+                max_tokens=50,
                 temperature=0.0,
             )
 

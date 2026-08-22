@@ -3634,5 +3634,29 @@
     "reason": "\ud83d\udcc8 Moderate Trend Score: 60 / \ud83d\ude80 1h Strong Uptrend / \ud83d\udd25 RSI Overbought (78.6)",
     "strategy": "trend",
     "notified": false
+  },
+  {
+    "id": "ACEUSDT_20260822191201",
+    "timestamp": "2026-08-22T19:12:01.439468",
+    "type": "BUY",
+    "symbol": "ACEUSDT",
+    "action": "OPEN",
+    "price": 0.2724,
+    "quantity": 171.2287,
+    "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "grid",
+    "notified": false
+  },
+  {
+    "id": "ACEUSDT_20260822232330",
+    "timestamp": "2026-08-22T23:23:30.540247",
+    "type": "BUY",
+    "symbol": "ACEUSDT",
+    "action": "OPEN",
+    "price": 0.2475,
+    "quantity": 195.0,
+    "reason": "\u2705 Multi-TF Entry Signal (long) / \ud83d\ude80 Multi-TF Bullish Alignment / \ud83d\udcaa Strong Trend Score: 75",
+    "strategy": "grid",
+    "notified": false
   }
 ]

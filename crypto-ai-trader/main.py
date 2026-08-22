@@ -390,7 +390,7 @@ def cmd_cron_report():
 
 
 def cmd_auto_dust():
-    """Automatically convert dust positions (< $1 value, free balance only) to USDT or BNB.
+    """Automatically convert dust positions (< $4.5 value, free balance only) to USDT or BNB.
 
     Strategy:
     1. Find all non-USDT assets with free balance worth < $1
@@ -400,7 +400,9 @@ def cmd_auto_dust():
     """
     import json as _json
 
-    DUST_THRESHOLD_USD = 1.0
+    # $4.5: below the $5 exchange minNotional such positions can never hold
+    # a protective SL order (bug#20 dead-zone cleanup, 2026-08-22)
+    DUST_THRESHOLD_USD = 4.5
     SKIP_ASSETS = {'NTRN', 'LDBNB', 'BETH'}
 
     client = BinanceClient(testnet=False)
