@@ -16558,5 +16558,1341 @@
     "title": "",
     "body": "🔍 16:33 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 6个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 80)\n  2. EDENUSDT (评分: 76)\n  3. ETHUSDT (评分: 75)\n",
     "pushed": true
+  },
+  {
+    "id": "notif_20260819183612649951",
+    "timestamp": "2026-08-19T18:36:12.649986",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819183614256919",
+    "timestamp": "2026-08-19T18:36:14.256958",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $384.65 = $5.00\n勝率: 38.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 97 @ $0.053760\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 85\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 97 @ $0.054140\n  Slippage: +0.71% (fill $0.054140 vs expected $0.053760)\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819183623478882",
+    "timestamp": "2026-08-19T18:36:23.478921",
+    "type": "signal",
+    "title": "交易信号: EDENUSDT",
+    "body": "🟢 BUY EDENUSDT @ $0.0538 x96.8\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 85\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819183624084790",
+    "timestamp": "2026-08-19T18:36:24.084831",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 18:36 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 7个\n\n🏆 前3名:\n  1. EDENUSDT (评分: 80)\n  2. ZECUSDT (评分: 71)\n  3. ETHUSDT (评分: 70)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819203229504594",
+    "timestamp": "2026-08-19T20:32:29.504627",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819203230778987",
+    "timestamp": "2026-08-19T20:32:30.779023",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 81)\nKelly: 1.3% of $396.41 = $5.00\n勝率: 40.6% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 93 @ $0.056170\n信號: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/3\n\n📊 訂單:\n  BUY: 93 @ $0.056140\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819203241650079",
+    "timestamp": "2026-08-19T20:32:41.650117",
+    "type": "signal",
+    "title": "交易信号: EDENUSDT",
+    "body": "🟢 BUY EDENUSDT @ $0.0562 x92.6\n原因: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819203242366731",
+    "timestamp": "2026-08-19T20:32:42.366771",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 20:32 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 10个\n\n🏆 前3名:\n  1. EDENUSDT (评分: 82)\n  2. ACEUSDT (评分: 78)\n  3. ZECUSDT (评分: 77)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819223412873446",
+    "timestamp": "2026-08-19T22:34:12.873480",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ETHUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819223414113163",
+    "timestamp": "2026-08-19T22:34:14.113203",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ETHUSDT\n策略: BOLLINGER | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 1.3% of $391.21 = $5.00\n勝率: 45.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 0 @ $1937.830000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 0 @ $1935.410000\n  Slippage: -0.12% (fill $1935.410000 vs expected $1937.830000)\n  SL: FAILED\n  🟡 No SL (small pos $5.23 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819223426121074",
+    "timestamp": "2026-08-19T22:34:26.121114",
+    "type": "signal",
+    "title": "交易信号: ETHUSDT",
+    "body": "🟢 BUY ETHUSDT @ $1937.8300 x0.0027\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: bollinger",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260819223426774188",
+    "timestamp": "2026-08-19T22:34:26.774227",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 22:34 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n💡 发现机会: 18个\n\n🏆 前3名:\n  1. ETHUSDT (评分: 83)\n  2. ZECUSDT (评分: 80)\n  3. SOLUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820002753870415",
+    "timestamp": "2026-08-20T00:27:53.870451",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820003048379479",
+    "timestamp": "2026-08-20T00:30:48.379511",
+    "type": "message",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 60.3% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $397.33\nAll new trades BLOCKED until manual reset.",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820003607641994",
+    "timestamp": "2026-08-20T00:36:07.642034",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 00:36 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820022719597938",
+    "timestamp": "2026-08-20T02:27:19.597979",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820023033590981",
+    "timestamp": "2026-08-20T02:30:33.591018",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - MUBARAKUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $391.09 = $5.00\n勝率: 44.4% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 239 @ $0.020900\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 239 @ $0.020930\n  Slippage: +0.14% (fill $0.020930 vs expected $0.020900)\n  SL-only: 239.2 @ $0.01965 (-6.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820023042359108",
+    "timestamp": "2026-08-20T02:30:42.359140",
+    "type": "signal",
+    "title": "交易信号: MUBARAKUSDT",
+    "body": "🟢 BUY MUBARAKUSDT @ $0.0209 x239.2\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n策略: dca",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820023042913932",
+    "timestamp": "2026-08-20T02:30:42.913971",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 02:30 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. MUBARAKUSDT (评分: 79)\n  2. EDENUSDT (评分: 77)\n  3. WLDUSDT (评分: 71)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820042733750360",
+    "timestamp": "2026-08-20T04:27:33.750396",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820042946450152",
+    "timestamp": "2026-08-20T04:29:46.450191",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 04:29 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. MUBARAKUSDT (评分: 78)\n  2. LINKUSDT (评分: 78)\n  3. EDENUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820062724896168",
+    "timestamp": "2026-08-20T06:27:24.896207",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820062937805052",
+    "timestamp": "2026-08-20T06:29:37.805089",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 06:29 扫描完成\n\n😐 市场情绪: 46 (Fear)\n📊 动态阈值: 65\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. TRXUSDT (评分: 80)\n  2. DOGEUSDT (评分: 79)\n  3. ETHUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820082813880982",
+    "timestamp": "2026-08-20T08:28:13.881014",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820083030268030",
+    "timestamp": "2026-08-20T08:30:30.268065",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 08:30 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 65\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 19个\n\n🏆 前3名:\n  1. TRXUSDT (评分: 81)\n  2. PLUMEUSDT (评分: 75)\n  3. TRUMPUSDT (评分: 73)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820091525671229",
+    "timestamp": "2026-08-20T09:15:25.671262",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-08-20\n\n💰 USDT: $397.07\n📈 總資產: $397.07\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 272筆交易):\n  已實現PnL: $-220.12\n  手續費: -$6.55\n  淨已實現: $-226.67\n  塵倉浮虧: $8.08 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820102807885626",
+    "timestamp": "2026-08-20T10:28:07.885671",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820103014666873",
+    "timestamp": "2026-08-20T10:30:14.666909",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 10:30 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 65\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. TRXUSDT (评分: 79)\n  2. PLUMEUSDT (评分: 77)\n  3. ZECUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820122746151368",
+    "timestamp": "2026-08-20T12:27:46.151403",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820123014651187",
+    "timestamp": "2026-08-20T12:30:14.651228",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - LINKUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.3% of $397.07 = $5.00\n勝率: 44.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 1 @ $10.463000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/3\n\n📊 訂單:\n  BUY: 1 @ $10.447000\n  Slippage: -0.15% (fill $10.447000 vs expected $10.463000)\n  SL-only: 0.53 @ $9.835 (-6.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820123024247342",
+    "timestamp": "2026-08-20T12:30:24.247376",
+    "type": "signal",
+    "title": "交易信号: LINKUSDT",
+    "body": "🟢 BUY LINKUSDT @ $10.4630 x0.53\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820123024934553",
+    "timestamp": "2026-08-20T12:30:24.934582",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 12:30 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 3个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 74)\n  2. DOGEUSDT (评分: 74)\n  3. BNBUSDT (评分: 72)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820142826683910",
+    "timestamp": "2026-08-20T14:28:26.683954",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820143145409532",
+    "timestamp": "2026-08-20T14:31:45.409577",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - PLUMEUSDT\n策略: TREND | 倉位級別: MEDIUM (Score: 74)\nKelly: 2.7% of $391.53 = $10.70\n勝率: 40.0% | 信心: HIGH\n買入: 825 @ $0.012960\n信號: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 65 / 📈 Above VWAP\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 825 @ $0.012940\n  Slippage: -0.15% (fill $0.012940 vs expected $0.012960)\n  SL-only: 825.0 @ $0.01218 (-6.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820143157234600",
+    "timestamp": "2026-08-20T14:31:57.234643",
+    "type": "signal",
+    "title": "交易信号: PLUMEUSDT",
+    "body": "🟢 BUY PLUMEUSDT @ $0.0130 x825.0\n原因: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 65 / 📈 Above VWAP\n策略: trend",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820143157955714",
+    "timestamp": "2026-08-20T14:31:57.955764",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 14:31 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 2个\n\n🏆 前3名:\n  1. PLUMEUSDT (评分: 74)\n  2. ASTERUSDT (评分: 73)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820162753292887",
+    "timestamp": "2026-08-20T16:27:53.292924",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820163147379516",
+    "timestamp": "2026-08-20T16:31:47.379551",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 16:31 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 77\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 6个\n\n🏆 前3名:\n  1. TRXUSDT (评分: 82)\n  2. ASTERUSDT (评分: 79)\n  3. DOGEUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820182740924201",
+    "timestamp": "2026-08-20T18:27:40.924238",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820183042165631",
+    "timestamp": "2026-08-20T18:30:42.165665",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 18:30 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 77\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 4个\n\n🏆 前3名:\n  1. ACEUSDT (评分: 87)\n  2. BIOUSDT (评分: 83)\n  3. BTCUSDT (评分: 80)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820202755241835",
+    "timestamp": "2026-08-20T20:27:55.241871",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820203254762963",
+    "timestamp": "2026-08-20T20:32:54.763001",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 3.1% of $387.29 = $11.88\n勝率: 40.0% | 信心: HIGH\n買入: 52 @ $0.228300\n信號: 📈 Moderate Trend Score: 70 / 🚀 1h Strong Uptrend / 📊 MACD Positive (1h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 52 @ $0.222800\n  Slippage: -2.41% (fill $0.222800 vs expected $0.228300)\n  SL-only: 52.0 @ $0.21 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820203307099181",
+    "timestamp": "2026-08-20T20:33:07.099215",
+    "type": "signal",
+    "title": "交易信号: ACEUSDT",
+    "body": "🟢 BUY ACEUSDT @ $0.2283 x52.0\n原因: 📈 Moderate Trend Score: 70 / 🚀 1h Strong Uptrend / 📊 MACD Positive (1h)\n策略: trend",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820203307694299",
+    "timestamp": "2026-08-20T20:33:07.694333",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 20:33 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 72\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 6个\n\n🏆 前3名:\n  1. ACEUSDT (评分: 84)\n  2. PLUMEUSDT (评分: 81)\n  3. XRPUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820222751557626",
+    "timestamp": "2026-08-20T22:27:51.557667",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820223335087749",
+    "timestamp": "2026-08-20T22:33:35.087784",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 22:33 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 16个\n\n🏆 前3名:\n  1. ACEUSDT (评分: 85)\n  2. PLUMEUSDT (评分: 79)\n  3. XRPUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820232806265044",
+    "timestamp": "2026-08-20T23:28:06.265078",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820233656514344",
+    "timestamp": "2026-08-20T23:36:56.514380",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ASTERUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 4.6% of $387.95 = $17.69\n勝率: 50.0% | 信心: HIGH\n買入: 27 @ $0.663000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 27 @ $0.664000\n  Slippage: +0.15% (fill $0.664000 vs expected $0.663000)\n  SL-only: 26.69 @ $0.61 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820233701493650",
+    "timestamp": "2026-08-20T23:37:01.493688",
+    "type": "signal",
+    "title": "交易信号: ASTERUSDT",
+    "body": "🟢 BUY ASTERUSDT @ $0.6630 x26.69\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260820233702051912",
+    "timestamp": "2026-08-20T23:37:02.051955",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:37 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ASTERUSDT (评分: 81)\n  2. PLUMEUSDT (评分: 79)\n  3. DOGEUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012708123762",
+    "timestamp": "2026-08-21T01:27:08.123795",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012941628588",
+    "timestamp": "2026-08-21T01:29:41.628628",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ZECUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012942650988",
+    "timestamp": "2026-08-21T01:29:42.651028",
+    "type": "message",
+    "title": "",
+    "body": "🔴🔴 ZECUSDT 完全無SL！0.0400 單位裸露！手動處理！",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012944117622",
+    "timestamp": "2026-08-21T01:29:44.117653",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 6.0% of $382.30 = $23.12\n勝率: 55.0% | 信心: HIGH\n買入: 0 @ $581.440000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 0 @ $581.290000\n  SL: FAILED\n  🔴 未保護: 0.0400 units (no SL placed)\n  🟡 Emergency market sell: 0.0400 units (no SL possible)\n  注意: 0 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012948598990",
+    "timestamp": "2026-08-21T01:29:48.599028",
+    "type": "signal",
+    "title": "交易信号: ZECUSDT",
+    "body": "🟢 BUY ZECUSDT @ $581.4400 x0.04\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821012949144241",
+    "timestamp": "2026-08-21T01:29:49.144281",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 80)\n  2. PLUMEUSDT (评分: 80)\n  3. DOGEUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022723787678",
+    "timestamp": "2026-08-21T02:27:23.787719",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022915396949",
+    "timestamp": "2026-08-21T02:29:15.396988",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ZECUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022916476864",
+    "timestamp": "2026-08-21T02:29:16.476905",
+    "type": "message",
+    "title": "",
+    "body": "🔴🔴 ZECUSDT 完全無SL！0.0250 單位裸露！手動處理！",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022917627236",
+    "timestamp": "2026-08-21T02:29:17.627271",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 3.6% of $382.32 = $13.87\n勝率: 55.0% | 信心: HIGH\n買入: 0 @ $565.970000\n信號: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 55 / 📈 Above VWAP\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 0 @ $566.260000\n  SL: FAILED\n  🔴 未保護: 0.0250 units (no SL placed)\n  🟡 Emergency market sell: 0.0250 units (no SL possible)\n  注意: 0 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022921761258",
+    "timestamp": "2026-08-21T02:29:21.761298",
+    "type": "signal",
+    "title": "交易信号: ZECUSDT",
+    "body": "🟢 BUY ZECUSDT @ $565.9700 x0.025\n原因: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 55 / 📈 Above VWAP\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821022922312956",
+    "timestamp": "2026-08-21T02:29:22.312998",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 02:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 79)\n  2. AVAXUSDT (评分: 78)\n  3. LTCUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821032710727203",
+    "timestamp": "2026-08-21T03:27:10.727236",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821032905497763",
+    "timestamp": "2026-08-21T03:29:05.497801",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - XRPUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 3.0% of $382.32 = $11.54\n勝率: 55.0% | 信心: HIGH\n買入: 9 @ $1.235000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 9 @ $1.235300\n  SL-only: 9.3 @ $1.1115 (-10.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821032909546970",
+    "timestamp": "2026-08-21T03:29:09.547003",
+    "type": "signal",
+    "title": "交易信号: XRPUSDT",
+    "body": "🟢 BUY XRPUSDT @ $1.2350 x9.3\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821032910118764",
+    "timestamp": "2026-08-21T03:29:10.118804",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 18个\n\n🏆 前3名:\n  1. XRPUSDT (评分: 76)\n  2. XPLUSDT (评分: 75)\n  3. XAUTUSDT (评分: 74)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042712908464",
+    "timestamp": "2026-08-21T04:27:12.908505",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042913090085",
+    "timestamp": "2026-08-21T04:29:13.090118",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ACEUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042914565140",
+    "timestamp": "2026-08-21T04:29:14.565173",
+    "type": "message",
+    "title": "",
+    "body": "🔴🔴 ACEUSDT 完全無SL！44.1000 單位裸露！手動處理！",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042915713508",
+    "timestamp": "2026-08-21T04:29:15.713543",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 9.7% of $370.84 = $35.88\n勝率: 55.0% | 信心: HIGH\n買入: 146 @ $0.245300\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 60\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 146 @ $0.245200\n  SL: FAILED\n  TP1(+15.0%): 40.9 @ $0.2821\n  TP2(+24.0%): 40.9 @ $0.3042\n  TP3(+37.5%): 20.4 @ $0.3373\n  🔴 未保護: 44.1000 units (no SL placed)\n  🟡 Emergency market sell: 44.1000 units (no SL possible)\n  注意: 44 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042919299961",
+    "timestamp": "2026-08-21T04:29:19.299993",
+    "type": "signal",
+    "title": "交易信号: ACEUSDT",
+    "body": "🟢 BUY ACEUSDT @ $0.2453 x146.3\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 60\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821042919815688",
+    "timestamp": "2026-08-21T04:29:19.815722",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 04:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 16个\n\n🏆 前3名:\n  1. XRPUSDT (评分: 77)\n  2. ACEUSDT (评分: 77)\n  3. XPLUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052716152532",
+    "timestamp": "2026-08-21T05:27:16.152566",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (2):\n  ✓ SSR=0.00 — 穩定幣購買力充裕\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052924725914",
+    "timestamp": "2026-08-21T05:29:24.725954",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for XPLUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052926313982",
+    "timestamp": "2026-08-21T05:29:26.314022",
+    "type": "message",
+    "title": "",
+    "body": "🔴🔴 XPLUSDT 完全無SL！139.1000 單位裸露！手動處理！",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052927566856",
+    "timestamp": "2026-08-21T05:29:27.566893",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - XPLUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 11.5% of $350.84 = $40.34\n勝率: 55.0% | 信心: HIGH\n買入: 463 @ $0.087070\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 65 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 463 @ $0.087650\n  Slippage: +0.67% (fill $0.087650 vs expected $0.087070)\n  SL: FAILED\n  TP1(+15.0%): 129.7 @ $0.10013\n  TP2(+24.0%): 129.7 @ $0.10797\n  TP3(+37.5%): 64.8 @ $0.11972\n  🔴 未保護: 139.1000 units (no SL placed)\n  🟡 Emergency market sell: 139.1000 units (no SL possible)\n  注意: 139 單位已由額外SL覆蓋",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052932212017",
+    "timestamp": "2026-08-21T05:29:32.212053",
+    "type": "signal",
+    "title": "交易信号: XPLUSDT",
+    "body": "🟢 BUY XPLUSDT @ $0.0871 x463.3\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 65 / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821052932828469",
+    "timestamp": "2026-08-21T05:29:32.828508",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 62\n🔴 暴涨预警: IMMINENT (P1=2 P2=2 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. XRPUSDT (评分: 81)\n  2. XPLUSDT (评分: 79)\n  3. DOGEUSDT (评分: 75)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821062722819736",
+    "timestamp": "2026-08-21T06:27:22.819767",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (2):\n  ✓ SSR=0.00 — 穩定幣購買力充裕\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821062922606418",
+    "timestamp": "2026-08-21T06:29:22.606457",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 06:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=2 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. XPLUSDT (评分: 82)\n  2. ENAUSDT (评分: 80)\n  3. ASTERUSDT (评分: 74)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821072706848018",
+    "timestamp": "2026-08-21T07:27:06.848053",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=None NUPL=None",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821072947069404",
+    "timestamp": "2026-08-21T07:29:47.069444",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:29 扫描完成\n\n😊 市场情绪: 62 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. XPLUSDT (评分: 82)\n  2. ENAUSDT (评分: 80)\n  3. NEARUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821082751194907",
+    "timestamp": "2026-08-21T08:27:51.194944",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821083006345482",
+    "timestamp": "2026-08-21T08:30:06.345524",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 08:30 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ONTUSDT (评分: 84)\n  2. XPLUSDT (评分: 81)\n  3. PLUMEUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821091519884810",
+    "timestamp": "2026-08-21T09:15:19.884843",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-08-21\n\n💰 USDT: $322.50\n📈 總資產: $400.08\n\n📦 持倉 (3):\n  🟢 XPL: 526.6 ($46.29, +9.25%)\n  🟢 ACE: 81.9 ($19.84, +23.76%)\n  🟢 ONT: 223.0 ($11.45, +26.94%)\n\n📋 掛單: 8 個 (SL:6 TP:8)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 80.6% > 60% → 可考慮加倉\n  🎯 ONT 24h +26.9% → 考慮鎖利\n  🎯 ACE 24h +23.8% → 考慮鎖利\n\n📋 資金審計 (FIFO, 276筆交易):\n  已實現PnL: $-219.72\n  手續費: -$6.57\n  淨已實現: $-226.30\n  塵倉浮虧: $10.59 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821092721282063",
+    "timestamp": "2026-08-21T09:27:21.282096",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🟡 暴漲預警等級: ACCUMULATE\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.32 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (2):\n  ✓ DeFi TVL 穩定（avg +0.2%）— 資金未撤離\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\nMVRV=1.3248 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821093000362712",
+    "timestamp": "2026-08-21T09:30:00.362750",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:30 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 71\n🟡 暴涨预警: ACCUMULATE (P1=2 P2=2 P3=0)\n  🐋 DeFi TVL 穩定（avg +0.2%）— 資金未撤離\n💡 发现机会: 6个\n\n🏆 前3名:\n  1. BTCUSDT (评分: 77)\n  2. ENAUSDT (评分: 75)\n  3. AVAXUSDT (评分: 75)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821113219151784",
+    "timestamp": "2026-08-21T11:32:19.151822",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (2):\n  ✓ MVRV=1.40 — 低於均值\n  ✓ NUPL=0.245 — 恐慌-投降區間\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0012 NUPL=0.2452",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821113512818711",
+    "timestamp": "2026-08-21T11:35:12.818753",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:35 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=2 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. HBARUSDT (评分: 83)\n  2. NEARUSDT (评分: 81)\n  3. XPLUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821133253162259",
+    "timestamp": "2026-08-21T13:32:53.162292",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821133510482692",
+    "timestamp": "2026-08-21T13:35:10.482732",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:35 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. XPLUSDT (评分: 79)\n  2. PLUMEUSDT (评分: 78)\n  3. ZECUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821143254775446",
+    "timestamp": "2026-08-21T14:32:54.775479",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821144002817486",
+    "timestamp": "2026-08-21T14:40:02.817524",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 14:40 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821153512575793",
+    "timestamp": "2026-08-21T15:35:12.575847",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821153744359654",
+    "timestamp": "2026-08-21T15:37:44.359688",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 82)\n  2. XPLUSDT (评分: 78)\n  3. AVAXUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821163528849090",
+    "timestamp": "2026-08-21T16:35:28.849129",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821163753910524",
+    "timestamp": "2026-08-21T16:37:53.910563",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 16:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 81)\n  2. XPLUSDT (评分: 80)\n  3. PYTHUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821165215537270",
+    "timestamp": "2026-08-21T16:52:15.537304",
+    "type": "message",
+    "title": "",
+    "body": "🔴 ensure_tp_sl: ZECUSDT 平倉已成交但DB寫入失敗 (sell=True, outcome=False, cleanup=True)，請核對 trades/outcomes/portfolio",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821173545145173",
+    "timestamp": "2026-08-21T17:35:45.145209",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821173759771170",
+    "timestamp": "2026-08-21T17:37:59.771210",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for AVAXUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821173801049322",
+    "timestamp": "2026-08-21T17:38:01.049357",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - AVAXUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 1.2% of $404.87 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 1 @ $7.533000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 1 @ $7.546000\n  Slippage: +0.17% (fill $7.546000 vs expected $7.533000)\n  SL: FAILED\n  🟡 No SL (small pos $5.80 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821173805889698",
+    "timestamp": "2026-08-21T17:38:05.889735",
+    "type": "signal",
+    "title": "交易信号: AVAXUSDT",
+    "body": "🟢 BUY AVAXUSDT @ $7.5330 x0.77\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: trend",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821173806466651",
+    "timestamp": "2026-08-21T17:38:06.466689",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:38 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. AVAXUSDT (评分: 83)\n  2. XLMUSDT (评分: 83)\n  3. WLDUSDT (评分: 82)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821183536886466",
+    "timestamp": "2026-08-21T18:35:36.886504",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=None SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821183814245098",
+    "timestamp": "2026-08-21T18:38:14.245139",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for WLDUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821183815453297",
+    "timestamp": "2026-08-21T18:38:15.453342",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - WLDUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 82)\nKelly: 1.3% of $399.06 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 15 @ $0.390400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 15 @ $0.392400\n  Slippage: +0.51% (fill $0.392400 vs expected $0.390400)\n  SL: FAILED\n  🟡 No SL (small pos $5.78 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821183819951985",
+    "timestamp": "2026-08-21T18:38:19.952016",
+    "type": "signal",
+    "title": "交易信号: WLDUSDT",
+    "body": "🟢 BUY WLDUSDT @ $0.3904 x14.8\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821183820648184",
+    "timestamp": "2026-08-21T18:38:20.648224",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 18:38 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=0 P2=0 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. WLDUSDT (评分: 82)\n  2. GRAMUSDT (评分: 81)\n  3. POLUSDT (评分: 78)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821193514942871",
+    "timestamp": "2026-08-21T19:35:14.942903",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821193850884052",
+    "timestamp": "2026-08-21T19:38:50.884098",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $393.25 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 0 @ $636.620000\n信號: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 0 @ $637.720000\n  Slippage: +0.17% (fill $637.720000 vs expected $636.620000)\n  SL-fallback (market trigger): 0.01 @ $572.96 (-10.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821193855455406",
+    "timestamp": "2026-08-21T19:38:55.455439",
+    "type": "signal",
+    "title": "交易信号: ZECUSDT",
+    "body": "🟢 BUY ZECUSDT @ $636.6200 x0.01\n原因: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821193856054552",
+    "timestamp": "2026-08-21T19:38:56.054589",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 19:38 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 80)\n  2. TAOUSDT (评分: 80)\n  3. WLDUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821203532159338",
+    "timestamp": "2026-08-21T20:35:32.159374",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821203929213023",
+    "timestamp": "2026-08-21T20:39:29.213062",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for NEARUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821203930540249",
+    "timestamp": "2026-08-21T20:39:30.540285",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - NEARUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 1.3% of $386.87 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 3 @ $1.881000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 3 @ $1.888000\n  Slippage: +0.37% (fill $1.888000 vs expected $1.881000)\n  SL: FAILED\n  🟡 No SL (small pos $5.83 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821203934699249",
+    "timestamp": "2026-08-21T20:39:34.699287",
+    "type": "signal",
+    "title": "交易信号: NEARUSDT",
+    "body": "🟢 BUY NEARUSDT @ $1.8810 x3.1\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821203935296244",
+    "timestamp": "2026-08-21T20:39:35.296280",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 20:39 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ZECUSDT (评分: 76)\n  2. BTCUSDT (评分: 76)\n  3. SUIUSDT (评分: 75)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821213549944351",
+    "timestamp": "2026-08-21T21:35:49.944385",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821214231839761",
+    "timestamp": "2026-08-21T21:42:31.839796",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 21:42 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. HBARUSDT (评分: 79)\n  2. CRCLBUSDT (评分: 77)\n  3. ASTERUSDT (评分: 77)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821223530093798",
+    "timestamp": "2026-08-21T22:35:30.093832",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821223932076259",
+    "timestamp": "2026-08-21T22:39:32.076299",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 22:39 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. CRCLBUSDT (评分: 83)\n  2. NEARUSDT (评分: 83)\n  3. SUIUSDT (评分: 80)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821233539822743",
+    "timestamp": "2026-08-21T23:35:39.822777",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260821234530965263",
+    "timestamp": "2026-08-21T23:45:30.965298",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 23:45 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 85)\n  2. SUIUSDT (评分: 82)\n  3. NEARUSDT (评分: 81)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822003456787193",
+    "timestamp": "2026-08-22T00:34:56.787228",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822004357395809",
+    "timestamp": "2026-08-22T00:43:57.395861",
+    "type": "message",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for POLUSDT! Manual SL needed!",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822004358617903",
+    "timestamp": "2026-08-22T00:43:58.617938",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - POLUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.3% of $381.28 = $5.00\n勝率: 45.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 65 @ $0.088790\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 5/5\n\n📊 訂單:\n  BUY: 65 @ $0.089471\n  Slippage: +0.77% (fill $0.089471 vs expected $0.088790)\n  SL: FAILED\n  🟡 No SL (small pos $5.75 < $10 — accepted risk)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822004401968740",
+    "timestamp": "2026-08-22T00:44:01.968775",
+    "type": "signal",
+    "title": "交易信号: POLUSDT",
+    "body": "🟢 BUY POLUSDT @ $0.0888 x64.8\n原因: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822004402528743",
+    "timestamp": "2026-08-22T00:44:02.528782",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 00:44 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 85)\n  2. SUIUSDT (评分: 81)\n  3. ONDOUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822013451549423",
+    "timestamp": "2026-08-22T01:34:51.549463",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822013723708303",
+    "timestamp": "2026-08-22T01:37:23.708341",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 01:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 19个\n\n🏆 前3名:\n  1. REUSDT (评分: 80)\n  2. SUIUSDT (评分: 78)\n  3. LINKUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822023454606819",
+    "timestamp": "2026-08-22T02:34:54.606868",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822023725536072",
+    "timestamp": "2026-08-22T02:37:25.536108",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 02:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 15个\n\n🏆 前3名:\n  1. AAVEUSDT (评分: 78)\n  2. LINKUSDT (评分: 77)\n  3. SUIUSDT (评分: 75)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822033456831658",
+    "timestamp": "2026-08-22T03:34:56.831690",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822033710203280",
+    "timestamp": "2026-08-22T03:37:10.203315",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 03:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 11个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 77)\n  2. REUSDT (评分: 73)\n  3. LTCUSDT (评分: 71)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822043452359258",
+    "timestamp": "2026-08-22T04:34:52.359297",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822043648379758",
+    "timestamp": "2026-08-22T04:36:48.379821",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 04:36 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 10个\n\n🏆 前3名:\n  1. LINKUSDT (评分: 76)\n  2. REUSDT (评分: 72)\n  3. ZECUSDT (评分: 72)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822053502092392",
+    "timestamp": "2026-08-22T05:35:02.092428",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822053658702858",
+    "timestamp": "2026-08-22T05:36:58.702900",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 05:36 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. DOGEUSDT (评分: 80)\n  2. WLFIUSDT (评分: 79)\n  3. SUIUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822063521014962",
+    "timestamp": "2026-08-22T06:35:21.014997",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822063718124646",
+    "timestamp": "2026-08-22T06:37:18.124681",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 06:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. DOGEUSDT (评分: 79)\n  2. REUSDT (评分: 79)\n  3. ONDOUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822073503441080",
+    "timestamp": "2026-08-22T07:35:03.441120",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822073709728184",
+    "timestamp": "2026-08-22T07:37:09.728218",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ONDOUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 1.5% of $398.64 = $6.00\n勝率: 55.0% | 信心: HIGH\n買入: 15 @ $0.401400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 15 @ $0.399800\n  Slippage: -0.40% (fill $0.399800 vs expected $0.401400)\n  SL-fallback (market trigger): 14.9 @ $0.3613 (-10.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822073713466219",
+    "timestamp": "2026-08-22T07:37:13.466252",
+    "type": "signal",
+    "title": "交易信号: ONDOUSDT",
+    "body": "🟢 BUY ONDOUSDT @ $0.4014 x14.9\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822073714041357",
+    "timestamp": "2026-08-22T07:37:14.041392",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 07:37 扫描完成\n\n😊 市场情绪: 72 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. DOGEUSDT (评分: 81)\n  2. ONDOUSDT (评分: 81)\n  3. SOLUSDT (评分: 79)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822083513833584",
+    "timestamp": "2026-08-22T08:35:13.833616",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822083732794534",
+    "timestamp": "2026-08-22T08:37:32.794572",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - REUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.5% of $392.80 = $6.00\n勝率: 60.0% | 信心: HIGH\n買入: 11 @ $0.551900\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 11 @ $0.552900\n  Slippage: +0.18% (fill $0.552900 vs expected $0.551900)\n  SL-only: 10.9 @ $0.5077 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822083736175068",
+    "timestamp": "2026-08-22T08:37:36.175109",
+    "type": "signal",
+    "title": "交易信号: REUSDT",
+    "body": "🟢 BUY REUSDT @ $0.5519 x10.9\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822083736711394",
+    "timestamp": "2026-08-22T08:37:36.711436",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 08:37 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 19个\n\n🏆 前3名:\n  1. HBARUSDT (评分: 81)\n  2. DASHUSDT (评分: 77)\n  3. XLMUSDT (评分: 73)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822091517448841",
+    "timestamp": "2026-08-22T09:15:17.448874",
+    "type": "message",
+    "title": "",
+    "body": "📊 每日报告 2026-08-22\n\n💰 USDT: $386.77\n📈 總資產: $406.46\n\n📦 持倉 (3):\n  🟢 DOGE: 81.0 ($7.43, +12.31%)\n  🟢 RE: 10.9 ($6.41, +16.47%)\n  🟢 HBAR: 73.0 ($5.85, +8.48%)\n\n📋 掛單: 4 個 (SL:3 TP:4)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.2% > 60% → 可考慮加倉\n  🎯 DOGE 24h +12.3% → 考慮鎖利\n  🎯 RE 24h +16.5% → 考慮鎖利\n\n📋 資金審計 (FIFO, 293筆交易):\n  已實現PnL: $-218.95\n  手續費: -$6.65\n  淨已實現: $-225.60\n  塵倉浮虧: $15.23 (13個)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822093512181027",
+    "timestamp": "2026-08-22T09:35:12.181061",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🟡 暴漲預警等級: ACCUMULATE\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (2):\n  ✓ DeFi TVL 穩定（avg +0.0%）— 資金未撤離\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822093744213148",
+    "timestamp": "2026-08-22T09:37:44.213186",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - ONDOUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 74)\nKelly: 5.7% of $393.24 = $22.61\n勝率: 65.0% | 信心: HIGH\n買入: 55 @ $0.408900\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (71.1)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 55 @ $0.408600\n  SL-only: 55.3 @ $0.3762 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822093748766726",
+    "timestamp": "2026-08-22T09:37:48.766761",
+    "type": "signal",
+    "title": "交易信号: ONDOUSDT",
+    "body": "🟢 BUY ONDOUSDT @ $0.4089 x55.3\n原因: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (71.1)\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822093749334104",
+    "timestamp": "2026-08-22T09:37:49.334144",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 09:37 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 66\n🟡 暴涨预警: ACCUMULATE (P1=1 P2=2 P3=0)\n  🐋 DeFi TVL 穩定（avg +0.0%）— 資金未撤離\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. ONDOUSDT (评分: 75)\n  2. DASHUSDT (评分: 73)\n  3. XLMUSDT (评分: 72)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822114325948234",
+    "timestamp": "2026-08-22T11:43:25.948272",
+    "type": "surge_alert",
+    "title": "",
+    "body": "🚨 暴漲預警\n\n🔴 暴漲預警等級: IMMINENT\n\n📊 Phase 1 築底信號 (1):\n  ✓ MVRV=1.40 — 低於均值\n\n🐋 Phase 2 積累信號 (1):\n  ✓ MVRV+SOPR 雙確認：底部買入信號\n\n🔥 Phase 3 反轉信號 (1):\n  ✓ ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n\nMVRV=1.3977 SOPR=1.0125 NUPL=0.2845",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822114650717312",
+    "timestamp": "2026-08-22T11:46:50.717351",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - WLFIUSDT\n策略: BOLLINGER | 倉位級別: MEDIUM-HIGH (Score: 84)\nKelly: 8.0% of $370.64 = $29.83\n勝率: 65.0% | 信心: HIGH\n買入: 467 @ $0.063800\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 468 @ $0.063900\n  Slippage: +0.16% (fill $0.063900 vs expected $0.063800)\n  SL-only: 467.03 @ $0.0587 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822114654756232",
+    "timestamp": "2026-08-22T11:46:54.756273",
+    "type": "signal",
+    "title": "交易信号: WLFIUSDT",
+    "body": "🟢 BUY WLFIUSDT @ $0.0638 x467.03\n原因: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n策略: bollinger",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822114655362240",
+    "timestamp": "2026-08-22T11:46:55.362287",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 11:46 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 67\n🔴 暴涨预警: IMMINENT (P1=1 P2=1 P3=1)\n  🔥 ⚠️ 六維共振=MILD_BULL（3/6 轉暖）\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. WLFIUSDT (评分: 85)\n  2. LTCUSDT (评分: 82)\n  3. BNBUSDT (评分: 82)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822131645465709",
+    "timestamp": "2026-08-22T13:16:45.465749",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - SOLUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 85)\nKelly: 12.0% of $407.36 = $48.79\n勝率: 65.0% | 信心: HIGH\n買入: 1 @ $93.810000\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 1 @ $91.734673\n  Slippage: -2.21% (fill $91.734673 vs expected $93.810000)\n  TP1(+13.0%): 0.171 @ $106.01\n  TP2(+20.8%): 0.171 @ $113.32\n  SL(remaining): 0.177 @ $86.31 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822131650015770",
+    "timestamp": "2026-08-22T13:16:50.015811",
+    "type": "signal",
+    "title": "交易信号: SOLUSDT",
+    "body": "🟢 BUY SOLUSDT @ $93.8100 x0.519538\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n策略: trend",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822131650789624",
+    "timestamp": "2026-08-22T13:16:50.789677",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 13:16 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 72\n💡 发现机会: 20个\n\n🏆 前3名:\n  1. SOLUSDT (评分: 86)\n  2. WLFIUSDT (评分: 85)\n  3. POLUSDT (评分: 84)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822142950459658",
+    "timestamp": "2026-08-22T14:29:50.459699",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - WLFIUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 5.7% of $359.66 = $20.68\n勝率: 65.0% | 信心: HIGH\n買入: 327 @ $0.063200\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 327 @ $0.062800\n  Slippage: -0.63% (fill $0.062800 vs expected $0.063200)\n  SL-only: 326.8 @ $0.0581 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822142954923379",
+    "timestamp": "2026-08-22T14:29:54.923416",
+    "type": "signal",
+    "title": "交易信号: WLFIUSDT",
+    "body": "🟢 BUY WLFIUSDT @ $0.0632 x326.8\n原因: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n策略: grid",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822142955549508",
+    "timestamp": "2026-08-22T14:29:55.549550",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 14:29 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 72\n💡 发现机会: 10个\n\n🏆 前3名:\n  1. WLFIUSDT (评分: 77)\n  2. POLUSDT (评分: 76)\n  3. HBARUSDT (评分: 76)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822152829803928",
+    "timestamp": "2026-08-22T15:28:29.803962",
+    "type": "message",
+    "title": "",
+    "body": "🚀 自動執行 - POLUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 76)\nKelly: 12.0% of $358.58 = $42.94\n勝率: 60.0% | 信心: HIGH\n買入: 388 @ $0.110620\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (78.6)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 388 @ $0.111870\n  Slippage: +1.13% (fill $0.111870 vs expected $0.110620)\n  TP1(+13.0%): 127.9 @ $0.125\n  TP2(+20.8%): 127.9 @ $0.13363\n  SL(remaining): 132.0 @ $0.10177 (-8.0%)",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822152833996365",
+    "timestamp": "2026-08-22T15:28:33.996405",
+    "type": "signal",
+    "title": "交易信号: POLUSDT",
+    "body": "🟢 BUY POLUSDT @ $0.1106 x387.8118\n原因: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (78.6)\n策略: trend",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822152834619046",
+    "timestamp": "2026-08-22T15:28:34.619081",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 15:28 扫描完成\n\n😊 市场情绪: 71 (Greed)\n📊 动态阈值: 72\n💡 发现机会: 10个\n\n🏆 前3名:\n  1. XLMUSDT (评分: 78)\n  2. DOGEUSDT (评分: 78)\n  3. BNBUSDT (评分: 77)\n",
+    "pushed": true
+  },
+  {
+    "id": "notif_20260822171225782165",
+    "timestamp": "2026-08-22T17:12:25.782197",
+    "type": "scan_summary",
+    "title": "",
+    "body": "🔍 17:12 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大",
+    "pushed": true
   }
 ]

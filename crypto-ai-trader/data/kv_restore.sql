@@ -1,0 +1,12 @@
+INSERT INTO kv VALUES('cash_balance','391.21078608',1787142753.7923321723);
+INSERT INTO kv VALUES('position_optimizer:switch_times','{"BTCUSDT": 1784662895.041037, "WLDUSDT": 1786991548.8546832, "SOLUSDT": 1787135634.0537179, "UNIUSDT": 1781631726.8568902, "AIGENSYNUSDT": 1783496540.374878, "OPNUSDT": 1784662895.0410395, "PLUMEUSDT": 1786876358.854314, "NILUSDT": 1786905105.381794, "ALICEUSDT": 1786905105.3817964, "XPLUSDT": 1786969987.4501574, "LINKUSDT": 1787005942.344793, "ALLOUSDT": 1786991548.8546848, "XAUTUSDT": 1787005959.7787454, "SNXXBUSDT": 1787005959.778747, "EDENUSDT": 1787135634.0537195}',1787135634.0537333488);
+INSERT INTO kv VALUES('contextual_bandit:priors','{"375": [[1.0, 1.0], [1.0, 1.0], [3.3243952184051495, 5.144555941195085], [1.0, 1.0], [1.0, 1.0]], "340": [[1.0, 1.0], [1.0, 1.0], [1.6590257879656152, 17.698564481124265], [1.0, 1.0], [1.0, 1.0]]}',1787135650.2463595866);
+INSERT INTO kv VALUES('daily_loss_breaker:state','{"daily_start_balance": 396.19390229379997, "current_tier": 0, "last_reset_date": "2026-08-19", "trip_history": [], "halt_until": 0.0}',1787099543.1274375915);
+INSERT INTO kv VALUES('circuit_breaker:state','{"failure_count": 0, "first_failure_ts": null, "tripped_until": null, "trip_reason": ""}',1782345517.7103185654);
+INSERT INTO kv VALUES('deep_value_btc_last','1782891722.1088028',1782891722.2490296363);
+INSERT INTO kv VALUES('deep_value_btc_20260630','1',1782805316.3659391403);
+INSERT INTO kv VALUES('deep_value_btc_20260701','1',1782891722.2494573593);
+INSERT INTO kv VALUES('learned_factor_weights','{"technical": 16.21, "trend": 25.04, "volume": 9.28, "sentiment": 6.4, "price_action": 5.52, "obv_divergence": 7.63, "consolidation": 10.83, "bb_squeeze": 3.95, "rsi_divergence": 4.21, "onchain": 4.12, "market_sentiment": 3.66, "orderbook": 3.15}',1786842003.434792757);
+INSERT INTO kv VALUES('strategy_weights','{"trend": 0.98, "bollinger": 0.98, "dca": 1.101, "grid": 0.98, "rsi": 0.98, "vwap": 0.98}',1786842003.9370069503);
+INSERT INTO kv VALUES('evolved_disabled','{}',1786842004.3028495312);
+INSERT INTO kv VALUES('restricted_symbols','[]',1787006457.4892568588);

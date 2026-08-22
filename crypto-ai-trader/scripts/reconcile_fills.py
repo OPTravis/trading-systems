@@ -214,10 +214,27 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
         # 5) full patch: SELL row + outcome close
         def _insert_sell():
             c = db._get_conn()
+            # bug#13 fix: atomic dedup INSERT — race-proof against concurrent
+            # reconcile jobs (8/22: HBAR/DOGE/POL each double-booked when
+            # trailing-check and ensure_tp_sl ran in the same minute).
+            # Skip insert if an equivalent SELL row already exists (same
+            # symbol/side, qty within 2%, price within 1%, 1h window).
             c.execute(
-                "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
-                "VALUES (?, 'SELL', ?, ?, ?, ?)",
-                (symbol, round(exit_qty, 8), exit_price, round(trade_pnl, 6), last_fill_ts),
+                """
+                INSERT INTO trades (symbol, side, qty, price, pnl, timestamp)
+                SELECT ?, 'SELL', ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM trades
+                    WHERE symbol = ? AND side = 'SELL'
+                      AND ABS(qty - ?) <= ? * 0.02
+                      AND ABS(price - ?) <= ? * 0.01
+                      AND timestamp >= ? - 3600
+                      AND timestamp <= ? + 3600
+                )
+                """,
+                (symbol, round(exit_qty, 8), exit_price, round(trade_pnl, 6), last_fill_ts,
+                 symbol, exit_qty, exit_qty, exit_price, exit_price,
+                 last_fill_ts, last_fill_ts),
             )
             c.commit()
 

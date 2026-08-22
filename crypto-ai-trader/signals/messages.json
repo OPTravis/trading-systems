@@ -2280,5 +2280,320 @@
     "title": "",
     "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 1.3% of $389.82 = $5.00\n勝率: 38.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 100 @ $0.052230\n信號: 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 90 / 📈 Above VWAP\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 100 @ $0.052210\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)\n  注意: 100 單位已由額外SL覆蓋",
     "notified": true
+  },
+  {
+    "id": "msg_20260819183611",
+    "timestamp": "2026-08-19T18:36:11.695127",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819183613",
+    "timestamp": "2026-08-19T18:36:13.651617",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $384.65 = $5.00\n勝率: 38.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 97 @ $0.053760\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 85\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 97 @ $0.054140\n  Slippage: +0.71% (fill $0.054140 vs expected $0.053760)\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819203228",
+    "timestamp": "2026-08-19T20:32:28.833589",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for EDENUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819203230",
+    "timestamp": "2026-08-19T20:32:30.112805",
+    "title": "",
+    "body": "🚀 自動執行 - EDENUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 81)\nKelly: 1.3% of $396.41 = $5.00\n勝率: 40.6% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 93 @ $0.056170\n信號: 💪 Strong Trend Score: 85 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/3\n\n📊 訂單:\n  BUY: 93 @ $0.056140\n  SL: FAILED\n  🟡 No SL (small pos $5.20 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819223412",
+    "timestamp": "2026-08-19T22:34:12.162698",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ETHUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260819223413",
+    "timestamp": "2026-08-19T22:34:13.515892",
+    "title": "",
+    "body": "🚀 自動執行 - ETHUSDT\n策略: BOLLINGER | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 1.3% of $391.21 = $5.00\n勝率: 45.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 0 @ $1937.830000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 0 @ $1935.410000\n  Slippage: -0.12% (fill $1935.410000 vs expected $1937.830000)\n  SL: FAILED\n  🟡 No SL (small pos $5.23 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820003047",
+    "timestamp": "2026-08-20T00:30:47.793454",
+    "title": "",
+    "body": "🚨 DRAWDOWN BREAKER TRIPPED!\nDrawdown: 60.3% >= 10% limit\nHigh watermark: $1,000.00\nCurrent balance: $397.33\nAll new trades BLOCKED until manual reset.",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820023033",
+    "timestamp": "2026-08-20T02:30:33.059894",
+    "title": "",
+    "body": "🚀 自動執行 - MUBARAKUSDT\n策略: DCA | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $391.09 = $5.00\n勝率: 44.4% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 239 @ $0.020900\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 239 @ $0.020930\n  Slippage: +0.14% (fill $0.020930 vs expected $0.020900)\n  SL-only: 239.2 @ $0.01965 (-6.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820091525",
+    "timestamp": "2026-08-20T09:15:25.472463",
+    "title": "",
+    "body": "📊 每日报告 2026-08-20\n\n💰 USDT: $397.07\n📈 總資產: $397.07\n\n📦 無持倉\n\n📋 資金審計 (FIFO, 272筆交易):\n  已實現PnL: $-220.12\n  手續費: -$6.55\n  淨已實現: $-226.67\n  塵倉浮虧: $8.08 (13個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820123014",
+    "timestamp": "2026-08-20T12:30:14.083859",
+    "title": "",
+    "body": "🚀 自動執行 - LINKUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.3% of $397.07 = $5.00\n勝率: 44.7% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 1 @ $10.463000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/3\n\n📊 訂單:\n  BUY: 1 @ $10.447000\n  Slippage: -0.15% (fill $10.447000 vs expected $10.463000)\n  SL-only: 0.53 @ $9.835 (-6.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820143144",
+    "timestamp": "2026-08-20T14:31:44.525082",
+    "title": "",
+    "body": "🚀 自動執行 - PLUMEUSDT\n策略: TREND | 倉位級別: MEDIUM (Score: 74)\nKelly: 2.7% of $391.53 = $10.70\n勝率: 40.0% | 信心: HIGH\n買入: 825 @ $0.012960\n信號: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 65 / 📈 Above VWAP\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 825 @ $0.012940\n  Slippage: -0.15% (fill $0.012940 vs expected $0.012960)\n  SL-only: 825.0 @ $0.01218 (-6.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820203254",
+    "timestamp": "2026-08-20T20:32:54.152676",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 3.1% of $387.29 = $11.88\n勝率: 40.0% | 信心: HIGH\n買入: 52 @ $0.228300\n信號: 📈 Moderate Trend Score: 70 / 🚀 1h Strong Uptrend / 📊 MACD Positive (1h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 52 @ $0.222800\n  Slippage: -2.41% (fill $0.222800 vs expected $0.228300)\n  SL-only: 52.0 @ $0.21 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260820233655",
+    "timestamp": "2026-08-20T23:36:55.799240",
+    "title": "",
+    "body": "🚀 自動執行 - ASTERUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 4.6% of $387.95 = $17.69\n勝率: 50.0% | 信心: HIGH\n買入: 27 @ $0.663000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/3\n\n📊 訂單:\n  BUY: 27 @ $0.664000\n  Slippage: +0.15% (fill $0.664000 vs expected $0.663000)\n  SL-only: 26.69 @ $0.61 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821012941",
+    "timestamp": "2026-08-21T01:29:41.072716",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ZECUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821012942",
+    "timestamp": "2026-08-21T01:29:42.158277",
+    "title": "",
+    "body": "🔴🔴 ZECUSDT 完全無SL！0.0400 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821012943",
+    "timestamp": "2026-08-21T01:29:43.624171",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 6.0% of $382.30 = $23.12\n勝率: 55.0% | 信心: HIGH\n買入: 0 @ $581.440000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 0 @ $581.290000\n  SL: FAILED\n  🔴 未保護: 0.0400 units (no SL placed)\n  🟡 Emergency market sell: 0.0400 units (no SL possible)\n  注意: 0 單位已由額外SL覆蓋",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821022914",
+    "timestamp": "2026-08-21T02:29:14.866529",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ZECUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821022915",
+    "timestamp": "2026-08-21T02:29:15.955781",
+    "title": "",
+    "body": "🔴🔴 ZECUSDT 完全無SL！0.0250 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821022917",
+    "timestamp": "2026-08-21T02:29:17.123063",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 3.6% of $382.32 = $13.87\n勝率: 55.0% | 信心: HIGH\n買入: 0 @ $565.970000\n信號: 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 55 / 📈 Above VWAP\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 0 @ $566.260000\n  SL: FAILED\n  🔴 未保護: 0.0250 units (no SL placed)\n  🟡 Emergency market sell: 0.0250 units (no SL possible)\n  注意: 0 單位已由額外SL覆蓋",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821032904",
+    "timestamp": "2026-08-21T03:29:04.936689",
+    "title": "",
+    "body": "🚀 自動執行 - XRPUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 3.0% of $382.32 = $11.54\n勝率: 55.0% | 信心: HIGH\n買入: 9 @ $1.235000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 9 @ $1.235300\n  SL-only: 9.3 @ $1.1115 (-10.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821042912",
+    "timestamp": "2026-08-21T04:29:12.536386",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for ACEUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821042914",
+    "timestamp": "2026-08-21T04:29:14.081928",
+    "title": "",
+    "body": "🔴🔴 ACEUSDT 完全無SL！44.1000 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821042915",
+    "timestamp": "2026-08-21T04:29:15.220685",
+    "title": "",
+    "body": "🚀 自動執行 - ACEUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 9.7% of $370.84 = $35.88\n勝率: 55.0% | 信心: HIGH\n買入: 146 @ $0.245300\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 📈 Moderate Trend Score: 60\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 146 @ $0.245200\n  SL: FAILED\n  TP1(+15.0%): 40.9 @ $0.2821\n  TP2(+24.0%): 40.9 @ $0.3042\n  TP3(+37.5%): 20.4 @ $0.3373\n  🔴 未保護: 44.1000 units (no SL placed)\n  🟡 Emergency market sell: 44.1000 units (no SL possible)\n  注意: 44 單位已由額外SL覆蓋",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821052924",
+    "timestamp": "2026-08-21T05:29:24.085378",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for XPLUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821052925",
+    "timestamp": "2026-08-21T05:29:25.790755",
+    "title": "",
+    "body": "🔴🔴 XPLUSDT 完全無SL！139.1000 單位裸露！手動處理！",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821052927",
+    "timestamp": "2026-08-21T05:29:27.033450",
+    "title": "",
+    "body": "🚀 自動執行 - XPLUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 11.5% of $350.84 = $40.34\n勝率: 55.0% | 信心: HIGH\n買入: 463 @ $0.087070\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 65 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 463 @ $0.087650\n  Slippage: +0.67% (fill $0.087650 vs expected $0.087070)\n  SL: FAILED\n  TP1(+15.0%): 129.7 @ $0.10013\n  TP2(+24.0%): 129.7 @ $0.10797\n  TP3(+37.5%): 64.8 @ $0.11972\n  🔴 未保護: 139.1000 units (no SL placed)\n  🟡 Emergency market sell: 139.1000 units (no SL possible)\n  注意: 139 單位已由額外SL覆蓋",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821091519",
+    "timestamp": "2026-08-21T09:15:19.492574",
+    "title": "",
+    "body": "📊 每日报告 2026-08-21\n\n💰 USDT: $322.50\n📈 總資產: $400.08\n\n📦 持倉 (3):\n  🟢 XPL: 526.6 ($46.29, +9.25%)\n  🟢 ACE: 81.9 ($19.84, +23.76%)\n  🟢 ONT: 223.0 ($11.45, +26.94%)\n\n📋 掛單: 8 個 (SL:6 TP:8)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 80.6% > 60% → 可考慮加倉\n  🎯 ONT 24h +26.9% → 考慮鎖利\n  🎯 ACE 24h +23.8% → 考慮鎖利\n\n📋 資金審計 (FIFO, 276筆交易):\n  已實現PnL: $-219.72\n  手續費: -$6.57\n  淨已實現: $-226.30\n  塵倉浮虧: $10.59 (13個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821165214",
+    "timestamp": "2026-08-21T16:52:14.890010",
+    "title": "",
+    "body": "🔴 ensure_tp_sl: ZECUSDT 平倉已成交但DB寫入失敗 (sell=True, outcome=False, cleanup=True)，請核對 trades/outcomes/portfolio",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821173759",
+    "timestamp": "2026-08-21T17:37:59.013666",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for AVAXUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821173800",
+    "timestamp": "2026-08-21T17:38:00.458693",
+    "title": "",
+    "body": "🚀 自動執行 - AVAXUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 83)\nKelly: 1.2% of $404.87 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 1 @ $7.533000\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 1 @ $7.546000\n  Slippage: +0.17% (fill $7.546000 vs expected $7.533000)\n  SL: FAILED\n  🟡 No SL (small pos $5.80 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821183813",
+    "timestamp": "2026-08-21T18:38:13.671027",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for WLDUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821183814",
+    "timestamp": "2026-08-21T18:38:14.806544",
+    "title": "",
+    "body": "🚀 自動執行 - WLDUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 82)\nKelly: 1.3% of $399.06 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 15 @ $0.390400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 15 @ $0.392400\n  Slippage: +0.51% (fill $0.392400 vs expected $0.390400)\n  SL: FAILED\n  🟡 No SL (small pos $5.78 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821193850",
+    "timestamp": "2026-08-21T19:38:50.255204",
+    "title": "",
+    "body": "🚀 自動執行 - ZECUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 79)\nKelly: 1.3% of $393.25 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 0 @ $636.620000\n信號: 📈 Moderate Trend Score: 50 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 0 @ $637.720000\n  Slippage: +0.17% (fill $637.720000 vs expected $636.620000)\n  SL-fallback (market trigger): 0.01 @ $572.96 (-10.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821203928",
+    "timestamp": "2026-08-21T20:39:28.591010",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for NEARUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260821203929",
+    "timestamp": "2026-08-21T20:39:29.885134",
+    "title": "",
+    "body": "🚀 自動執行 - NEARUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 75)\nKelly: 1.3% of $386.87 = $5.00\n勝率: 35.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 3 @ $1.881000\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 3 @ $1.888000\n  Slippage: +0.37% (fill $1.888000 vs expected $1.881000)\n  SL: FAILED\n  🟡 No SL (small pos $5.83 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822004356",
+    "timestamp": "2026-08-22T00:43:56.775651",
+    "title": "",
+    "body": "🚨 URGENT: SL failed for POLUSDT! Manual SL needed!",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822004358",
+    "timestamp": "2026-08-22T00:43:58.090195",
+    "title": "",
+    "body": "🚀 自動執行 - POLUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.3% of $381.28 = $5.00\n勝率: 45.0% | 信心: EXPLORATION (regime warming, refreshing stale stats)\n買入: 65 @ $0.088790\n信號: ✅ Multi-TF Entry Signal (long) / 📈 Moderate Trend Score: 50 / ✅ MACD Bullish (1h+4h)\n活躍持倉: 5/5\n\n📊 訂單:\n  BUY: 65 @ $0.089471\n  Slippage: +0.77% (fill $0.089471 vs expected $0.088790)\n  SL: FAILED\n  🟡 No SL (small pos $5.75 < $10 — accepted risk)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822073709",
+    "timestamp": "2026-08-22T07:37:09.154450",
+    "title": "",
+    "body": "🚀 自動執行 - ONDOUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 80)\nKelly: 1.5% of $398.64 = $6.00\n勝率: 55.0% | 信心: HIGH\n買入: 15 @ $0.401400\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 15 @ $0.399800\n  Slippage: -0.40% (fill $0.399800 vs expected $0.401400)\n  SL-fallback (market trigger): 14.9 @ $0.3613 (-10.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822083732",
+    "timestamp": "2026-08-22T08:37:32.187740",
+    "title": "",
+    "body": "🚀 自動執行 - REUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 73)\nKelly: 1.5% of $392.80 = $6.00\n勝率: 60.0% | 信心: HIGH\n買入: 11 @ $0.551900\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 11 @ $0.552900\n  Slippage: +0.18% (fill $0.552900 vs expected $0.551900)\n  SL-only: 10.9 @ $0.5077 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822091517",
+    "timestamp": "2026-08-22T09:15:17.265410",
+    "title": "",
+    "body": "📊 每日报告 2026-08-22\n\n💰 USDT: $386.77\n📈 總資產: $406.46\n\n📦 持倉 (3):\n  🟢 DOGE: 81.0 ($7.43, +12.31%)\n  🟢 RE: 10.9 ($6.41, +16.47%)\n  🟢 HBAR: 73.0 ($5.85, +8.48%)\n\n📋 掛單: 4 個 (SL:3 TP:4)\n\n⚖️ 再平衡建議:\n  ℹ️ 現金 95.2% > 60% → 可考慮加倉\n  🎯 DOGE 24h +12.3% → 考慮鎖利\n  🎯 RE 24h +16.5% → 考慮鎖利\n\n📋 資金審計 (FIFO, 293筆交易):\n  已實現PnL: $-218.95\n  手續費: -$6.65\n  淨已實現: $-225.60\n  塵倉浮虧: $15.23 (13個)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822093743",
+    "timestamp": "2026-08-22T09:37:43.604755",
+    "title": "",
+    "body": "🚀 自動執行 - ONDOUSDT\n策略: GRID | 倉位級別: MEDIUM (Score: 74)\nKelly: 5.7% of $393.24 = $22.61\n勝率: 65.0% | 信心: HIGH\n買入: 55 @ $0.408900\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (71.1)\n活躍持倉: 3/5\n\n📊 訂單:\n  BUY: 55 @ $0.408600\n  SL-only: 55.3 @ $0.3762 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822114650",
+    "timestamp": "2026-08-22T11:46:50.117281",
+    "title": "",
+    "body": "🚀 自動執行 - WLFIUSDT\n策略: BOLLINGER | 倉位級別: MEDIUM-HIGH (Score: 84)\nKelly: 8.0% of $370.64 = $29.83\n勝率: 65.0% | 信心: HIGH\n買入: 467 @ $0.063800\n信號: 💪 Strong Trend Score: 75 / 🚀 1h Strong Uptrend / ✅ MACD Bullish (1h+4h)\n活躍持倉: 4/5\n\n📊 訂單:\n  BUY: 468 @ $0.063900\n  Slippage: +0.16% (fill $0.063900 vs expected $0.063800)\n  SL-only: 467.03 @ $0.0587 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822131644",
+    "timestamp": "2026-08-22T13:16:44.910115",
+    "title": "",
+    "body": "🚀 自動執行 - SOLUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 85)\nKelly: 12.0% of $407.36 = $48.79\n勝率: 65.0% | 信心: HIGH\n買入: 1 @ $93.810000\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 1/5\n\n📊 訂單:\n  BUY: 1 @ $91.734673\n  Slippage: -2.21% (fill $91.734673 vs expected $93.810000)\n  TP1(+13.0%): 0.171 @ $106.01\n  TP2(+20.8%): 0.171 @ $113.32\n  SL(remaining): 0.177 @ $86.31 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822142949",
+    "timestamp": "2026-08-22T14:29:49.900472",
+    "title": "",
+    "body": "🚀 自動執行 - WLFIUSDT\n策略: GRID | 倉位級別: MEDIUM-HIGH (Score: 77)\nKelly: 5.7% of $359.66 = $20.68\n勝率: 65.0% | 信心: HIGH\n買入: 327 @ $0.063200\n信號: ✅ Multi-TF Entry Signal (long) / 🚀 Multi-TF Bullish Alignment / 💪 Strong Trend Score: 75\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 327 @ $0.062800\n  Slippage: -0.63% (fill $0.062800 vs expected $0.063200)\n  SL-only: 326.8 @ $0.0581 (-8.0%)",
+    "notified": true
+  },
+  {
+    "id": "msg_20260822152829",
+    "timestamp": "2026-08-22T15:28:29.117595",
+    "title": "",
+    "body": "🚀 自動執行 - POLUSDT\n策略: TREND | 倉位級別: MEDIUM-HIGH (Score: 76)\nKelly: 12.0% of $358.58 = $42.94\n勝率: 60.0% | 信心: HIGH\n買入: 388 @ $0.110620\n信號: 📈 Moderate Trend Score: 60 / 🚀 1h Strong Uptrend / 🔥 RSI Overbought (78.6)\n活躍持倉: 2/5\n\n📊 訂單:\n  BUY: 388 @ $0.111870\n  Slippage: +1.13% (fill $0.111870 vs expected $0.110620)\n  TP1(+13.0%): 127.9 @ $0.125\n  TP2(+20.8%): 127.9 @ $0.13363\n  SL(remaining): 132.0 @ $0.10177 (-8.0%)",
+    "notified": true
   }
 ]

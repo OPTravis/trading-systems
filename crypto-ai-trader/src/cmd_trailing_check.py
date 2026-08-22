@@ -520,12 +520,16 @@ def cmd_trailing_check():
         sl_moved = False
 
         if sl_orders:
-            sl_order = sl_orders[0]
+            # bug#17 fix: consolidate ALL stop orders (ensure_tp_sl may have
+            # placed extra SL legs at different prices — 8/22 SOL had 3).
+            # old_sl_price = the tightest (highest) stop among them.
+            sl_order = max(sl_orders, key=lambda o: float(o.get('stopPrice', 0) or o.get('price', 0)))
             old_sl_price = float(sl_order.get('stopPrice', 0) or sl_order.get('price', 0))
 
             # Only move UP
             if new_sl > old_sl_price * 1.001:  # 0.1% buffer to avoid dust moves
-                sl_qty = _order_qty(sl_order)
+                # sum of all SL legs, capped by holding — one new order replaces all
+                sl_qty = min(sum(_order_qty(o) for o in sl_orders), pos['total'])
                 new_sl_rounded = round(new_sl, p_prec)
 
                 # === Cancel-first SL move with safety net ===
@@ -536,21 +540,27 @@ def cmd_trailing_check():
                 # 3. Place new SL
                 # 4. If new SL fails, re-place old SL as safety net (avoid naked position)
 
-                # Step 1: Cancel old SL
-                cancel_ok = False
-                for cancel_attempt in range(3):
-                    try:
-                        cancel_result = client.cancel_order(symbol, _order_id(sl_order))
-                        if cancel_result:
-                            cancel_ok = True
-                            break
-                    except Exception as e:
-                        logger.warning(
-                            "TrailingStop: cancel old SL attempt %d failed for %s: %s",
-                            cancel_attempt + 1, asset, e
-                        )
-                        if cancel_attempt < 2:
-                            time.sleep(1)
+                # Step 1: Cancel ALL old SL legs (bug#17: leave none behind,
+                # otherwise each cycle strands extra legs at stale prices)
+                cancel_ok = True
+                for sl_leg in sl_orders:
+                    leg_cancelled = False
+                    for cancel_attempt in range(3):
+                        try:
+                            cancel_result = client.cancel_order(symbol, _order_id(sl_leg))
+                            if cancel_result:
+                                leg_cancelled = True
+                                break
+                        except Exception as e:
+                            logger.warning(
+                                "TrailingStop: cancel old SL attempt %d failed for %s: %s",
+                                cancel_attempt + 1, asset, e
+                            )
+                            if cancel_attempt < 2:
+                                time.sleep(1)
+                    if not leg_cancelled:
+                        cancel_ok = False
+                        break
 
                 if not cancel_ok:
                     logger.error(

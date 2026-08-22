@@ -1,0 +1,12 @@
+import sqlite3, sys, time
+db = sys.argv[1]; hold = float(sys.argv[2])
+c = sqlite3.connect(db, timeout=30)
+c.execute("PRAGMA journal_mode=DELETE")
+c.execute("PRAGMA synchronous=FULL")
+c.execute("PRAGMA busy_timeout=30000")
+c.execute("BEGIN IMMEDIATE")
+c.execute("INSERT INTO kv (key, value, updated_at) VALUES ('holder', 'A', ?)", (time.time(),))
+print("A: holding write lock", flush=True)
+time.sleep(hold)
+c.commit()
+print("A: committed", flush=True)

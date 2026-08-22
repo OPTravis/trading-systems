@@ -293,8 +293,30 @@ def main():
             sl_pct = 0.07
             tp_pct = 0.04
             entry_price = price  # no history available, use market
-            sl_target = round(price * (1 - sl_pct), 8)
-            tp_target = round(price * (1 + tp_pct), 8)
+            # bug#17 fix: prefer the exchange's actual protective orders over
+            # fresh defaults — executor may already have tiered SL/TP legs
+            # (8/22 SOL case: recomputed defaults overrode real order prices)
+            _re_tick = 0.00001
+            _re_step = 0.001
+            try:
+                _re_filters = get_symbol_filters(client, sym_key)
+                _re_tick = _re_filters.get("tickSize", _re_tick) or _re_tick
+                _re_step = _re_filters.get("stepSize", _re_step) or _re_step
+            except Exception:
+                pass
+            _re_sl_px, _re_tp_px = 0.0, 0.0
+            try:
+                for _o in client.get_open_orders(sym_key):
+                    _o_stop = float(_o.get("stopPrice", 0) or _o.get("info", {}).get("stopPrice", 0) or 0)
+                    _o_px = float(_o.get("price", 0) or _o.get("info", {}).get("price", 0) or 0)
+                    if _o_stop > 0 and _o_stop < price:
+                        _re_sl_px = max(_re_sl_px, _o_stop)
+                    elif _o_px > price:
+                        _re_tp_px = max(_re_tp_px, _o_px)
+            except Exception:
+                pass
+            sl_target = round_price(_re_sl_px, _re_tick) if _re_sl_px > 0 else round_price(price * (1 - sl_pct), _re_tick)
+            tp_target = round_price(_re_tp_px, _re_tick) if _re_tp_px > 0 else round_price(price * (1 + tp_pct), _re_tick)
 
             # Insert into portfolio table
             try:
@@ -362,7 +384,10 @@ def main():
         has_sl = len(sl_orders) > 0
 
         # ── Case 0: Both SL and TP exist as separate orders → restructure to OCO ──
-        if has_tp and has_sl and notional >= 10:
+        # bug#17 fix: tiered TP (>=2 legs) is the executor's designed exit
+        # structure — restructuring it into a single-leg OCO destroys the
+        # laddered exits (8/22 POL case: TP1/TP2 replaced by one TP leg)
+        if has_tp and has_sl and notional >= 10 and len(tp_orders) < 2:
             # Check if they're separate orders (not already OCO)
             if total_covered <= qty * 1.01:  # not double-covered
                 # Cancel all and place OCO
@@ -398,7 +423,12 @@ def main():
         # ── Case 1: Missing TP, has SL ──
         if not has_tp and has_sl and tp_target:
             # Check if SL covers full qty (no room for TP)
-            sl_covers_full = sl_covered >= qty * 0.99  # 1% tolerance for rounding
+            # bug#17 fix: compare against step-floored holding (dust tail can
+            # never be covered — 8/22 SOL: 0.497 locked vs 0.5195 held kept
+            # every 30min cycle retrying and failing)
+            from math import floor as _m_floor
+            _coverable = _m_floor(qty / step_size) * step_size if step_size > 0 else qty
+            sl_covers_full = sl_covered >= _coverable * 0.98  # 2% tolerance
             sl_qty = float(sl_orders[0].get("amount", sl_orders[0].get("origQty", 0)))
             sl_price = float(sl_orders[0].get("stopPrice", 0) or sl_orders[0].get("info", {}).get("stopPrice", 0))
 
