@@ -623,12 +623,17 @@ def _record_trade_portfolio(
             # Fallback: manually deduct from previous balance
             portfolio.update_balance(usdt_bal - invest_amount * (1 + fee_rate))
             _deduct_cash = False  # already deducted in update_balance above
+        # bug#18: order already filled — record unconditionally. Risk checks
+        # belong to pre-trade (kelly tier scaling, daily loss, max positions);
+        # rejecting the ledger write only desyncs DB from reality (8/22 ACE case:
+        # 12.9% > 10% cap rejected the fill record, metadata lost).
         portfolio.add_position(
             symbol=symbol,
             quantity=executed_qty,
             entry_price=avg_price,
             strategy=strategy,
             deduct_cash=_deduct_cash,
+            _skip_validation=True,
         )
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
