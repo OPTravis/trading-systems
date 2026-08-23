@@ -46,6 +46,33 @@ logger = logging.getLogger(__name__)
 NTRN = "NTRN"
 DUST_THRESHOLD = 1.0  # USD
 
+def insert_sell_dedup(conn, sym, qty, price, pnl, ts):
+    """bug#24 fix (2026-08-24): ensure_tp_sl booked the same exchange exit TWICE
+    when reconcile_fills (trailing-check, every 5 min) had already booked the
+    actual fill and ensure_tp_sl's own paths (sync-check stale / tp_breach /
+    max_hold) then wrote a full-qty SELL row on top — e.g. ENA 06:17/06:30,
+    TRUMP 22:05/22:30, GRAM 19:25/19:30 on 8/23-24. Atomic INSERT..SELECT with
+    the same matching window as reconcile_fills' bug#13 guard: same symbol,
+    qty within 2%, price within 1%, 1h window. Returns True if inserted."""
+    cur = conn.execute(
+        """
+        INSERT INTO trades (symbol, side, qty, price, pnl, timestamp)
+        SELECT ?, 'SELL', ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM trades
+            WHERE symbol = ? AND side = 'SELL'
+              AND ABS(qty - ?) <= ? * 0.02
+              AND ABS(price - ?) <= ? * 0.01
+              AND timestamp >= ? - 3600
+              AND timestamp <= ? + 3600
+        )
+        """,
+        (sym, qty, price, pnl, ts,
+         sym, qty, qty, price, price, ts, ts),
+    )
+    return cur.rowcount > 0
+
+
 
 def get_positions_with_targets():
     """Read portfolio from StateDB with entry_price, stop_loss, take_profit."""
@@ -203,17 +230,17 @@ def main():
                         exit_price = entry_price  # last resort
                         exit_reason = "sync_cleanup"
 
-                # Write SELL to trades table
+                # Write SELL to trades table (bug#24: dedup — reconcile_fills
+                # may have already booked the actual exchange fill minutes ago)
                 if exit_price > 0 and qty > 0:
                     pnl = (exit_price - entry_price) * qty if entry_price > 0 else 0
                     try:
-                        conn.execute(
-                            "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
-                            "VALUES (?, 'SELL', ?, ?, ?, ?)",
-                            (sym, qty, exit_price, pnl, time.time()),
+                        inserted = insert_sell_dedup(
+                            conn, sym, qty, exit_price, pnl, time.time()
                         )
                     except Exception as e:
                         logger.warning(f"Failed to write SELL trade for {sym}: {e}")
+                        inserted = False
 
                     # Record outcome for self-learning
                     try:
@@ -226,10 +253,16 @@ def main():
                         logger.warning(f"Failed to record outcome for {sym}: {e}")
 
                     pnl_pct = (exit_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
-                    fixes.append(
-                        f"{sym}: 平倉已記錄 SELL {qty} @ ${exit_price:.6f} "
-                        f"({exit_reason}, PnL {pnl_pct:+.2f}%)"
-                    )
+                    if inserted:
+                        fixes.append(
+                            f"{sym}: 平倉已記錄 SELL {qty} @ ${exit_price:.6f} "
+                            f"({exit_reason}, PnL {pnl_pct:+.2f}%)"
+                        )
+                    else:
+                        fixes.append(
+                            f"{sym}: 平倉已被reconcile先行記錄，跳過重複記賬 "
+                            f"(qty {qty} @ ${exit_price:.6f})"
+                        )
                 else:
                     fixes.append(f"{sym}: DB已清理（Binance無持倉，無法取得成交價）")
 
@@ -670,10 +703,10 @@ def main():
                     def _insert_sell_row():
                         db = get_state_db()
                         conn = db._get_conn()
-                        conn.execute(
-                            "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
-                            "VALUES (?, 'SELL', ?, ?, ?, ?)",
-                            (sym, sell_qty, current_price, trade_pnl, _sell_ts),
+                        # bug#24: dedup against a concurrent reconcile_fills booking
+                        # (qty within 2%, price within 1%, 1h window)
+                        insert_sell_dedup(
+                            conn, sym, sell_qty, current_price, trade_pnl, _sell_ts
                         )
                         conn.commit()
 
@@ -681,7 +714,7 @@ def main():
                         db = get_state_db()
                         row = db._get_conn().execute(
                             "SELECT 1 FROM trades WHERE symbol = ? AND side = 'SELL' "
-                            "AND ABS(timestamp - ?) < 5 LIMIT 1",
+                            "AND ABS(timestamp - ?) < 3600 LIMIT 1",
                             (sym, _sell_ts),
                         ).fetchone()
                         return row is not None
@@ -845,10 +878,9 @@ def main():
                         else:
                             trade_pnl = 0.0
                         try:
-                            conn.execute(
-                                "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) "
-                                "VALUES (?, 'SELL', ?, ?, ?, ?)",
-                                (sym, sell_qty, current_price, trade_pnl, time.time()),
+                            # bug#24: dedup against concurrent reconcile_fills booking
+                            insert_sell_dedup(
+                                conn, sym, sell_qty, current_price, trade_pnl, time.time()
                             )
                             conn.commit()
                         except Exception as e:
