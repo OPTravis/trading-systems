@@ -624,12 +624,20 @@ class PositionOptimizer:
                 # Close old position (credits proceeds to cash)
                 self.portfolio.close_position(from_symbol, close_price=from_price)
                 # Add new position (deducts cost from cash)
+                # bug#22: order already filled on exchange — record unconditionally.
+                # Switch recycles capital (old position sold), so single-trade
+                # pct vs total equity can exceed max_position_pct even though
+                # net exposure didn't grow (8/23 PYTH case: 11.1% > 10% cap
+                # rejected the ledger write, leaving 387 shares untracked and
+                # under-protected). Same rationale as bug#18 fix in
+                # trade_executor._track_executed_trade.
                 self.portfolio.add_position(
                     symbol=to_symbol,
                     quantity=buy_qty,
                     entry_price=to_price,
                     strategy="switch",
                     deduct_cash=True,
+                    _skip_validation=True,
                 )
                 logger.info(
                     f"Portfolio updated: removed {from_symbol}, added {to_symbol}"
