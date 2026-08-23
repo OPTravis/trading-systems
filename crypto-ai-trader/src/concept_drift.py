@@ -182,7 +182,7 @@ class ConceptDriftDetector:
         def _is_win(r):
             if r.get("is_win") is not None:
                 return r["is_win"]
-            return r.get("net_pnl_pct", 0) > 0
+            return (r.get("net_pnl_pct") or 0) > 0
 
         hist_wr = sum(1 for r in historical if _is_win(r)) / len(historical) * 100
         recent_wr = sum(1 for r in recent if _is_win(r)) / len(recent) * 100
@@ -200,8 +200,18 @@ class ConceptDriftDetector:
         self, historical: List[Dict], recent: List[Dict]
     ) -> Dict:
         """Check if PnL distribution has shifted (mean and variance)."""
-        hist_pnl = [r.get("net_pnl_pct", 0) for r in historical]
-        recent_pnl = [r.get("net_pnl_pct", 0) for r in recent]
+        hist_pnl = [r["net_pnl_pct"] for r in historical if r.get("net_pnl_pct") is not None]
+        recent_pnl = [r["net_pnl_pct"] for r in recent if r.get("net_pnl_pct") is not None]
+
+        # Skip check when too many NULL net_pnl rows (legacy/failed accounting)
+        if len(hist_pnl) < 5 or len(recent_pnl) < 5:
+            return {
+                "drift": False,
+                "reason": (
+                    f"insufficient valid net_pnl samples "
+                    f"(hist={len(hist_pnl)}, recent={len(recent_pnl)})"
+                ),
+            }
 
         hist_mean = sum(hist_pnl) / len(hist_pnl)
         recent_mean = sum(recent_pnl) / len(recent_pnl)
@@ -244,7 +254,9 @@ class ConceptDriftDetector:
                 )
                 continue
 
-            pnl = row.get("net_pnl_pct", 0)
+            pnl = row.get("net_pnl_pct")
+            if pnl is None:
+                continue  # skip rows with NULL net PnL (legacy/failed accounting)
             pnl_values.append(pnl)
             for factor in FACTOR_NAMES:
                 factor_scores[factor].append(factors.get(factor, 0))
