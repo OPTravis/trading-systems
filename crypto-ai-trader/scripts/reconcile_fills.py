@@ -125,18 +125,8 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
         qty = float(row["qty"] or 0)
 
         held_qty = held.get(asset, 0.0)
-        if held_qty > 0:
-            # cheap dust check: any real balance above floor keeps outcome open
-            try:
-                stats = client.get_24hr_stats(symbol)
-                px = float(stats.get("last_price", 0)) if stats else 0
-            except Exception:
-                px = 0
-            if held_qty * px > _HELD_NOTIONAL_FLOOR or px <= 0:
-                out["skipped"].append(f"{symbol}: still holding {held_qty}")
-                continue
 
-        # 3) position is gone (or dust): find exit fills after entry
+        # 3) find exit fills after this outcome's entry (FIFO across open outcomes)
         try:
             trades = client.get_my_trades(symbol=symbol, limit=50)
         except Exception as e:
@@ -149,21 +139,70 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
             if not t.get("isBuyer", True)
             and float(t.get("time", 0)) / 1000 >= entry_time - 60
         ]
-        if not sells:
-            out["anomalies"].append(
-                f"{symbol}#{oid}: position gone but no SELL fill found after entry — "
-                f"check for manual transfer/withdrawal"
-            )
+        sells.sort(key=lambda t: float(t.get("time", 0)))
+
+        # bug#26: support PARTIAL exits. Previously an outcome was skipped whenever
+        # ANY balance of the asset remained (held_qty > 0), which broke the
+        # merged-position case (e.g. a TP sells the older lot while a newer lot
+        # is still open — REUSDT 15:02 10.9 TP while 10.6 new lot held).
+        # Now we FIFO-allocate sell fills across open outcomes in entry order,
+        # consuming up to each outcome's qty, and book/close an outcome as soon
+        # as its allocated exit qty covers its entry qty.
+        try:
+            oq = float(qty or 0)
+        except (TypeError, ValueError):
+            oq = 0.0
+        if oq <= 0:
+            out["anomalies"].append(f"{symbol}#{oid}: zero/invalid qty")
             continue
 
-        sells.sort(key=lambda t: float(t.get("time", 0)))
-        exit_qty = sum(float(t.get("qty", 0)) for t in sells)
+        prior_open_qty = 0.0
+        for r2 in rows:
+            if r2["id"] == oid:
+                break
+            try:
+                prior_open_qty += float(r2["qty"] or 0)
+            except (TypeError, ValueError):
+                pass
+
+        remaining = oq
+        allocated = []
+        for t in sells:
+            if remaining <= 1e-12:
+                break
+            tq = float(t.get("qty", 0))
+            # skip fills already consumed by earlier open outcomes (FIFO)
+            if tq <= prior_open_qty:
+                prior_open_qty -= tq
+                continue
+            avail = tq - prior_open_qty
+            prior_open_qty = 0.0
+            take = min(avail, remaining)
+            if take > 1e-12:
+                allocated.append((t, take))
+                remaining -= take
+
+        exit_qty = sum(tk for _, tk in allocated)
+        if exit_qty < oq - 0.00000001:
+            # outcome not yet fully closed (partial or no exit). If the asset
+            # balance is gone entirely but we still have no fills, flag it.
+            if held_qty <= 1e-12:
+                out["anomalies"].append(
+                    f"{symbol}#{oid}: position gone but insufficient SELL fills "
+                    f"(exit {exit_qty}/{oq}) — check manual transfer/withdrawal"
+                )
+            else:
+                out["skipped"].append(
+                    f"{symbol}: outcome #{oid} still open (exit {exit_qty:.6f}/{oq:.6f})"
+                )
+            continue
+
         exit_price = (
-            sum(float(t["qty"]) * float(t["price"]) for t in sells) / exit_qty
+            sum(tk * float(t["price"]) for t, tk in allocated) / exit_qty
             if exit_qty > 0
             else 0.0
         )
-        last_fill_ts = float(sells[-1].get("time", 0)) / 1000
+        last_fill_ts = float(allocated[-1][0].get("time", 0)) / 1000
         if exit_price <= 0 or exit_qty <= 0:
             out["anomalies"].append(f"{symbol}#{oid}: unparseable sell fills")
             continue

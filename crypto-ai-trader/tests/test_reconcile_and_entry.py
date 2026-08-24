@@ -317,7 +317,8 @@ class TestReconcileFills:
         out = reconcile_fills(client=client, db=fresh_statedb)
         assert out["patched"] == []
         assert out["closed_only"] == []
-        assert any("still holding" in s for s in out["skipped"])
+        # bug#26: still-holding skip now reads "still open" (FIFO partial-exit aware)
+        assert any("still open" in s or "still holding" in s for s in out["skipped"])
 
     def test_position_gone_no_sell_is_anomaly(self, fresh_statedb):
         from scripts.reconcile_fills import reconcile_fills
