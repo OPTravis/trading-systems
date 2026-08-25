@@ -146,6 +146,34 @@ def cmd_cron_scan():
                 logger.warning("Failed to release scan lock", exc_info=True)
 
 
+
+def _bull_phase2_status_line() -> str:
+    """Return BULL Phase 2 regime + capture ratio line for scan report.
+    Returns empty string if Phase 2 modules not initialised."""
+    try:
+        from src.state_db import StateDB
+        from src.bull_regime import BullRegimeDetector
+        from src.capture_tracker import CaptureTracker
+        db = StateDB()
+        det = BullRegimeDetector(db=db)
+        state = det.load_state()
+        if not state.last_eval_ts:
+            return ""  # Phase 2 not initialised yet
+        line = det.format_report_line()
+        ct = CaptureTracker(db)
+        info = ct.current()
+        if info:
+            l = info["latest"]
+            line += (
+                f"\n📊 BTC Capture: {l['capture_ratio']:.1%}"
+                f" (paper {l['paper_return']:+.2%} vs BTC {l['btc_bh_return']:+.2%},"
+                f" {info['days_elapsed']:.0f}d)"
+            )
+        return line
+    except Exception:
+        return ""
+
+
 def _append_scan_summary(ctx):
     """Append a brief scan summary notification."""
     from datetime import datetime
@@ -154,6 +182,9 @@ def _append_scan_summary(ctx):
 
     if ctx is None:
         body = f"🔍 {now} 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大"
+        bull_line = _bull_phase2_status_line()
+        if bull_line:
+            body += f"\n\n{bull_line}"
         _append_notification("scan_summary", "", body)
         return
 
@@ -194,7 +225,12 @@ def _append_scan_summary(ctx):
             body += f"  🐋 {surge['phase2_signals'][0]}\n"
         elif surge["phase1_signals"]:
             body += f"  📊 {surge['phase1_signals'][0]}\n"
-    body += f"💡 发现机会: {opp_count}个"
+    # Phase 2 BULL regime status (if initialised)
+    bull_line = _bull_phase2_status_line()
+    if bull_line:
+        body += f"\n\n{bull_line}"
+
+    body += f"\n💡 发现机会: {opp_count}个"
 
     if opp_count > 0:
         top_3 = opportunities[:3]
