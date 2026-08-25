@@ -88,18 +88,16 @@ def get_btc_adx_4h(client: BinanceClient, period: int = 14):
 
 
 def get_fng_history():
-    """Load F&G from data feed or alternative source."""
+    """Load F&G from data feed. Returns {epoch_day: value}."""
     try:
-        from src.data_feed_fng import FearGreedDataFeed
-        feed = FearGreedDataFeed()
-        data = feed.get_history(days=10)
-        # Convert {date_str: value} to {epoch_day: value}
-        import time as _t
+        from src.data_feed_fng import FearGreedIndex
+        feed = FearGreedIndex()
+        data = feed.get_history(limit=10)
         result = {}
-        for date_str, value in data.items():
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
+        for item in data:
+            dt = datetime.strptime(item["timestamp"], "%Y-%m-%d")
             day_epoch = int(dt.timestamp()) - (int(dt.timestamp()) % 86400)
-            result[day_epoch] = int(value)
+            result[day_epoch] = int(item["value"])
         return result
     except Exception as e:
         print(f"  Warning: Could not load F&G history: {e}")
@@ -125,7 +123,7 @@ def main():
 
     # 2. Capture tracker
     print("[2/5] Initialising BTC B&H capture tracker...")
-    btc_price = float(client.get_ticker_price("BTCUSDT")["price"])
+    btc_price = float(client.get_ticker_price("BTCUSDT"))
     ct = CaptureTracker(db)
     info = ct.current()
     if info is None:

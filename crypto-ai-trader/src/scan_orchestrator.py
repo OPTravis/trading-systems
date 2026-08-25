@@ -147,31 +147,28 @@ def cmd_cron_scan():
 
 
 
-def _bull_phase2_status_line() -> str:
-    """Return BULL Phase 2 regime + capture ratio line for scan report.
-    Returns empty string if Phase 2 modules not initialised."""
+def _bull_phase2_status_line(opportunities=None) -> str:
+    """Run BULL Phase 2 paper scan and return report section.
+    Returns empty string if Phase 2 not initialised."""
     try:
         from src.state_db import StateDB
-        from src.bull_regime import BullRegimeDetector
-        from src.capture_tracker import CaptureTracker
         db = StateDB()
-        det = BullRegimeDetector(db=db)
-        state = det.load_state()
-        if not state.last_eval_ts:
-            return ""  # Phase 2 not initialised yet
-        line = det.format_report_line()
-        ct = CaptureTracker(db)
-        info = ct.current()
-        if info:
-            l = info["latest"]
-            line += (
-                f"\n📊 BTC Capture: {l['capture_ratio']:.1%}"
-                f" (paper {l['paper_return']:+.2%} vs BTC {l['btc_bh_return']:+.2%},"
-                f" {info['days_elapsed']:.0f}d)"
-            )
-        return line
-    except Exception:
-        return ""
+        # Check if Phase 2 is initialised (capture tracker start_ts > 0)
+        import json
+        raw = db.kv_get("capture_tracker_state")
+        if not raw:
+            return ""
+        state = json.loads(raw)
+        if not state.get("initialised"):
+            return ""
+        # Run paper scan
+        from scripts.bull_paper_scan import run_paper_scan
+        result = run_paper_scan(scanner_opportunities=opportunities)
+        return result["report"]
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"BULL paper scan error: {e}")
+        return f"⚠️ BULL paper scan error: {e}"
 
 
 def _append_scan_summary(ctx):
@@ -182,7 +179,7 @@ def _append_scan_summary(ctx):
 
     if ctx is None:
         body = f"🔍 {now} 扫描完成\n\n❌ 未发现符合条件的机会\n市场可能极度恐慌或波动过大"
-        bull_line = _bull_phase2_status_line()
+        bull_line = _bull_phase2_status_line(ctx.get("opportunities") if ctx else None)
         if bull_line:
             body += f"\n\n{bull_line}"
         _append_notification("scan_summary", "", body)
@@ -226,7 +223,7 @@ def _append_scan_summary(ctx):
         elif surge["phase1_signals"]:
             body += f"  📊 {surge['phase1_signals'][0]}\n"
     # Phase 2 BULL regime status (if initialised)
-    bull_line = _bull_phase2_status_line()
+    bull_line = _bull_phase2_status_line(ctx.get("opportunities") if ctx else None)
     if bull_line:
         body += f"\n\n{bull_line}"
 
