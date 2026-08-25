@@ -494,6 +494,16 @@ class BullPaperEngine:
                 reason = t.get("details", "unknown")
                 exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
 
+        # Core-satellite overlap tracking
+        core_syms = {p["symbol"] for p in positions if p["side"] == "core"}
+        sat_syms = {p["symbol"] for p in positions if p["side"] == "satellite"}
+        overlap_syms = core_syms & sat_syms
+        overlap_mv = 0.0
+        for p in positions:
+            if p["symbol"] in overlap_syms:
+                overlap_mv += p["quantity"] * prices.get(p["symbol"], p["entry_price"])
+        total_mv = val["market_value"]
+
         return {
             "portfolio": val,
             "positions": positions,
@@ -510,6 +520,9 @@ class BullPaperEngine:
             "avg_slippage": avg_slippage,
             "exit_reasons": exit_reasons,
             "recent_trades": trades[:20],
+            "overlap_symbols": list(overlap_syms),
+            "overlap_notional": overlap_mv,
+            "overlap_pct": overlap_mv / total_mv if total_mv > 0 else 0.0,
         }
 
     def format_report(self) -> str:
@@ -555,6 +568,11 @@ class BullPaperEngine:
             f"   📊 EMA50減半: {s['ema50_reduce_count']}/{s['core_exit_count']} "
             f"({s['ema50_rate']:.0%}) | 模擬滑價: {s['avg_slippage']*100:.2f}%"
         )
+        if s.get("overlap_symbols"):
+            lines.append(
+                f"   🔗 Core-Sat重疊: {', '.join(s['overlap_symbols'])} "
+                f"(${s['overlap_notional']:.2f}, {s['overlap_pct']:.1%} of positions)"
+            )
         if s["exit_reasons"]:
             reasons_str = ", ".join(f"{k}:{v}" for k, v in s["exit_reasons"].items())
             lines.append(f"   📤 出場原因: {reasons_str}")

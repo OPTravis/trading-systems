@@ -160,29 +160,88 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
     if not pause_alerts and not dry_run:
         if regime == "CONFIRMED_BULL":
             # Try core entries from scanner opportunities or top movers
-            candidates = scanner_opportunities or []
-            if not candidates:
-                # Use a default core watchlist for BULL regime
-                watchlist = ["ETHUSDT", "SOLUSDT", "BNBUSDT"]
-                for sym in watchlist:
-                    try:
-                        kl = engine.get_klines(sym, "4h", limit=250)
-                        from src.bull_paper_engine import compute_indicators
-                        ind = compute_indicators(kl)
-                        ok, reason = engine.evaluate_core_entry(sym, ind)
-                        if ok:
-                            candidates.append({"symbol": sym, "score": 70})
-                    except Exception as e:
-                        logger.debug(f"Core candidate check {sym}: {e}")
-
-            for opp in candidates[:5]:
-                sym = opp.get("symbol", "")
-                score = opp.get("score", 60)
-                # Normalize: scanner uses short form like "ETH", we need "ETHUSDT"
-                if not sym.endswith("USDT"):
-                    sym = sym + "USDT"
+            # Core selection per backtest select_core_symbols():
+            # BTC always takes slot 1 if it meets entry.
+            # Slot 2 goes to higher ADX between SOL and ETH.
+            # This mirrors the walk-forward validated logic exactly.
+            core_candidates = []
+            for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
                 try:
-                    result = engine.try_core_entry(sym, score, regime)
+                    kl = engine.get_klines(sym, "4h", limit=250)
+                    from src.bull_paper_engine import compute_indicators
+                    ind = compute_indicators(kl)
+                    ok, reason = engine.evaluate_core_entry(sym, ind)
+                    if ok:
+                        adx_val = ind["adx"] or 0
+                        core_candidates.append((sym, adx_val))
+                    else:
+                        logger.debug(f"Core {sym} rejected: {reason}")
+                except Exception as e:
+                    logger.debug(f"Core candidate check {sym}: {e}")
+
+            # BTC always first if it qualifies
+            desired = []
+            btc_entry = next((c for c in core_candidates if c[0] == "BTCUSDT"), None)
+            alt_entries = [c for c in core_candidates if c[0] != "BTCUSDT"]
+            alt_entries.sort(key=lambda x: x[1], reverse=True)
+
+            if btc_entry:
+                desired.append(btc_entry[0])
+            for sym, _ in alt_entries:
+                if len(desired) < 2:
+                    desired.append(sym)
+
+            # If BTC qualifies but isn't held and both slots are full,
+            # rotate out the lower-priority alt (per backtest logic)
+            held_core = engine.portfolio.get_open_positions(side="core")
+            held_syms = {p["symbol"] for p in held_core}
+            if btc_entry and "BTCUSDT" not in held_syms and len(held_core) >= 2:
+                # Find the alt to rotate out (lowest ADX among held alts)
+                held_alts = [p for p in held_core if p["symbol"] != "BTCUSDT"]
+                if held_alts:
+                    # Rotate the one NOT in desired (or lower ADX if both)
+                    rotate_out = None
+                    for p in held_alts:
+                        if p["symbol"] not in desired:
+                            rotate_out = p
+                            break
+                    if rotate_out is None:
+                        # Both held alts are in desired but BTC needs slot —
+                        # rotate the lower ADX one
+                        held_alts_with_adx = []
+                        for p in held_alts:
+                            kl = engine.get_klines(p["symbol"], "4h", limit=250)
+                            ind = compute_indicators(kl)
+                            held_alts_with_adx.append((p, ind["adx"] or 0))
+                        held_alts_with_adx.sort(key=lambda x: x[1])
+                        rotate_out = held_alts_with_adx[0][0]
+
+                    if rotate_out:
+                        px = engine.get_price(rotate_out["symbol"])
+                        # Respect 72h minimum hold for non-SL exits
+                        bars_held = engine._bars_since(rotate_out["entry_time"])
+                        if bars_held >= 18:
+                            engine.portfolio.close_position(
+                                rotate_out["id"], px, reason="CORE_ROTATE_BTC"
+                            )
+                            actions.append({
+                                "symbol": rotate_out["symbol"],
+                                "action": "ROTATE_OUT",
+                                "price": px,
+                                "qty": rotate_out["quantity"],
+                                "reason": "CORE_ROTATE_BTC",
+                            })
+                            logger.info(f"Core rotation: closed {rotate_out['symbol']} for BTC")
+                        else:
+                            logger.info(
+                                f"BTC qualifies but {rotate_out['symbol']} in min-hold "
+                                f"({bars_held}/18 bars), will rotate after lockup"
+                            )
+
+            # Open desired core positions
+            for sym in desired[:2]:
+                try:
+                    result = engine.try_core_entry(sym, 70, regime)
                     if result:
                         actions.append(result)
                         logger.info(f"Core entry: {result}")
