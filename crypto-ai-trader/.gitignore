@@ -37,3 +37,4 @@ data/bgeometrics_cache.json
 # test artifacts
 tests/test_state.db
 tests/_tmp_state.db
+data/bull_cache/
