@@ -396,10 +396,12 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
             format_ab_report, snapshot_daily, verify_ab_isolation,
         )
         from src.bull_paper_engine_b import B_START_CASH
-        # price map covering both A and B open symbols
+        # price map covering both A and B open symbols (re-fetch AFTER the
+        # B entry block above ran, otherwise a brand-new B position opened
+        # this scan is missing from MV and shows stale equity)
         ab_syms = set(prices.keys())
         try:
-            for _p in BullPaperEngineB(db, client).portfolio.get_open_positions():
+            for _p in eng_b.portfolio.get_open_positions():
                 ab_syms.add(_p["symbol"])
         except Exception:
             pass
