@@ -48,14 +48,24 @@ class PaperPosition:
     realized_pnl: float = 0.0
     fees: float = 0.0
     notes: str = ""
+    hold_seconds: float = 0.0   # P0-A6
+    slippage_bps: float = 0.0   # P0-A6
+
+
+def _row_to_pos(row) -> PaperPosition:
+    """Build PaperPosition from a DB row, tolerating extra columns added
+    by later migrations (ab_group, ...)."""
+    fields = {f.name for f in PaperPosition.__dataclass_fields__.values()}
+    return PaperPosition(**{k: v for k, v in dict(row).items() if k in fields})
 
 
 class BullPaperPortfolio:
     """Isolated paper portfolio for BULL regime strategy."""
 
-    def __init__(self, db, start_cash: float = 400.0):
+    def __init__(self, db, start_cash: float = 400.0, group: str = "A"):
         self.db = db
         self._start_cash = start_cash
+        self.group = group  # P0-C: "A" (control/baseline) or "B" (variant)
         self._ensure_tables()
 
     def _ensure_tables(self):
@@ -114,19 +124,89 @@ class BullPaperPortfolio:
             for col, ddl in (
                 ("hold_seconds", "ALTER TABLE paper_bull_positions ADD COLUMN hold_seconds REAL DEFAULT 0"),
                 ("slippage_bps", "ALTER TABLE paper_bull_positions ADD COLUMN slippage_bps REAL DEFAULT 0"),
+                # P0-C (2026-08-26): A/B engine grouping
+                ("ab_group", "ALTER TABLE paper_bull_positions ADD COLUMN ab_group TEXT DEFAULT 'A'"),
             ):
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_bull_positions)").fetchall()}
                 if col not in cols:
                     conn.execute(ddl)
+            # P0-C: trades table also tagged with ab_group (NULL for pre-P0-C)
+            tcols = {r[1] for r in conn.execute("PRAGMA table_info(paper_bull_trades)").fetchall()}
+            if "ab_group" not in tcols:
+                conn.execute("ALTER TABLE paper_bull_trades ADD COLUMN ab_group TEXT DEFAULT 'A'")
+            # P0-C: tiered scale-out / staged TP tracking
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS paper_bull_scaleouts (
+                    id TEXT PRIMARY KEY,
+                    position_id TEXT NOT NULL,
+                    ab_group TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    stage INTEGER NOT NULL,
+                    r_multiple REAL NOT NULL,
+                    fraction REAL NOT NULL,
+                    trigger_price REAL NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    fired_time INTEGER DEFAULT 0,
+                    fired_price REAL DEFAULT 0,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_pbs_pos ON paper_bull_scaleouts(position_id);
+                CREATE INDEX IF NOT EXISTS idx_pbs_status ON paper_bull_scaleouts(ab_group, status);
+
+                CREATE TABLE IF NOT EXISTS paper_bull_filter_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_time INTEGER NOT NULL,
+                    ab_group TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    score REAL,
+                    decision TEXT NOT NULL,
+                    fail_filter TEXT DEFAULT '',
+                    atr14_4h REAL, atr22_1d REAL,
+                    ema20_4h REAL, ema50_4h REAL, ema200_4h REAL,
+                    adx14_4h REAL, rvol20 REAL,
+                    r_multiple REAL,
+                    regime TEXT,
+                    notes TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_pbfd_scan ON paper_bull_filter_decisions(scan_time);
+                CREATE INDEX IF NOT EXISTS idx_pbfd_group ON paper_bull_filter_decisions(ab_group, decision);
+
+                CREATE TABLE IF NOT EXISTS paper_bull_ab_daily (
+                    snapshot_date TEXT NOT NULL,
+                    ab_group TEXT NOT NULL,
+                    start_cash REAL, cash REAL, market_value REAL,
+                    equity REAL, total_return REAL, daily_return REAL,
+                    n_trades INTEGER, n_wins INTEGER, win_rate REAL,
+                    gross_profit REAL, gross_loss REAL, profit_factor REAL,
+                    sharpe REAL, max_drawdown REAL,
+                    avg_hold_hours REAL, median_hold_hours REAL,
+                    sl_sweep_count INTEGER, sl_sweep_rate REAL,
+                    whipsaw_count INTEGER,
+                    kelly_f REAL, kelly_tstat REAL,
+                    grid_active_count INTEGER,
+                    exploration_count INTEGER,
+                    n_open INTEGER,
+                    PRIMARY KEY (snapshot_date, ab_group)
+                );
+            """)
             conn.commit()
 
-        # Init cash if not present
-        if self._get_state("cash_balance") is None:
-            self._set_state("cash_balance", str(self._start_cash))
-        if self._get_state("start_cash") is None:
+        # Init cash if not present (per-group keyed for P0-C; group A keeps legacy "cash_balance")
+        _ck = self._cash_key()
+        if self._get_state(_ck) is None:
+            self._set_state(_ck, str(self._start_cash))
+        if self.group == "A" and self._get_state("start_cash") is None:
             self._set_state("start_cash", str(self._start_cash))
+        if self._get_state(f"start_cash_{self.group}") is None:
+            self._set_state(f"start_cash_{self.group}", str(self._start_cash))
         if self._get_state("start_ts") is None:
             self._set_state("start_ts", str(int(time.time() * 1000)))
+
+    def _cash_key(self) -> str:
+        return "cash_balance" if self.group == "A" else f"cash_balance_{self.group}"
+
+    def _start_cash_key(self) -> str:
+        return "start_cash" if self.group == "A" else f"start_cash_{self.group}"
 
     # ── State KV ──────────────────────────────────────────────────────────
     def _get_state(self, key: str) -> Optional[str]:
@@ -149,15 +229,15 @@ class BullPaperPortfolio:
     # ── Cash ──────────────────────────────────────────────────────────────
     @property
     def cash(self) -> float:
-        return float(self._get_state("cash_balance") or "0")
+        return float(self._get_state(self._cash_key()) or "0")
 
     @property
     def start_cash(self) -> float:
-        return float(self._get_state("start_cash") or str(self._start_cash))
+        return float(self._get_state(self._start_cash_key()) or str(self._start_cash))
 
     def _update_cash(self, delta: float):
         new_cash = self.cash + delta
-        self._set_state("cash_balance", f"{new_cash:.8f}")
+        self._set_state(self._cash_key(), f"{new_cash:.8f}")
 
     # ── Positions ─────────────────────────────────────────────────────────
     def open_position(
@@ -202,18 +282,18 @@ class BullPaperPortfolio:
             conn.execute(
                 """INSERT INTO paper_bull_positions
                    (id, symbol, side, quantity, entry_price, entry_time,
-                    stop_loss, take_profit, atr_entry, tier, status, fees, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+                    stop_loss, take_profit, atr_entry, tier, status, fees, notes, ab_group)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
                 (pos.id, pos.symbol, pos.side, pos.quantity, pos.entry_price,
                  pos.entry_time, pos.stop_loss, pos.take_profit, pos.atr_entry,
-                 pos.tier, pos.fees, pos.notes),
+                 pos.tier, pos.fees, pos.notes, self.group),
             )
             conn.execute(
                 """INSERT INTO paper_bull_trades
-                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details)
-                   VALUES (?, ?, ?, ?, 'BUY', ?, ?, ?, ?, ?, ?)""",
+                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details, ab_group)
+                   VALUES (?, ?, ?, ?, 'BUY', ?, ?, ?, ?, ?, ?, ?)""",
                 (f"trade_{uuid.uuid4().hex[:12]}", pos.id, symbol, side,
-                 quantity, price, fee, notional, pos.entry_time, notes),
+                 quantity, price, fee, notional, pos.entry_time, notes, self.group),
             )
             conn.commit()
 
@@ -240,7 +320,7 @@ class BullPaperPortfolio:
             ).fetchone()
             if not row:
                 return None
-            pos = PaperPosition(**dict(row))
+            pos = _row_to_pos(row)
 
             close_qty = quantity if quantity else pos.quantity
             if close_qty > pos.quantity + 1e-12:
@@ -283,15 +363,15 @@ class BullPaperPortfolio:
                 row = conn.execute(
                     "SELECT * FROM paper_bull_positions WHERE id = ?", (position_id,)
                 ).fetchone()
-                pos = PaperPosition(**dict(row))
+                pos = _row_to_pos(row)
                 pos.realized_pnl = realized_pnl
 
             conn.execute(
                 """INSERT INTO paper_bull_trades
-                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details)
-                   VALUES (?, ?, ?, ?, 'SELL', ?, ?, ?, ?, ?, ?)""",
+                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details, ab_group)
+                   VALUES (?, ?, ?, ?, 'SELL', ?, ?, ?, ?, ?, ?, ?)""",
                 (f"trade_{uuid.uuid4().hex[:12]}", pos.id, pos.symbol, pos.side,
-                 close_qty, exit_price, fee, notional, int(time.time() * 1000), reason),
+                 close_qty, exit_price, fee, notional, int(time.time() * 1000), reason, self.group),
             )
             conn.commit()
 
@@ -314,8 +394,8 @@ class BullPaperPortfolio:
             conn.commit()
 
     def get_open_positions(self, side: Optional[str] = None) -> List[Dict]:
-        q = "SELECT * FROM paper_bull_positions WHERE status = 'open'"
-        params: list = []
+        q = "SELECT * FROM paper_bull_positions WHERE status = 'open' AND COALESCE(ab_group,'A') = ?"
+        params: list = [self.group]
         if side:
             q += " AND side = ?"
             params.append(side)
@@ -327,16 +407,18 @@ class BullPaperPortfolio:
     def get_all_positions(self, limit: int = 100) -> List[Dict]:
         with self.db._get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM paper_bull_positions ORDER BY entry_time DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM paper_bull_positions WHERE COALESCE(ab_group,'A') = ? "
+                "ORDER BY entry_time DESC LIMIT ?",
+                (self.group, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
     def get_trade_history(self, limit: int = 50) -> List[Dict]:
         with self.db._get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM paper_bull_trades ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM paper_bull_trades WHERE COALESCE(ab_group,'A') = ? "
+                "ORDER BY timestamp DESC LIMIT ?",
+                (self.group, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -387,8 +469,9 @@ class BullPaperPortfolio:
         closed = 0
         with self.db._get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM paper_bull_positions WHERE symbol=? AND side='satellite' AND status='open'",
-                (symbol,),
+                "SELECT * FROM paper_bull_positions WHERE symbol=? AND side='satellite' "
+                "AND status='open' AND COALESCE(ab_group,'A') = ?",
+                (symbol, self.group),
             ).fetchall()
         for r in rows:
             try:
@@ -402,8 +485,8 @@ class BullPaperPortfolio:
         """P0-A6: hold-time distribution (hours) for closed positions."""
         since_ms = int((time.time() - days * 86400) * 1000)
         q = ("SELECT hold_seconds FROM paper_bull_positions "
-             "WHERE status='closed' AND exit_time >= ?")
-        params = [since_ms]
+             "WHERE status='closed' AND exit_time >= ? AND COALESCE(ab_group,'A') = ?")
+        params = [since_ms, self.group]
         if side:
             q += " AND side=?"
             params.append(side)
