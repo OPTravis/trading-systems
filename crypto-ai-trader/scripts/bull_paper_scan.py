@@ -392,7 +392,9 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
 
     # P0-C: A/B comparison block (B engine, independent sleeve)
     try:
-        from src.bull_paper_ab_metrics import format_ab_report, snapshot_daily
+        from src.bull_paper_ab_metrics import (
+            format_ab_report, snapshot_daily, verify_ab_isolation,
+        )
         from src.bull_paper_engine_b import B_START_CASH
         # price map covering both A and B open symbols
         ab_syms = set(prices.keys())
@@ -408,6 +410,15 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
                     ab_prices[sym] = float(client.get_ticker_price(sym))
                 except Exception:
                     ab_prices[sym] = 0.0
+        # P0-C protocol: daily A/B isolation verification (Leo 2026-08-26).
+        # Any anomaly is a hard stop signal that must surface in every scan.
+        iso = verify_ab_isolation(db)
+        if not iso["ok"]:
+            report_lines.append("🚨 A/B 隔離穿窿（即刻停 B 組並回滾 main）:")
+            for a in iso["anomalies"]:
+                report_lines.append(f"   - {a}")
+            report_lines.append("")
+            logger.error(f"[P0-C] A/B ISOLATION BREACH: {iso['anomalies']}")
         report_lines.append(format_ab_report(db, TOTAL_CAPITAL, B_START_CASH, ab_prices))
         report_lines.append("")
         # one daily snapshot per scan day (idempotent UPSERT)

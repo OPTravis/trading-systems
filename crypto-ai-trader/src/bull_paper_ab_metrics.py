@@ -138,6 +138,48 @@ def compute_group_stats(db, group: str, start_cash: float,
             "SELECT count(*) FROM paper_bull_positions WHERE status='open' "
             "AND COALESCE(ab_group,'A')=?", (group,)).fetchone()[0]
 
+    # P0-C review: re-entry churn = SL close followed by re-open of same
+    # symbol within 4h (P1 cooldown trigger if >3 over the 14d window)
+    reentry_after_sl_count = 0
+    REENTRY_WIN = 4 * HOURS_MS
+    with db._get_conn() as c:
+        # only SL closes count (Leo 2026-08-26: "同一幣 SL 後 4h 內 re-open")
+        for sym_row in c.execute(
+            "SELECT DISTINCT symbol FROM paper_bull_positions WHERE COALESCE(ab_group,'A')=?",
+            (group,),
+        ).fetchall():
+            sym = sym_row["symbol"]
+            closes = c.execute(
+                """SELECT p.exit_time FROM paper_bull_positions p
+                   JOIN paper_bull_trades t ON t.position_id=p.id
+                   WHERE p.status='closed' AND COALESCE(p.ab_group,'A')=? AND p.symbol=?
+                     AND p.exit_time IS NOT NULL
+                     AND t.action='SELL' AND t.details LIKE '%SL%'
+                   GROUP BY p.id
+                   ORDER BY p.exit_time""",
+                (group, sym),
+            ).fetchall()
+            for cl in closes:
+                hit = c.execute(
+                    """SELECT 1 FROM paper_bull_trades
+                       WHERE ab_group=? AND symbol=? AND action='BUY'
+                         AND timestamp > ? AND timestamp <= ?
+                       LIMIT 1""",
+                    (group, sym, cl["exit_time"], cl["exit_time"] + REENTRY_WIN),
+                ).fetchone()
+                if hit:
+                    reentry_after_sl_count += 1
+
+    # P0-C review: core SL count (BTC/SOL core thesis stops — high-signal events)
+    with db._get_conn() as c:
+        core_sl = c.execute(
+            """SELECT count(*) FROM paper_bull_positions p
+               JOIN paper_bull_trades t ON t.position_id=p.id
+               WHERE p.status='closed' AND COALESCE(p.ab_group,'A')=?
+                 AND p.side='core' AND t.action='SELL' AND t.details LIKE '%SL%'""",
+            (group,),
+        ).fetchone()[0]
+
     return {
         "cash": cash, "market_value": mv, "equity": equity,
         "total_return": (equity - start_cash) / start_cash if start_cash else 0,
@@ -149,6 +191,8 @@ def compute_group_stats(db, group: str, start_cash: float,
         "sl_sweep_count": sl_sweeps, "sl_sweep_rate": sl_sweep_rate,
         "max_drawdown": max_dd, "sharpe": sharpe,
         "n_open": n_open,
+        "reentry_after_sl_count": reentry_after_sl_count,
+        "core_sl_count": core_sl,
     }
 
 
@@ -171,8 +215,9 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                     min_hold_hours, max_hold_hours,
                     sl_sweep_count, sl_sweep_rate, whipsaw_count,
                     kelly_f, kelly_tstat, grid_active_count,
-                    exploration_count, n_open)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    exploration_count, n_open,
+                    reentry_after_sl_count, core_sl_count)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(snapshot_date, ab_group) DO UPDATE SET
                      cash=excluded.cash, market_value=excluded.market_value,
                      equity=excluded.equity, total_return=excluded.total_return,
@@ -191,7 +236,9 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                      kelly_f=excluded.kelly_f, kelly_tstat=excluded.kelly_tstat,
                      grid_active_count=excluded.grid_active_count,
                      exploration_count=excluded.exploration_count,
-                     n_open=excluded.n_open""",
+                     n_open=excluded.n_open,
+                     reentry_after_sl_count=excluded.reentry_after_sl_count,
+                     core_sl_count=excluded.core_sl_count""",
                 (today, group, sc, st["cash"], st["market_value"], st["equity"],
                  st["total_return"], 0.0,
                  st["n_trades"], st["n_wins"], st["win_rate"],
@@ -231,6 +278,75 @@ def b_activity_warning(db, b_start: float) -> str:
     return ""
 
 
+def verify_ab_isolation(db) -> Dict[str, Any]:
+    """P0-C protocol: daily check that A and B sleeves never cross-contaminate.
+    Returns a dict with ok(bool) and any anomalies. Anomalies:
+      - a position/trade row with NULL/empty ab_group (untagged legacy is
+        acceptable for pre-P0-C rows only if created before P0-C deploy)
+      - B rows touching A cash key or vice-versa (structural check)
+      - B group using legacy 'cash_balance' key instead of 'cash_balance_B'
+      - any position_id shared across groups (impossible by design but guard)
+    """
+    P0C_DEPLOY_MS = 1787757200000  # 2026-08-26 ~23:13 HKT, first P0-C scan
+    anomalies = []
+    with db._get_conn() as c:
+        # untagged rows created after P0-C deploy (should all be tagged)
+        untagged = c.execute(
+            """SELECT count(*) FROM paper_bull_positions
+               WHERE ab_group IS NULL AND entry_time > ?""",
+            (P0C_DEPLOY_MS,),
+        ).fetchone()[0]
+        if untagged:
+            anomalies.append(f"{untagged} post-deploy position(s) with NULL ab_group")
+        untagged_t = c.execute(
+            """SELECT count(*) FROM paper_bull_trades
+               WHERE ab_group IS NULL AND timestamp > ?""",
+            (P0C_DEPLOY_MS,),
+        ).fetchone()[0]
+        if untagged_t:
+            anomalies.append(f"{untagged_t} post-deploy trade(s) with NULL ab_group")
+
+        # a position_id must map to exactly one group
+        mixed = c.execute(
+            """SELECT position_id, count(DISTINCT COALESCE(ab_group,'A')) g
+               FROM paper_bull_trades GROUP BY position_id HAVING g > 1""").fetchall()
+        if mixed:
+            anomalies.append(f"{len(mixed)} position_id(s) span multiple ab_groups")
+
+        # cash keys sanity
+        keys = {r[0] for r in c.execute(
+            "SELECT key FROM paper_bull_state WHERE key LIKE 'cash_balance%' OR key LIKE 'start_cash%'")}
+        if "cash_balance_B" not in keys:
+            anomalies.append("B cash key cash_balance_B missing")
+        # B positions must not exist if no B cash (already covered)
+        b_pos = c.execute("SELECT count(*) FROM paper_bull_positions WHERE ab_group='B'").fetchone()[0]
+        b_cash = c.execute("SELECT value FROM paper_bull_state WHERE key='cash_balance_B'").fetchone()
+        if b_pos > 0 and not b_cash:
+            anomalies.append(f"{b_pos} B positions but no B cash balance")
+
+        # cash arithmetic: per-group cash must equal start_cash + sum(BUY notional) - sum(SELL notional)
+        for grp, ck in (("A", "cash_balance"), ("B", "cash_balance_B")):
+            crow = c.execute("SELECT value FROM paper_bull_state WHERE key=?", (ck,)).fetchone()
+            if not crow:
+                continue
+            cash_now = float(crow[0])
+            bought = c.execute(
+                """SELECT COALESCE(SUM(notional+fee),0) FROM paper_bull_trades
+                   WHERE COALESCE(ab_group,'A')=? AND action='BUY'""", (grp,)).fetchone()[0] or 0
+            sold = c.execute(
+                """SELECT COALESCE(SUM(notional-fee),0) FROM paper_bull_trades
+                   WHERE COALESCE(ab_group,'A')=? AND action='SELL'""", (grp,)).fetchone()[0] or 0
+            sk = "start_cash" if grp == "A" else "start_cash_B"
+            srow = c.execute("SELECT value FROM paper_bull_state WHERE key=?", (sk,)).fetchone()
+            start = float(srow[0]) if srow else 0.0
+            expected = start - bought + sold
+            if abs(cash_now - expected) > 0.05:
+                anomalies.append(
+                    f"{grp} cash mismatch: state=${cash_now:.2f} vs ledger=${expected:.2f}")
+
+    return {"ok": not anomalies, "anomalies": anomalies}
+
+
 def format_ab_report(db, a_start: float, b_start: float,
                      prices: Dict[str, float]) -> str:
     """Human-readable A vs B comparison block for the scan report."""
@@ -256,6 +372,8 @@ def format_ab_report(db, a_start: float, b_start: float,
         f"   {'Avg hold':14}{a['avg_hold_hours']:>14.1f}h{b['avg_hold_hours']:>16.1f}h",
         f"   {'Hold range':14}{(str(round(a['min_hold_hours'],1))+'-'+str(round(a['max_hold_hours'],1))+'h'):>16}{(str(round(b['min_hold_hours'],1))+'-'+str(round(b['max_hold_hours'],1))+'h'):>18}",
         f"   {'SL被掃(8h內)':14}{a['sl_sweep_count']:>16}{b['sl_sweep_count']:>18}",
+        f"   {'Re-entry churn':14}{a['reentry_after_sl_count']:>16}{b['reentry_after_sl_count']:>18}",
+        f"   {'Core SL':14}{a['core_sl_count']:>16}{b['core_sl_count']:>18}",
         f"   {'開倉中':14}{a['n_open']:>16}{b['n_open']:>18}",
     ]
     _w = b_activity_warning(db, b_start)

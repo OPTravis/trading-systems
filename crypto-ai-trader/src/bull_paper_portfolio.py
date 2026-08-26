@@ -80,6 +80,10 @@ class BullPaperPortfolio:
                  "ALTER TABLE paper_bull_ab_daily ADD COLUMN min_hold_hours REAL"),
                 ("paper_bull_ab_daily", "max_hold_hours",
                  "ALTER TABLE paper_bull_ab_daily ADD COLUMN max_hold_hours REAL"),
+                ("paper_bull_ab_daily", "reentry_after_sl_count",
+                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN reentry_after_sl_count INTEGER DEFAULT 0"),
+                ("paper_bull_ab_daily", "core_sl_count",
+                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN core_sl_count INTEGER DEFAULT 0"),
             ):
                 _cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
                 if col not in _cols:
