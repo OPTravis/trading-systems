@@ -207,8 +207,10 @@ class BullPaperEngine:
             # If regime dropped to NEUTRAL/FEAR/DEEP_BEAR, close all
             if regime in ("NEUTRAL", "FEAR", "DEEP_BEAR") and bars_held >= 0:
                 self.portfolio.close_position(pos["id"], px, reason="REGIME_EXIT")
+                # P0-A6: core thesis invalidated — close same-symbol satellite too
+                _sat_closed = self.portfolio.close_satellites_for_symbol(sym, px, reason="CORE_REGIME_EXIT")
                 events.append({"symbol": sym, "action": "CLOSE", "reason": "REGIME_EXIT",
-                               "price": px, "qty": qty})
+                               "price": px, "qty": qty, "sat_closed": _sat_closed})
                 continue
 
             # Hard stop -12% (always active)
@@ -238,8 +240,10 @@ class BullPaperEngine:
                 ind = compute_indicators(klines)
                 if ind["ema200"] and px < ind["ema200"]:
                     self.portfolio.close_position(pos["id"], px, reason="CLOSE_BELOW_EMA200")
+                    _sat_closed = self.portfolio.close_satellites_for_symbol(sym, px, reason="CORE_BELOW_EMA200")
                     events.append({"symbol": sym, "action": "CLOSE",
-                                   "reason": "CLOSE_BELOW_EMA200", "price": px, "qty": qty})
+                                   "reason": "CLOSE_BELOW_EMA200", "price": px, "qty": qty,
+                                   "sat_closed": _sat_closed})
                     continue
                 if ind["ema50"] and px < ind["ema50"]:
                     # Reduce 50%

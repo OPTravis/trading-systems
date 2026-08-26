@@ -77,7 +77,9 @@ class BullPaperPortfolio:
                     exit_time INTEGER DEFAULT 0,
                     realized_pnl REAL DEFAULT 0,
                     fees REAL DEFAULT 0,
-                    notes TEXT DEFAULT ''
+                    notes TEXT DEFAULT '',
+                    hold_seconds REAL DEFAULT 0,
+                    slippage_bps REAL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS idx_pbp_symbol ON paper_bull_positions(symbol);
                 CREATE INDEX IF NOT EXISTS idx_pbp_side ON paper_bull_positions(side);
@@ -105,6 +107,17 @@ class BullPaperPortfolio:
                     updated_at INTEGER NOT NULL
                 );
             """)
+            conn.commit()
+
+        # P0-A6 (2026-08-26): tracking columns for existing paper DBs
+        with self.db._get_conn() as conn:
+            for col, ddl in (
+                ("hold_seconds", "ALTER TABLE paper_bull_positions ADD COLUMN hold_seconds REAL DEFAULT 0"),
+                ("slippage_bps", "ALTER TABLE paper_bull_positions ADD COLUMN slippage_bps REAL DEFAULT 0"),
+            ):
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_bull_positions)").fetchall()}
+                if col not in cols:
+                    conn.execute(ddl)
             conn.commit()
 
         # Init cash if not present
@@ -245,12 +258,14 @@ class BullPaperPortfolio:
                 # Full close
                 total_fees = pos.fees + fee
                 total_pnl = (exit_price - pos.entry_price) * pos.quantity - total_fees
+                _exit_ms = int(time.time() * 1000)
+                _hold_s = (_exit_ms - pos.entry_time) / 1000.0
                 conn.execute(
                     """UPDATE paper_bull_positions
                        SET status='closed', exit_price=?, exit_time=?,
-                           realized_pnl=?, fees=?
+                           realized_pnl=?, fees=?, hold_seconds=?
                        WHERE id=?""",
-                    (exit_price, int(time.time() * 1000), total_pnl, total_fees, pos.id),
+                    (exit_price, _exit_ms, total_pnl, total_fees, _hold_s, pos.id),
                 )
             else:
                 # Partial close — update remaining qty, realize proportional P&L
@@ -364,6 +379,50 @@ class BullPaperPortfolio:
             "position_count": len(positions),
             "core_count": len([p for p in positions if p["side"] == "core"]),
             "sat_count": len([p for p in positions if p["side"] == "satellite"]),
+        }
+
+    def close_satellites_for_symbol(self, symbol: str, exit_price: float, reason: str = "CORE_ROTATE") -> int:
+        """P0-A6: when a core lot is rotated/closed, also close any open
+        satellite position on the SAME symbol so core/sat stay in sync."""
+        closed = 0
+        with self.db._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM paper_bull_positions WHERE symbol=? AND side='satellite' AND status='open'",
+                (symbol,),
+            ).fetchall()
+        for r in rows:
+            try:
+                self.close_position(r["id"], exit_price, reason=reason)
+                closed += 1
+            except Exception as e:
+                logger.warning(f"[PAPER_BULL] core-rotate sat close failed {symbol}: {e}")
+        return closed
+
+    def hold_time_stats(self, side: Optional[str] = None, days: int = 30) -> Dict[str, float]:
+        """P0-A6: hold-time distribution (hours) for closed positions."""
+        since_ms = int((time.time() - days * 86400) * 1000)
+        q = ("SELECT hold_seconds FROM paper_bull_positions "
+             "WHERE status='closed' AND exit_time >= ?")
+        params = [since_ms]
+        if side:
+            q += " AND side=?"
+            params.append(side)
+        with self.db._get_conn() as conn:
+            rows = conn.execute(q, params).fetchall()
+        secs = [r["hold_seconds"] for r in rows if r["hold_seconds"] and r["hold_seconds"] > 0]
+        if not secs:
+            return {"count": 0}
+        secs_sorted = sorted(secs)
+        n = len(secs_sorted)
+        hours = [s / 3600.0 for s in secs_sorted]
+        return {
+            "count": n,
+            "avg_hours": round(sum(hours) / n, 2),
+            "median_hours": round(hours[n // 2], 2),
+            "p10_hours": round(hours[max(0, n // 10)], 2),
+            "p90_hours": round(hours[min(n - 1, n * 9 // 10)], 2),
+            "min_hours": round(hours[0], 2),
+            "max_hours": round(hours[-1], 2),
         }
 
     def reset(self):

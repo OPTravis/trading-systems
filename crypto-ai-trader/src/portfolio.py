@@ -336,12 +336,19 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             if current_price > self.positions[symbol].get("highest_price", 0):
                 self.positions[symbol]["highest_price"] = current_price
 
-    def close_position(self, symbol: str, close_price: Optional[float] = None) -> Dict:
+    def close_position(
+        self,
+        symbol: str,
+        close_price: Optional[float] = None,
+        exit_reason: Optional[str] = None,
+    ) -> Dict:
         """Close a position, credit PnL to cash, record trade, and return details.
 
         Args:
             symbol: Position symbol to close.
             close_price: Override price for closing. If None, uses pos["current_price"].
+            exit_reason: P0-A2 (2026-08-26) explicit close reason; overrides the
+                position-stored value so switch/exit-to-USDT no longer land as "manual".
         """
         with self._lock:
             if symbol not in self.positions:
@@ -393,7 +400,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                 recorder.record_outcome(
                     symbol=symbol,
                     exit_price=price,
-                    exit_reason=pos.get("exit_reason", "manual"),
+                    exit_reason=exit_reason or pos.get("exit_reason") or "manual",
                     entry_id=entry_rowid,
                 )
             except Exception as e:

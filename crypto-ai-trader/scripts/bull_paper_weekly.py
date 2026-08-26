@@ -48,6 +48,10 @@ def run_weekly():
     avg_loss = sum(p["realized_pnl"] for p in losses) / len(losses) if losses else 0
     pf = abs(sum(p["realized_pnl"] for p in wins) / sum(p["realized_pnl"] for p in losses)) if losses and sum(p["realized_pnl"] for p in losses) != 0 else float("inf")
 
+    # P0-A6: hold-time distribution by side
+    hold_core = engine.portfolio.hold_time_stats(side="core", days=7)
+    hold_sat = engine.portfolio.hold_time_stats(side="satellite", days=7)
+
     # Regime transitions
     transitions = det.get_transitions(50)
     week_transitions = [t for t in transitions if t["ts"] >= week_ago]
@@ -70,10 +74,21 @@ def run_weekly():
         f"   平均盈利: ${avg_win:+.2f} | 平均虧損: ${avg_loss:+.2f}",
         f"   盈虧比 PF: {pf:.2f}" if pf != float("inf") else "   盈虧比 PF: N/A",
         "",
+    ]
+    # P0-A6 hold-time lines
+    for label, hs in (("Core", hold_core), ("Sat", hold_sat)):
+        if hs.get("count"):
+            lines.append(
+                f"   {label} hold: avg {hs['avg_hours']:.1f}h | med {hs['median_hours']:.1f}h "
+                f"| p10-p90 {hs['p10_hours']:.1f}-{hs['p90_hours']:.1f}h "
+                f"| min {hs['min_hours']:.1f}h max {hs['max_hours']:.1f}h (n={hs['count']})"
+            )
+    lines.extend([
+        "",
         f"🎯 當前 Regime: {STATE_EMOJI.get(regime_time['regime'],'')} {regime_time['regime']}",
         f"   持續: {regime_time['hours_in_state']:.0f}h",
         f"   本週轉換: {len(week_transitions)} 次",
-    ]
+    ])
 
     for t in week_transitions:
         ts_str = datetime.fromtimestamp(t["ts"] / 1000).strftime("%m-%d %H:%M")

@@ -625,6 +625,15 @@ def _step_scan_opportunities():
     # is unnecessary for spot-only trading.
     btc_funding_rate = 0.0
 
+    # P0-A1 (2026-08-26): bull tier for grid disable in CONFIRMED_BULL.
+    bull_tier = None
+    try:
+        from src.trade_executor import _check_btc_trend
+        _mult, _tinfo = _check_btc_trend()
+        bull_tier = _tinfo.get("tier")
+    except Exception as _e:
+        logger.warning(f"bull_tier lookup failed: {_e}")
+
     adapted = adaptor.adapt(
         fear_greed=fng,
         btc_trend=btc_trend,
@@ -632,6 +641,7 @@ def _step_scan_opportunities():
         btc_adx=btc_adx,
         funding_rate=btc_funding_rate,
         btc_score=btc_score,
+        bull_tier=bull_tier,
     )
     regime = adapted["regime"]
     global_cfg = adapted["global"]

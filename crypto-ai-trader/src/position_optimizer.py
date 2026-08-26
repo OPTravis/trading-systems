@@ -457,7 +457,7 @@ class PositionOptimizer:
                 )
                 try:
                     self.portfolio.close_position(
-                        from_symbol, close_price=current_price
+                        from_symbol, close_price=current_price, exit_reason="switch"
                     )
                 except Exception as e:
                     logger.warning(f"Portfolio close failed (non-critical): {e}")
@@ -622,7 +622,9 @@ class PositionOptimizer:
                         )
                         from_price = None  # close_position will use cached price
                 # Close old position (credits proceeds to cash)
-                self.portfolio.close_position(from_symbol, close_price=from_price)
+                self.portfolio.close_position(
+                    from_symbol, close_price=from_price, exit_reason="switch"
+                )
                 # Add new position (deducts cost from cash)
                 # bug#22: order already filled on exchange — record unconditionally.
                 # Switch recycles capital (old position sold), so single-trade

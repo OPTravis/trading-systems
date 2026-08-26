@@ -72,6 +72,18 @@ _btc_trend_cache = {
 _BTC_TREND_CACHE_TTL = 3600  # 1 hour
 
 
+# ── P0-B (2026-08-26): New-position halt flag ────────────────────────
+# Set via env NEW_POSITIONS_HALTED (default "1"). While True, execute_auto_trade
+# BLOCKS all regular new LIVE positions. The Kelly deadlock already zeros sizing,
+# this is a double safety net in case statistics roll out of the 8/8 cap.
+# EXCEPTION: Kelly exploration probes ($5-8, is_exploration=True) still run so
+# the learning loop keeps refreshing and a bull run isn't entirely missed.
+def _new_positions_halted() -> bool:
+    return os.environ.get("NEW_POSITIONS_HALTED", "1").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _check_btc_trend() -> tuple:
     """Tiered BTC trend gate — returns position size multiplier.
 
@@ -753,9 +765,13 @@ def _place_sl_tp_orders(
     """Place SL and TP orders after a successful entry.
 
     Strategy selection:
-      A) Small position (notional < 4× minNotional) → SL-only (full qty)
+      A) Small position (notional < 2× minNotional, P0-A5 ~$10) → SL-only (full qty)
       B) Medium+ position → Tiered TP exits (40/40/20) with full SL
       C) If tiered fails → OCO fallback, then separate SL + TP
+
+    P0-A5 (2026-08-26): tiered TP threshold lowered from 6× minNotional (~$30)
+    to 2× (~$10) so every position gets a TP order instead of relying on the
+    5-minute polling-based trailing exit.
 
     Returns dict with keys: results (list[str]), sl_placed_qty (float),
     tp_placed_qty (float), oco_placed (bool).
@@ -806,12 +822,15 @@ def _place_sl_tp_orders(
         return round(floor(raw_qty / _step_size) * _step_size, _qty_decimals)
 
     # --- Strategy A: Small position → SL only ---
+    # P0-A5: threshold 6× (~$30) → 2× minNotional (~$10) so more positions
+    # qualify for tiered TP orders.
+    _tiered_threshold = _min_notional * 2
     full_qty_notional = executed_qty * price
-    if full_qty_notional < _min_notional * 6:
+    if full_qty_notional < _tiered_threshold:
         logger.info(
             "Small position $%.2f < $%.2f → SL-only mode",
             full_qty_notional,
-            _min_notional * 6,
+            _tiered_threshold,
         )
         sl_qty = executed_qty
         sl, sl_via_fallback = _place_sl_with_1013_fallback(
@@ -1471,6 +1490,11 @@ def execute_auto_trade(
         logger.info(f"Score {score} below minimum threshold (60), skipping trade")
         return {"success": False, "error": f"Score too low: {score} (min 60)"}
 
+    # P0-B (2026-08-26): New-position halt (double safety net on top of Kelly
+    # deadlock). We must allow this function to run FAR ENOUGH to compute Kelly
+    # so exploration probes (is_exploration=True) can pass — but block ordering
+    # of any non-exploration position. Enforcement happens after sizing.
+
     # ── Position sizing: Kelly-first, tier-fallback ──
     sizing = _compute_kelly_sizing(
         client, symbol, usdt_bal, score, stop_loss_pct, tp_levels,
@@ -1487,6 +1511,19 @@ def execute_auto_trade(
     kelly_result = sizing["kelly_result"]
     db = sizing["db"]
     _is_exploration = sizing.get("is_exploration", False)
+
+    # P0-B: halt regular new positions; allow only exploration probes.
+    if _new_positions_halted() and not _is_exploration:
+        logger.warning(
+            f"[trade_id={_trade_id}] BLOCKED by NEW_POSITIONS_HALTED "
+            f"(regular new position; symbol={symbol} strategy={strategy} score={score}). "
+            f"Only Kelly exploration probes allowed."
+        )
+        return {
+            "success": False,
+            "error": "new_positions_halted",
+            "reason": "NEW_POSITIONS_HALTED is active (P0-B)",
+        }
 
     # ── Exploration exposure cap ──
     # Total exploration positions must not exceed 5% of USDT balance.

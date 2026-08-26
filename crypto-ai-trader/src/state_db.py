@@ -46,6 +46,10 @@ class StateDB:
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        # P0-A4 (2026-08-26): serialize writers within process to cut
+        # "database is locked" collisions (busy_timeout=30000 remains the
+        # cross-process safety net; DB already on local ext4 /root/trading-state).
+        self._write_lock = threading.RLock()
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -428,6 +432,20 @@ class StateDB:
             conn.execute("ALTER TABLE portfolio ADD COLUMN invest_pct REAL DEFAULT 0")
         except Exception as e:
             logger.warning("state_db._init_db: " + str(e))
+
+        # P0-A4 (2026-08-26): idempotency key for trades (prevents duplicate
+        # trade rows from double-record paths like bug#13).
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()}
+            if "client_order_id" not in cols:
+                conn.execute("ALTER TABLE trades ADD COLUMN client_order_id TEXT")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_client_order_id "
+                "ON trades(client_order_id) WHERE client_order_id IS NOT NULL"
+            )
+            conn.commit()
+        except Exception as e:
+            logger.warning("state_db._init_db: client_order_id migration: " + str(e))
             pass  # column already exists
 
     # ==================== Trailing Stop ====================
@@ -654,13 +672,25 @@ class StateDB:
     # ==================== Trades ====================
 
     def trade_add(
-        self, symbol: str, side: str, qty: float, price: float, pnl: float = 0
-    ):
-        self._get_conn().execute(
-            "INSERT INTO trades (symbol, side, qty, price, pnl, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-            (symbol, side, qty, price, pnl, time.time()),
-        )
-        self._get_conn().commit()
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        price: float,
+        pnl: float = 0,
+        client_order_id: Optional[str] = None,
+    ) -> bool:
+        """Insert a trade row. Returns True if inserted; False if a row with
+        the same client_order_id already exists (duplicate skipped) — P0-A4."""
+        with self._write_lock:
+            cur = self._get_conn().execute(
+                "INSERT OR IGNORE INTO trades "
+                "(symbol, side, qty, price, pnl, timestamp, client_order_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (symbol, side, qty, price, pnl, time.time(), client_order_id),
+            )
+            self._get_conn().commit()
+            return cur.rowcount > 0
 
     def trade_get_recent(
         self, symbol: Optional[str] = None, limit: int = 50

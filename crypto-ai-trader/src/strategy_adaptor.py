@@ -329,6 +329,7 @@ class StrategyAdaptor:
         settings: dict,
         changes: list,
         btc_adx: float = None,
+        bull_tier: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Build strategy configurations based on regime and volatility.
 
@@ -415,6 +416,16 @@ class StrategyAdaptor:
                 ],
                 "max_hold_hours": settings.get("max_hold_hours", 48),
             }
+
+            # P0-A1 (2026-08-26): Grid structurally mismatched in confirmed bull
+            # markets — 39 trades 38.5% win -$7.33. Hard-disable regardless of F&G.
+            if name == "grid" and bull_tier == "CONFIRMED_BULL":
+                enabled = False
+                reason = "disabled in CONFIRMED_BULL (P0-A1 grid mismatch)"
+                changes.append(f"{name}: force-OFF — CONFIRMED_BULL (P0-A1)")
+                strategies[name]["enabled"] = False
+                strategies[name]["reason"] = reason
+                strategies[name]["size_multiplier"] = 0.0
 
             # DCA regime-adaptive stop_loss
             if name == "dca":
@@ -612,7 +623,15 @@ class StrategyAdaptor:
         funding_rate: Optional[float] = None,
         btc_adx: Optional[float] = None,
         btc_score: Optional[float] = None,
+        bull_tier: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Adapt strategy based on market conditions.
+
+        bull_tier: BTC trend tier from trade_executor._check_btc_trend
+            (CONFIRMED_BULL / PROXIMITY_WARMUP / TRANSITION / DEEP_BEAR).
+            P0-A1 (2026-08-26): Grid disabled in CONFIRMED_BULL — 39 grid trades
+            38.5% win, -$7.33 proved structural mismatch in uptrends.
+        """
         """Adapt strategy based on market conditions.
 
         Returns dict with regime, strategies, global settings, and risk overlays.
@@ -678,7 +697,7 @@ class StrategyAdaptor:
         )
 
         # Build strategy configurations
-        strategies = self._build_strategy_configs(regime, vol_regime, settings, changes, btc_adx=btc_adx)
+        strategies = self._build_strategy_configs(regime, vol_regime, settings, changes, btc_adx=btc_adx, bull_tier=bull_tier)
 
         # Apply GARCH dynamic SL/TP
         daily_returns = self._apply_garch_sl_tp(strategies, btc_price_change_24h, changes)
