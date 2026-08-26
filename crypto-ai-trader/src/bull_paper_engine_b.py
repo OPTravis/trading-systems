@@ -144,6 +144,18 @@ class BullPaperEngineB(BullPaperEngine):
             self._log_decision(symbol, "reject", score=score,
                                fail_filter="insufficient_data", ind=ind, regime=regime)
             return False, "insufficient_data", ctx
+        # P0-C review: explicit ATR sanity — 0 / NaN / out-of-range ATR must not
+        # fall through to risk math (would produce divide-by-zero or insane SL)
+        _atr_v = ind.get("atr") or 0
+        try:
+            _px0 = float(self.get_price(symbol))
+        except Exception:
+            _px0 = 0
+        if not (_atr_v > 0) or _px0 <= 0 or _atr_v / _px0 > 0.25:
+            self._log_decision(symbol, "reject", score=score,
+                               fail_filter="atr_sanity_check", ind=ind,
+                               regime=regime, notes=f"atr={_atr_v},px={_px0}")
+            return False, "atr_sanity_check", ctx
 
         adx = ind["adx"]
         if adx < B_ADX_CLOSE:
@@ -199,10 +211,14 @@ class BullPaperEngineB(BullPaperEngine):
         equity = self._total_equity()
         risk_budget = equity * B_RISK_PER_TRADE
         qty = risk_budget / sl_dist if sl_dist > 0 else 0
-        if qty * fill_px < 10:
+        notional = qty * fill_px
+        actual_risk_usd = qty * sl_dist  # what the SL actually risks
+        if notional < 10:
             return None
-        if qty * fill_px > self.portfolio.cash * 0.95:
+        if notional > self.portfolio.cash * 0.95:
             qty = (self.portfolio.cash * 0.95) / fill_px
+            notional = qty * fill_px
+            actual_risk_usd = qty * sl_dist
 
         pos = self.portfolio.open_position(
             symbol, "core", qty, fill_px,
@@ -211,29 +227,34 @@ class BullPaperEngineB(BullPaperEngine):
             fee_rate=FEE_RATE,
             notes=(f"B score={score:.0f},adx={ctx['ind']['adx']:.1f},"
                    f"atr={ctx['ind']['atr']:.4f},rvol={ctx['rvol']:.2f},"
-                   f"r={ctx['r_multiple']:.3f}"),
+                   f"r={ctx['r_multiple']:.3f},"
+                   f"risk_usd={actual_risk_usd:.2f},notional={notional:.2f}"),
         )
-        self._arm_scaleouts(pos.id, symbol, fill_px, sl_dist)
+        logger.info(f"[B] sizing {symbol}: risk_budget=${risk_budget:.2f} "
+                    f"actual_risk=${actual_risk_usd:.2f} notional=${notional:.2f}")
+        self._arm_scaleouts(pos.id, symbol, fill_px, sl_dist,
+                            atr_entry=ctx["ind"]["atr"])
         return {"symbol": symbol, "action": "B_OPEN", "price": fill_px,
                 "qty": qty, "sl": sl, "position_id": pos.id,
                 "r_multiple": ctx["r_multiple"]}
 
-    def _arm_scaleouts(self, position_id, symbol, entry, sl_dist):
+    def _arm_scaleouts(self, position_id, symbol, entry, sl_dist, atr_entry=0.0):
         now = int(time.time() * 1000)
         rows = [
             (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
-             1, B_STAGE1_R, B_STAGE1_FRAC, entry + B_STAGE1_R * sl_dist,
-             "pending", 0, 0.0, now),
+             1, B_STAGE1_R, B_STAGE1_FRAC, entry, atr_entry,
+             entry + B_STAGE1_R * sl_dist, "pending", 0, 0.0, now),
             (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
-             2, B_STAGE2_R, B_STAGE2_FRAC, entry + B_STAGE2_R * sl_dist,
-             "pending", 0, 0.0, now),
+             2, B_STAGE2_R, B_STAGE2_FRAC, entry, atr_entry,
+             entry + B_STAGE2_R * sl_dist, "pending", 0, 0.0, now),
         ]
         with self.db._get_conn() as conn:
             conn.executemany(
                 """INSERT INTO paper_bull_scaleouts
                    (id, position_id, ab_group, symbol, stage, r_multiple,
-                    fraction, trigger_price, status, fired_time, fired_price, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+                    fraction, entry_price, atr_at_entry, trigger_price,
+                    status, fired_time, fired_price, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
             conn.commit()
 
     def process_b_thesis_exits(self, regime, prices):

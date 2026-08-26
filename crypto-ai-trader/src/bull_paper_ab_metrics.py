@@ -61,6 +61,8 @@ def compute_group_stats(db, group: str, start_cash: float,
                if t.get("hold_seconds") and t["hold_seconds"] > 0]
     avg_hold = statistics.mean(holds_h) if holds_h else 0.0
     med_hold = statistics.median(holds_h) if holds_h else 0.0
+    min_hold = min(holds_h) if holds_h else 0.0
+    max_hold = max(holds_h) if holds_h else 0.0
 
     # SL sweep = SL exits within 8h of entry (stop run before thesis played out)
     sl_sweeps = 0
@@ -143,6 +145,7 @@ def compute_group_stats(db, group: str, start_cash: float,
         "gross_profit": gross_profit, "gross_loss": gross_loss,
         "profit_factor": pf if pf != float("inf") else 99.99,
         "avg_hold_hours": avg_hold, "median_hold_hours": med_hold,
+        "min_hold_hours": min_hold, "max_hold_hours": max_hold,
         "sl_sweep_count": sl_sweeps, "sl_sweep_rate": sl_sweep_rate,
         "max_drawdown": max_dd, "sharpe": sharpe,
         "n_open": n_open,
@@ -165,10 +168,11 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                     n_trades, n_wins, win_rate, gross_profit, gross_loss,
                     profit_factor, sharpe, max_drawdown,
                     avg_hold_hours, median_hold_hours,
+                    min_hold_hours, max_hold_hours,
                     sl_sweep_count, sl_sweep_rate, whipsaw_count,
                     kelly_f, kelly_tstat, grid_active_count,
                     exploration_count, n_open)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(snapshot_date, ab_group) DO UPDATE SET
                      cash=excluded.cash, market_value=excluded.market_value,
                      equity=excluded.equity, total_return=excluded.total_return,
@@ -179,6 +183,8 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                      max_drawdown=excluded.max_drawdown,
                      avg_hold_hours=excluded.avg_hold_hours,
                      median_hold_hours=excluded.median_hold_hours,
+                     min_hold_hours=excluded.min_hold_hours,
+                     max_hold_hours=excluded.max_hold_hours,
                      sl_sweep_count=excluded.sl_sweep_count,
                      sl_sweep_rate=excluded.sl_sweep_rate,
                      whipsaw_count=excluded.whipsaw_count,
@@ -192,11 +198,37 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                  st["gross_profit"], st["gross_loss"], st["profit_factor"],
                  st["sharpe"], st["max_drawdown"],
                  st["avg_hold_hours"], st["median_hold_hours"],
+                 st["min_hold_hours"], st["max_hold_hours"],
                  st["sl_sweep_count"], st["sl_sweep_rate"], whipsaw,
                  kelly_f, kelly_tstat, grid_active, exploration, st["n_open"]),
             )
             c.commit()
     return today
+
+
+def b_activity_warning(db, b_start: float) -> str:
+    """P0-C review: after 3+ days of B running, if B has 0 trades AND 0 open
+    positions, flag that the B filters may be too strict (likely RVOL 1.2) so
+    we don't wait 14 days to discover there's no comparison data."""
+    import time as _t
+    # days since B cash initialised
+    with db._get_conn() as c:
+        row = c.execute("SELECT updated_at FROM paper_bull_state WHERE key='cash_balance_B'").fetchone()
+        n_closed = c.execute("SELECT count(*) FROM paper_bull_positions WHERE status='closed' AND ab_group='B'").fetchone()[0]
+        n_open = c.execute("SELECT count(*) FROM paper_bull_positions WHERE status='open' AND ab_group='B'").fetchone()[0]
+    if not row:
+        return ""
+    days = (_t.time() * 1000 - row["updated_at"]) / 86400_000
+    if days >= 3 and n_closed == 0 and n_open == 0:
+        # pull reject breakdown to suggest the binding constraint
+        with db._get_conn() as c:
+            rows = c.execute("""SELECT fail_filter, count(*) c FROM paper_bull_filter_decisions
+                                WHERE ab_group='B' AND decision='reject'
+                                GROUP BY fail_filter ORDER BY c DESC LIMIT 3""").fetchall()
+        top = ", ".join(f"{r['fail_filter']}={r['c']}" for r in rows) or "n/a"
+        return (f"⚠️ B 組跑咗 {days:.1f} 日但 0 筆交易、0 倉位——過濾可能過嚴，"
+                f"主要 reject: {top}。建議討論是否將 RVOL 1.2 降到 1.0-1.1。")
+    return ""
 
 
 def format_ab_report(db, a_start: float, b_start: float,
@@ -222,7 +254,12 @@ def format_ab_report(db, a_start: float, b_start: float,
         f"   {'Win rate':14}{pct(a['win_rate']):>16}{pct(b['win_rate']):>18}",
         f"   {'Profit factor':14}{pf(a['profit_factor']):>16}{pf(b['profit_factor']):>18}",
         f"   {'Avg hold':14}{a['avg_hold_hours']:>14.1f}h{b['avg_hold_hours']:>16.1f}h",
+        f"   {'Hold range':14}{(str(round(a['min_hold_hours'],1))+'-'+str(round(a['max_hold_hours'],1))+'h'):>16}{(str(round(b['min_hold_hours'],1))+'-'+str(round(b['max_hold_hours'],1))+'h'):>18}",
         f"   {'SL被掃(8h內)':14}{a['sl_sweep_count']:>16}{b['sl_sweep_count']:>18}",
         f"   {'開倉中':14}{a['n_open']:>16}{b['n_open']:>18}",
     ]
+    _w = b_activity_warning(db, b_start)
+    if _w:
+        lines.append("")
+        lines.append(_w)
     return "\n".join(lines)

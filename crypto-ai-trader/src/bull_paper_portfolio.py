@@ -70,6 +70,20 @@ class BullPaperPortfolio:
 
     def _ensure_tables(self):
         with self.db._get_conn() as conn:
+            # P0-C review (2026-08-26): columns added after first migration run
+            for tbl, col, ddl in (
+                ("paper_bull_scaleouts", "entry_price",
+                 "ALTER TABLE paper_bull_scaleouts ADD COLUMN entry_price REAL DEFAULT 0"),
+                ("paper_bull_scaleouts", "atr_at_entry",
+                 "ALTER TABLE paper_bull_scaleouts ADD COLUMN atr_at_entry REAL DEFAULT 0"),
+                ("paper_bull_ab_daily", "min_hold_hours",
+                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN min_hold_hours REAL"),
+                ("paper_bull_ab_daily", "max_hold_hours",
+                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN max_hold_hours REAL"),
+            ):
+                _cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+                if col not in _cols:
+                    conn.execute(ddl)
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS paper_bull_positions (
                     id TEXT PRIMARY KEY,
@@ -144,6 +158,8 @@ class BullPaperPortfolio:
                     stage INTEGER NOT NULL,
                     r_multiple REAL NOT NULL,
                     fraction REAL NOT NULL,
+                    entry_price REAL DEFAULT 0,
+                    atr_at_entry REAL DEFAULT 0,
                     trigger_price REAL NOT NULL,
                     status TEXT DEFAULT 'pending',
                     fired_time INTEGER DEFAULT 0,
@@ -180,6 +196,7 @@ class BullPaperPortfolio:
                     gross_profit REAL, gross_loss REAL, profit_factor REAL,
                     sharpe REAL, max_drawdown REAL,
                     avg_hold_hours REAL, median_hold_hours REAL,
+                    min_hold_hours REAL, max_hold_hours REAL,
                     sl_sweep_count INTEGER, sl_sweep_rate REAL,
                     whipsaw_count INTEGER,
                     kelly_f REAL, kelly_tstat REAL,
