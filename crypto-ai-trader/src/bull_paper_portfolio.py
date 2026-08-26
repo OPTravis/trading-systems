@@ -48,6 +48,15 @@ class PaperPosition:
     realized_pnl: float = 0.0
     fees: float = 0.0
     notes: str = ""
+    hold_seconds: float = 0.0   # P0-A6
+    slippage_bps: float = 0.0   # P0-A6
+
+
+def _row_to_pos(row) -> PaperPosition:
+    """Build PaperPosition from a DB row, tolerating extra columns added
+    by later migrations (e.g. ab_group in P0-C)."""
+    fields = {f.name for f in PaperPosition.__dataclass_fields__.values()}
+    return PaperPosition(**{k: v for k, v in dict(row).items() if k in fields})
 
 
 class BullPaperPortfolio:
@@ -240,7 +249,7 @@ class BullPaperPortfolio:
             ).fetchone()
             if not row:
                 return None
-            pos = PaperPosition(**dict(row))
+            pos = _row_to_pos(row)
 
             close_qty = quantity if quantity else pos.quantity
             if close_qty > pos.quantity + 1e-12:
@@ -283,7 +292,7 @@ class BullPaperPortfolio:
                 row = conn.execute(
                     "SELECT * FROM paper_bull_positions WHERE id = ?", (position_id,)
                 ).fetchone()
-                pos = PaperPosition(**dict(row))
+                pos = _row_to_pos(row)
                 pos.realized_pnl = realized_pnl
 
             conn.execute(
