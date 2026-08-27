@@ -428,10 +428,16 @@ class StateDB:
         conn.commit()
 
         # Migration: add invest_pct column if missing (for existing databases)
+        # 2026-08-27: conditional check — CREATE TABLE already includes invest_pct
+        # for fresh DBs, unconditional ALTER raised "duplicate column name" warning
+        # on every init (polluted stderr; weekly_learning mis-logged it as error 8/23).
         try:
-            conn.execute("ALTER TABLE portfolio ADD COLUMN invest_pct REAL DEFAULT 0")
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(portfolio)").fetchall()}
+            if "invest_pct" not in cols:
+                conn.execute("ALTER TABLE portfolio ADD COLUMN invest_pct REAL DEFAULT 0")
+                conn.commit()
         except Exception as e:
-            logger.warning("state_db._init_db: " + str(e))
+            logger.warning("state_db._init_db: invest_pct migration: " + str(e))
 
         # P0-A4 (2026-08-26): idempotency key for trades (prevents duplicate
         # trade rows from double-record paths like bug#13).

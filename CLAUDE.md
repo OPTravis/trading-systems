@@ -4,18 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-Monorepo with two independent AI trading systems and a shared module layer:
+Single AI trading system (crypto):
 
 ```
 trading-systems/
 ├── crypto-ai-trader/   # Binance SPOT crypto trading (~30k LOC, 95 .py files)
-├── stock-ai-trader/    # Global stock research & analysis via IBKR (~10k LOC, 50+ .py files)
-└── shared/             # Reusable modules imported by both projects
-    ├── core/           # StateDB (SQLite WAL), EventBus, LLM client, DuckDB lock
-    ├── risk/           # Base RiskManager, CircuitBreaker, DailyLossBreaker, DrawdownBreaker, KellySizer, CVaR
-    ├── strategy/       # StrategyEvolver, ContextualBandit
-    ├── analysis/       # BearAnalyst, ConceptDrift, DimensionScorer, MultiTimeframe, PricePredictor
-    └── utils/          # Indicators, TradeOutcomeRecorder, ProjectRoot
 ```
 
 Each subproject has its own `CLAUDE.md` with project-specific details — read those first when working in a subproject.
@@ -29,8 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 ```
 
 This means imports like `from shared.core.state_db import StateDB` or `from shared.risk.kelly_sizer import KellySizer` work from within each project. The `shared/utils/project_root.py` helper walks upward to find the repo root.
-
-**stock-ai-trader** also has a local `shared/` subdirectory with copies of `db_lock.py`, `state_db.py`, and `risk_manager.py`. Changes to these files may need to be synced to the root `shared/` as well.
 
 ## Commands
 
@@ -51,32 +42,6 @@ pytest -m "not slow"              # Skip slow tests
 bash run_scan.sh                  # Cron wrapper (source crypto-secrets.env first)
 ```
 
-### stock-ai-trader
-
-```bash
-cd stock-ai-trader
-pip install -r requirements.txt
-docker-compose up -d              # Start IBKR Gateway
-python main.py scan [--universe global] [--market US]
-python main.py status [--detailed] [--live]
-python main.py analyze AAPL MSFT
-python main.py backtest --strategy momentum --from 2024-01-01
-pytest                            # All tests
-pytest -x                         # Stop on first failure
-ruff check src/ tests/            # Lint
-black src/ tests/                 # Format
-```
-
-## Shared Architecture Patterns
-
-Both systems follow the same high-level pattern — a multi-phase scan pipeline orchestrated by `scan_orchestrator.py`:
-
-1. **Scan/Screen** — Sync portfolio from exchange, detect market regime, screen universe
-2. **Score/Rank** — Multi-dimensional scoring of candidates
-3. **Research** — LLM-powered deep dive on top candidates (DeepSeek primary, GPT-4o-mini/mimo fallback)
-4. **Risk Checks** — Layered risk gates (circuit breaker, daily loss, drawdown, position limits)
-5. **Execute** — Position sizing (Kelly × CVaR) and order placement (crypto only; stock-ai-trader is analysis-only)
-
 ### Common Components (in `shared/`)
 
 | Component | Role |
@@ -94,7 +59,6 @@ Both systems follow the same high-level pattern — a multi-phase scan pipeline 
 
 All configuration is YAML-driven with no hardcoded parameters. Secrets come from `.env` files (gitignored):
 - crypto: `crypto-secrets.env` → `BINANCE_API_KEY`, `BINANCE_API_SECRET`, `DEEPSEEK_API_KEY`, etc.
-- stock: `.env` → `IBKR_ACCOUNT_ID`, `FEISHU_WEBHOOK_URL`, etc. (analysis-only, no auto-execute)
 
 ### SPOT ONLY
 

@@ -280,6 +280,59 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
                 except Exception as e:
                     logger.debug(f"Sat entry failed for {sym}: {e}")
 
+    # ── 5b. P0-C: B-variant A/B engine (same clock, same universe) ──
+    b_actions = []
+    try:
+        from src.bull_paper_engine_b import BullPaperEngineB
+        eng_b = BullPaperEngineB(db, client)
+
+        # B prices for B-held symbols
+        b_open = eng_b.portfolio.get_open_positions()
+        b_prices = {}
+        for p in b_open:
+            try:
+                b_prices[p["symbol"]] = eng_b.get_price(p["symbol"])
+            except Exception:
+                b_prices[p["symbol"]] = 0
+
+        # thesis-level exits first (regime / EMA200), then risk exits
+        b_actions.extend(eng_b.process_b_thesis_exits(regime, b_prices))
+        # refresh after thesis exits
+        b_open = eng_b.portfolio.get_open_positions()
+        b_prices = {}
+        for p in b_open:
+            try:
+                b_prices[p["symbol"]] = eng_b.get_price(p["symbol"])
+            except Exception:
+                b_prices[p["symbol"]] = 0
+        b_actions.extend(eng_b.process_b_exits(b_prices))
+
+        # B entries: same candidate universe A scanned, same time frame
+        if not pause_alerts and not dry_run and regime in ("CONFIRMED_BULL", "MILD_BULL"):
+            b_candidates = scanner_opportunities or []
+            if not b_candidates:
+                b_universe = [
+                    "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
+                    "DOTUSDT", "NEARUSDT", "AAVEUSDT", "OPUSDT", "ARBUSDT",
+                ]
+                for sym in b_universe:
+                    b_candidates.append({"symbol": sym, "score": 80})
+            for opp in b_candidates[:12]:
+                sym = opp.get("symbol", "")
+                score = opp.get("score", 80)
+                if not sym.endswith("USDT"):
+                    sym = sym + "USDT"
+                try:
+                    res = eng_b.try_b_entry(sym, score, regime)
+                    if res:
+                        b_actions.append(res)
+                        logger.info(f"[B] entry: {res}")
+                except Exception as e:
+                    logger.debug(f"[B] entry failed for {sym}: {e}")
+        actions.extend(b_actions)
+    except Exception as e:
+        logger.error(f"[B] engine failure (non-fatal): {e}")
+
     # ── 6. Update capture tracker ────────────────────────────────────
     ct = CaptureTracker(db)
     btc_price_now = float(client.get_ticker_price("BTCUSDT"))
@@ -336,6 +389,48 @@ def run_paper_scan(scanner_opportunities=None, dry_run=False):
     report_lines.append("")
     report_lines.append(engine.format_report())
     report_lines.append("")
+
+    # P0-C: A/B comparison block (B engine, independent sleeve)
+    try:
+        from src.bull_paper_ab_metrics import (
+            format_ab_report, snapshot_daily, verify_ab_isolation,
+        )
+        from src.bull_paper_engine_b import B_START_CASH
+        # price map covering both A and B open symbols (re-fetch AFTER the
+        # B entry block above ran, otherwise a brand-new B position opened
+        # this scan is missing from MV and shows stale equity)
+        ab_syms = set(prices.keys())
+        try:
+            for _p in eng_b.portfolio.get_open_positions():
+                ab_syms.add(_p["symbol"])
+        except Exception:
+            pass
+        ab_prices = dict(prices)
+        for sym in ab_syms:
+            if not ab_prices.get(sym):
+                try:
+                    ab_prices[sym] = float(client.get_ticker_price(sym))
+                except Exception:
+                    ab_prices[sym] = 0.0
+        # P0-C protocol: daily A/B isolation verification (Leo 2026-08-26).
+        # Any anomaly is a hard stop signal that must surface in every scan.
+        iso = verify_ab_isolation(db)
+        if not iso["ok"]:
+            report_lines.append("🚨 A/B 隔離穿窿（即刻停 B 組並回滾 main）:")
+            for a in iso["anomalies"]:
+                report_lines.append(f"   - {a}")
+            report_lines.append("")
+            logger.error(f"[P0-C] A/B ISOLATION BREACH: {iso['anomalies']}")
+        report_lines.append(format_ab_report(db, TOTAL_CAPITAL, B_START_CASH, ab_prices))
+        report_lines.append("")
+        # one daily snapshot per scan day (idempotent UPSERT)
+        try:
+            snapshot_daily(db, ab_prices, TOTAL_CAPITAL, B_START_CASH)
+        except Exception as e:
+            logger.debug(f"AB snapshot failed: {e}")
+    except Exception as e:
+        logger.debug(f"AB report failed: {e}")
+
     report_lines.append(ct.format_report())
 
     if actions:
