@@ -238,23 +238,23 @@ class BullPaperEngineB(BullPaperEngine):
                 "qty": qty, "sl": sl, "position_id": pos.id,
                 "r_multiple": ctx["r_multiple"]}
 
-    def _arm_scaleouts(self, position_id, symbol, entry, sl_dist, atr_entry=0.0):
+    def _arm_scaleouts(self, position_id, symbol, entry, sl_dist, atr_entry=0.0, original_qty=0.0):
         now = int(time.time() * 1000)
         rows = [
             (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
-             1, B_STAGE1_R, B_STAGE1_FRAC, entry, atr_entry,
+             1, B_STAGE1_R, B_STAGE1_FRAC, entry, atr_entry, original_qty,
              entry + B_STAGE1_R * sl_dist, "pending", 0, 0.0, now),
             (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
-             2, B_STAGE2_R, B_STAGE2_FRAC, entry, atr_entry,
+             2, B_STAGE2_R, B_STAGE2_FRAC, entry, atr_entry, original_qty,
              entry + B_STAGE2_R * sl_dist, "pending", 0, 0.0, now),
         ]
         with self.db._get_conn() as conn:
             conn.executemany(
                 """INSERT INTO paper_bull_scaleouts
                    (id, position_id, ab_group, symbol, stage, r_multiple,
-                    fraction, entry_price, atr_at_entry, trigger_price,
+                    fraction, entry_price, atr_at_entry, original_qty, trigger_price,
                     status, fired_time, fired_price, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
             conn.commit()
 
     def process_b_thesis_exits(self, regime, prices):
@@ -353,7 +353,12 @@ class BullPaperEngineB(BullPaperEngine):
             ).fetchall()
         for so in pendings:
             if px >= so["trigger_price"]:
-                close_qty = pos["quantity"] * so["fraction"]
+                # Use original entry qty (stored at arm time), not remaining qty,
+                # so each stage sells a fixed fraction of the original position.
+                base_qty = so["original_qty"] if so["original_qty"] > 0 else pos["quantity"]
+                close_qty = base_qty * so["fraction"]
+                if close_qty > pos["quantity"] + 1e-12:
+                    close_qty = pos["quantity"]
                 if close_qty * px < 5:
                     continue
                 self.portfolio.close_position(
