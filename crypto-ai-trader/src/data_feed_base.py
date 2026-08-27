@@ -17,7 +17,33 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = PROJECT_ROOT / "data"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_DB = str(CACHE_DIR / "cache.db")
+
+
+def _resolve_cache_db() -> str:
+    """bug#27 (2026-08-27): SQLite on network/FUSE mounts intermittently fails
+    with "unable to open database file" (same family as bug#15 live-DB move).
+    Prefer a local-ext4 cache location; allow CRYPTO_CACHE_DB override;
+    fall back to repo data/cache.db if no writable local dir."""
+    import os
+
+    override = os.environ.get("CRYPTO_CACHE_DB")
+    if override:
+        return override
+    candidates = ["/root/trading-state/cache.db", str(CACHE_DIR / "cache.db")]
+    for cand in candidates:
+        try:
+            os.makedirs(os.path.dirname(cand), exist_ok=True)
+            probe = os.path.join(os.path.dirname(cand), ".cache_probe")
+            with open(probe, "w") as f:
+                f.write("ok")
+            os.remove(probe)
+            return cand
+        except OSError:
+            continue
+    return str(CACHE_DIR / "cache.db")
+
+
+CACHE_DB = _resolve_cache_db()
 
 # ---------------------------------------------------------------------------
 # Cache TTLs (seconds)
