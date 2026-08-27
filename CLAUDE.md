@@ -4,17 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-Monorepo with one AI trading system (crypto) and a shared module layer:
+Single AI trading system (crypto):
 
 ```
 trading-systems/
 ├── crypto-ai-trader/   # Binance SPOT crypto trading (~30k LOC, 95 .py files)
-└── shared/             # Reusable modules imported by both projects
-    ├── core/           # StateDB (SQLite WAL), EventBus, LLM client, DuckDB lock
-    ├── risk/           # Base RiskManager, CircuitBreaker, DailyLossBreaker, DrawdownBreaker, KellySizer, CVaR
-    ├── strategy/       # StrategyEvolver, ContextualBandit
-    ├── analysis/       # BearAnalyst, ConceptDrift, DimensionScorer, MultiTimeframe, PricePredictor
-    └── utils/          # Indicators, TradeOutcomeRecorder, ProjectRoot
 ```
 
 Each subproject has its own `CLAUDE.md` with project-specific details — read those first when working in a subproject.
