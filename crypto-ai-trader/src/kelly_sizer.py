@@ -39,6 +39,18 @@ EXPLORATION_MAX_PCT = 0.02   # 2% maximum exploration position
 # win-rate window refresh during a genuine regime turn.
 EXPLORATION_CAP_30D = 8      # max regime-warming exploration entries / 30d
 
+# 2026-08-28 (#27): the warming-escape budget (8/30d) was exhausted 08-19~25,
+# right before CONFIRMED_BULL confirmed on 08-25. Live participation has been
+# zero since 08-19 while BTC runs +12% over SMA200 - the regime window's last
+# 20 trades are bear-tail losers and can never turn over while frozen (no new
+# trades -> no new outcomes -> stale verdict stands forever). CONFIRMED_BULL
+# is not "fake warming": the BTC gate requires SMA200+5%, FNG>60, ADX>25 for
+# 2 consecutive bars. Per Leo's 2026-08-20 directive ("confirmed bull - don't
+# miss any chances"), allow exploration-sized refresh entries in that state
+# on a separate weekly budget. Backstops: BULL_REFRESH_CAP_7D below plus the
+# execution-side cap of 5%-of-balance total open exploration exposure.
+BULL_REFRESH_CAP_7D = 12     # max bull-refresh exploration entries / 7d
+
 # 2026-08-20 Leo directive ("confirmed bull — don't miss any chances"):
 # when the BTC trend gate tier is CONFIRMED_BULL, size off the most recent
 # regime-matched window instead of the all-history window that is dominated
@@ -107,6 +119,32 @@ class KellyPositionSizer:
             return int(row[0]) if row else 0
         except Exception as e:
             logger.warning(f"Exploration cap check failed (fail-open): {e}")
+            return 0
+
+    def _bull_refresh_entries_last_7d(self) -> int:
+        """Count bull-refresh exploration entries in the last 7 days.
+
+        Backstop for the #27 CONFIRMED_BULL deadlock bypass: bounds probe
+        churn if bull-refresh entries keep stopping out. The confidence
+        string is persisted in trade_outcomes.context_json (same mechanism
+        as the regime-warming counter above).
+        """
+        if not self.db:
+            return 0
+        try:
+            import time as _time
+
+            cutoff = _time.time() - 7 * 86400
+            conn = self.db._get_conn()
+            row = conn.execute(
+                """SELECT COUNT(*) FROM trade_outcomes
+                   WHERE context_json LIKE '%bull regime refresh%'
+                     AND entry_time >= ?""",
+                (cutoff,),
+            ).fetchone()
+            return int(row[0]) if row else 0
+        except Exception as e:
+            logger.warning(f"Bull-refresh cap check failed (fail-open): {e}")
             return 0
 
     def _btc_confirmed_bull(self) -> bool:
@@ -308,23 +346,73 @@ class KellyPositionSizer:
                     regime_improving = self._detect_regime_improving()
                 _used = self._exploration_entries_last_30d()
                 if _used >= EXPLORATION_CAP_30D:
-                    logger.info(
-                        f"Kelly deadlock escape: cap reached "
-                        f"({_used}/{EXPLORATION_CAP_30D} in 30d) — staying blocked"
-                    )
-                    return {
-                        "position_pct": 0.0,
-                        "win_rate": round(win_rate, 4),
-                        "reward_risk": round(reward_risk, 2),
-                        "avg_win": round(avg_win, 4),
-                        "avg_loss": round(avg_loss, 4),
-                        "confidence": confidence,
-                        "reason": (
-                            f"escape cap reached ({_used}/{EXPLORATION_CAP_30D} in 30d), "
-                            f"win_rate={win_rate:.1%} stale verdict stands"
-                        ),
-                        "is_exploration": False,
-                    }
+                    # 2026-08-28 (#27) bull-refresh bypass: the stale
+                    # HIGH-confidence verdict is dominated by pre-regime
+                    # bear-tail trades and can never refresh while frozen.
+                    # In CONFIRMED_BULL (Leo 2026-08-20: don't miss chances)
+                    # it must not veto entries forever - allow exploration-
+                    # sized refresh entries on a separate 7d budget.
+                    _bull_bypass = False
+                    if self._btc_confirmed_bull() and signal_score >= 70:
+                        _bull_used = self._bull_refresh_entries_last_7d()
+                        if _bull_used < BULL_REFRESH_CAP_7D:
+                            _bull_bypass = True
+                            kelly = max(
+                                EXPLORATION_MIN_PCT,
+                                BINANCE_MIN_NOTIONAL / balance
+                                if balance > 0
+                                else EXPLORATION_MIN_PCT,
+                            )
+                            kelly = min(kelly, EXPLORATION_MAX_PCT)
+                            is_exploration = True
+                            regime_escape = True
+                            confidence = (
+                                "EXPLORATION (bull regime refresh, "
+                                "stale verdict overridden)"
+                            )
+                            logger.info(
+                                "Kelly bull refresh: CONFIRMED_BULL + stale "
+                                f"verdict (win_rate={win_rate:.1%}), sizing "
+                                f"exploratory {kelly:.1%} "
+                                f"({_bull_used}/{BULL_REFRESH_CAP_7D} in 7d)"
+                            )
+                        else:
+                            logger.info(
+                                f"Kelly bull refresh: 7d cap reached "
+                                f"({_bull_used}/{BULL_REFRESH_CAP_7D}) — staying blocked"
+                            )
+                            return {
+                                "position_pct": 0.0,
+                                "win_rate": round(win_rate, 4),
+                                "reward_risk": round(reward_risk, 2),
+                                "avg_win": round(avg_win, 4),
+                                "avg_loss": round(avg_loss, 4),
+                                "confidence": confidence,
+                                "reason": (
+                                    f"bull refresh 7d cap reached "
+                                    f"({_bull_used}/{BULL_REFRESH_CAP_7D}), "
+                                    f"win_rate={win_rate:.1%} stale verdict stands"
+                                ),
+                                "is_exploration": False,
+                            }
+                    if not _bull_bypass:
+                        logger.info(
+                            f"Kelly deadlock escape: cap reached "
+                            f"({_used}/{EXPLORATION_CAP_30D} in 30d) — staying blocked"
+                        )
+                        return {
+                            "position_pct": 0.0,
+                            "win_rate": round(win_rate, 4),
+                            "reward_risk": round(reward_risk, 2),
+                            "avg_win": round(avg_win, 4),
+                            "avg_loss": round(avg_loss, 4),
+                            "confidence": confidence,
+                            "reason": (
+                                f"escape cap reached ({_used}/{EXPLORATION_CAP_30D} in 30d), "
+                                f"win_rate={win_rate:.1%} stale verdict stands"
+                            ),
+                            "is_exploration": False,
+                        }
                 elif regime_improving:
                     kelly = max(
                         EXPLORATION_MIN_PCT,
