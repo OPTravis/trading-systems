@@ -159,6 +159,115 @@ def round_price(price, tick_size):
     return float(d_price.quantize(d_tick, rounding=ROUND_DOWN))
 
 
+def _discipline_exit(client, sym, pos, current_price, exit_reason, fixes, errors):
+    """bug#29 (2026-08-29): market-exit a stranded position + verified bookkeeping.
+
+    Used when a position's stop has been breached but no SL order could be
+    placed: Binance validates STOP_LOSS_LIMIT notional at the LIMIT price, so
+    a position whose value slid under ~$5 can never be protected, and a
+    market sell also needs >= $5 notional. While price keeps the position
+    above the exchange floor the exit window is open — take it (8/29 ENSO:
+    entered $5.01, slid to $4.73, SL rejected twice, manually exited +$0.08).
+    Bookkeeping mirrors the tp_breach path: dedup SELL row + outcome close +
+    portfolio cleanup, all write-with-verify, failures LOUD.
+    Returns True if a critical bookkeeping failure occurred.
+    """
+    qty = pos["quantity"]
+    entry = pos.get("entry_price", 0)
+    try:
+        filters = get_symbol_filters(client, sym)
+        step_size = filters.get("stepSize", 0.001)
+        sell_qty = floor_qty(qty, step_size)
+        result = client.place_market_sell(sym, sell_qty)
+    except Exception as e:
+        errors.append(f"{sym}: 紀律平倉下單失敗 ({e})")
+        return True
+    if not result or result.get("status") not in ("closed", "FILLED"):
+        status = result.get("status") if result else "None"
+        errors.append(f"{sym}: 紀律平倉失敗，訂單狀態: {status}")
+        return True
+
+    pnl_pct = (current_price - entry) / entry * 100 if entry else 0
+    fixes.append(
+        f"{sym}: 止損已穿且SL無法掛（bug#29），紀律市價平倉 {pnl_pct:+.1f}%"
+    )
+    trade_pnl = (current_price - entry) * qty if entry > 0 else 0.0
+    _sell_ts = time.time()
+
+    def _insert_sell_row():
+        db = get_state_db()
+        conn = db._get_conn()
+        insert_sell_dedup(conn, sym, sell_qty, current_price, trade_pnl, _sell_ts)
+        conn.commit()
+
+    def _verify_sell_row():
+        db = get_state_db()
+        row = db._get_conn().execute(
+            "SELECT 1 FROM trades WHERE symbol = ? AND side = 'SELL' "
+            "AND ABS(timestamp - ?) < 3600 LIMIT 1",
+            (sym, _sell_ts),
+        ).fetchone()
+        return row is not None
+
+    def _record_outcome():
+        db = get_state_db()
+        recorder = TradeOutcomeRecorder(db=db)
+        recorder.record_outcome(
+            symbol=sym, exit_price=current_price, exit_reason=exit_reason
+        )
+
+    def _verify_outcome_closed():
+        db = get_state_db()
+        row = db._get_conn().execute(
+            "SELECT status FROM trade_outcomes WHERE symbol = ? "
+            "AND status = 'closed' ORDER BY updated_at DESC LIMIT 1",
+            (sym,),
+        ).fetchone()
+        return row is not None
+
+    def _delete_rows():
+        db = get_state_db()
+        conn = db._get_conn()
+        conn.execute("DELETE FROM portfolio WHERE symbol = ?", (sym,))
+        conn.execute("DELETE FROM trailing_stop WHERE symbol = ?", (sym,))
+        conn.commit()
+
+    def _verify_rows_gone():
+        db = get_state_db()
+        row = db._get_conn().execute(
+            "SELECT 1 FROM portfolio WHERE symbol = ? LIMIT 1", (sym,)
+        ).fetchone()
+        return row is None
+
+    _ok_sell = db_write_with_verify(
+        db=get_state_db(), write_fn=_insert_sell_row, verify_fn=_verify_sell_row,
+        label=f"ensure_tp_sl[{sym}] sl_breach SELL INSERT",
+        attempts=3, backoff_sec=1.0,
+    )
+    _ok_outcome = db_write_with_verify(
+        db=get_state_db(), write_fn=_record_outcome, verify_fn=_verify_outcome_closed,
+        label=f"ensure_tp_sl[{sym}] sl_breach outcome close",
+        attempts=3, backoff_sec=1.0,
+    )
+    _ok_cleanup = db_write_with_verify(
+        db=get_state_db(), write_fn=_delete_rows, verify_fn=_verify_rows_gone,
+        label=f"ensure_tp_sl[{sym}] sl_breach portfolio cleanup",
+        attempts=3, backoff_sec=1.0,
+    )
+    if not (_ok_sell and _ok_outcome and _ok_cleanup):
+        try:
+            from src.notifier import FeishuNotifier
+            FeishuNotifier().send_text(
+                f"🔴 ensure_tp_sl: {sym} 紀律平倉已成交但DB寫入失敗 "
+                f"(sell={_ok_sell}, outcome={_ok_outcome}, "
+                f"cleanup={_ok_cleanup})，請核對 trades/outcomes/portfolio"
+            )
+        except Exception as ne:
+            logger.error(f"DB-failure alert send failed: {ne}")
+        return True
+    return False
+
+
 def main():
     client = BinanceClient(testnet=False)
     positions = get_positions_with_targets()
@@ -573,7 +682,9 @@ def main():
                 sl_qty = floor_qty(min(sl_qty_raw, bal), step_size)
             except Exception:
                 sl_qty = floor_qty(min(sl_qty_raw, uncovered), step_size)
-            if sl_qty * current_price >= min_notional:
+            # bug#29: Binance validates STOP_LOSS_LIMIT notional at the LIMIT
+            # price, not current — precheck at sl_limit to match the exchange.
+            if sl_qty * sl_limit >= min_notional:
                 try:
                     sl_order = client.place_stop_loss_limit(sym, sl_qty, sl_limit, sl_price)
                     if sl_order:
@@ -620,7 +731,8 @@ def main():
                 sl_price = round_price(sl_target, tick_size)
                 sl_limit = round_price(sl_price * 0.995, tick_size)
                 sl_qty = floor_qty(qty, step_size)
-                if sl_qty * current_price >= min_notional:
+                # bug#29: precheck at limit price (exchange validation basis)
+                if sl_qty * sl_limit >= min_notional:
                     try:
                         sl_order = client.place_stop_loss_limit(sym, sl_qty, sl_limit, sl_price)
                         if sl_order:
@@ -789,6 +901,64 @@ def main():
                     critical_failures += 1
             except Exception as e:
                 errors.append(f"{sym}: TP過價自動平倉失敗 ({e})")
+
+    # ── Case 5: stop breached but SL unplaceable → disciplined exit (bug#29) ──
+    # Binance validates STOP_LOSS_LIMIT notional at the LIMIT price
+    # (stop*0.995), so a position whose value slid under ~$5 can never get SL
+    # protection, and a market sell needs >= $5 too. If price has already
+    # breached the stop and the position is unprotected, the only disciplined
+    # action is a market exit while the notional window is open; if even that
+    # is blocked the position is STRANDED → LOUD alert (Feishu + errors[]).
+    for sym, pos in positions.items():
+        qty = pos["quantity"]
+        sl_target = pos.get("stop_loss")
+        if not sl_target or qty <= 0:
+            continue
+        # Skip positions already closed by the tp_breach pass above
+        try:
+            still_open = get_state_db()._get_conn().execute(
+                "SELECT 1 FROM portfolio WHERE symbol = ? LIMIT 1", (sym,)
+            ).fetchone()
+        except Exception:
+            still_open = True
+        if not still_open:
+            continue
+        try:
+            current_price = float(client.get_ticker_price(symbol=sym))
+        except Exception:
+            continue
+        if current_price >= sl_target:
+            continue  # stop not breached
+        sl_orders, _tp = get_order_coverage(client, sym)
+        if sl_orders:
+            continue  # protected: exchange will trigger the SL
+        notional = qty * current_price
+        if notional < DUST_THRESHOLD:
+            continue
+        filters = get_symbol_filters(client, sym)
+        min_notional = filters.get("minNotional", 5.0)
+        if notional >= min_notional:
+            # Exit window open — take it
+            if _discipline_exit(
+                client, sym, pos, current_price, "sl_breach_exit", fixes, errors
+            ):
+                critical_failures += 1
+        else:
+            # Stranded: cannot sell, cannot protect → LOUD alert
+            errors.append(
+                f"{sym}: 🚨裸奔倉位——止損已穿(${current_price:.6f}<${sl_target:.6f})"
+                f"但市值${notional:.2f}<${min_notional}，SL與市價平倉均被拒"
+            )
+            critical_failures += 1
+            try:
+                from src.notifier import FeishuNotifier
+                FeishuNotifier().send_text(
+                    f"🚨 ensure_tp_sl: {sym} 裸奔倉位（bug#29類）——止損已穿但市值 "
+                    f"${notional:.2f} < minNotional ${min_notional}，"
+                    f"無法掛SL也無法市價平倉，需人工介入"
+                )
+            except Exception as ne:
+                logger.error(f"stranded-position alert send failed: {ne}")
 
     # ── Trailing Take-Profit (P2 #6) ──
     # Adjust TP orders upward when price has far exceeded original targets.

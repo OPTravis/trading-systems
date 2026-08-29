@@ -510,6 +510,29 @@ class PositionOptimizer:
             if buy_value <= 0:
                 logger.error(f"No USDT available after selling {from_symbol}")
                 return False
+
+            # bug#29 fix (2026-08-29): switch buy leg floor. An entry in
+            # [$5.00, $6.00) leaves no buffer over the $5 exchange minNotional
+            # — one red candle strands the position (SL unplaceable because
+            # Binance validates STOP_LOSS_LIMIT notional at the LIMIT price;
+            # market sell also needs >= $5; 8/29 ENSO $5.01 entry -> $4.73
+            # stranded). Mirror trade_executor's $6 internal floor: bump when
+            # free funds allow, never above what we actually hold.
+            _SWITCH_BUY_FLOOR = 6.0
+            if buy_value < _SWITCH_BUY_FLOOR:
+                try:
+                    _avail = float(self.bc.get_free_balance("USDT"))
+                except Exception:
+                    _avail = 0.0
+                _bumped = min(_SWITCH_BUY_FLOOR, _avail)
+                if _bumped > buy_value:
+                    logger.info(
+                        f"Switch buy leg ${buy_value:.2f} below "
+                        f"${_SWITCH_BUY_FLOOR:.2f} floor (bug#29: avoid "
+                        f"minNotional stranded position), bumping to ${_bumped:.2f}"
+                    )
+                    buy_value = _bumped
+
             to_price = decision.get("to_price", 0)
             if to_price <= 0:
                 # Fallback: fetch current price
