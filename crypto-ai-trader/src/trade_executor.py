@@ -396,8 +396,12 @@ def _compute_kelly_sizing(
     kelly_active = "estimated" not in kelly_confidence.lower()
     is_exploration = kelly_result.get("is_exploration", False)
 
-    # Binance minNotional is $5; exploration positions can go as low as that
-    _min_invest = 5 if is_exploration else 10
+    # bug#30 2026-08-29: exploration floor raised $5 → $6. $5.0-5.5 entries
+    # clear minNotional at BUY but strand the position in the sub-$6 band:
+    # any later SL re-place / discipline exit at a lower price falls back
+    # under the $5 minNotional → unplaceable SL / unsellable dust (bug#29
+    # ENSO strand family). $6 entry keeps SL notional ≥ ~$5.4 at -8% stop.
+    _min_invest = 6 if is_exploration else 10
 
     if kelly_active:
         kelly_result = kelly.adjust_for_portfolio(
@@ -1773,9 +1777,14 @@ def execute_auto_trade(
     _sl_limit_factor = max(
         (1 - stop_loss_pct / 100.0) * (1 - _RISK_SL_LIMIT_BUFFER_PCT), 0.50
     )
+    # bug#30 2026-08-29: global entry floor $6 — mirrors F1 _SWITCH_BUY_FLOOR
+    # (position_optimizer). Belt-and-braces under the Kelly-level bump:
+    # catches fee/rounding paths that could still land qty just above $5.
+    _ENTRY_VALUE_FLOOR = 6.0
     _notional_target = max(
         _min_notional * 1.02 + 0.10,
         (_min_notional * 1.02) / _sl_limit_factor,
+        _ENTRY_VALUE_FLOOR,
     )
     while qty * price < _notional_target:
         qty = round((qty + _step_size) / _step_size) * _step_size
