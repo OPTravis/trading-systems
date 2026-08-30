@@ -204,16 +204,22 @@ def sync_outcomes():
 
                 # Record SELL trade in trades table
                 try:
-                    conn.execute(
-                        """INSERT OR IGNORE INTO trades (symbol, side, qty, price, pnl, timestamp)
-                           VALUES (?, 'SELL', ?, ?, ?, ?)""",
-                        (
-                            sym,
-                            exit_info["exit_qty"],
-                            exit_info["exit_price"],
-                            outcome.get("net_pnl_absolute", 0),
-                            exit_info["exit_time"],
-                        ),
+                    # bug#31 fix (2026-08-30): trades has no unique constraint,
+                    # so INSERT OR IGNORE provided zero dedup protection - with
+                    # a manual SELL row already booked (BANK trades id 222), the
+                    # daily sync still inserted a duplicate (id 227) because the
+                    # outcome stayed open. Reuse the shared insert_sell_dedup
+                    # helper (bug#24): same symbol, qty within 2%, price within
+                    # 1%, 1h window.
+                    from scripts.ensure_tp_sl import insert_sell_dedup
+
+                    insert_sell_dedup(
+                        conn,
+                        sym,
+                        exit_info["exit_qty"],
+                        exit_info["exit_price"],
+                        outcome.get("net_pnl_absolute", 0),
+                        exit_info["exit_time"],
                     )
                     conn.commit()
                 except Exception as e:

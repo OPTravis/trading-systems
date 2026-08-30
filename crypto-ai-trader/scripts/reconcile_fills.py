@@ -183,7 +183,13 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
                 remaining -= take
 
         exit_qty = sum(tk for _, tk in allocated)
-        if exit_qty < oq - 0.00000001:
+        # bug#31 fix (2026-08-30): absolute 1e-8 tolerance was too tight -
+        # exchange fills can differ from outcome qty by LOT_SIZE rounding /
+        # commission residue (BANK SL 8/30: filled 141.993 vs outcome 142.0,
+        # 0.005% off), leaving the outcome open forever with a repeated
+        # anomaly every 5 min and no SELL booking. Use a relative 2%
+        # tolerance, matching insert_sell_dedup's +/-2% semantics.
+        if exit_qty < oq * 0.98:
             # outcome not yet fully closed (partial or no exit). If the asset
             # balance is gone entirely but we still have no fills, flag it.
             if held_qty <= 1e-12:
@@ -221,7 +227,8 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
         already_booked = booked_ts >= last_fill_ts - 10
 
         exit_reason = "sl" if exit_price < entry_price else "tp_fill"
-        trade_pnl = (exit_price - entry_price) * qty if entry_price > 0 else 0.0
+        # bug#31: book the ACTUAL filled qty (exit_qty), not outcome qty
+        trade_pnl = (exit_price - entry_price) * exit_qty if entry_price > 0 else 0.0
 
         if already_booked:
             # SELL row exists (e.g. booked by ensure_tp_sl) but outcome was
