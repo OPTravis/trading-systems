@@ -14,6 +14,7 @@ from src.binance_client import BinanceClient
 from src.indicators import Indicators
 from src.notifier import FeishuNotifier
 from src.risk_manager import RiskManager, TrailingStop, get_risk_manager
+from src.state_db import get_state_db
 
 logger = logging.getLogger(__name__)
 
@@ -704,6 +705,47 @@ def cmd_trailing_check():
         symbol = pos['symbol']
         total_qty = pos['total']
         free_qty = pos['free']
+
+        # bug#32: the `positions` snapshot above was fetched BEFORE
+        # reconcile_fills booked this run's exchange-side exits. When a TP/SL
+        # fill lands between snapshot time and here (2026-08-31 06:00 HKT:
+        # HEMI TP filled 05:46, outcome closed 06:00:06 by reconcile, but the
+        # account snapshot still showed 459.7 HEMI), this loop saw a ghost
+        # position, placed a STOP_LOSS_LIMIT the exchange rejects with -2010
+        # (insufficient balance) 3x, and paged a false "uncovered SL failed"
+        # alarm. The ledger is fresher than the account snapshot: if no
+        # trade_outcomes row is open for this symbol, the position is fully
+        # exited -- skip ghost protection (fail-open on guard errors).
+        try:
+            _row = get_state_db()._get_conn().execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ?) AS known, "
+                "(SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ? "
+                " AND status = 'open') AS open_cnt",
+                (symbol, symbol),
+            ).fetchone()
+            # Skip ONLY when the ledger knows this symbol and shows nothing
+            # open: a history with no open entry == fully exited. A symbol the
+            # ledger has never seen (external/manual balance) keeps the old
+            # protection behavior.
+            if _row["known"] > 0 and _row["open_cnt"] == 0:
+                logger.info(
+                    "bug#32: skipping uncovered-SL protection for %s -- "
+                    "ledger shows the position already exited (account "
+                    "snapshot was stale after the fill)",
+                    symbol,
+                )
+                results.append({
+                    "asset": asset,
+                    "action": "uncovered_sl_skipped_position_closed",
+                    "qty": total_qty,
+                })
+                continue
+        except Exception as e:
+            logger.warning(
+                "bug#32: ledger freshness guard errored for %s (fail-open): %s",
+                symbol, e,
+            )
 
         open_orders = client.get_open_orders(symbol)
         sl_orders = [o for o in open_orders if _is_stop_order(o)]
