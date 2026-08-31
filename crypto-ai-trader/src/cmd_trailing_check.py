@@ -35,6 +35,86 @@ def _is_stop_order(o):
     return 'STOP' in t.upper() or 'stop' in t.lower()
 
 
+SL_RECON_DEV_TOL = 0.005  # bug#35: >0.5% SL price deviation triggers correction
+
+
+def _reconcile_sl_prices(client, positions, db=None):
+    """bug#35: per-position reconcile of DB-recorded SL vs the exchange SL order.
+
+    Exchange is authoritative. Deviation > 0.5% (or a DB row with no recorded
+    SL while the exchange holds a stop) -> adopt the exchange price into
+    portfolio.stop_loss and emit action=sl_price_corrected.
+
+    bug#32 ledger-freshness-guard style: ANY per-symbol error is fail-open
+    (logged, skipped) and never blocks the trailing-check main flow.
+
+    Dry-run by default: SL_RECONCILE_DRYRUN unset or != '0' only RECORDS the
+    correction. Set SL_RECONCILE_DRYRUN=0 to write the DB (flip when Leo
+    approves live correction).
+    """
+    results = []
+    dry = os.environ.get('SL_RECONCILE_DRYRUN', '1') != '0'
+    try:
+        if db is None:
+            from src.state_db import StateDB
+            db = StateDB()
+        holdings = db.portfolio_get_all()
+    except Exception as e:
+        logger.warning("sl_reconcile: db unavailable, skipping (fail-open): %s", e)
+        return results
+
+    for pos in positions:
+        symbol = pos['symbol']
+        try:
+            rec = holdings.get(symbol)
+            if not rec:
+                continue  # nothing recorded -> nothing to reconcile
+            db_sl = float(rec.get('stop_loss') or 0)
+            open_orders = client.get_open_orders(symbol) or []
+            sl_orders = [o for o in open_orders if _is_stop_order(o)]
+            if not sl_orders:
+                continue  # no exchange SL leg to compare against
+            ex_sl = max(float(o.get('stopPrice', 0) or o.get('price', 0))
+                        for o in sl_orders)
+            if ex_sl <= 0:
+                continue
+            if db_sl > 0:
+                dev = abs(ex_sl - db_sl) / db_sl
+                if dev <= SL_RECON_DEV_TOL:
+                    continue  # within tolerance, pass-through
+            else:
+                dev = 1.0  # DB never recorded an SL but exchange has one
+
+            mode = 'dry-run' if dry else 'applied'
+            if not dry:
+                try:
+                    with db._get_conn() as conn:
+                        conn.execute(
+                            "UPDATE portfolio SET stop_loss=?, updated_at=? "
+                            "WHERE symbol=?",
+                            (ex_sl, __import__('time').time(), symbol))
+                        conn.commit()
+                except Exception as e:
+                    logger.warning("sl_reconcile %s: db update failed "
+                                   "(fail-open): %s", symbol, e)
+                    mode = 'update_failed'
+            logger.info(
+                "sl_reconcile %s: DB SL %.6f vs exchange %.6f (dev %.2f%%) "
+                "-> %s", symbol, db_sl, ex_sl, dev * 100, mode)
+            results.append({
+                "action": "sl_price_corrected",
+                "symbol": symbol,
+                "db_sl": db_sl,
+                "exchange_sl": ex_sl,
+                "deviation_pct": round(dev * 100, 3),
+                "mode": mode,
+            })
+        except Exception as e:
+            # bug#32 guard pattern: one bad symbol must not kill the loop
+            logger.warning("sl_reconcile %s failed (fail-open): %s", symbol, e)
+    return results
+
+
 def _check_tp_fills(client, notifier, positions):
     """Detect TP order fills and manage SL accordingly.
 
@@ -373,6 +453,14 @@ def cmd_trailing_check():
         return
 
     results = []
+
+    # ── bug#35: reconcile DB-recorded SL prices vs live exchange SL orders ──
+    # (exchange is authoritative; dry-run by default; fail-open per symbol)
+    try:
+        sl_recon_results = _reconcile_sl_prices(client, positions)
+        results.extend(sl_recon_results)
+    except Exception as e:
+        logger.warning("sl_reconcile outer guard (fail-open): %s", e)
 
     # ── P0: Check TP fills and manage SL (breakeven / move-to-TP1) ──
     tp_fill_results = _check_tp_fills(client, notifier, positions)
