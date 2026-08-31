@@ -31,6 +31,25 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+def _load_validate_all():
+    """bug#37: CWD-independent import of the pre-report validator.
+
+    cron shells do not guarantee CWD == repo root; when invoked from src/
+    (or anywhere else) `from scripts.report_validator import ...` raises
+    ModuleNotFoundError — which here would silently disable the whole
+    consistency gate. Derive the repo root from __file__, never from the
+    process CWD."""
+    try:
+        from scripts.report_validator import validate_all
+        return validate_all
+    except ImportError:
+        repo_root = str(Path(__file__).resolve().parent.parent)
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+        from scripts.report_validator import validate_all
+        return validate_all
+
+
 def main():
     peek = "--peek" in sys.argv
 
@@ -47,7 +66,7 @@ def main():
     # printed. opted out only for --peek (dry inspection of the raw queue).
     if not peek:
         try:
-            from scripts.report_validator import validate_all
+            validate_all = _load_validate_all()
             allowed, blocked = validate_all(unpushed)
             if blocked:
                 save_json(NOTIFICATIONS_FILE, notifs)  # persist blocked marks
