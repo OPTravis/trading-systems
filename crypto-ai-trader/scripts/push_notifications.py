@@ -41,6 +41,29 @@ def main():
     if not unpushed:
         return  # silent when nothing to push
 
+    # bug#34: pre-report consistency gate — validate each unpushed notification
+    # against DB/exchange ground truth before it goes out. Blocked ones are
+    # marked (never re-pushed) and ticketed by the validator; they are NOT
+    # printed. opted out only for --peek (dry inspection of the raw queue).
+    if not peek:
+        try:
+            from scripts.report_validator import validate_all
+            allowed, blocked = validate_all(unpushed)
+            if blocked:
+                save_json(NOTIFICATIONS_FILE, notifs)  # persist blocked marks
+                print(f"🛑 report_validator 阻断 {len(blocked)} 条不一致通报"
+                      f"（详见 logs/report_validator_failures.jsonl）\n")
+        except Exception as e:
+            # fail-closed choice is made per-claim inside the validator; a
+            # validator crash here must not silently kill the push path, but
+            # it IS logged loudly for the self-heal pipeline to see.
+            print(f"⚠️ report_validator error: {e}\n")
+            allowed = unpushed
+        unpushed = allowed
+        if not unpushed:
+            print("（其余通报已全部通过校验或为空）")
+            return
+
     print(f"📢 {len(unpushed)} 条待推送通知:\n")
     for n in unpushed:
         ts = n["timestamp"][:16].replace("T", " ")

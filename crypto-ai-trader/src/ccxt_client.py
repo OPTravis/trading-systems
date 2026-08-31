@@ -114,6 +114,21 @@ class BinanceClient:
         if testnet:
             self.exchange.set_sandbox_mode(True)
 
+        # bug#34: pin the ccxt requests session to the local proxy. In cron
+        # shells HTTP(S)_PROXY env vars are absent, so a default session goes
+        # direct and dies on the GFW — get_open_orders then returns [] on
+        # failure, indistinguishable from a real zero (8/30 ghost report).
+        # BINANCE_PROXY=<url> overrides, BINANCE_PROXY=off disables.
+        try:
+            from scripts.report_validator import apply_session_proxy
+            self._proxy_pinned = apply_session_proxy(self.exchange)
+            if self._proxy_pinned:
+                logger.info("BinanceClient: session proxy pinned (%s)",
+                            os.environ.get("BINANCE_PROXY", "http://127.0.0.1:17890"))
+        except Exception as _e:  # never block client construction on this
+            self._proxy_pinned = False
+            logger.warning("BinanceClient: proxy pin skipped: %s", _e)
+
         self.base_url = base_url
         self.recv_window = int(os.environ.get("BINANCE_RECV_WINDOW", "10000"))
 
