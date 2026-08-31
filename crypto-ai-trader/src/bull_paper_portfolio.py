@@ -54,7 +54,7 @@ class PaperPosition:
 
 def _row_to_pos(row) -> PaperPosition:
     """Build PaperPosition from a DB row, tolerating extra columns added
-    by later migrations (ab_group, ...)."""
+    by later migrations (e.g. ab_group in P0-C)."""
     fields = {f.name for f in PaperPosition.__dataclass_fields__.values()}
     return PaperPosition(**{k: v for k, v in dict(row).items() if k in fields})
 
