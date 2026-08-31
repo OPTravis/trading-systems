@@ -6,8 +6,14 @@ for cron/heartbeat pickup, and marks as pushed.
 Usage:
     python3 scripts/push_notifications.py          # output and mark pushed
     python3 scripts/push_notifications.py --peek   # output without marking
+
+bug#38: if the pre-report validator itself crashes or cannot be imported,
+ALL unpushed notifications are blocked by default (fail-safe). The only
+override is the explicit env switch ALLOW_UNVERIFIED_REPORT=1. --peek
+remains a pure dry inspection of the raw queue (prints, marks nothing).
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -73,11 +79,20 @@ def main():
                 print(f"🛑 report_validator 阻断 {len(blocked)} 条不一致通报"
                       f"（详见 logs/report_validator_failures.jsonl）\n")
         except Exception as e:
-            # fail-closed choice is made per-claim inside the validator; a
-            # validator crash here must not silently kill the push path, but
-            # it IS logged loudly for the self-heal pipeline to see.
-            print(f"⚠️ report_validator error: {e}\n")
-            allowed = unpushed
+            # bug#38 fail-safe: a crashed/unloadable validator means NOTHING
+            # was verified — shipping unverified numbers is exactly how the
+            # 15:12 escape (notif_20260831151303994385) happened. Default is
+            # now BLOCK ALL; the explicit env switch below is the only way
+            # through, and the loud print feeds the self-heal pipeline.
+            if os.environ.get("ALLOW_UNVERIFIED_REPORT") == "1":
+                print(f"⚠️ report_validator error: {e} — "
+                      f"ALLOW_UNVERIFIED_REPORT=1 ⇒ 放行 {len(unpushed)} 条未验证通报\n")
+                allowed = unpushed
+            else:
+                print(f"🛑 report_validator error: {e} — FAIL-SAFE：阻断全部 "
+                      f"{len(unpushed)} 条未验证通报（人工确认后可临时设 "
+                      f"ALLOW_UNVERIFIED_REPORT=1 放行）\n")
+                allowed = []
         unpushed = allowed
         if not unpushed:
             print("（其余通报已全部通过校验或为空）")
