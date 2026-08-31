@@ -114,11 +114,15 @@ class ExchangeFacts:
 
 class ReportValidator:
     def __init__(self, db=None, facts=None, history_file=None,
-                 failures_file=None, now_ts: Optional[float] = None):
+                 failures_file=None, now_ts: Optional[float] = None,
+                 cron_failures_file=None):
         self._db = db
         self._facts_obj = facts
         self._history_file = Path(history_file) if history_file else NOTIFICATIONS_FILE
         self._failures_file = Path(failures_file) if failures_file else FAILURES_FILE
+        # injectable so unit tests never touch the real cron_failures.jsonl
+        self._cron_failures_file = (Path(cron_failures_file)
+                                    if cron_failures_file else CRON_FAILURES)
         self._now = now_ts if now_ts is not None else time.time()
 
     # ---- ground truth ----
@@ -279,7 +283,7 @@ class ReportValidator:
             rec = {"timestamp": datetime_iso(), "job": "report_validator",
                    "exit_code": 1,
                    "detail": f"blocked notif {notif.get('id')}: {reasons[0]}"}
-            with open(CRON_FAILURES, "a") as f:
+            with open(self._cron_failures_file, "a") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
             pass

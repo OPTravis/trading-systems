@@ -161,13 +161,17 @@ def test_distinct_event_pass(tmp_path):
 # 诊断工单
 def test_block_writes_diagnostic_ticket(tmp_path):
     fail_file = tmp_path / "report_validator_failures.jsonl"
+    cron_file = tmp_path / "cron_failures.jsonl"
     v = ReportValidator(db=FakeDB(), facts=FakeFacts(ok=False, orders=None),
-                        failures_file=str(fail_file))
+                        failures_file=str(fail_file),
+                        cron_failures_file=str(cron_file))
     v.validate(_notif("扫描完成\n挂单 0 单"))
     assert fail_file.exists()
     rec = json.loads(fail_file.read_text().strip().splitlines()[-1])
     assert rec["verdict"] == "block" and rec["notif_id"] == "n1"
     assert "root_cause_hypothesis" in rec and "suggested_fix" in rec
+    # cron_failures mirror goes to the injected path, never the live one
+    assert cron_file.exists() and "report_validator" in cron_file.read_text()
 
 
 # BinanceClient session 加固

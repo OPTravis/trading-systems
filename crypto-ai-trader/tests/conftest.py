@@ -299,3 +299,26 @@ def _disable_blacklist(monkeypatch):
 
 # Prevent pytest from importing standalone scripts that pollute global state
 collect_ignore = ["test_integration_recent_changes.py"]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_report_validator_files(monkeypatch, tmp_path):
+    """bug#36: the pre-report validator must NEVER touch production signal/log
+    files from tests. Earlier runs of this suite leaked 54 test tickets into
+    logs/report_validator_failures.jsonl and 6 lines into
+    logs/cron_failures.jsonl because ReportValidator instances built by the
+    _mk() helper fell back to the module-level default paths.
+
+    This autouse fixture repoints every validator file knob at a per-test tmp
+    shadow directory, so a forgotten injection can no longer write through to
+    production. Tests that explicitly pass failures_file/cron_failures_file/
+    history_file are unaffected. validate_all()'s default-constructed
+    ReportValidator also picks the shadow paths up (it reads the module-level
+    names at __init__ time)."""
+    import scripts.report_validator as rv
+    shadow = tmp_path / "validator_shadow"
+    shadow.mkdir(exist_ok=True)
+    monkeypatch.setattr(rv, "NOTIFICATIONS_FILE", shadow / "pending_notifications.json")
+    monkeypatch.setattr(rv, "FAILURES_FILE", shadow / "report_validator_failures.jsonl")
+    monkeypatch.setattr(rv, "CRON_FAILURES", shadow / "cron_failures.jsonl")
+    yield
