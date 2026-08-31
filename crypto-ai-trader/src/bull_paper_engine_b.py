@@ -232,8 +232,12 @@ class BullPaperEngineB(BullPaperEngine):
         )
         logger.info(f"[B] sizing {symbol}: risk_budget=${risk_budget:.2f} "
                     f"actual_risk=${actual_risk_usd:.2f} notional=${notional:.2f}")
+        # bug#33: arm with the ACTUAL opened qty — the old call left
+        # original_qty=0, so _process_scaleouts fell back to the caller's
+        # remaining-qty snapshot and cross-round stage2 sold 2/9 not 1/3.
         self._arm_scaleouts(pos.id, symbol, fill_px, sl_dist,
-                            atr_entry=ctx["ind"]["atr"])
+                            atr_entry=ctx["ind"]["atr"],
+                            original_qty=pos.quantity)
         return {"symbol": symbol, "action": "B_OPEN", "price": fill_px,
                 "qty": qty, "sl": sl, "position_id": pos.id,
                 "r_multiple": ctx["r_multiple"]}
@@ -355,7 +359,21 @@ class BullPaperEngineB(BullPaperEngine):
             if px >= so["trigger_price"]:
                 # Use original entry qty (stored at arm time), not remaining qty,
                 # so each stage sells a fixed fraction of the original position.
-                base_qty = so["original_qty"] if so["original_qty"] > 0 else pos["quantity"]
+                # bug#33 fallback chain for legacy rows with original_qty=0:
+                # original_qty -> qty of the entry BUY leg -> caller snapshot.
+                base_qty = so["original_qty"]
+                if base_qty <= 0:
+                    with self.db._get_conn() as conn:
+                        _row = conn.execute(
+                            """SELECT quantity FROM paper_bull_trades
+                               WHERE position_id=? AND action='BUY'
+                               ORDER BY timestamp LIMIT 1""",
+                            (pos["id"],),
+                        ).fetchone()
+                    if _row is not None and _row["quantity"] > 0:
+                        base_qty = _row["quantity"]
+                    else:
+                        base_qty = pos["quantity"]
                 close_qty = base_qty * so["fraction"]
                 if close_qty > pos["quantity"] + 1e-12:
                     close_qty = pos["quantity"]

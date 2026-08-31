@@ -88,6 +88,10 @@ class BullPaperPortfolio:
                  "ALTER TABLE paper_bull_ab_daily ADD COLUMN core_sl_count INTEGER DEFAULT 0"),
             ):
                 _cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+                if not _cols:
+                    # bug#33: fresh DB — table is created with the full schema
+                    # by the executescript() below; nothing to ALTER yet.
+                    continue
                 if col not in _cols:
                     conn.execute(ddl)
             conn.executescript("""
@@ -360,8 +364,23 @@ class BullPaperPortfolio:
 
             if remaining < 1e-12:
                 # Full close
+                # bug#33: total_pnl = accumulated partial-leg PnL + this leg's
+                # PnL, minus the entry fee (paid at open, never inside any
+                # leg's pnl). Old formula ((exit-entry)*remaining - ALL fees)
+                # priced only the LAST leg yet subtracted every fee, so
+                # earlier TP-leg gains were swallowed (ZKP 8/30: booked
+                # $0.67 vs true ~$7.60).
+                entry_fee = 0.0
+                fee_row = conn.execute(
+                    """SELECT fee FROM paper_bull_trades
+                       WHERE position_id=? AND action='BUY'
+                       ORDER BY timestamp LIMIT 1""",
+                    (pos.id,),
+                ).fetchone()
+                if fee_row is not None and fee_row["fee"] is not None:
+                    entry_fee = float(fee_row["fee"])
                 total_fees = pos.fees + fee
-                total_pnl = (exit_price - pos.entry_price) * pos.quantity - total_fees
+                total_pnl = (pos.realized_pnl or 0.0) + pnl - entry_fee
                 _exit_ms = int(time.time() * 1000)
                 _hold_s = (_exit_ms - pos.entry_time) / 1000.0
                 conn.execute(
@@ -373,13 +392,16 @@ class BullPaperPortfolio:
                 )
             else:
                 # Partial close — update remaining qty, realize proportional P&L
+                # bug#33: ACCUMULATE realized_pnl on the position row (old code
+                # only noted the leg in `notes`, so fired TP legs never showed
+                # up in position.realized_pnl and full close under-reported).
                 total_fees = pos.fees + fee
-                realized_pnl = pnl
+                realized_pnl = (pos.realized_pnl or 0.0) + pnl
                 conn.execute(
                     """UPDATE paper_bull_positions
-                       SET quantity=?, fees=?, notes=notes || ?
+                       SET quantity=?, fees=?, realized_pnl=?, notes=notes || ?
                        WHERE id=?""",
-                    (remaining, total_fees,
+                    (remaining, total_fees, realized_pnl,
                      f" | partial close {close_qty:.6f} @ ${exit_price:.4f} pnl=${pnl:.2f}",
                      pos.id),
                 )
