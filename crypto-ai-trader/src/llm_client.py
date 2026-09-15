@@ -1,7 +1,7 @@
 """
 Centralized LLM Client with automatic fallback.
 
-Primary: DeepSeek (deepseek-v4-pro)
+Primary: DeepSeek (deepseek-flash)
 Fallback: Disabled (single provider)
 Second Opinion: Disabled
 
@@ -14,7 +14,7 @@ Usage:
     client = LLMClient()
     response = client.chat(
         messages=[{"role": "user", "content": "Hello"}],
-        model="deepseek-v4-pro",
+        model="deepseek-flash",
     )
     # Returns: {"content": "...", "provider": "deepseek"} or None on total failure
 """
@@ -46,13 +46,13 @@ def _load_config() -> Dict:
         "llm": {
             "primary": {
                 "provider": "deepseek",
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-flash",
                 "base_url": "https://api.deepseek.com/v1",
                 "timeout": 30,
             },
             "fallback": {
                 "provider": "deepseek",
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-flash",
                 "base_url": "https://api.deepseek.com/v1",
                 "timeout": 30,
                 "enabled": False,
@@ -124,7 +124,7 @@ def _get_provider_config(provider_name: str) -> Tuple[Dict, str]:
 
     return {
         "provider": provider,
-        "model": pcfg.get("model", "deepseek-v4-pro"),
+        "model": pcfg.get("model", "deepseek-flash"),
         "base_url": base_url,
         "timeout": pcfg.get("timeout", 30),
     }, api_key

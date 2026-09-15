@@ -665,9 +665,9 @@ class MarketResearcher:
             + "\n".join(numbered)
         )
 
-        # --- Primary model (deepseek-v4-pro) ---
+        # --- Primary model (deepseek-flash) ---
         primary_scores = self._call_llm_for_sentiment(
-            prompt, articles, "deepseek-v4-pro", "primary"
+            prompt, articles, "deepseek-flash", "primary"
         )
 
         # Single DeepSeek model — no cross-verification
@@ -1103,7 +1103,7 @@ class MarketResearcher:
                         "content": f"Analyze this crypto news sentiment:\n\n{text}",
                     }
                 ],
-                model="deepseek-v4-pro",
+                model="deepseek-flash",
                 system_prompt="You are a crypto news sentiment analyzer. Return ONLY a single float number between -1.0 (extremely bearish) and 1.0 (extremely bullish). No explanation, just the number.",
                 max_tokens=50,
                 temperature=0.0,
