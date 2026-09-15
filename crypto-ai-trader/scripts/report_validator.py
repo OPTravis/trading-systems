@@ -49,6 +49,40 @@ _RE_CLAIMED_POSITION = re.compile(
 _RE_CLAIM_NO_POSITION = re.compile(r"(无持仓|0\s*持仓|空仓|持仓\s*0\s*[单仓位个只]|未持仓)")
 _RE_CLAIM_ORDERS = re.compile(r"挂单\s*([0-9]+)\s*[单条个笔]")
 _RE_CLAIM_BALANCE = re.compile(r"(?:余额|USDT)[^\n]{0,10}?\$\s*([0-9]+(?:\.[0-9]+)?)")
+# bug#40 (2026-09-05): trade lines like "BUY NEARUSDT @ $2.133" put an
+# @-price right after a *USDT symbol — the plain USDT anchor above used to
+# swallow that price as a balance claim and block the report (NEAR / ASTER /
+# ZKP / GIGGLE / ENA, 5 false blocks on 9/5).  Trade-verb + @-price lines are
+# excluded from balance matching; English balance anchors are covered too.
+_RE_TRADE_PRICE_CONTEXT = re.compile(
+    r"(?i)\b(?:BUY|SELL|买入|卖出)\b[^@\n]*@\s*\$?\s*[0-9]")
+_RE_CLAIM_BALANCE_EN = re.compile(
+    r"(?i)\bbalance(?:s)?\b[^\n]{0,14}?(?:[:=]|\bis\b)\s*\$?\s*([0-9]+(?:\.[0-9]+)?)")
+
+
+def _balance_claim_value(body: Optional[str]) -> Optional[float]:
+    """Value of the balance claimed in *body*, or None.
+
+    Scans line by line: any line carrying a trade verb followed by an
+    @-price ("BUY NEARUSDT @ $2.133") is skipped entirely, so an in-line
+    fill price is never mistaken for a balance claim.  Chinese
+    (余额/USDT ... $x) and English (balance ... x / $x) anchors are both
+    recognized.
+    """
+    if not body:
+        return None
+    for line in body.splitlines():
+        if _RE_TRADE_PRICE_CONTEXT.search(line):
+            continue
+        m = _RE_CLAIM_BALANCE.search(line)
+        if m is None:
+            m = _RE_CLAIM_BALANCE_EN.search(line)
+        if m is not None:
+            try:
+                return float(m.group(1))
+            except (TypeError, ValueError):
+                continue
+    return None
 _RE_MAIN_EVENT = re.compile(
     r"([A-Z]{2,10}USDT)[^\n]{0,8}?(开仓|平仓|OPEN|CLOSE)[^\n]{0,40}?@\s*([0-9]+(?:\.[0-9]+)?)",
     re.IGNORECASE)
@@ -261,14 +295,16 @@ class ReportValidator:
                     reasons.append(
                         f"orders-claim-mismatch: body claims {claimed_n} open orders, exchange returns {actual}")
 
-        # ③ balance (only if claimed)
-        m_bal = _RE_CLAIM_BALANCE.search(body)
+        # ③ balance (only if claimed) — bug#40 context-aware matching:
+        # trade lines with an @-price are not balance claims; English
+        # anchors recognized as well.
+        m_bal = _balance_claim_value(body)
         # bug#44b: a report produced BEFORE the newest booked trade compares
         # its balance against a world that has since moved on — out of scope.
         if m_bal is not None and self._balance_claim_in_stale_scope(notif):
             m_bal = None
-        if m_bal:
-            claimed_bal = float(m_bal.group(1))
+        if m_bal is not None:
+            claimed_bal = m_bal
             db_cash = self._db_cash()
             if db_cash is None or abs(claimed_bal - db_cash) >= BALANCE_TOL_USD:
                 reasons.append(
