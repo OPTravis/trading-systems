@@ -38,22 +38,50 @@ def save_json(path, data):
 
 
 def _load_validate_all():
-    """bug#37: CWD-independent import of the pre-report validator.
+    """bug#38: CWD-independent, cache-resilient import of the pre-report validator.
 
-    cron shells do not guarantee CWD == repo root; when invoked from src/
-    (or anywhere else) `from scripts.report_validator import ...` raises
-    ModuleNotFoundError — which here would silently disable the whole
-    consistency gate. Derive the repo root from __file__, never from the
-    process CWD."""
+    Three-stage resolution guarantees the import succeeds regardless of:
+      - CWD not being repo root (cron shells)
+      - stale namespace-package cache in sys.modules (Python 3.3+ caches
+        the first failed resolution of a namespace subpackage, so a naive
+        retry after sys.path fixup hits the same bad entry)
+      - any remaining edge case (filesystem oddities, zip-imports, etc.)
+
+    Stage 1: plain import (fast path — works 99% of the time).
+    Stage 2: clear sys.modules residue + fix sys.path + retry.
+    Stage 3: importlib direct file load — immune to all packaging issues.
+    """
+    # Stage 1: standard import
     try:
         from scripts.report_validator import validate_all
         return validate_all
     except ImportError:
-        repo_root = str(Path(__file__).resolve().parent.parent)
-        if repo_root not in sys.path:
-            sys.path.insert(0, repo_root)
+        pass
+
+    # Stage 2: clear namespace-package cache, fix sys.path, retry
+    sys.modules.pop("scripts.report_validator", None)
+    sys.modules.pop("scripts", None)
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    if repo_root in sys.path:
+        sys.path.remove(repo_root)
+    sys.path.insert(0, repo_root)
+    try:
         from scripts.report_validator import validate_all
         return validate_all
+    except ImportError:
+        pass
+
+    # Stage 3: direct file loading via importlib — guaranteed to work
+    import importlib.util
+    file_path = Path(__file__).resolve().parent / "report_validator.py"
+    spec = importlib.util.spec_from_file_location(
+        "_report_validator_direct", str(file_path))
+    if spec is None or spec.loader is None:
+        raise ImportError(
+            f"Cannot load report_validator from {file_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.validate_all
 
 
 def main():
