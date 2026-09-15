@@ -209,6 +209,10 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
             else 0.0
         )
         last_fill_ts = float(allocated[-1][0].get("time", 0)) / 1000
+        # bug#42 (2026-09-15): carry the exchange orderId of the exit fill so
+        # the ledger row is exactly-dedupable against ensure_tp_sl bookings.
+        _exit_oid = allocated[-1][0].get("orderId") or allocated[-1][0].get("id")
+        exit_order_id = str(_exit_oid) if _exit_oid else None
         if exit_price <= 0 or exit_qty <= 0:
             out["anomalies"].append(f"{symbol}#{oid}: unparseable sell fills")
             continue
@@ -267,19 +271,28 @@ def reconcile_fills(client=None, db=None, dry_run: bool = False) -> dict:
             # symbol/side, qty within 2%, price within 1%, 1h window).
             c.execute(
                 """
-                INSERT INTO trades (symbol, side, qty, price, pnl, timestamp)
-                SELECT ?, 'SELL', ?, ?, ?, ?
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM trades
-                    WHERE symbol = ? AND side = 'SELL'
-                      AND ABS(qty - ?) <= ? * 0.02
-                      AND ABS(price - ?) <= ? * 0.01
-                      AND timestamp >= ? - 3600
-                      AND timestamp <= ? + 3600
+                INSERT OR IGNORE INTO trades (symbol, side, qty, price, pnl, timestamp, client_order_id)
+                SELECT ?, 'SELL', ?, ?, ?, ?, ?
+                WHERE NOT (
+                    (? IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM trades
+                        WHERE symbol = ? AND side = 'SELL' AND client_order_id = ?
+                    ))
+                    OR (? IS NULL AND EXISTS (
+                        SELECT 1 FROM trades
+                        WHERE symbol = ? AND side = 'SELL'
+                          AND client_order_id IS NULL
+                          AND ABS(qty - ?) <= ? * 0.02
+                          AND ABS(price - ?) <= ? * 0.01
+                          AND timestamp >= ? - 3600
+                          AND timestamp <= ? + 3600
+                    ))
                 )
                 """,
-                (symbol, round(exit_qty, 8), exit_price, round(trade_pnl, 6), last_fill_ts,
-                 symbol, exit_qty, exit_qty, exit_price, exit_price,
+                (symbol, round(exit_qty, 8), exit_price, round(trade_pnl, 6), last_fill_ts, exit_order_id,
+                 exit_order_id, symbol, exit_order_id,
+                 exit_order_id, symbol,
+                 exit_qty, exit_qty, exit_price, exit_price,
                  last_fill_ts, last_fill_ts),
             )
             c.commit()

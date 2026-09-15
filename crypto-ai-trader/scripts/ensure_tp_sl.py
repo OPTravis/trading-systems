@@ -46,29 +46,46 @@ logger = logging.getLogger(__name__)
 NTRN = "NTRN"
 DUST_THRESHOLD = 1.0  # USD
 
-def insert_sell_dedup(conn, sym, qty, price, pnl, ts):
+def insert_sell_dedup(conn, sym, qty, price, pnl, ts, client_order_id=None):
     """bug#24 fix (2026-08-24): ensure_tp_sl booked the same exchange exit TWICE
     when reconcile_fills (trailing-check, every 5 min) had already booked the
     actual fill and ensure_tp_sl's own paths (sync-check stale / tp_breach /
     max_hold) then wrote a full-qty SELL row on top — e.g. ENA 06:17/06:30,
     TRUMP 22:05/22:30, GRAM 19:25/19:30 on 8/23-24. Atomic INSERT..SELECT with
     the same matching window as reconcile_fills' bug#13 guard: same symbol,
-    qty within 2%, price within 1%, 1h window. Returns True if inserted."""
+    qty within 2%, price within 1%, 1h window. Returns True if inserted.
+
+    bug#42 fix (2026-09-15): quantity-tolerance dedup mis-fired on the U case
+    (one 66-share fill vs a phantom 42-share row — tolerance happily booked a
+    second SELL). When the caller passes the exchange orderId the dedup becomes
+    EXACT: any prior SELL with the same client_order_id blocks the insert
+    regardless of qty/price/window (pairs with the partial unique index on
+    trades.client_order_id). Without an orderId the legacy tolerance window
+    applies as before (legacy rows carry client_order_id IS NULL)."""
     cur = conn.execute(
         """
-        INSERT INTO trades (symbol, side, qty, price, pnl, timestamp)
-        SELECT ?, 'SELL', ?, ?, ?, ?
-        WHERE NOT EXISTS (
-            SELECT 1 FROM trades
-            WHERE symbol = ? AND side = 'SELL'
-              AND ABS(qty - ?) <= ? * 0.02
-              AND ABS(price - ?) <= ? * 0.01
-              AND timestamp >= ? - 3600
-              AND timestamp <= ? + 3600
+        INSERT OR IGNORE INTO trades (symbol, side, qty, price, pnl, timestamp, client_order_id)
+        SELECT ?, 'SELL', ?, ?, ?, ?, ?
+        WHERE NOT (
+            (? IS NOT NULL AND EXISTS (
+                SELECT 1 FROM trades
+                WHERE symbol = ? AND side = 'SELL' AND client_order_id = ?
+            ))
+            OR (? IS NULL AND EXISTS (
+                SELECT 1 FROM trades
+                WHERE symbol = ? AND side = 'SELL'
+                  AND client_order_id IS NULL
+                  AND ABS(qty - ?) <= ? * 0.02
+                  AND ABS(price - ?) <= ? * 0.01
+                  AND timestamp >= ? - 3600
+                  AND timestamp <= ? + 3600
+            ))
         )
         """,
-        (sym, qty, price, pnl, ts,
-         sym, qty, qty, price, price, ts, ts),
+        (sym, qty, price, pnl, ts, client_order_id,
+         client_order_id, sym, client_order_id,
+         client_order_id, sym,
+         qty, qty, price, price, ts, ts),
     )
     return cur.rowcount > 0
 
@@ -193,11 +210,15 @@ def _discipline_exit(client, sym, pos, current_price, exit_reason, fixes, errors
     )
     trade_pnl = (current_price - entry) * qty if entry > 0 else 0.0
     _sell_ts = time.time()
+    # bug#42 (2026-09-15): anchor the ledger row to the exchange orderId so
+    # the exact-fill dedup can never double-book this disciplined exit.
+    _sell_oid = (result.get("orderId") or result.get("id")) if result else None
 
     def _insert_sell_row():
         db = get_state_db()
         conn = db._get_conn()
-        insert_sell_dedup(conn, sym, sell_qty, current_price, trade_pnl, _sell_ts)
+        insert_sell_dedup(conn, sym, sell_qty, current_price, trade_pnl, _sell_ts,
+                          client_order_id=_sell_oid)
         conn.commit()
 
     def _verify_sell_row():
@@ -667,6 +688,49 @@ def main():
                                 errors.append(f"{sym}: TP掛單失敗")
                         except Exception as e:
                             errors.append(f"{sym}: TP掛單失敗 ({e})")
+
+        # ── Case 1.5: has TP+SL but SL undersized vs holding → top-up gap ──
+        # bug#41 fix (2026-09-15): the pre-existing gates only inspected ORDER
+        # TYPES (has_sl/has_tp), never COVERAGE. A partial SL left the rest of
+        # the position naked while every 30min cycle reported "OK" (ETHFI 9/12:
+        # SL covered 18.5 of 54.3 — 35.8 unprotected for hours). 2% tolerance
+        # mirrors bug#17's dust math.
+        elif has_sl and has_tp and sl_target and sl_covered < (
+            floor_qty(qty, step_size) if step_size > 0 else qty
+        ) * 0.98:
+            _uncov = floor_qty(max(qty - sl_covered, 0.0), step_size)
+            _sl_px = round_price(sl_target, tick_size)
+            _sl_lim = round_price(_sl_px * 0.995, tick_size)
+            if _uncov > 0 and _uncov * current_price >= min_notional:
+                try:
+                    _sl2 = client.place_stop_loss_limit(sym, _uncov, _sl_lim, _sl_px)
+                    if _sl2:
+                        fixes.append(f"{sym}: SL缺口已補掛 {_uncov} @ ${_sl_px}（bug#41）")
+                    else:
+                        errors.append(f"{sym}: SL缺口補掛失敗")
+                except Exception as e:
+                    errors.append(f"{sym}: SL缺口補掛失敗 ({e})")
+            elif _uncov > 0:
+                # tail below minNotional: cancel existing TPs and restructure
+                # the whole position into one OCO so no fragment stays naked
+                try:
+                    for _tp in tp_orders:
+                        client.cancel_order(sym, _tp.get("id", _tp.get("orderId")))
+                    time.sleep(0.5)
+                    _tp_px = round_price(tp_target, tick_size) if tp_target else round_price(current_price * 1.04, tick_size)
+                    _oco = client.place_oco(
+                        symbol=sym,
+                        quantity=qty,
+                        tp_price=_tp_px,
+                        sl_price=_sl_px,
+                        sl_limit_price=_sl_lim,
+                    )
+                    if _oco:
+                        fixes.append(f"{sym}: SL尾數低於minNotional，已重構全量OCO（bug#41）")
+                    else:
+                        errors.append(f"{sym}: OCO重構失敗（bug#41 尾數SL）")
+                except Exception as e:
+                    errors.append(f"{sym}: OCO重構失敗 ({e})")
 
         # ── Case 2: Missing SL, has TP ──
         elif not has_sl and has_tp and sl_target:

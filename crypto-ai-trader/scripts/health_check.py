@@ -20,6 +20,13 @@ CRON_OUTPUT_DIR = Path.home() / ".hermes" / "cron" / "output"
 ERRORS_LOG = Path.home() / ".hermes" / "logs" / "errors.log"
 LOOKBACK_MINUTES = 120
 
+# bug#45 (2026-09-11): scan-freshness — cron-scan.log's mtime is the scanner
+# heartbeat. A stalled scan (cron dead / hermes down) must alarm even when the
+# log contains zero ACTIVE-error lines. Env-tunable threshold.
+BASEDIR = Path(__file__).resolve().parent.parent
+CRON_SCAN_LOG = BASEDIR / "logs" / "cron-scan.log"
+CRON_SCAN_STALE_MINUTES = int(os.environ.get("CRON_SCAN_STALE_MINUTES", "90"))
+
 # Job ID → (name, destination group chat_id)
 # All 17 active cron jobs
 JOB_ROUTES = {
@@ -143,6 +150,36 @@ def scan_cron_outputs() -> dict:
     return issues_by_group
 
 
+def scan_cron_scan_freshness() -> list:
+    """bug#45 (2026-09-11): silence is only healthy when the scanner is alive.
+    logs/cron-scan.log mtime older than CRON_SCAN_STALE_MINUTES (default 90 —
+    the scan runs every 30min) — or the file missing entirely — means the scan
+    pipeline is stalled and MUST alarm regardless of zero active-error lines."""
+    issues = []
+    try:
+        if not CRON_SCAN_LOG.exists():
+            issues.append({
+                "job": "cron-scan-freshness",
+                "pattern": "扫描停摆",
+                "detail": f"cron-scan.log 不存在（扫描从未运行或被清理）: {CRON_SCAN_LOG}",
+            })
+            return issues
+        age_min = (time.time() - CRON_SCAN_LOG.stat().st_mtime) / 60.0
+        if age_min > CRON_SCAN_STALE_MINUTES:
+            issues.append({
+                "job": "cron-scan-freshness",
+                "pattern": "扫描停摆",
+                "detail": f"cron-scan.log 已 {age_min:.0f} 分钟未更新（阈值 {CRON_SCAN_STALE_MINUTES} 分钟），扫描链路疑似停摆",
+            })
+    except Exception as e:
+        issues.append({
+            "job": "cron-scan-freshness",
+            "pattern": "扫描停摆",
+            "detail": f"freshness check failed: {e}",
+        })
+    return issues
+
+
 def scan_errors_log() -> list:
     """Scan errors.log for recent issues."""
     issues = []
@@ -224,6 +261,8 @@ def format_output(issues_by_group: dict, log_issues: list) -> str:
 
 def main():
     issues_by_group = scan_cron_outputs()
+    # bug#45: scan-freshness alarms route to the crypto group
+    issues_by_group["crypto"].extend(scan_cron_scan_freshness())
     log_issues = scan_errors_log()
 
     output = format_output(issues_by_group, log_issues)

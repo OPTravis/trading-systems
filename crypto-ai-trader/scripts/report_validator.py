@@ -162,6 +162,48 @@ class ReportValidator:
             logger.error("validator: cash read failed: %s", e)
             return None
 
+    def _latest_trade_ts(self) -> Optional[float]:
+        """bug#44b: timestamp of the most recent booked trade, or None."""
+        if self._db is None:
+            try:
+                from src.state_db import StateDB
+                self._db = StateDB()
+            except Exception as e:
+                logger.error("validator: db init failed: %s", e)
+                return None
+        try:
+            with self._db._get_conn() as conn:
+                row = conn.execute("SELECT MAX(timestamp) FROM trades").fetchone()
+            v = row[0] if row else None
+            return float(v) if v is not None else None
+        except Exception as e:
+            logger.error("validator: last-trade read failed: %s", e)
+            return None
+
+    def _balance_claim_in_stale_scope(self, notif) -> bool:
+        """bug#44b (2026-09-15): True when this report predates the newest
+        booked trade. DB cash / exchange balance are CURRENT values — a
+        delayed re-validation of an already-pushed report compares them
+        against a balance that has legitimately moved since (9/15 daily-report
+        false block). Balance claims in such stale reports are out of scope."""
+        notif_ts = None
+        try:
+            _nts = (notif or {}).get("timestamp", "")
+            if _nts:
+                notif_ts = _parse_ts(_nts)
+        except Exception:
+            notif_ts = None
+        if notif_ts is None:
+            return False
+        last_trade_ts = self._latest_trade_ts()
+        if last_trade_ts is not None and notif_ts < last_trade_ts:
+            logger.info(
+                "balance-claim skipped (stale report scope: notif %s < last trade %s)",
+                notif_ts, last_trade_ts,
+            )
+            return True
+        return False
+
     def _facts(self) -> Dict:
         if self._facts_obj is None:
             self._facts_obj = ExchangeFacts()
@@ -221,6 +263,10 @@ class ReportValidator:
 
         # ③ balance (only if claimed)
         m_bal = _RE_CLAIM_BALANCE.search(body)
+        # bug#44b: a report produced BEFORE the newest booked trade compares
+        # its balance against a world that has since moved on — out of scope.
+        if m_bal is not None and self._balance_claim_in_stale_scope(notif):
+            m_bal = None
         if m_bal:
             claimed_bal = float(m_bal.group(1))
             db_cash = self._db_cash()

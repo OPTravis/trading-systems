@@ -20,6 +20,95 @@ logger = logging.getLogger(__name__)
 class PositionOptimizer:
     """Analyzes existing positions vs market opportunities and triggers switches."""
 
+    @staticmethod
+    def _fill_avg_price(order, fallback: float) -> float:
+        """bug#42b (2026-09-15): actual executed average price from a live order
+        response. Binance market responses carry cummulativeQuoteQty / executedQty
+        (note Binance's spelling) plus a per-fill list; ccxt-style responses may
+        expose a pre-computed average. Falls back to the caller's estimate when
+        the order carries no fill data (mocked/paper responses). Rationale:
+        booking the signal price while the market had moved created phantom PnL
+        and corrupted per-trade stats (ETHFI 9/12 switch)."""
+        try:
+            if not order:
+                return float(fallback)
+            cq = order.get("cummulativeQuoteQty") or order.get("cummulative_quote_qty")
+            eq = order.get("executedQty") or order.get("executed_qty")
+            if cq and eq and float(eq) > 0:
+                return float(cq) / float(eq)
+            avg = order.get("avgPrice") or order.get("average") or order.get("price")
+            if avg and float(avg) > 0:
+                return float(avg)
+            fills = order.get("fills") or []
+            if fills:
+                q = sum(float(f.get("qty", 0)) for f in fills)
+                v = sum(float(f.get("qty", 0)) * float(f.get("price", 0)) for f in fills)
+                if q > 0:
+                    return v / q
+        except Exception:
+            pass
+        return float(fallback)
+
+    @staticmethod
+    def _round_tick(px: float, tick: float) -> float:
+        """Round a price DOWN to the symbol tick size (fallback: 8dp)."""
+        try:
+            t = float(tick)
+            if t > 0:
+                return round(int(float(px) / t) * t, 8)
+        except Exception:
+            pass
+        return round(float(px), 8)
+
+    def _place_switch_protections(self, symbol: str, qty: float, buy_order, entry_price: float) -> None:
+        """bug#41a (2026-09-15): place SL/TP on the fresh switch position
+        immediately after the buy fills. SL first — capital protection gates
+        profit-taking; TP goes on only once the SL is confirmed live. Levels
+        default to SL 7% / TP 4%, identical to ensure_tp_sl's targets, so the
+        next cron pass sees full coverage and never double-places. Every
+        failure here logs a warning only: ensure_tp_sl remains the retrying
+        backstop and must never be blocked by this step."""
+        try:
+            filters = self.bc.get_symbol_filters(symbol) or {}
+            step = float(filters.get("stepSize", 0.0) or 0.0)
+            tick = float(filters.get("tickSize", 0.0) or 0.0)
+            min_notional = float(filters.get("minNotional", 10.0) or 10.0)
+            dec = 8
+            if step > 0:
+                s = repr(step).split(".")
+                dec = len(s[1].rstrip("0")) if len(s) > 1 else 0
+            pqty = round(int(qty / step) * step, dec) if step > 0 else round(qty, dec)
+            fill_px = self._fill_avg_price(buy_order, entry_price)
+            if fill_px <= 0 or pqty <= 0 or pqty * fill_px < min_notional:
+                logger.warning(
+                    "switch-protection: %s notional below minNotional — skipped (ensure_tp_sl backstop)",
+                    symbol,
+                )
+                return
+            sl_px = self._round_tick(fill_px * (1 - 0.07), tick)
+            tp_px = self._round_tick(fill_px * (1 + 0.04), tick)
+            sl_ret = None
+            try:
+                sl_ret = self.bc.place_stop_loss_limit(
+                    symbol, pqty, round(sl_px * 0.995, 8), sl_px
+                )
+            except Exception as e:
+                logger.warning("switch-protection: SL place failed for %s: %s", symbol, e)
+            if not sl_ret:
+                logger.warning(
+                    "switch-protection: SL rejected for %s — TP skipped (ensure_tp_sl will retry)",
+                    symbol,
+                )
+                return
+            logger.info("switch-protection: SL live for %s %s @ %s", symbol, pqty, sl_px)
+            try:
+                self.bc.place_limit_sell(symbol, pqty, tp_px)
+                logger.info("switch-protection: TP live for %s @ %s", symbol, tp_px)
+            except Exception as e:
+                logger.warning("switch-protection: TP place failed for %s: %s", symbol, e)
+        except Exception as e:
+            logger.warning("switch-protection: non-fatal failure for %s: %s", symbol, e)
+
     # Thresholds
     EXISTING_LOSS_THRESHOLD = (
         -3.0
@@ -645,8 +734,12 @@ class PositionOptimizer:
                         )
                         from_price = None  # close_position will use cached price
                 # Close old position (credits proceeds to cash)
+                # bug#42b (2026-09-15): book the ACTUAL executed fill price, not
+                # the 24h-stats signal price — the market moves between signal
+                # and market-order fill and the delta corrupts realized PnL.
+                from_fill_price = self._fill_avg_price(sell_order, from_price or 0.0)
                 self.portfolio.close_position(
-                    from_symbol, close_price=from_price, exit_reason="switch"
+                    from_symbol, close_price=from_fill_price, exit_reason="switch"
                 )
                 # Add new position (deducts cost from cash)
                 # bug#22: order already filled on exchange — record unconditionally.
@@ -656,10 +749,11 @@ class PositionOptimizer:
                 # rejected the ledger write, leaving 387 shares untracked and
                 # under-protected). Same rationale as bug#18 fix in
                 # trade_executor._track_executed_trade.
+                entry_fill_price = self._fill_avg_price(buy_order, to_price)
                 self.portfolio.add_position(
                     symbol=to_symbol,
                     quantity=buy_qty,
-                    entry_price=to_price,
+                    entry_price=entry_fill_price,
                     strategy="switch",
                     deduct_cash=True,
                     _skip_validation=True,
@@ -670,6 +764,17 @@ class PositionOptimizer:
             except Exception as portfolio_err:
                 logger.error(f"Portfolio state update failed: {portfolio_err}")
                 # Non-critical: next sync_from_binance will correct it
+
+            # 8b. bug#41a (2026-09-15): protective orders NOW, not on the next
+            # ensure_tp_sl cron cycle — a crash/cron gap in between left the
+            # fresh position with NO stop at all (ETHFI 9/12: naked for hours).
+            try:
+                self._place_switch_protections(to_symbol, buy_qty, buy_order, to_price)
+            except Exception as prot_err:
+                logger.warning(
+                    "switch 8b: protection step failed (non-fatal) for %s: %s",
+                    to_symbol, prot_err,
+                )
 
             # 9. Cooldown already recorded after sell; no need to duplicate
             # (cooldowns were persisted at sell-success time above)
