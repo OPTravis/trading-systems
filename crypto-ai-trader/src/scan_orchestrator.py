@@ -136,6 +136,7 @@ def cmd_cron_scan():
 
         _step_event_driven_adjustment(ctx)
         _step_execute_trades(ctx)
+        _step_reconcile_portfolio(ctx)
         _append_scan_summary(ctx)
     finally:
         if _lock_fd:
@@ -145,6 +146,35 @@ def cmd_cron_scan():
             except (IOError, OSError):
                 logger.warning("Failed to release scan lock", exc_info=True)
 
+
+
+def _step_reconcile_portfolio(ctx):
+    """2026-09-17 bridge blind-spot fix: book OCO passive fills.
+
+    Detects DB-vs-exchange drift (same-round or cross-round), books the
+    missing exchange-side SELL legs into trades (orderId-idempotent), and
+    prints bridge-visible log lines so reside_scan/latest.json picks them
+    up. Fail-open: exchange/API errors skip the round silently.
+    """
+    try:
+        from src.portfolio_reconciler import reconcile_portfolio_drift
+
+        client = ctx.get("client")
+        portfolio = ctx.get("portfolio")
+        if client is None or portfolio is None:
+            return
+        db = getattr(portfolio, "_db", None)
+        if db is None:
+            return
+        booked = reconcile_portfolio_drift(client, db)
+        if booked:
+            logger.info(
+                "reconcile: booked %d OCO fill(s): %s",
+                len(booked),
+                ", ".join(f"{b['symbol']} {b['qty']}@{b['price']}" for b in booked),
+            )
+    except Exception:
+        logger.warning("reconcile step failed (non-fatal)", exc_info=True)
 
 
 def _bull_phase2_status_line(opportunities=None) -> str:

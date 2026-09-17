@@ -1,0 +1,225 @@
+"""OCO passive-fill reconciler tests (2026-09-17 bridge blind-spot fix).
+
+Covers the two real incidents: 9/16 ARB TP (67.8 @ 0.1611, silent for 10+
+rounds) and the 9/15 night SL closes. Uses a real StateDB on a tmp file so
+the client_order_id UNIQUE index and INSERT OR IGNORE semantics are the
+production ones.
+"""
+import sys, os, time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest
+
+from src.state_db import StateDB
+from src.portfolio_reconciler import (
+    reconcile_portfolio_drift, KV_PREV_POSITIONS, PREV_SNAPSHOT_MAX_AGE_S,
+)
+
+
+class FakeClient:
+    def __init__(self, balances, trades_by_symbol):
+        self._balances = balances          # [{asset, free, locked}]
+        self._trades = trades_by_symbol    # {symbol: [SDK-format fills]}
+        self.my_trades_calls = []
+
+    def get_account(self):
+        return {"balances": self._balances}
+
+    def get_my_trades(self, symbol, limit=100, from_id=None):
+        self.my_trades_calls.append(symbol)
+        return self._trades.get(symbol, [])
+
+
+def _bal(asset, total, locked=0.0):
+    return {"asset": asset, "free": str(total - locked), "locked": str(locked)}
+
+
+def _fill(symbol, oid, qty, price, ts, is_buyer=False, commission="0",
+          commission_asset="USDT"):
+    return {
+        "id": oid * 10, "price": str(price), "qty": str(qty),
+        "quoteQty": str(round(qty * price, 8)), "commission": commission,
+        "commissionAsset": commission_asset, "time": int(ts * 1000),
+        "isBuyer": is_buyer, "isMaker": False, "orderId": oid, "symbol": symbol,
+    }
+
+
+@pytest.fixture
+def db(tmp_path):
+    d = StateDB(db_path=str(tmp_path / "state.db"))
+    yield d
+    d.close()
+
+
+# ---------- steady state ----------
+
+def test_clean_round_zero_api_no_writes(db):
+    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15})
+    client = FakeClient([_bal("ARB", 67.8), _bal("USDT", 400)], {})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert client.my_trades_calls == []          # no drift → zero extra API
+    snap = db.kv_get(KV_PREV_POSITIONS)
+    assert snap and "ARBUSDT" in snap and snap["ARBUSDT"] == 67.8
+
+
+# ---------- Path A: same-round drift (acceptance scenario) ----------
+
+def test_drift_books_sell_with_correct_pnl_and_idempotent(db, caplog):
+    # ARB incident: DB holds 67.8, exchange flat, OCO TP filled @ 0.1611
+    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15,
+                                 "strategy": "trend", "opened_at": time.time()})
+    fills = [_fill("ARBUSDT", 555, 67.8, 0.1611, time.time() - 3600,
+                   commission="0.1", commission_asset="ARB")]
+    client = FakeClient([_bal("ARB", 0.0), _bal("USDT", 410)],
+                        {"ARBUSDT": fills})
+    with caplog.at_level("INFO", logger="src.portfolio_reconciler"):
+        booked = reconcile_portfolio_drift(client, db)
+
+    assert len(booked) == 1
+    b = booked[0]
+    assert b["symbol"] == "ARBUSDT"
+    assert b["order_id"] == "555"
+    assert b["qty"] == pytest.approx(67.8 - 0.1, abs=1e-9)   # base commission
+    assert b["price"] == pytest.approx(0.1611, abs=1e-9)
+    assert b["pnl"] == pytest.approx(round((67.8 - 0.1) * (0.1611 - 0.15), 6), abs=1e-6)
+    assert b["source"] == "reconcile/oco_fill"
+
+    # bridge-visible log line (reside_scan filter: SELL + @ + USDT)
+    line = [r.message for r in caplog.records if "RECONCILE" in r.message][0]
+    assert "SELL ARBUSDT @" in line and "oco_fill" in line
+
+    # DB row landed with the orderId anchor
+    row = db._get_conn().execute(
+        "SELECT * FROM trades WHERE client_order_id = '555'").fetchone()
+    assert row and row["symbol"] == "ARBUSDT" and row["side"] == "SELL"
+
+    # stale position cleaned up
+    assert db.portfolio_get("ARBUSDT") is None
+
+    # second run: fully idempotent (UNIQUE on client_order_id)
+    booked2 = reconcile_portfolio_drift(client, db)
+    assert booked2 == []
+
+
+def test_pnl_uses_db_buy_weighted_average(db):
+    # ETHFI-style: two BUY lots → weighted entry, partial SELL booked on drift
+    db.trade_add("ETHFIUSDT", "BUY", 33.4, 0.7078)
+    db.trade_add("ETHFIUSDT", "BUY", 8.7, 0.6821)
+    db.portfolio_set("ETHFIUSDT", {"quantity": 20.0, "entry_price": 0.7024})
+    fills = [_fill("ETHFIUSDT", 777, 20.0, 0.7284, time.time() - 7200)]
+    client = FakeClient([_bal("ETHFI", 0.0)], {"ETHFIUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1
+    wavg = (33.4 * 0.7078 + 8.7 * 0.6821) / 42.1
+    assert booked[0]["pnl"] == pytest.approx(round(20.0 * (0.7284 - wavg), 6), abs=1e-6)
+
+
+def test_partial_drift_trims_position_to_exchange_qty(db):
+    db.trade_add("XUSDT", "BUY", 100, 1.0)
+    db.portfolio_set("XUSDT", {"quantity": 100.0, "entry_price": 1.0})
+    fills = [_fill("XUSDT", 888, 90, 1.2, time.time() - 600)]
+    client = FakeClient([_bal("X", 10.0)], {"XUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1 and booked[0]["qty"] == pytest.approx(90.0)
+    pos = db.portfolio_get("XUSDT")
+    assert pos is not None and pos["quantity"] == pytest.approx(10.0)
+
+
+# ---------- Path B: cross-round disappearance (the ARB case) ----------
+
+def test_cross_round_disappearance_books_after_sync_cleared(db):
+    # last round the position existed (kv snapshot); this round sync's
+    # clear-and-rebuild already dropped it — trades never recorded
+    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    db.kv_set(KV_PREV_POSITIONS, {"ARBUSDT": 67.8, "_ts": time.time()})
+    fills = [_fill("ARBUSDT", 556, 67.8, 0.1611, time.time() - 3600)]
+    client = FakeClient([_bal("ARB", 0.0), _bal("USDT", 410)],
+                        {"ARBUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1
+    assert booked[0]["order_id"] == "556"
+    assert booked[0]["source"] == "reconcile/oco_fill"
+
+
+def test_stale_snapshot_beyond_max_age_ignored(db):
+    db.trade_add("OLDUSDT", "BUY", 10, 1.0)
+    db.kv_set(KV_PREV_POSITIONS,
+              {"OLDUSDT": 10.0, "_ts": time.time() - PREV_SNAPSHOT_MAX_AGE_S - 3600})
+    client = FakeClient([_bal("OLD", 0.0)], {"OLDUSDT": [_fill("OLDUSDT", 9, 10, 1.1, 1)]})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert client.my_trades_calls == []
+
+
+# ---------- gap guard ----------
+
+def test_gap_guard_blocks_overbooking_when_ledger_already_balanced(db):
+    # ledger already explains everything (BUY 67.8 − SELL 67.8 booked, old
+    # NULL-id rows) → even an unbooked stray SELL in history must NOT be added
+    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    db.trade_add("ARBUSDT", "SELL", 67.8, 0.1611, client_order_id=None)
+    db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15})
+    stray = _fill("ARBUSDT", 999, 50.0, 0.2, time.time() - 100)
+    client = FakeClient([_bal("ARB", 0.0)], {"ARBUSDT": [stray]})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert db._get_conn().execute(
+        "SELECT COUNT(*) c FROM trades WHERE client_order_id='999'"
+    ).fetchone()["c"] == 0
+
+
+def test_gap_guard_limits_booking_to_missing_qty(db):
+    # gap is 20 (DB net 20, exchange flat) but history holds a 50-qty SELL
+    # order → booking capped by the gap, not the raw order size? NO — a
+    # single order fills what it fills; the guard simply stops before
+    # booking MORE orders than the gap. One order within gap → booked whole.
+    db.trade_add("YUSDT", "BUY", 20, 1.0)
+    db.portfolio_set("YUSDT", {"quantity": 20.0, "entry_price": 1.0})
+    fills = [
+        _fill("YUSDT", 1001, 50, 0.9, time.time() - 500),
+        _fill("YUSDT", 1002, 30, 0.9, time.time() - 400),
+    ]
+    client = FakeClient([_bal("Y", 0.0)], {"YUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    # oldest unbooked order 1001 covers the gap fully; 1002 must not book
+    ids = [b["order_id"] for b in booked]
+    assert "1001" in ids and "1002" not in ids
+
+
+# ---------- fail-open ----------
+
+def test_api_failure_fail_open_no_state_touched(db):
+    db.trade_add("ZUSDT", "BUY", 5, 1.0)
+    db.portfolio_set("ZUSDT", {"quantity": 5.0, "entry_price": 1.0})
+
+    class DeadClient:
+        def get_account(self):
+            return {}
+
+        def get_my_trades(self, *a, **k):
+            raise RuntimeError("network down")
+
+    booked = reconcile_portfolio_drift(DeadClient(), db)
+    assert booked == []
+    assert db.portfolio_get("ZUSDT") is not None
+    assert db.kv_get(KV_PREV_POSITIONS) is None      # snapshot not written
+
+
+def test_multi_leg_order_booked_as_one_trade(db):
+    # one OCO SELL order filling in two legs (18.7 + 1.3, the ETHFI pattern)
+    db.trade_add("MUSDT", "BUY", 20, 1.0)
+    db.portfolio_set("MUSDT", {"quantity": 20.0, "entry_price": 1.0})
+    ts = time.time() - 300
+    fills = [
+        _fill("MUSDT", 2001, 18.7, 1.1, ts),
+        _fill("MUSDT", 2001, 1.3, 1.104, ts + 1),
+    ]
+    client = FakeClient([_bal("M", 0.0)], {"MUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1
+    assert booked[0]["qty"] == pytest.approx(20.0)
+    assert booked[0]["price"] == pytest.approx(
+        (18.7 * 1.1 + 1.3 * 1.104) / 20.0, abs=1e-9)
