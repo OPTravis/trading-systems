@@ -31,8 +31,18 @@ FREQ_MAP = {
     (25, 40):  (2, "FEAR"),           # every 2h
     (40, 60):  (1, "NEUTRAL"),        # every 1h (current default)
     (60, 75):  (1, "GREED"),          # every 1h
-    (75, 101): (0.5, "EXTREME_GREED"),  # every 30min
+    # 2026-09-17 lock (weekly review #6 / Travis dispatch, Leo ruling 8/28):
+    # DynamicGate holds the 1h cadence in EXTREME_GREED — the old 0.5h
+    # speedup conflicts with "DynamicGate stays hourly; crypto cadence
+    # changes need Leo's say-so". Restore 0.5 ONLY on an explicit Leo
+    # ruling (and drop GATE_MIN_INTERVAL_HOURS below with it).
+    (75, 101): (1.0, "EXTREME_GREED"),  # locked to 1h (was 0.5)
 }
+
+# Floor for any FREQ_MAP interval (hours). Weekly review #6: the adaptive
+# speedup above must not silently outpace the ruled 1h baseline. Slower
+# regimes (FEAR 2h / EXTREME_FEAR 4h waste-prevention) are unaffected.
+GATE_MIN_INTERVAL_HOURS = 1.0
 
 LAST_SCAN_FILE = "data/last_scan_ts.json"
 
@@ -118,6 +128,8 @@ def main():
             interval_hours = hrs
             label = lbl
             break
+    # 2026-09-17: enforce the ruled 1h floor no matter what the table says.
+    interval_hours = max(interval_hours, GATE_MIN_INTERVAL_HOURS)
 
     last_ts = get_last_scan_ts()
     elapsed_hours = (time.time() - last_ts) / 3600 if last_ts else 999

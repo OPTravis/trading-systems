@@ -44,13 +44,17 @@ class TestGateGrace:
         code, saved = _run(fng=62, elapsed_hours=0.5)
         assert code == 1 and not saved
 
-    def test_extreme_greed_30min_interval_boundary(self):
-        """interval=0.5h → threshold 0.333h; 0.34h elapsed passes."""
+    def test_extreme_greed_locked_to_1h_under_old_30min_boundary_skips(self):
+        """2026-09-17 lock (weekly #6 / Leo 8/28 ruling): EXTREME_GREED no
+        longer speeds up to 0.5h — 0.34h elapsed used to RUN, now SKIPs."""
         code, saved = _run(fng=80, elapsed_hours=0.34)
-        assert code == 0 and saved
+        assert code == 1 and not saved
 
-    def test_extreme_greed_under_threshold_skips(self):
-        code, saved = _run(fng=80, elapsed_hours=0.3)
+    def test_extreme_greed_1h_boundary_passes(self):
+        """Locked to 1h → same threshold math as GREED/NEUTRAL."""
+        code, saved = _run(fng=80, elapsed_hours=0.99)
+        assert code == 0 and saved
+        code, saved = _run(fng=80, elapsed_hours=0.5)
         assert code == 1 and not saved
 
     def test_extreme_fear_4h_interval_with_grace(self):
@@ -67,3 +71,42 @@ class TestGateGrace:
             with pytest.raises(SystemExit) as exc:
                 gate.main()
         assert exc.value.code == 0
+
+
+class TestIntervalLock:
+    """2026-09-17: DynamicGate EXTREME_GREED cadence locked to 1h.
+
+    Weekly review #6 flagged the adaptive 0.5h speedup in F&G>=75 as a
+    conflict with Leo's 8/28 ruling ("DynamicGate stays hourly; crypto
+    cadence changes need Leo's say-so"). The lock: FREQ_MAP entry set to
+    1.0 AND a GATE_MIN_INTERVAL_HOURS floor clamping whatever the table
+    resolves to. Slower waste-prevention regimes are untouched.
+    """
+
+    def test_extreme_greed_map_entry_is_1h(self):
+        assert gate.FREQ_MAP[(75, 101)] == (1.0, "EXTREME_GREED")
+
+    def test_floor_constant_is_1h(self):
+        assert gate.GATE_MIN_INTERVAL_HOURS == 1.0
+
+    def test_every_map_interval_respects_the_1h_floor(self):
+        for (lo, hi), (hrs, _lbl) in gate.FREQ_MAP.items():
+            assert hrs >= gate.GATE_MIN_INTERVAL_HOURS, (lo, hi, hrs)
+
+    def test_boundary_fng_75_locked(self):
+        """F&G=75 falls in the (75, 101) bucket — locked, not 0.5h."""
+        code, saved = _run(fng=75, elapsed_hours=0.34)
+        assert code == 1 and not saved
+        code, saved = _run(fng=75, elapsed_hours=0.99)
+        assert code == 0 and saved
+
+    def test_extreme_greed_behaves_like_greed_cadence(self):
+        """Same elapsed, same verdict across GREED vs EXTREME_GREED."""
+        assert _run(fng=62, elapsed_hours=0.6) == _run(fng=80, elapsed_hours=0.6)
+
+    def test_slower_regimes_unaffected(self):
+        """Waste-prevention downshifts survive the lock: FEAR 2h, EXTREME_FEAR 4h."""
+        code, _ = _run(fng=35, elapsed_hours=1.5)   # FEAR 2h → skip at 1.5h
+        assert code == 1
+        code, _ = _run(fng=10, elapsed_hours=3.5)   # EXTREME_FEAR 4h → skip at 3.5h
+        assert code == 1
