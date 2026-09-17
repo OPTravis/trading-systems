@@ -212,8 +212,17 @@ if [ "$CMD" = "cron-scan" ]; then
 fi
 
 echo "========== $(date) - $CMD ==========" >> "$LOGFILE"
+# bug#41 (2026-09-17 review): weekly ops pipelines are standalone scripts,
+# not main.py subcommands — route them here so crontab can reuse the
+# proxy/env preamble. cron-scan and all other commands behave as before.
+case "$CMD" in
+    weekly-learning)  RUN_CMD=(python3 scripts/learning_pipeline.py "$@") ;;
+    weekly-backtest)  RUN_CMD=(python3 scripts/weekly_backtest.py "$@") ;;
+    *)                RUN_CMD=(python3 main.py "$CMD" "$@") ;;
+esac
+
 set +e
-python3 main.py "$CMD" "$@" >> "$LOGFILE" 2>&1
+"${RUN_CMD[@]}" >> "$LOGFILE" 2>&1
 EXIT_CODE=$?
 set -e
 echo "========== Exit: $EXIT_CODE ==========" >> "$LOGFILE"

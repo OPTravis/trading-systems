@@ -5,10 +5,50 @@ Determines trading strategy based on Fear & Greed Index, BTC trend, and volatili
 """
 
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Default hard caps when risk_limits.yaml is unreadable — SPOT hard constraint
+# (single position <=10%, total exposure <=50%, per strategy_review 2026-09-17)
+_RISK_CAP_DEFAULTS = {
+    "max_position_pct": 10.0,
+    "max_total_exposure_pct": 50.0,
+    "cash_reserve_pct": 50.0,
+}
+
+
+def _load_risk_caps() -> Dict[str, float]:
+    """Load hard risk caps from config/risk_limits.yaml (single source of truth).
+
+    bug#41 (2026-09-17 strategy review): the NEUTRAL/GREED regime entries still
+    carried pre-Aug-3 values (15/70/30) while risk_limits.yaml was tightened to
+    10/50/50 — live sizing capped at 15% per position, breaching the SPOT hard
+    constraint (max 10%). All pct caps now flow from the YAML, and overlays are
+    clamped back to these caps at the end of _compute_regime_settings.
+    """
+    caps = dict(_RISK_CAP_DEFAULTS)
+    try:
+        import yaml
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config",
+            "risk_limits.yaml",
+        )
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        risk = cfg.get("risk", {}) or {}
+        for key in list(caps.keys()):
+            if risk.get(key) is not None:
+                caps[key] = float(risk[key])
+    except Exception as e:
+        logger.warning(
+            "risk_limits.yaml load failed, using hard-constraint defaults 10/50/50: %s", e
+        )
+    return caps
 
 
 class StrategyAdaptor:
@@ -194,6 +234,10 @@ class StrategyAdaptor:
         Returns (settings: dict, changes: list).
         """
         regime = self._determine_regime(fear_greed)
+        # Hard risk caps from config/risk_limits.yaml — single source of truth
+        # (bug#41: NEUTRAL/GREED kept stale pre-Aug-3 15/70/30, breaching the
+        #  10%/50% SPOT hard constraint; see logs/strategy_review_log.md)
+        caps = _load_risk_caps()
         # Base settings — read from optimized params if available
         try:
             from src.param_optimizer import ParamOptimizer
@@ -202,9 +246,9 @@ class StrategyAdaptor:
             _opt_params = _opt.get_current_params()
             base = {
                 "score_threshold": int(_opt_params.get("score_threshold", 60)),
-                "max_position_pct": 15,
-                "max_total_exposure_pct": 70,
-                "cash_reserve_pct": 30,
+                "max_position_pct": caps["max_position_pct"],
+                "max_total_exposure_pct": caps["max_total_exposure_pct"],
+                "cash_reserve_pct": caps["cash_reserve_pct"],
             }
         except Exception:
             logger.error(
@@ -213,9 +257,9 @@ class StrategyAdaptor:
             )
             base = {
                 "score_threshold": 75,
-                "max_position_pct": 15,
-                "max_total_exposure_pct": 70,
-                "cash_reserve_pct": 30,
+                "max_position_pct": caps["max_position_pct"],
+                "max_total_exposure_pct": caps["max_total_exposure_pct"],
+                "cash_reserve_pct": caps["cash_reserve_pct"],
             }
 
         # Regime adjustments
@@ -235,9 +279,9 @@ class StrategyAdaptor:
             "NEUTRAL": dict(base),  # shallow copy to prevent mutation drift (C2 fix)
             "GREED": {
                 "score_threshold": 75,
-                "max_position_pct": 15,
-                "max_total_exposure_pct": 70,
-                "cash_reserve_pct": 30,
+                "max_position_pct": caps["max_position_pct"],
+                "max_total_exposure_pct": caps["max_total_exposure_pct"],
+                "cash_reserve_pct": caps["cash_reserve_pct"],
             },
             "EXTREME_GREED": {
                 "score_threshold": 85,
@@ -319,6 +363,16 @@ class StrategyAdaptor:
                 )
                 settings["score_threshold"] = max(settings["score_threshold"] - 3, 50)
                 settings["cash_reserve_pct"] = max(settings["cash_reserve_pct"] - 5, 20)
+
+        # bug#41 hard-constraint clamp: overlays may add risk back (e.g. BTC
+        # BULLISH +3/+2 toward 18-20%); SPOT caps (<=10% single, <=50% exposure)
+        # are unconditional regardless of regime or overlays.
+        settings["max_position_pct"] = min(
+            settings["max_position_pct"], caps["max_position_pct"]
+        )
+        settings["max_total_exposure_pct"] = min(
+            settings["max_total_exposure_pct"], caps["max_total_exposure_pct"]
+        )
 
         return settings, changes
 

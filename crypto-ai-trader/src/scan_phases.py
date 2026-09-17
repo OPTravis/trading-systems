@@ -718,7 +718,13 @@ def _step_scan_opportunities():
         fng_prev = None
         try:
             import sqlite3
-            conn = sqlite3.connect("data/cache.db")
+
+            # bug#41: use resolved CACHE_DB, not the stale empty repo copy
+            try:
+                from src.data_feed_base import CACHE_DB as _cache_db
+            except Exception:
+                _cache_db = "data/cache.db"
+            conn = sqlite3.connect(_cache_db)
             rows = conn.execute(
                 "SELECT value FROM fng_history ORDER BY rowid DESC LIMIT 2"
             ).fetchall()

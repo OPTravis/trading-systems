@@ -69,7 +69,15 @@ def get_fng():
     # Try reading from cache DB first (fast, no API call)
     try:
         import sqlite3
-        conn = sqlite3.connect("data/cache.db")
+
+        # bug#41: CACHE_DB resolves to the real ext4 cache (/root/trading-state/
+        # cache.db); the relative "data/cache.db" is an empty stale file since
+        # the 2026-09-15 resident migration — gate always fell back to F&G=50.
+        try:
+            from src.data_feed_base import CACHE_DB as _cache_db
+        except Exception:
+            _cache_db = "data/cache.db"
+        conn = sqlite3.connect(_cache_db)
         row = conn.execute(
             "SELECT value FROM fng_history ORDER BY rowid DESC LIMIT 1"
         ).fetchone()
