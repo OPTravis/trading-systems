@@ -29,7 +29,9 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, os.path.expanduser("~/crypto-ai-trader"))
+# bug#41 (2026-09-17): layout moved to ~/trading-systems/crypto-ai-trader in
+# the 2026-09-15 resident migration; the old ~/crypto-ai-trader path is gone.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)

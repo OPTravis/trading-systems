@@ -30,6 +30,10 @@ if _matches:
 
 PROJECT = Path.home() / "trading-systems" / "crypto-ai-trader"
 PYTHON = str(PROJECT / ".venv" / "bin" / "python")
+if not Path(PYTHON).exists():
+    # bug#41 (2026-09-17): resident host has no .venv — fall back to the
+    # interpreter running this pipeline (site-packages already importable).
+    PYTHON = sys.executable
 
 
 def run_step(name: str, cmd: list, timeout: int = 600) -> dict:
