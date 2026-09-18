@@ -223,3 +223,92 @@ def test_multi_leg_order_booked_as_one_trade(db):
     assert booked[0]["qty"] == pytest.approx(20.0)
     assert booked[0]["price"] == pytest.approx(
         (18.7 * 1.1 + 1.3 * 1.104) / 20.0, abs=1e-9)
+
+
+# ---------- partial-ladder detection (main axis, 9/17 night incidents) -------
+
+def _book_buy(db, sym, qty, px):
+    db.trade_add(sym, "BUY", qty, px)
+
+
+def test_uni_tp1_partial_close_after_sync_flattened_portfolio(db):
+    """9/17 21:53 UNI TP1: sync already rebuilt the portfolio row to the
+    post-fill balance — portfolio-vs-exchange shows NO drift. Only the
+    ledger net (8.04 booked buys vs 6.03 live) exposes the unbooked 2.01."""
+    _book_buy(db, "UNIUSDT", 8.04, 6.85)
+    db.portfolio_set("UNIUSDT", {"quantity": 6.03, "entry_price": 6.85})  # synced
+    fills = [_fill("UNIUSDT", 910, 2.01, 7.143, time.time() - 43200)]
+    client = FakeClient([_bal("UNI", 6.03), _bal("USDT", 415)],
+                        {"UNIUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1
+    assert booked[0]["order_id"] == "910"
+    assert booked[0]["qty"] == pytest.approx(2.01)
+    assert booked[0]["price"] == pytest.approx(7.143)
+    assert booked[0]["pnl"] == pytest.approx(round(2.01 * (7.143 - 6.85), 6), abs=1e-6)
+    assert booked[0]["source"] == "reconcile/oco_fill"
+
+
+def test_uni_tp1_and_tp2_both_booked_in_one_round(db):
+    """9/17 night full UNI case: TP1 2.01@7.143 (21:53) + TP2 2.01@7.533
+    (00:50) — both unbooked, one reconciliation round books both."""
+    _book_buy(db, "UNIUSDT", 8.04, 6.85)
+    db.portfolio_set("UNIUSDT", {"quantity": 4.02, "entry_price": 6.85})  # synced
+    fills = [
+        _fill("UNIUSDT", 910, 2.01, 7.143, time.time() - 43200),
+        _fill("UNIUSDT", 911, 2.01, 7.533, time.time() - 32400),
+    ]
+    client = FakeClient([_bal("UNI", 4.02)], {"UNIUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert [b["order_id"] for b in booked] == ["910", "911"]
+    total_gain = sum(b["pnl"] for b in booked)
+    assert total_gain == pytest.approx(
+        round(2.01 * (7.143 - 6.85) + 2.01 * (7.533 - 6.85), 6), abs=1e-6)
+
+
+def test_near_tp2_after_tp1_booked_full_close_via_path_b(db):
+    """9/17 night NEAR case: TP1 was booked earlier; TP2 6.1@2.967 never
+    booked; position fully closed → sync dropped the row → Path B."""
+    _book_buy(db, "NEARUSDT", 12.2, 2.88)
+    db.trade_add("NEARUSDT", "SELL", 6.1, 2.92, client_order_id="880")
+    db.kv_set(KV_PREV_POSITIONS, {"NEARUSDT": 6.1, "_ts": time.time()})
+    fills = [_fill("NEARUSDT", 912, 6.1, 2.967, time.time() - 36000)]
+    client = FakeClient([_bal("NEAR", 0.0)], {"NEARUSDT": fills})
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1
+    assert booked[0]["qty"] == pytest.approx(6.1)
+    assert booked[0]["price"] == pytest.approx(2.967)
+    assert booked[0]["pnl"] == pytest.approx(round(6.1 * (2.967 - 2.88), 6), abs=1e-6)
+
+
+def test_negative_gap_diagnostic_only_no_action(db):
+    """Exchange holds MORE than the ledger explains (unbooked BUY) — SELL
+    booker must not act and must not burn API calls."""
+    _book_buy(db, "BUSDT", 5.0, 1.0)
+    db.portfolio_set("BUSDT", {"quantity": 5.0, "entry_price": 1.0})
+    client = FakeClient([_bal("B", 8.0)], {"BUSDT": []})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert client.my_trades_calls == []
+
+
+def test_dust_sized_gap_below_tolerance_ignored(db):
+    """Fee-sized ledger slack (< 2% relative) must not trigger booking."""
+    _book_buy(db, "DUSDT", 100.0, 1.0)
+    db.portfolio_set("DUSDT", {"quantity": 99.5, "entry_price": 1.0})
+    client = FakeClient([_bal("D", 99.5)], {"DUSDT": []})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert client.my_trades_calls == []
+
+
+def test_next_round_after_partial_booking_is_clean(db):
+    """After the ladder is booked, the following round sees a balanced
+    ledger → zero API, zero writes."""
+    _book_buy(db, "UNIUSDT", 8.04, 6.85)
+    db.trade_add("UNIUSDT", "SELL", 2.01, 7.143, client_order_id="910")
+    db.portfolio_set("UNIUSDT", {"quantity": 6.03, "entry_price": 6.85})
+    client = FakeClient([_bal("UNI", 6.03)], {"UNIUSDT": []})
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert client.my_trades_calls == []

@@ -7,13 +7,21 @@ trades extraction stays empty — the bridge never reports them. Real cases:
 9/16 18:48 ARB TP 67.8 @ 0.1611 (+$0.62, silent for 10+ scan rounds) and
 the 9/15 night SL closes.
 
-Two complementary detection paths (either fires the same booker):
-  A) Same-round drift: DB portfolio holds qty but the exchange balance is
-     below 98% of it — covers rounds where sync_from_binance was skipped
-     or failed open, leaving the stale position in place.
-  B) Cross-round disappearance: kv snapshot of the previous round's
-     portfolio; a symbol that existed last round and is gone this round
-     was silently dropped by the clear-and-rebuild sync (the ARB case).
+Detection — LEDGER-VS-EXCHANGE net-quantity reconciliation (main axis):
+  booked_net(symbol) = trades BUY qty − trades SELL qty, and the live
+  exchange balance is ground truth. net − balance > tolerance ⇒ unbooked
+  SELL fills exist (TP1/TP2 partial ladders, full SL closes, anything the
+  active path missed). The portfolio table is deliberately NOT a trigger:
+  sync_from_binance runs at scan Step 0 and rebuilds portfolio rows from
+  the exchange balance, so by the time this step runs a partial close has
+  already been silently absorbed into the portfolio row — the ledger is
+  the only signal that survives the sync (9/17 night case: UNI TP1/TP2
+  2.01+2.01 and NEAR TP2 6.1 ladders).
+
+  Path B (kept): a kv snapshot of the previous round's portfolio catches
+  fully-closed symbols that the clear-and-rebuild sync dropped from the
+  table entirely — those are no longer in `positions`, so the main axis
+  would never visit them (the 9/16 ARB case).
 
 On suspicion: get_my_trades(symbol) → aggregate SELL fills by orderId →
 book the ones missing from DB via trade_add (client_order_id = orderId,
@@ -162,25 +170,38 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
     ex = _exchange_holdings(account)
     positions = db.portfolio_get_all()
 
-    suspects = set()
-
-    # Path A — same-round drift (stale DB position vs live balance)
-    for sym, pos in positions.items():
-        db_qty = float(pos.get("quantity") or 0)
+    # --- main axis: ledger net vs exchange balance, per held symbol ---
+    # gap = booked BUY − booked SELL − live balance. Positive gap ⇒ SELL
+    # fills the ledger never booked (partial TP ladders / SL closes that
+    # sync_from_binance silently absorbed into the portfolio row).
+    suspects: Dict[str, float] = {}
+    for sym in positions:
+        net = _db_net_qty(db, sym)
         ex_qty = ex.get(_base_of(sym), 0.0)
-        if db_qty > DRIFT_QTY_ABS and ex_qty < db_qty * DRIFT_QTY_FRACTION:
-            suspects.add(sym)
+        gap = net - ex_qty
+        tol = max(net * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS)
+        if gap > tol:
+            suspects[sym] = gap
+        elif gap < -tol:
+            # exchange holds more than the ledger explains: unbooked BUYs
+            # — out of scope for the SELL booker, log for diagnosis only
+            log.info(
+                "reconcile: %s exchange exceeds ledger by %.8g (BUY-side gap, not actionable)",
+                sym, -gap,
+            )
 
-    # Path B — cross-round disappearance (sync clear-and-rebuild dropped it)
+    # --- Path B: fully-closed symbols dropped by the sync rebuild ---
     prev = db.kv_get(KV_PREV_POSITIONS) or {}
     if isinstance(prev, dict):
         prev_at = float(prev.get("_ts") or 0)
         fresh = (time.time() - prev_at) <= PREV_SNAPSHOT_MAX_AGE_S
         for sym in prev:
-            if sym.startswith("_"):
+            if sym.startswith("_") or sym in positions:
                 continue
-            if fresh and sym not in positions and ex.get(_base_of(sym), 0.0) <= DRIFT_QTY_ABS:
-                suspects.add(sym)
+            if fresh and ex.get(_base_of(sym), 0.0) <= DRIFT_QTY_ABS:
+                net = _db_net_qty(db, sym)
+                if net > DRIFT_QTY_ABS:
+                    suspects.setdefault(sym, net)
 
     booked_total: List[Dict] = []
     for sym in sorted(suspects):
@@ -191,28 +212,26 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
             continue
         if not fills:
             continue
-        # gap guard: the LEDGER is authoritative — booked buys minus booked
-        # sells minus the live exchange balance is the max bookable qty.
-        # (A stale portfolio row alone must never raise the gap: if the
-        # ledger is already balanced the position row is just leftovers to
-        # clean up, not evidence of an unbooked fill.)
-        db_qty_now = float((positions.get(sym) or {}).get("quantity") or 0)
-        gap = _db_net_qty(db, sym) - ex.get(_base_of(sym), 0.0)
-        if gap > DRIFT_QTY_ABS:
-            booked_total.extend(_book_missing_sells(db, sym, fills, gap))
+        # the gap doubles as the booking cap — a balanced ledger can never
+        # be over-booked, and legacy NULL-id rows cannot inflate it
+        booked_total.extend(_book_missing_sells(db, sym, fills, suspects[sym]))
 
-        # Path A cleanup: the stale position itself (runs even when the
-        # ledger was already balanced — the row is stale either way)
-        if db_qty_now > DRIFT_QTY_ABS:
+        # keep the portfolio row aligned with the exchange (belt and
+        # braces; sync normally handles this at Step 0)
+        pos = positions.get(sym)
+        if pos:
+            db_qty = float(pos.get("quantity") or 0)
             leftover = ex.get(_base_of(sym), 0.0)
-            if leftover <= DRIFT_QTY_ABS:
-                db.portfolio_remove(sym)
-                log.info("reconcile: removed stale position %s (exchange flat)", sym)
-            else:
-                pos = dict(positions[sym])
-                pos["quantity"] = leftover
-                db.portfolio_set(sym, pos)
-                log.info("reconcile: trimmed %s to exchange qty %.8g", sym, leftover)
+            drift = abs(db_qty - leftover)
+            if drift > max(leftover * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
+                if leftover <= DRIFT_QTY_ABS:
+                    db.portfolio_remove(sym)
+                    log.info("reconcile: removed stale position %s (exchange flat)", sym)
+                else:
+                    upd = dict(pos)
+                    upd["quantity"] = leftover
+                    db.portfolio_set(sym, upd)
+                    log.info("reconcile: trimmed %s to exchange qty %.8g", sym, leftover)
 
     # snapshot for the next round's Path B (post-booking state, so cleaned
     # positions don't re-enter the suspect set next round)
