@@ -150,6 +150,7 @@ def _step_execute_trades(ctx):
                 if ctx.get("surge_result")
                 else "SILENCE"
             ),
+            bandit_sltp=ctx.get("adapted", {}).get("bandit_sltp"),
         )
         if result["success"]:
             # Record trade in journal

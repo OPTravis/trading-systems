@@ -318,6 +318,7 @@ class TradeOutcomeRecorder:
             # Try to get bandit context from portfolio position (stored at entry time)
             bandit_context = None
             bandit_multiplier = 0.8
+            pos = {}
             try:
                 pm = PortfolioManager()
                 pos = pm.positions.get(symbol, {})
@@ -349,8 +350,37 @@ class TradeOutcomeRecorder:
                     f"ContextualBandit: updated with pnl={net_pnl_pct:+.2f}% "
                     f"multiplier={bandit_multiplier} context={bandit_context}"
                 )
+
+            # Phase 2-A: attribute the same PnL to the SL/TP multiplier
+            # arms actually used at entry (stored on the position; the
+            # reconciler fill-booking path lands here too, so both the
+            # normal exit and the booked-fill close update the arms).
+            try:
+                # multipliers default to 1.0 when the position metadata
+                # (or the whole portfolio manager) is unavailable
+                sl_mult = float(pos.get("sl_mult", 1.0))
+                tp_mult = float(pos.get("tp_mult", 1.0))
+                bandit.update_sltp(
+                    context=bandit_context or {
+                        "hmm_regime": "sideways", "fear_greed": 50,
+                        "btc_trend": "NEUTRAL", "portfolio_heat": "cold"},
+                    sl_mult=sl_mult, tp_mult=tp_mult, pnl_pct=net_pnl_pct,
+                )
+                logger.info(
+                    f"ContextualBandit SL/TP arms updated: pnl={net_pnl_pct:+.2f}% "
+                    f"sl_mult={sl_mult:.2f} tp_mult={tp_mult:.2f}"
+                )
+            except Exception as e:
+                logger.debug(f"ContextualBandit SL/TP update failed (non-critical): {e}")
         except Exception as e:
             logger.debug(f"ContextualBandit update failed (non-critical): {e}")
+
+        # Phase 2-A: refresh rolling per-strategy stats on every close
+        try:
+            from src.strategy_rolling_stats import refresh_rolling_stats
+            refresh_rolling_stats(db=self._db)
+        except Exception as e:
+            logger.debug(f"rolling stats refresh failed (non-critical): {e}")
 
         return outcome
 

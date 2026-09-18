@@ -30,6 +30,12 @@ STORAGE_KEY = "contextual_bandit:priors"
 # Position size multipliers (actions)
 ACTION_MULTIPLIERS = [0.3, 0.5, 0.8, 1.0, 1.2]
 
+# Phase 2-A (2026-09-18): SL/TP tightness multipliers applied on top of the
+# GARCH dynamic SL/TP. Small steps within +/-20%; hard absolute clamps live
+# in strategy_adaptor (SL in [4%, 15%], TP1 in [6%, 25%]).
+SLTP_MULTIPLIERS = [0.8, 0.9, 1.0, 1.1, 1.2]
+SLTP_STORAGE_KEY = "contextual_bandit:sltp_priors"
+
 # Cold start default
 DEFAULT_SIZE = 0.8
 
@@ -106,6 +112,7 @@ class ContextualBandit:
         # priors[context_index] = list of [alpha, beta] per action
         # Flat structure: dict of int -> list of 5 [float, float]
         self._priors: Dict[int, List[List[float]]] = {}
+        self._sltp_priors: Dict[int, List[List[float]]] = {}
         self._load()
 
     def _load(self):
@@ -116,6 +123,14 @@ class ContextualBandit:
                 ctx_idx = int(ctx_str)
                 self._priors[ctx_idx] = [[float(a), float(b)] for a, b in actions]
         logger.info("ContextualBandit: loaded %d context priors", len(self._priors))
+        raw_sltp = self._db.kv_get(SLTP_STORAGE_KEY)
+        if raw_sltp and isinstance(raw_sltp, dict):
+            for ctx_str, groups in raw_sltp.items():
+                try:
+                    self._sltp_priors[int(ctx_str)] = [
+                        [[float(a), float(b)] for a, b in grp] for grp in groups]
+                except (TypeError, ValueError):
+                    continue
 
     def _save(self):
         """Persist priors to StateDB."""
@@ -176,6 +191,70 @@ class ContextualBandit:
             priors[act_idx][1] += increment  # beta += scaled by PnL magnitude
 
         self._save()
+
+    # ------------------------------------------------- SL/TP tightness arms
+    # _sltp_priors[ctx] = [sl_arms, tp_arms] — two INDEPENDENT arm groups,
+    # each [alpha, beta] per SLTP_MULTIPLIERS entry.
+    def _get_sltp_priors(self, context_index: int) -> List[List[List[float]]]:
+        """Get or initialize the (sl, tp) Beta arm groups for a context."""
+        if context_index not in self._sltp_priors:
+            self._sltp_priors[context_index] = [
+                [[1.0, 1.0] for _ in SLTP_MULTIPLIERS],   # SL arm group
+                [[1.0, 1.0] for _ in SLTP_MULTIPLIERS],   # TP arm group
+            ]
+        return self._sltp_priors[context_index]
+
+    @staticmethod
+    def _nearest_sltp_idx(mult: float) -> int:
+        best_idx, best_dist = 0, float("inf")
+        for i, m in enumerate(SLTP_MULTIPLIERS):
+            dist = abs(m - float(mult))
+            if dist < best_dist:
+                best_dist, best_idx = dist, i
+        return best_idx
+
+    def recommend_sltp(self, context: Dict) -> tuple:
+        """Thompson-sample (sl_mult, tp_mult) independently per arm group.
+
+        Cold start (no priors for this context) returns (1.0, 1.0).
+        """
+        try:
+            ctx_idx = _context_to_index(context)
+            if ctx_idx not in self._sltp_priors:
+                return (1.0, 1.0)
+            sl_arms, tp_arms = self._sltp_priors[ctx_idx]
+            sl_best = max(range(len(sl_arms)),
+                          key=lambda i: self._beta_sample(*sl_arms[i]))
+            tp_best = max(range(len(tp_arms)),
+                          key=lambda i: self._beta_sample(*tp_arms[i]))
+            return (SLTP_MULTIPLIERS[sl_best], SLTP_MULTIPLIERS[tp_best])
+        except Exception:
+            return (1.0, 1.0)
+
+    def update_sltp(self, context: Dict, sl_mult: float, tp_mult: float,
+                    pnl_pct: float):
+        """Update SL and TP arm posteriors from a closed trade's PnL.
+
+        Same reward semantics as update_from_outcome: increment scaled by
+        PnL magnitude, clamped to [0.1, 3.0]; win -> alpha, loss -> beta.
+        """
+        try:
+            ctx_idx = _context_to_index(context)
+            sl_arms, tp_arms = self._get_sltp_priors(ctx_idx)
+            increment = max(0.1, min(3.0, abs(pnl_pct) / 2.0))
+            for arms, mult in ((sl_arms, sl_mult), (tp_arms, tp_mult)):
+                idx = self._nearest_sltp_idx(mult)
+                if pnl_pct > 0:
+                    arms[idx][0] += increment
+                else:
+                    arms[idx][1] += increment
+            serializable = {
+                str(k): [[[a, b] for a, b in grp] for grp in v]
+                for k, v in self._sltp_priors.items()}
+            self._db.kv_set(SLTP_STORAGE_KEY, serializable)
+        except Exception:
+            logger.debug("ContextualBandit.update_sltp failed (non-critical)",
+                         exc_info=True)
 
     def get_stats(self) -> Dict:
         """Return summary statistics of all priors.

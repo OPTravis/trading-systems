@@ -570,6 +570,59 @@ class StrategyAdaptor:
         # Reuses daily_returns already fetched for GARCH above
         return daily_returns
 
+    # Phase 2-A hard safety bounds for the bandit SL/TP micro-adjustment.
+    SL_CLAMP = (4.0, 15.0)    # final stop-loss % floor/cap
+    TP1_CLAMP = (6.0, 25.0)   # final TP1 % floor/cap
+    TP2_CLAMP = (7.0, 40.0)
+    TP3_CLAMP = (8.0, 60.0)
+
+    def _apply_bandit_sltp(self, strategies: Dict[str, Dict],
+                           fear_greed: int, btc_trend: str,
+                           hmm_regime: Optional[str],
+                           changes: list) -> Dict[str, float]:
+        """Micro-adjust GARCH SL/TP with bandit-sampled multipliers.
+
+        Applied AFTER _apply_garch_sl_tp so the clamps below are absolute
+        final bounds: SL in [4%, 15%], TP1 in [6%, 25%] (TP2/TP3 keep the
+        GARCH relative ladder with wider caps). Fail-safe: any error keeps
+        the static GARCH values (multipliers 1.0) — learning never blocks
+        trading. Returns {"sl_mult", "tp_mult"} for trade attribution.
+        """
+        sl_mult = tp_mult = 1.0
+        try:
+            from src.contextual_bandit import get_contextual_bandit
+            context = {
+                "hmm_regime": (hmm_regime or "sideways").lower(),
+                "fear_greed": float(fear_greed),
+                "btc_trend": btc_trend,
+                "portfolio_heat": "cold",
+            }
+            sl_mult, tp_mult = get_contextual_bandit().recommend_sltp(context)
+
+            def _clamp(v, lo, hi):
+                return round(min(max(v, lo), hi), 2)
+
+            for name, cfg in strategies.items():
+                if "sl_pct" in cfg:
+                    cfg["sl_pct"] = _clamp(cfg["sl_pct"] * sl_mult, *self.SL_CLAMP)
+                tps = cfg.get("tp_levels") or []
+                if len(tps) >= 1 and "pct" in tps[0]:
+                    tps[0]["pct"] = _clamp(tps[0]["pct"] * tp_mult, *self.TP1_CLAMP)
+                if len(tps) >= 2 and "pct" in tps[1]:
+                    tps[1]["pct"] = _clamp(tps[1]["pct"] * tp_mult, *self.TP2_CLAMP)
+                if len(tps) >= 3 and "pct" in tps[2]:
+                    tps[2]["pct"] = _clamp(tps[2]["pct"] * tp_mult, *self.TP3_CLAMP)
+            changes.append(
+                f"Bandit SL/TP x{sl_mult:.1f}/x{tp_mult:.1f} "
+                f"(clamps SL{self.SL_CLAMP[0]:.0f}-{self.SL_CLAMP[1]:.0f}%, "
+                f"TP{self.TP1_CLAMP[0]:.0f}-{self.TP1_CLAMP[1]:.0f}%)"
+            )
+        except Exception:
+            logger.debug("Bandit SL/TP micro-adjust skipped (static values kept)",
+                         exc_info=True)
+            sl_mult = tp_mult = 1.0
+        return {"sl_mult": sl_mult, "tp_mult": tp_mult}
+
     def _apply_risk_overlays(
         self,
         result: Dict[str, Any],
@@ -753,8 +806,10 @@ class StrategyAdaptor:
         # Build strategy configurations
         strategies = self._build_strategy_configs(regime, vol_regime, settings, changes, btc_adx=btc_adx, bull_tier=bull_tier)
 
-        # Apply GARCH dynamic SL/TP
+        # Apply GARCH dynamic SL/TP, then bandit micro-adjustment (Phase 2-A)
         daily_returns = self._apply_garch_sl_tp(strategies, btc_price_change_24h, changes)
+        bandit_sltp = self._apply_bandit_sltp(
+            strategies, fear_greed, btc_trend, hmm_regime, changes)
 
         try:
             vol_adjustment = self.compute_volatility_adjustment(
@@ -767,6 +822,7 @@ class StrategyAdaptor:
             "regime": regime,
             "hmm_regime": hmm_regime,
             "strategies": strategies,
+            "bandit_sltp": bandit_sltp,
             "dca_params": self.DCA_REGIME_PARAMS.get(
                 regime, self.DCA_REGIME_PARAMS["NEUTRAL"]
             ),

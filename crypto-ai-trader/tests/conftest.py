@@ -98,10 +98,15 @@ def _isolate_statedb(monkeypatch, tmp_path):
     monkeypatch.setenv("TESTING", "1")
     # Reset singleton so it picks up the new path
     import src.state_db as sd_mod
+    import src.contextual_bandit as cb_mod
 
     sd_mod._state_db_instance = None
+    # Bandit singleton carries in-memory priors across tests; Thompson sampling
+    # from leaked priors makes size assertions flaky (e.g. test_neutral_regime).
+    cb_mod._bandit_instance = None
     yield
     sd_mod._state_db_instance = None
+    cb_mod._bandit_instance = None
 
 
 @pytest.fixture

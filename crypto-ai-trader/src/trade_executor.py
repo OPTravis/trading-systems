@@ -617,6 +617,7 @@ def _record_trade_portfolio(
     usdt_bal, invest_amount, fee_rate,
     invest_pct, bandit_context, bandit_multiplier,
     is_exploration=False,
+    bandit_sltp=None,
 ):
     """Track executed trade in portfolio state and publish events.
 
@@ -657,6 +658,11 @@ def _record_trade_portfolio(
             if bandit_context:
                 portfolio.positions[symbol]["bandit_context"] = bandit_context
                 portfolio.positions[symbol]["bandit_multiplier"] = bandit_multiplier
+            # Phase 2-A: SL/TP multipliers used at entry (for close-time
+            # bandit attribution); always persisted, defaults 1.0
+            _sltp = bandit_sltp or {}
+            portfolio.positions[symbol]["sl_mult"] = float(_sltp.get("sl_mult", 1.0))
+            portfolio.positions[symbol]["tp_mult"] = float(_sltp.get("tp_mult", 1.0))
             try:
                 if portfolio._db is not None:
                     portfolio._db.portfolio_set(symbol, portfolio.positions[symbol])
@@ -1319,6 +1325,7 @@ def execute_auto_trade(
     strategy_size_multiplier=1.0,
     order_value=None,
     surge_alert_level="SILENCE",
+    bandit_sltp=None,
 ):
     """Execute trade automatically with Kelly-optimal position sizing.
 
@@ -1951,6 +1958,7 @@ def execute_auto_trade(
         usdt_bal, invest_amount, fee_rate,
         invest_pct, _bandit_context, _bandit_multiplier,
         is_exploration=_is_exploration,
+        bandit_sltp=bandit_sltp,
     )
 
     logger.info(
