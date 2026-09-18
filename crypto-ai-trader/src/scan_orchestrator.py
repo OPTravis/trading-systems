@@ -137,6 +137,7 @@ def cmd_cron_scan():
         _step_event_driven_adjustment(ctx)
         _step_execute_trades(ctx)
         _step_reconcile_portfolio(ctx)
+        _step_evolve_strategies(ctx)
         _append_scan_summary(ctx)
     finally:
         if _lock_fd:
@@ -146,6 +147,28 @@ def cmd_cron_scan():
             except (IOError, OSError):
                 logger.warning("Failed to release scan lock", exc_info=True)
 
+
+
+def _step_evolve_strategies(ctx):
+    """Phase 2B: per-scan strategy auto-switch evaluation.
+
+    Runs the dual-window PF channel + dca guardrail on every cron-scan
+    (rolling stats are refreshed per-trade by Phase 2A). The weekly
+    WR channel in online_learner is unchanged. Fail-safe: any error
+    here never blocks the scan pipeline or trading.
+    """
+    try:
+        from src.strategy_evolver import StrategyEvolver
+
+        evolver = StrategyEvolver()
+        pf_changes = evolver.evaluate_pf_channel()
+        for c in pf_changes:
+            logger.info(
+                "STRATEGY_EVOLVED: %s %s — %s",
+                c.get("action"), c.get("strategy"), c.get("reason"),
+            )
+    except Exception:
+        logger.warning("evolve step failed (non-fatal)", exc_info=True)
 
 
 def _step_reconcile_portfolio(ctx):

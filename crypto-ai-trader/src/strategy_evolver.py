@@ -44,6 +44,36 @@ REGIME_THRESHOLD_ADJUSTMENTS = {
 # All known strategies
 ALL_STRATEGIES = ["rsi", "bollinger", "vwap", "trend", "dca", "grid"]
 
+# Name canonicalization: trade_outcomes/evolver historically use short names
+# ("rsi") while the adaptor config uses "rsi_reversion". All kv entries and
+# evaluation loops use canonical (adaptor-facing) names.
+STRATEGY_ALIAS = {
+    "rsi": "rsi_reversion",
+    "rsi_reversion": "rsi_reversion",
+    "bollinger": "bollinger",
+    "vwap": "vwap",
+    "trend": "trend",
+    "dca": "dca",
+    "grid": "grid",
+}
+
+
+def canonical_strategy(name: str) -> str:
+    """Map any historical strategy name to its canonical (adaptor) name.
+
+    Unknown names (e.g. legacy "switch") pass through unchanged so the
+    veto layer can still find them if they ever appear in adaptor config.
+    """
+    return STRATEGY_ALIAS.get((name or "").lower(), name)
+
+# --- Phase 2B: dual-window PF auto-switch constants ---
+PF_DISABLE_LEVEL = 1.0      # disable when BOTH windows have PF < 1.0
+PF_RECOVER_LEVEL = 1.2      # re-enable when long-window PF >= 1.2
+PF_SHORT_WINDOW_TRADES = 15 # short window: most recent 15 closed trades
+PF_SHORT_MIN_TRADES = 10    # short window needs >= 10 samples to count
+PF_LONG_MIN_TRADES = 15     # long window (rolling stats) needs >= 15 samples
+DCA_GUARDRAIL_DAYS = 7.0    # dca may never stay auto-disabled longer than 7 days
+
 
 def _get_hmm_regime() -> Optional[str]:
     """Get current HMM regime from cached prediction.
@@ -98,7 +128,11 @@ class StrategyEvolver:
 
         if row:
             try:
-                return json.loads(row["value"])
+                raw = json.loads(row["value"])
+                if isinstance(raw, dict):
+                    return {
+                        canonical_strategy(k): v for k, v in raw.items()
+                    }
             except (json.JSONDecodeError, TypeError):
                 logger.warning(
                     "Failed to parse evolved_disabled JSON from StateDB", exc_info=True
@@ -144,6 +178,165 @@ class StrategyEvolver:
             "regime": regime or "UNKNOWN",
             "adjustment": adj,
         }
+
+    # ------------------------------------------------------------------
+    # Phase 2B: dual-window PF channel
+    # ------------------------------------------------------------------
+    def _short_window_pfs(self) -> Dict[str, List[float]]:
+        """Most recent PF_SHORT_WINDOW_TRADES closed-trade PnLs per strategy."""
+        pfs: Dict[str, List[float]] = {}
+        try:
+            conn = self._db._get_conn()
+            rows = conn.execute(
+                """SELECT strategy, net_pnl_pct FROM (
+                       SELECT strategy, net_pnl_pct,
+                              ROW_NUMBER() OVER (
+                                  PARTITION BY strategy
+                                  ORDER BY exit_time DESC
+                              ) AS rn
+                       FROM trade_outcomes
+                       WHERE status = 'closed' AND strategy IS NOT NULL
+                         AND net_pnl_pct IS NOT NULL
+                   ) WHERE rn <= ?""",
+                (PF_SHORT_WINDOW_TRADES,),
+            ).fetchall()
+            for r in rows:
+                pfs.setdefault(r["strategy"], []).append(r["net_pnl_pct"])
+        except Exception:
+            logger.warning("Failed to fetch short-window PnLs", exc_info=True)
+        return pfs
+
+    def _long_window_stats(self) -> Dict[str, Dict]:
+        """Rolling stats (30 trades / 7d window) written per-trade by Phase 2A."""
+        try:
+            data = self._db.kv_get("strategy_rolling_stats")
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            logger.warning("Failed to read strategy_rolling_stats kv", exc_info=True)
+        return {}
+
+    def evaluate_pf_channel(self, now: Optional[float] = None) -> List[Dict]:
+        """Dual-window PF auto-switch: disable only when BOTH windows confirm.
+
+        Short window = most recent 15 closed trades (recent sensitivity).
+        Long window  = rolling 30-trade/7d stats from Phase 2A (stability).
+        A single weak window is logged as observation only, no action —
+        gradual de-weighting is already handled by the Bandit size channel.
+
+        Also enforces the dca guardrail: dca auto-disabled for more than
+        DCA_GUARDRAIL_DAYS is force-recovered (buy-the-dip is a base
+        strategy and must not be parked indefinitely).
+        """
+        now = now if now is not None else time.time()
+        changes: List[Dict] = []
+        disabled = self.get_disabled_strategies()
+
+        # --- dca guardrail first (applies to both WR and PF channels) ---
+        dca_entry = disabled.get("dca")
+        if dca_entry:
+            disabled_days = (now - dca_entry.get("disabled_at", now)) / 86400.0
+            if disabled_days > DCA_GUARDRAIL_DAYS:
+                del disabled["dca"]
+                changes.append({
+                    "action": "DCA_GUARDRAIL_RECOVERED",
+                    "strategy": "dca",
+                    "reason": (
+                        f"dca auto-disabled for {disabled_days:.1f}d > "
+                        f"{DCA_GUARDRAIL_DAYS:.0f}d guardrail — force-recovered"
+                    ),
+                })
+                self._log_audit(
+                    "dca_guardrail_recovered",
+                    f"dca: auto-disabled {disabled_days:.1f}d exceeds "
+                    f"{DCA_GUARDRAIL_DAYS:.0f}d guardrail, force-recovered",
+                )
+                self._set_disabled(disabled)
+
+        # Merge data under canonical names so historical short-name rows
+        # ("rsi") and adaptor-name rows ("rsi_reversion") aggregate together.
+        short_pnls: Dict[str, List[float]] = {}
+        for k, v in self._short_window_pfs().items():
+            short_pnls.setdefault(canonical_strategy(k), []).extend(v)
+
+        long_stats: Dict[str, Dict] = {}
+        for k, v in self._long_window_stats().items():
+            if isinstance(v, dict):
+                long_stats.setdefault(canonical_strategy(k), {}).update(v)
+
+        candidates = set(ALL_STRATEGIES) | set(short_pnls) | set(long_stats)
+        for strategy in sorted(candidates):
+            if strategy == "dca":
+                continue  # dca only leaves disabled via guardrail/WR recovery
+
+            short = short_pnls.get(strategy, [])
+            n_short = len(short)
+            pf_short = compute_profit_factor(short) if n_short else None
+
+            lstats = long_stats.get(strategy, {})
+            n_long = int(lstats.get("n", 0) or 0)
+            pf_long = lstats.get("pf")
+            insufficient_long = bool(lstats.get("insufficient"))
+
+            is_disabled = strategy in disabled
+
+            # --- Disable: dual-window confirmation ---
+            if (
+                not is_disabled
+                and n_short >= PF_SHORT_MIN_TRADES
+                and not insufficient_long
+                and n_long >= PF_LONG_MIN_TRADES
+                and pf_short is not None
+                and pf_short < PF_DISABLE_LEVEL
+                and pf_long is not None
+                and pf_long < PF_DISABLE_LEVEL
+            ):
+                disabled[strategy] = {
+                    "disabled_at": now,
+                    "channel": "pf_dual_window",
+                    "reason": (
+                        f"dual-window PF<1: short PF={pf_short:.2f} "
+                        f"({n_short} trades), long PF={pf_long:.2f} ({n_long} trades)"
+                    ),
+                    "short_pf": round(pf_short, 2),
+                    "long_pf": round(pf_long, 2),
+                    "n_short": n_short,
+                    "n_long": n_long,
+                }
+                changes.append({
+                    "action": "DISABLED_PF",
+                    "strategy": strategy,
+                    "reason": disabled[strategy]["reason"],
+                })
+                self._log_audit(
+                    "strategy_disabled_pf",
+                    f"{strategy}: short PF={pf_short:.2f}/{n_short} + "
+                    f"long PF={pf_long:.2f}/{n_long} — dual-window confirmed",
+                )
+                self._set_disabled(disabled)
+
+            # --- Recover: long window healthy again ---
+            elif (
+                is_disabled
+                and not insufficient_long
+                and n_long >= PF_LONG_MIN_TRADES
+                and pf_long is not None
+                and pf_long >= PF_RECOVER_LEVEL
+            ):
+                entry = disabled.pop(strategy)
+                changes.append({
+                    "action": "RECOVERED_PF",
+                    "strategy": strategy,
+                    "reason": f"long-window PF={pf_long:.2f} >= {PF_RECOVER_LEVEL}",
+                })
+                self._log_audit(
+                    "strategy_recovered_pf",
+                    f"{strategy}: long PF={pf_long:.2f}/{n_long} recovered "
+                    f"(was disabled by {entry.get('channel', 'wr')})",
+                )
+                self._set_disabled(disabled)
+
+        return changes
 
     def evaluate_and_evolve(self, regime: Optional[str] = None) -> List[Dict]:
         """Evaluate all strategies and auto-promote/demote.

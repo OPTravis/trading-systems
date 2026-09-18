@@ -722,6 +722,29 @@ class StrategyAdaptor:
                     f"{name}: size floor applied (was {size_mult:.2f}, now 0.20)"
                 )
 
+        # Phase 2B: evolver auto-switch veto (final layer, highest precedence).
+        # Strategies auto-disabled by live performance (dual-window PF or WR
+        # channel) are forced off regardless of regime/HMM preference.
+        # Fail-safe: any evolver error leaves the static chain untouched.
+        try:
+            from src.strategy_evolver import StrategyEvolver
+
+            evolver = StrategyEvolver()
+            vetoed = evolver.get_disabled_strategies()
+            for name, entry in vetoed.items():
+                cfg = result["strategies"].get(name)
+                if cfg and cfg.get("enabled"):
+                    cfg["enabled"] = False
+                    channel = entry.get("channel", "wr") if isinstance(entry, dict) else "wr"
+                    cfg["reason"] = (
+                        f"disabled by evolver ({channel}: {entry.get('reason', '')})"
+                        if isinstance(entry, dict)
+                        else "disabled by evolver"
+                    )
+                    changes.append(f"{name}: disabled — evolver {channel} channel")
+        except Exception:
+            logger.debug("evolver veto layer skipped (non-fatal)", exc_info=True)
+
     def adapt(
         self,
         fear_greed: int,
