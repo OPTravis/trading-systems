@@ -21,16 +21,22 @@ from src.research_phase import _dca_fallback_direction_ok
 
 
 class FakeStatsClient:
-    def __init__(self, change_24h=0.0, exc=None):
+    def __init__(self, change_24h=0.0, exc=None, high=0.0, last_price=0.0):
         self.change_24h = change_24h
         self.exc = exc
+        self.high = high
+        self.last_price = last_price
         self.calls = 0
 
     def get_24hr_stats(self, symbol):
         self.calls += 1
         if self.exc:
             raise self.exc
-        return {"price_change_pct": self.change_24h}
+        return {
+            "price_change_pct": self.change_24h,
+            "high": self.high,
+            "last_price": self.last_price,
+        }
 
 
 def _ctx(regime="NEUTRAL", btc_trend="NEUTRAL", dip=-3.0, weighted=None):
@@ -87,6 +93,18 @@ class TestGatePasses:
             _ctx(weighted=0.0), c, "UNIUSDT", klines=_klines(prices))
         assert ok and "MA20" in why
 
+    def test_drawdown_from_24h_high_passes(self):
+        """Ruling leg: last price >= 3% below the 24h high = real dip, even
+        when the raw 24h change is mild."""
+        c = FakeStatsClient(change_24h=-0.5, high=100.0, last_price=96.5)  # 3.5% below
+        ok, why = _dca_fallback_direction_ok(_ctx(weighted=0.0), c, "XUSDT")
+        assert ok and "24h high" in why
+
+    def test_shallow_drawdown_from_high_does_not_pass(self):
+        c = FakeStatsClient(change_24h=-0.5, high=100.0, last_price=99.0)  # 1% below
+        ok, _ = _dca_fallback_direction_ok(_ctx(weighted=0.0), c, "XUSDT")
+        assert not ok
+
     def test_direction_confirm_passes(self):
         c = FakeStatsClient(change_24h=0.0)
         ok, why = _dca_fallback_direction_ok(
@@ -132,13 +150,37 @@ class TestFallbackChainWiring:
         src = self._source()
         assert "for fallback in [\"dca\", \"rsi\", \"bollinger\", \"vwap\", \"trend\", \"grid\"]:" in src
         assert "_dca_fallback_direction_ok(" in src
-        # rejection must continue the chain (not break, not fall through)
-        assert "DCA_FALLBACK_GATE" in src and "trying next fallback" in src
+        # rejection must SKIP the trade (ruling: never keep walking the chain)
+        assert "DCA_FALLBACK_GATE" in src and "SKIP TRADE" in src
+        assert "trying next fallback" not in src
+        # skipped trade is journalled as BLOCKED and clears pending
+        rej = src.find("DCA_FALLBACK_GATE")
+        zone = src[rej:rej + 800]
+        assert "record_decision" in zone and "return None" in zone
 
-    def test_only_dca_enabled_blocks_trade(self):
-        src = self._source()
-        assert "_fb_chosen" in src
-        assert "FALLBACK_GATE_BLOCKED" in src
+    def test_gate_rejection_returns_none_before_other_strategies(self):
+        """Structural: the rejection branch returns before any later fallback
+        in the chain could be selected."""
+        import ast
+        tree = ast.parse(self._source())
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef)
+                  and n.name == "_step_research_top_n")
+        gate_calls = [n for n in ast.walk(fn)
+                      if isinstance(n, ast.Call)
+                      and getattr(getattr(n, "func", None), "id", "") ==
+                          "_dca_fallback_direction_ok"]
+        assert gate_calls, "gate must be invoked inside _step_research_top_n"
+        # walk up from the call to the enclosing If and confirm it returns
+        # (skip) on the not-ok branch — verified textually above; here assert
+        # the call site is inside the for-fallback loop
+        for node in ast.walk(fn):
+            if isinstance(node, ast.For):
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Call) and getattr(
+                            getattr(sub, "func", None), "id", "") ==                             "_dca_fallback_direction_ok":
+                        return
+        raise AssertionError("gate call not inside fallback for-loop")
 
     def test_fear_mode_direct_dca_not_gated(self):
         """research_phase.py:526-area fear-mode direct dca stays ungated."""
