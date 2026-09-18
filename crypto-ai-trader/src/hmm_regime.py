@@ -93,6 +93,9 @@ class HMMRegimeDetector:
         Returns: (N, 4) feature matrix, or None if insufficient data.
         """
         if len(klines_1h) < MIN_KLINES:
+            logger.warning(
+                "HMM predict: %d klines < MIN_KLINES=%d — features starved",
+                len(klines_1h), MIN_KLINES)
             return None
 
         # Parse klines to arrays (handle both dict and list formats)
@@ -109,6 +112,9 @@ class HMMRegimeDetector:
         # Aggregate to daily (24 bars per day)
         n_days = len(closes) // 24
         if n_days < 20:
+            logger.warning(
+                "HMM predict: %d klines -> %d daily bars < 20 — features starved",
+                len(klines_1h), n_days)
             return None
 
         daily_closes = closes[::24][:n_days]
@@ -148,7 +154,14 @@ class HMMRegimeDetector:
         valid = ~np.isnan(features).any(axis=1)
         features = features[valid]
 
-        return features if len(features) >= 20 else None
+        if len(features) < 20:
+            logger.warning(
+                "HMM predict: only %d valid feature rows after RSI14/BB20 "
+                "warmup (need >=20) — klines=%d daily_bars=%d. Fetch >=1000 "
+                "1h bars (~42 days) to clear the warmup window.",
+                len(features), len(klines_1h), n_days)
+            return None
+        return features
 
     @staticmethod
     def _compute_rsi(prices: np.ndarray, period: int = 14) -> np.ndarray:
@@ -320,6 +333,8 @@ class HMMRegimeDetector:
         if not self._trained:
             # Try to load from DB
             if not self._load_training_state():
+                logger.warning(
+                    "HMM predict skipped: no trained model in memory or DB")
                 return None
 
         features = self._compute_features(klines_1h)
@@ -331,6 +346,7 @@ class HMMRegimeDetector:
 
         # Predict
         if self._model is None:
+            logger.warning("HMM predict skipped: model object missing")
             return None
         try:
             probs = self._model.predict_proba(features_norm)
