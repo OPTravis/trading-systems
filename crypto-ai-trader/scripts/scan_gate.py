@@ -118,6 +118,20 @@ def get_fng():
 
 
 def main():
+    # Event-driven rapid-change bypass (Phase 1, 2026-09-18): when the
+    # resident layer fires an event scan it sets EVENT_TRIGGER=<reason>.
+    # ONLY the time-gate below is waived — every in-scan risk check
+    # (correlation / max-position / circuit breaker) still runs. Timestamp
+    # is still saved so post-event regular fires stay correctly spaced.
+    bypass_reason = os.environ.get("EVENT_TRIGGER", "").strip()
+    if bypass_reason:
+        logger.info(
+            f"DynamicGate: BYPASS — event trigger: {bypass_reason} "
+            f"(time-gate waived; all in-scan risk checks remain)"
+        )
+        save_scan_ts()
+        sys.exit(0)
+
     fng = get_fng()
 
     # Determine required interval
