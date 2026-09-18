@@ -176,6 +176,58 @@ def round_price(price, tick_size):
     return float(d_price.quantize(d_tick, rounding=ROUND_DOWN))
 
 
+def _required_filters(client, symbol):
+    """Return complete filters dict, or None when exchange info is missing.
+
+    Order-quantity math MUST NOT fall back to guessed defaults: a missing
+    LOT_SIZE used to default stepSize=0.001, flooring BNB's 5-decimal step
+    and leaving SL covering 89.4% of a 0.00894469 holding. Callers skip the
+    symbol on None instead of guessing."""
+    f = get_symbol_filters(client, symbol)
+    if f.get("stepSize") and f.get("tickSize") and f.get("minNotional"):
+        return f
+    return None
+
+
+def _gt_holding(client, sym, book_qty):
+    """Ground-truth the holding against the exchange balance.
+
+    Multi-leg TP fills + fee residue leave book_qty above what the exchange
+    actually holds; ordering the full book amount gets rejected -2010
+    (insufficient balance). Returns (qty, free, err):
+      qty  = min(book_qty, free + locked)  -- calibrated total holding
+      free = currently placeable amount (sell orders lock their qty)
+      err  = failure description; qty falls back to book_qty then (loud)."""
+    asset = sym.replace('/', '').replace('USDT', '')
+    try:
+        acct = client.get_account()
+        free = locked = 0.0
+        found = False
+        for b in acct.get('balances', []):
+            if b.get('asset') == asset:
+                free = float(b.get('free', 0) or 0)
+                locked = float(b.get('locked', 0) or 0)
+                found = True
+                break
+        if not found:
+            return book_qty, None, "asset not in account balances"
+    except Exception as e:
+        return book_qty, None, str(e)
+    return min(book_qty, free + locked), free, None
+
+
+def _placeable_qty(client, sym, qty):
+    """Re-read free AFTER cancelling orders and cap the order size to it.
+
+    Restructure paths cancel old sell orders then place a full-qty OCO; the
+    freed amount returns to `free`, so re-reading it here keeps the new order
+    within the real balance (-2010 guard)."""
+    _q, free, err = _gt_holding(client, sym, qty)
+    if err or free is None:
+        return qty
+    return min(qty, free)
+
+
 def _discipline_exit(client, sym, pos, current_price, exit_reason, fixes, errors):
     """bug#29 (2026-08-29): market-exit a stranded position + verified bookkeeping.
 
@@ -192,9 +244,13 @@ def _discipline_exit(client, sym, pos, current_price, exit_reason, fixes, errors
     qty = pos["quantity"]
     entry = pos.get("entry_price", 0)
     try:
-        filters = get_symbol_filters(client, sym)
-        step_size = filters.get("stepSize", 0.001)
-        sell_qty = floor_qty(qty, step_size)
+        # bug(-2010/coverage): no guessed stepSize in quantity math; best-effort
+        # exit keeps the raw qty when filters are unavailable (exchange will
+        # reject loudly rather than silently under-covering).
+        filters = _required_filters(client, sym)
+        step_size = filters["stepSize"] if filters else qty
+        _q, free, _e = _gt_holding(client, sym, qty)
+        sell_qty = floor_qty(min(qty, free) if free is not None else qty, step_size)
         result = client.place_market_sell(sym, sell_qty)
     except Exception as e:
         errors.append(f"{sym}: 紀律平倉下單失敗 ({e})")
@@ -536,12 +592,26 @@ def main():
         total_covered = sl_covered + tp_covered
 
         # Check min notional
-        filters = get_symbol_filters(client, sym)
-        min_notional = filters.get("minNotional", 5.0)
-        step_size = filters.get("stepSize", 0.001)
-        tick_size = filters.get("tickSize", 0.01)
-        qty_decimals = filters.get("qty_decimals", 4)
-        price_decimals = filters.get("price_decimals", 2)
+        # bug(-2010/coverage): filters must come from the exchange per-symbol —
+        # guessed defaults (stepSize=0.001) floored BNB's 5-decimal LOT_SIZE
+        # down to 89.4% SL coverage. No defaults in quantity math anymore.
+        filters = _required_filters(client, sym)
+        if filters is None:
+            errors.append(f"{sym}: ⚠️交易所filters不可用，跳過掛單（禁止默認值兜底）")
+            continue
+        min_notional = filters["minNotional"]
+        step_size = filters["stepSize"]
+        tick_size = filters["tickSize"]
+
+        # bug(-2010): ground-truth the holding against the exchange — the book
+        # can run above the real balance after multi-leg TP fills + fee
+        # residue, and reordering the full book amount gets -2010 rejected.
+        qty_cal, free_qty, gt_err = _gt_holding(client, sym, qty)
+        if gt_err:
+            errors.append(f"{sym}: ⚠️餘額校準失敗（{gt_err}），跳過掛單")
+            continue
+        qty = qty_cal  # calibrated holding = min(book, free + locked)
+        notional = qty * current_price  # re-derive on calibrated qty
 
         has_tp = len(tp_orders) > 0
         has_sl = len(sl_orders) > 0
@@ -566,7 +636,7 @@ def main():
                 sl_limit = round_price(sl_price_r * 0.995, tick_size)
 
                 try:
-                    oco = client.place_oco(sym, qty, tp_price, sl_price_r, sl_limit)
+                    oco = client.place_oco(sym, floor_qty(_placeable_qty(client, sym, qty), step_size), tp_price, sl_price_r, sl_limit)
                     if oco:
                         fixes.append(f"{sym}: 重構為OCO（TP ${tp_price} + SL ${sl_price_r}）")
                         continue
@@ -574,9 +644,10 @@ def main():
                     # OCO failed, re-place separate orders
                     logger.warning(f"OCO restructure failed for {sym}: {e}")
                     try:
-                        client.place_limit_sell(sym, floor_qty(qty * 0.50, step_size), tp_price)
+                        _half = floor_qty(_placeable_qty(client, sym, qty) * 0.50, step_size)
+                        client.place_limit_sell(sym, _half, tp_price)
                         time.sleep(0.5)
-                        client.place_stop_loss_limit(sym, floor_qty(qty * 0.50, step_size), sl_limit, sl_price_r)
+                        client.place_stop_loss_limit(sym, _half, sl_limit, sl_price_r)
                         fixes.append(f"{sym}: 重掛分離TP+SL（OCO失敗）")
                         continue
                     except Exception as e2:
@@ -639,7 +710,7 @@ def main():
                     try:
                         oco_result = client.place_oco(
                             symbol=sym,
-                            quantity=qty,
+                            quantity=floor_qty(_placeable_qty(client, sym, qty), step_size),
                             tp_price=tp_price,
                             sl_price=sl_price_r,
                             sl_limit_price=sl_limit,
@@ -674,8 +745,9 @@ def main():
                         except Exception as e:
                             errors.append(f"{sym}: SL掛單失敗 ({e})")
             else:
-                # SL doesn't cover full qty — add TP with uncovered portion
-                uncovered = qty - sl_covered
+                # SL doesn't cover full qty — add TP with uncovered portion,
+                # capped at what is actually placeable (free)
+                uncovered = min(qty - sl_covered, free_qty)
                 if uncovered > 0:
                     tp_qty = floor_qty(uncovered, step_size)
                     tp_price = round_price(tp_target, tick_size)
@@ -698,7 +770,10 @@ def main():
         elif has_sl and has_tp and sl_target and sl_covered < (
             floor_qty(qty, step_size) if step_size > 0 else qty
         ) * 0.98:
-            _uncov = floor_qty(max(qty - sl_covered, 0.0), step_size)
+            # bug(-2010): gap is measured against the CALIBRATED holding and
+            # capped at free — fee/lag residue must not be mistaken for an
+            # undersized SL, topped up, and then rejected with -2010.
+            _uncov = floor_qty(max(min(qty - sl_covered, free_qty), 0.0), step_size)
             _sl_px = round_price(sl_target, tick_size)
             _sl_lim = round_price(_sl_px * 0.995, tick_size)
             if _uncov > 0 and _uncov * current_price >= min_notional:
@@ -711,16 +786,18 @@ def main():
                 except Exception as e:
                     errors.append(f"{sym}: SL缺口補掛失敗 ({e})")
             elif _uncov > 0:
-                # tail below minNotional: cancel existing TPs and restructure
-                # the whole position into one OCO so no fragment stays naked
+                # tail below minNotional: cancel existing TP+SL and restructure
+                # the whole position into one OCO so no fragment stays naked.
+                # (SL must be cancelled too — leaving it live alongside a
+                # full-qty OCO double-counts the locked amount.)
                 try:
-                    for _tp in tp_orders:
-                        client.cancel_order(sym, _tp.get("id", _tp.get("orderId")))
+                    for _o2 in tp_orders + sl_orders:
+                        client.cancel_order(sym, _o2.get("id", _o2.get("orderId")))
                     time.sleep(0.5)
                     _tp_px = round_price(tp_target, tick_size) if tp_target else round_price(current_price * 1.04, tick_size)
                     _oco = client.place_oco(
                         symbol=sym,
-                        quantity=qty,
+                        quantity=floor_qty(_placeable_qty(client, sym, qty), step_size),
                         tp_price=_tp_px,
                         sl_price=_sl_px,
                         sl_limit_price=_sl_lim,
@@ -737,15 +814,11 @@ def main():
             sl_price = round_price(sl_target, tick_size)
             sl_limit = round_price(sl_price * 0.995, tick_size)
             # Use uncovered qty, but cap at free balance
-            uncovered = qty - tp_covered
+            uncovered = min(qty - tp_covered, free_qty)
             sl_qty_raw = max(uncovered, qty * 0.30)
-            # Get actual free balance to avoid insufficient funds
-            try:
-                asset = sym.replace('/', '').replace('USDT', '')
-                bal = client.get_free_balance(asset)
-                sl_qty = floor_qty(min(sl_qty_raw, bal), step_size)
-            except Exception:
-                sl_qty = floor_qty(min(sl_qty_raw, uncovered), step_size)
+            # bug(-2010): cap at the ground-truthed free balance — no fallback
+            # to the book amount when the balance read fails
+            sl_qty = floor_qty(min(sl_qty_raw, free_qty), step_size)
             # bug#29: Binance validates STOP_LOSS_LIMIT notional at the LIMIT
             # price, not current — precheck at sl_limit to match the exchange.
             if sl_qty * sl_limit >= min_notional:
@@ -765,7 +838,7 @@ def main():
                     for o in tp_orders:
                         client.cancel_order(sym, o.get("id", o.get("orderId")))
                         time.sleep(0.5)
-                    oco = client.place_oco(sym, floor_qty(qty, step_size), tp_price, sl_price, sl_limit)
+                    oco = client.place_oco(sym, floor_qty(_placeable_qty(client, sym, qty), step_size), tp_price, sl_price, sl_limit)
                     if oco:
                         fixes.append(f"{sym}: OCO重構（TP ${tp_price} + SL ${sl_price}，原SL太小）")
                     else:
@@ -783,7 +856,7 @@ def main():
                 sl_price = round_price(sl_target, tick_size)
                 sl_limit = round_price(sl_price * 0.995, tick_size)
                 try:
-                    oco = client.place_oco(sym, floor_qty(qty, step_size), tp_price, sl_price, sl_limit)
+                    oco = client.place_oco(sym, floor_qty(min(qty, free_qty), step_size), tp_price, sl_price, sl_limit)
                     if oco:
                         fixes.append(f"{sym}: OCO已掛（TP ${tp_price} + SL ${sl_price}）")
                         continue
@@ -794,7 +867,7 @@ def main():
             if sl_target:
                 sl_price = round_price(sl_target, tick_size)
                 sl_limit = round_price(sl_price * 0.995, tick_size)
-                sl_qty = floor_qty(qty, step_size)
+                sl_qty = floor_qty(min(qty, free_qty), step_size)
                 # bug#29: precheck at limit price (exchange validation basis)
                 if sl_qty * sl_limit >= min_notional:
                     try:
@@ -844,9 +917,9 @@ def main():
 
             # Place market sell to lock profit
             try:
-                filters = get_symbol_filters(client, sym)
-                step_size = filters.get("stepSize", 0.001)
-                sell_qty = floor_qty(qty, step_size)
+                filters = _required_filters(client, sym)
+                step_size = filters["stepSize"] if filters else qty  # no default-step floor
+                sell_qty = floor_qty(_placeable_qty(client, sym, qty), step_size)
 
                 result = client.place_market_sell(sym, sell_qty)
                 if result and result.get("status") in ("closed", "FILLED"):
@@ -999,8 +1072,8 @@ def main():
         notional = qty * current_price
         if notional < DUST_THRESHOLD:
             continue
-        filters = get_symbol_filters(client, sym)
-        min_notional = filters.get("minNotional", 5.0)
+        filters = _required_filters(client, sym)
+        min_notional = filters["minNotional"] if filters else 5.0
         if notional >= min_notional:
             # Exit window open — take it
             if _discipline_exit(
@@ -1096,9 +1169,9 @@ def main():
                     pass
                 # Market sell to force-close
                 try:
-                    filters = get_symbol_filters(client, sym)
-                    step = filters.get("stepSize", 0.001)
-                    sell_qty = floor_qty(qty, step)
+                    filters = _required_filters(client, sym)
+                    step = filters["stepSize"] if filters else qty  # no default-step floor
+                    sell_qty = floor_qty(_placeable_qty(client, sym, qty), step)
                     result = client.place_market_sell(sym, sell_qty)
                     if result and result.get("status") in ("closed", "FILLED"):
                         pnl_pct = (current_price - entry) / entry * 100 if entry else 0

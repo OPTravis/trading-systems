@@ -347,6 +347,71 @@ def _select_best_candidate(research_results, client, dynamic_threshold):
     return best_sym, best_adj_score, fallback_used
 
 
+def _dca_fallback_direction_ok(ctx, client, symbol, klines=None):
+    """Direction gate for the fallback-to-dca path.
+
+    DCA is a buy-the-dip ladder; the fallback chain used to hand it the trade
+    with zero dip/direction checks, mechanically buying NEUTRAL-regime coins
+    with no -3% dip (9/16-9/17 UNI score 67/69, DASH). The gate passes on
+    EITHER:
+      (a) real dip — 24h change <= dca_params.dip_threshold_pct, or the
+          current price sits that far below the 20-bar mean (mirrors
+          DCAStrategy's own deviation logic), OR
+      (b) direction confirm — six-dim resonance weighted_score (DimensionScorer,
+          -1..+1) > 0 AND BTC trend is not BEARISH.
+    Fear-mode direct dca (:526 area) is an intentional semantic and is NOT
+    routed through this gate.
+
+    Returns (ok, reason)."""
+    adapted = ctx.get("adapted") or {}
+    dca_p = adapted.get("dca_params") or {}
+    try:
+        dip_th = float(dca_p.get("dip_threshold_pct", -5.0))
+    except (TypeError, ValueError):
+        dip_th = -5.0
+    btc_trend = ctx.get("btc_trend") or ""
+
+    # (b) direction confirm — six-dimension resonance weighted score (-1..+1,
+    # DimensionScorer.score_all()["weighted_score"]) must be positive AND the
+    # BTC trend not BEARISH. NEUTRAL resonance (weighted ~0) fails this leg.
+    _dim = ctx.get("dim_result") or {}
+    _w = _dim.get("weighted_score")
+    if _w is not None:
+        try:
+            _w = float(_w)
+        except (TypeError, ValueError):
+            _w = None
+    if _w is not None and _w > 0 and btc_trend != "BEARISH":
+        return True, f"direction ok (dim weighted={_w:+.2f}, BTC={btc_trend or 'n/a'})"
+
+    # (a) real dip — 24h stats first (cheap), then MA20 deviation
+    change_24h = None
+    try:
+        stats = client.get_24hr_stats(symbol)
+        change_24h = float(stats.get("price_change_pct", 0) or 0)
+    except Exception:
+        pass
+    if change_24h is not None and change_24h <= dip_th:
+        return True, f"real dip: 24h {change_24h:.1f}% <= {dip_th:.1f}%"
+
+    if klines:
+        try:
+            prices = [float(k.get("close", 0)) for k in klines if k.get("close")]
+            if len(prices) >= 20:
+                ma20 = sum(prices[-20:]) / 20.0
+                if ma20 > 0:
+                    dev = (prices[-1] - ma20) / ma20 * 100
+                    if dev <= dip_th:
+                        return True, f"real dip: {dev:.1f}% vs MA20 <= {dip_th:.1f}%"
+        except Exception:
+            pass
+
+    return False, (
+        f"no dip (24h={'n/a' if change_24h is None else f'{change_24h:.1f}%'}) "
+        f"and no direction confirm (BTC={btc_trend or 'n/a'})"
+    )
+
+
 def _step_research_top_n(ctx):
     """Step 2: Risk checks, deep research on top candidates, and bear analysis.
 
@@ -592,15 +657,51 @@ def _step_research_top_n(ctx):
     strategy_cfg = adapted["strategies"].get(strategy)
     if strategy_cfg and not strategy_cfg["enabled"]:
         # Fall back to an enabled strategy
+        _fb_chosen = False
         for fallback in ["dca", "rsi", "bollinger", "vwap", "trend", "grid"]:
             fb_cfg = adapted["strategies"].get(fallback)
             if fb_cfg and fb_cfg["enabled"]:
+                if fallback == "dca":
+                    # Direction gate: DCA without a dip or direction confirm
+                    # mechanically buys flat markets (UNI/DASH case). The
+                    # chain keeps walking on rejection — never silently
+                    # bypassing the gate, and never buying ungated.
+                    _ok, _why = _dca_fallback_direction_ok(
+                        ctx, client, symbol,
+                        klines=(klines_data if isinstance(klines_data, list) else None),
+                    )
+                    if not _ok:
+                        logger.info(
+                            "DCA_FALLBACK_GATE rejected %s: %s — trying next fallback",
+                            symbol, _why,
+                        )
+                        print(f"DCA_FALLBACK_GATE: {symbol} rejected ({_why})")
+                        continue
+                    logger.info("DCA_FALLBACK_GATE passed %s: %s", symbol, _why)
                 strategy = fallback
                 strategy_cfg = fb_cfg
+                _fb_chosen = True
                 logger.info(
                     f"Strategy {fallback} adapted to {strategy} (original was disabled)"
                 )
                 break
+        if not _fb_chosen:
+            # Every enabled candidate was gated out (only-dca-enabled case):
+            # the ruling is "do not buy" — block instead of trading on the
+            # disabled strategy's config.
+            print(
+                f"FALLBACK_GATE_BLOCKED: {symbol} — no enabled strategy passed "
+                f"the gates (dca rejected)"
+            )
+            journal = TradeJournal()
+            journal.record_decision(
+                symbol=symbol,
+                decision="BLOCKED",
+                score=adjusted_score,
+                research=research,
+            )
+            clear_pending()
+            return None
 
     _sig_strs = []
     for s in signals[:3]:

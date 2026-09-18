@@ -987,4 +987,5 @@ def _step_scan_opportunities():
         "btc_score": btc_score,
         "acct": acct,
         "surge_result": surge_result,
+        "dim_result": dim_result,
     }
