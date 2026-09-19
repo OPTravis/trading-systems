@@ -341,6 +341,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         symbol: str,
         close_price: Optional[float] = None,
         exit_reason: Optional[str] = None,
+        client_order_id: Optional[str] = None,
     ) -> Dict:
         """Close a position, credit PnL to cash, record trade, and return details.
 
@@ -384,6 +385,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                     qty=pos["quantity"],
                     price=price,
                     pnl=pnl,
+                    client_order_id=client_order_id,
                 )
                 logger.info(
                     f"Recorded trade: {symbol} SELL qty={pos['quantity']} price={price:.6f} PnL={pnl:.2f}"

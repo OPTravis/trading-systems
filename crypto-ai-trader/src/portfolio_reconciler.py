@@ -47,6 +47,15 @@ KV_PREV_POSITIONS = "reconcile_prev_positions"
 DRIFT_QTY_FRACTION = 0.98
 #: absolute qty slack (dust-sized remainders are not drift)
 DRIFT_QTY_ABS = 0.001
+#: fuzzy-dedup tolerances — a reconcile SELL fill whose qty/price sit
+#: this close to an already-booked NULL-id row (legacy active-path
+#: bookings that carry no orderId) is treated as booked, not double-
+#: counted. 0.5% covers qty-precision truncation and avg-vs-fill skew.
+FUZZY_QTY_REL_TOL = 0.005
+FUZZY_PRICE_REL_TOL = 0.005
+#: only recent rows are matched — the active path books within
+#: seconds of the fill, so a 15-min window is ample
+FUZZY_WINDOW_S = 15 * 60
 #: symbols from the previous snapshot stay suspects for this many days
 PREV_SNAPSHOT_MAX_AGE_S = 7 * 24 * 3600
 
@@ -94,6 +103,32 @@ def _order_booked(db, order_id) -> bool:
     return row is not None
 
 
+def _fuzzy_booked(db, symbol: str, qty: float, price: float) -> bool:
+    """True if a recent NULL-id SELL row already covers this fill.
+
+    Bridges the gap left by active-path bookings (switch close, manual
+    close) that predate the client_order_id plumbing: those rows carry
+    no orderId, so _order_booked cannot see them. Without this check a
+    reconcile round re-books the same physical sell under its exchange
+    orderId — the id=36/id=38 double-count bug.
+    """
+    cutoff = time.time() - FUZZY_WINDOW_S
+    rows = db._get_conn().execute(
+        "SELECT qty, price FROM trades "
+        "WHERE symbol=? AND side='SELL' AND client_order_id IS NULL "
+        "AND timestamp >= ? ORDER BY timestamp DESC LIMIT 50",
+        (symbol, cutoff),
+    ).fetchall()
+    for r in rows:
+        q, p = float(r["qty"]), float(r["price"])
+        if q <= 0 or p <= 0:
+            continue
+        if (abs(q - qty) <= FUZZY_QTY_REL_TOL * max(q, qty)
+                and abs(p - price) <= FUZZY_PRICE_REL_TOL * max(p, price)):
+            return True
+    return False
+
+
 def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> List[Dict]:
     """Aggregate SELL fills by orderId and book the unrecorded ones.
 
@@ -131,6 +166,14 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
         )
         qty = max(leg_qty_raw - comm, 0.0)
         if qty <= DRIFT_QTY_ABS:
+            continue
+        if _fuzzy_booked(db, symbol, qty, avg_px):
+            logger.info(
+                "reconcile: SELL %s orderId=%s matches a recent NULL-id row "
+                "(fuzzy dedup, qty/price within %.1f%%) — skipping to avoid "
+                "double-count",
+                symbol, oid, FUZZY_QTY_REL_TOL * 100,
+            )
             continue
         pnl = qty * (avg_px - entry_avg) if entry_avg else 0.0
         inserted = db.trade_add(

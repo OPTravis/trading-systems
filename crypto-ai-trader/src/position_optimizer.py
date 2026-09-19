@@ -546,7 +546,9 @@ class PositionOptimizer:
                 )
                 try:
                     self.portfolio.close_position(
-                        from_symbol, close_price=current_price, exit_reason="switch"
+                        from_symbol, close_price=current_price, exit_reason="switch",
+                        client_order_id=str(sell_order["orderId"])
+                        if sell_order.get("orderId") else None,
                     )
                 except Exception as e:
                     logger.warning(f"Portfolio close failed (non-critical): {e}")
@@ -739,7 +741,9 @@ class PositionOptimizer:
                 # and market-order fill and the delta corrupts realized PnL.
                 from_fill_price = self._fill_avg_price(sell_order, from_price or 0.0)
                 self.portfolio.close_position(
-                    from_symbol, close_price=from_fill_price, exit_reason="switch"
+                    from_symbol, close_price=from_fill_price, exit_reason="switch",
+                    client_order_id=str(sell_order["orderId"])
+                    if sell_order.get("orderId") else None,
                 )
                 # Add new position (deducts cost from cash)
                 # bug#22: order already filled on exchange — record unconditionally.

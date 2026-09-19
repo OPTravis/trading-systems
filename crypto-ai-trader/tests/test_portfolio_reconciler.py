@@ -312,3 +312,73 @@ def test_next_round_after_partial_booking_is_clean(db):
     booked = reconcile_portfolio_drift(client, db)
     assert booked == []
     assert client.my_trades_calls == []
+
+
+# ---------- double-count bug (id=36/id=38): NULL-id fuzzy dedup ----------
+
+def _book_sell(db, sym, qty, px, oid=None):
+    db.trade_add(sym, "SELL", qty, px, 0.0, client_order_id=oid)
+
+
+def test_null_id_row_blocks_rebook_of_same_sell(db):
+    """Regression for the id=36/id=38 DOT double-count: the active path
+    booked the sell without an orderId; reconcile must not re-book the
+    same physical fill under its exchange orderId."""
+    import time as _t
+    _book_buy(db, "DOTUSDT", 19.63, 1.035)
+    _book_sell(db, "DOTUSDT", 19.61037, 1.133, oid=None)   # id=36 equivalent
+    # ledger net = 0.01963 > DRIFT_QTY_ABS → Path A suspect via portfolio row
+    db.portfolio_set("DOTUSDT", {"quantity": 0.01963, "entry_price": 1.035})
+    now = _t.time()
+    client = FakeClient(
+        [_bal("DOT", 0.0)],
+        {"DOTUSDT": [_fill("DOTUSDT", 6202013123, 19.61, 1.133, now)]},
+    )
+    booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    sells = db._get_conn().execute(
+        "SELECT * FROM trades WHERE symbol='DOTUSDT' AND side='SELL'").fetchall()
+    assert len(sells) == 1, "same physical sell must stay a single ledger row"
+
+
+def test_order_id_row_blocks_rebook_after_switch_fix(db):
+    """With the fix, switch close_position books with the exchange orderId;
+    _order_booked must then short-circuit any reconcile re-book attempt."""
+    import time as _t
+    _book_buy(db, "DOTUSDT", 19.63, 1.035)
+    _book_sell(db, "DOTUSDT", 19.61037, 1.133, oid="6202013123")  # fixed path
+    db.portfolio_set("DOTUSDT", {"quantity": 0.01963, "entry_price": 1.035})
+    now = _t.time()
+    client = FakeClient(
+        [_bal("DOT", 0.0)],
+        {"DOTUSDT": [_fill("DOTUSDT", 6202013123, 19.61, 1.133, now)]},
+    )
+    assert reconcile_portfolio_drift(client, db) == []
+
+
+def test_fuzzy_dedup_far_qty_still_books(db):
+    """Fuzzy tolerances must not swallow genuinely unbooked sells: a fill
+    whose qty differs >0.5% from the NULL-id row is real drift and books."""
+    import time as _t
+    _book_buy(db, "UNIUSDT", 8.04, 6.85)
+    _book_sell(db, "UNIUSDT", 4.0, 6.85, oid=None)      # unrelated half-close
+    db.portfolio_set("UNIUSDT", {"quantity": 4.02, "entry_price": 6.85})
+    now = _t.time()
+    client = FakeClient(
+        [_bal("UNI", 0.0)],
+        {"UNIUSDT": [_fill("UNIUSDT", 7001, 4.04, 6.85, now)]},  # 1% off → books
+    )
+    booked = reconcile_portfolio_drift(client, db)
+    assert len(booked) == 1 and booked[0]["symbol"] == "UNIUSDT"
+
+
+def test_close_position_signature_carries_client_order_id():
+    """Guard the plumbing: close_position must accept and forward
+    client_order_id (used by the switch path) so active-path bookings are
+    de-duplicated by the UNIQUE index instead of fuzzy matching."""
+    import inspect
+    import src.portfolio as pf
+    sig = inspect.signature(pf.PortfolioManager.close_position)
+    assert "client_order_id" in sig.parameters
+    src_text = inspect.getsource(pf.PortfolioManager.close_position)
+    assert "client_order_id=client_order_id" in src_text
