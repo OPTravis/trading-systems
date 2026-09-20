@@ -24,7 +24,8 @@ from src.event_trigger import (
     bypass_env,
 )
 
-RESIDE = Path("/root/reside_scan.py")
+REPO = Path(__file__).resolve().parent.parent
+RESIDE = REPO / "scripts" / "reside_scan.py"  # P0-1 fix: moved into repo (02656a6)
 
 _SPEC = importlib.util.spec_from_file_location(
     "scan_gate_ev", Path(__file__).parent.parent / "scripts" / "scan_gate.py")

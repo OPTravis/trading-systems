@@ -402,6 +402,22 @@ class PositionOptimizer:
                 )
                 continue
 
+            # P0-1: dust-liquidation re-entry constraint (設計 v1.1 §四)
+            # 3 x 4H cooldown; price path <= exit x 1.02 allowed (RVOL path M5)
+            try:
+                from src.dust_reaper import reentry_allowed
+                _ref_px = opp.get("price") or opp.get("lastPrice") or None
+                if not reentry_allowed(self.db, opp_symbol, _ref_px):
+                    logger.info(
+                        "PROTECTION_SKIP: %s in dust re-entry cooldown", opp_symbol
+                    )
+                    continue
+            except Exception:
+                # the constraint is an ADD-ON gate — module/db hiccups must
+                # not stall the whole switch mechanism (reentry_allowed itself
+                # fail-opens internally)
+                pass
+
             # Check blacklist
             opp_24h = opp.get("price_change_24h", 0)
             if opp_24h > self.BLACKLIST_24H_CHANGE:
@@ -417,12 +433,20 @@ class PositionOptimizer:
             try:
                 tgt_filters = self.bc.get_symbol_filters(opp_symbol) or {}
                 tgt_min_notional = float(
-                    tgt_filters.get("minNotional", 10.0) or 10.0)
+                    tgt_filters.get("minNotional", 0) or 0)
             except Exception as e:
-                tgt_min_notional = 10.0  # conservative Binance SPOT floor
+                tgt_min_notional = 0.0
                 logger.debug(
                     "PROTECTION_SKIP filter fetch failed for %s: %s",
                     opp_symbol, e)
+            if tgt_min_notional <= 0:
+                # P0-1: real-filter read failed → do NOT guess a fallback
+                # value (6979198 lesson) — fail closed, skip the candidate
+                logger.warning(
+                    "PROTECTION_SKIP: %s minNotional unavailable — skipping",
+                    opp_symbol,
+                )
+                continue
             if proceeds < tgt_min_notional * 1.05:
                 logger.warning(
                     "PROTECTION_SKIP: %s -> %s rejected — net proceeds "

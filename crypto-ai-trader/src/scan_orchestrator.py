@@ -196,6 +196,24 @@ def _step_reconcile_portfolio(ctx):
                 len(booked),
                 ", ".join(f"{b['symbol']} {b['qty']}@{b['price']}" for b in booked),
             )
+
+        # P0-1 (設計 v1.1 §四/§五): dust reaper + health self-report.
+        # dust_reaper defaults to report-only (kv DUST_REAPER_MODE); never
+        # raises into the pipeline.
+        try:
+            from src.dust_reaper import run as dust_reaper_run
+            from src.health_report import run as health_report_run
+            portfolio = ctx.get("portfolio") or portfolio
+            dust_summary = dust_reaper_run(client, portfolio)
+            health_report_run(client, portfolio, dust_summary=dust_summary)
+            logger.info(
+                "dust_reaper: mode=%s positions=%d candidates=%d watch=%d",
+                dust_summary.get("mode"), dust_summary.get("positions", 0),
+                dust_summary.get("liquidate_candidates", 0),
+                dust_summary.get("watch", 0),
+            )
+        except Exception:
+            logger.warning("dust/health step failed (non-fatal)", exc_info=True)
     except Exception:
         logger.warning("reconcile step failed (non-fatal)", exc_info=True)
 

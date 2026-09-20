@@ -55,6 +55,62 @@ def _sanitize_error(msg: str) -> str:
     return _SENSITIVE_PATTERN.sub(r"\1=***REDACTED***", msg)
 
 
+# P0-1: rate-limit / transient-failure accounting (module-level, per process).
+# Read by src.health_report for L1/L2 classification.
+RATE_STATS = {"429": 0, "418": 0, "5xx": 0, "network": 0}
+
+
+def _record_rate_event(kind: str) -> None:
+    try:
+        RATE_STATS[kind] = RATE_STATS.get(kind, 0) + 1
+    except Exception:
+        pass
+
+
+def _retry_call(fn, *, label: str, attempts: int = 3, base_delay: float = 0.5):
+    """P0-1 generic backoff wrapper for read endpoints.
+
+    429/418 → Retry-After aware exponential backoff; 5xx and network errors →
+    exponential backoff; any other ClientError propagates immediately.
+    Total worst-case blocking ≈ base_delay*(1+2+4) — bounded so the scan
+    pipeline is never stalled. Every retryable event is counted in RATE_STATS.
+    """
+    import requests as _rq
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except ClientError as e:
+            if e.status_code in (429, 418):
+                _record_rate_event(str(e.status_code))
+                if attempt < attempts - 1:
+                    wait = _parse_retry_after(e, int(base_delay * (2 ** attempt)))
+                    logger.warning(
+                        "rate limited on %s (attempt %d/%d), waiting %ds",
+                        label, attempt + 1, attempts, wait,
+                    )
+                    time.sleep(wait)
+                    continue
+            elif e.status_code >= 500:
+                _record_rate_event("5xx")
+                if attempt < attempts - 1:
+                    time.sleep(base_delay * (2 ** attempt))
+                    continue
+            raise
+        except _rq.exceptions.RequestException as e:
+            _record_rate_event("network")
+            last_exc = e
+            if attempt < attempts - 1:
+                logger.warning(
+                    "network error on %s (attempt %d/%d): %s",
+                    label, attempt + 1, attempts, e,
+                )
+                time.sleep(base_delay * (2 ** attempt))
+                continue
+            raise
+    raise last_exc  # pragma: no cover - defensive
+
+
 def _parse_retry_after(error: ClientError, default_wait: int) -> int:
     """Safely parse Retry-After header from a Binance ClientError.
 
@@ -222,7 +278,9 @@ class BinanceClient:
         ):
             return self._exchange_info_cache
         try:
-            self._exchange_info_cache = self.client.exchange_info()
+            self._exchange_info_cache = _retry_call(
+                lambda: self.client.exchange_info(), label="exchange_info"
+            )
             self._exchange_info_timestamp = now
             return self._exchange_info_cache
         except Exception as e:
@@ -287,6 +345,7 @@ class BinanceClient:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
                     # P2-9: Rate-limited — parse Retry-After and retry
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Binance rate limit (klines {symbol}): [{e.status_code}] {msg}, "
@@ -417,6 +476,7 @@ class BinanceClient:
             except ClientError as e:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited getting account (attempt {attempt+1}), waiting {wait}s"
@@ -692,6 +752,7 @@ class BinanceClient:
                 # Rate limit — wait and retry
                 self._log_used_weight(e)
                 if e.status_code in (429, 418) and attempt < retry - 1:
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited on order (attempt {attempt+1}), waiting {wait}s"
@@ -937,6 +998,7 @@ class BinanceClient:
             except ClientError as e:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited canceling order (attempt {attempt+1}), waiting {wait}s"
@@ -968,6 +1030,7 @@ class BinanceClient:
             except ClientError as e:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited getting open orders (attempt {attempt+1}), waiting {wait}s"
@@ -996,6 +1059,7 @@ class BinanceClient:
             except ClientError as e:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited canceling all orders (attempt {attempt+1}), waiting {wait}s"
@@ -1095,8 +1159,15 @@ class BinanceClient:
                     filters["price_decimals"] = (
                         len(tick_str.split(".")[-1]) if "." in tick_str else 0
                     )
-                elif f["filterType"] == "MIN_NOTIONAL":
+                elif f["filterType"] in ("MIN_NOTIONAL", "NOTIONAL"):
+                    # P0-1: Binance migrated SPOT pairs to the NOTIONAL filter
+                    # (e.g. SUIUSDT, minNotional 5 with applyMinToMarket=true).
+                    # applyMinToMarket=true enforces minNotional on MARKET
+                    # orders as well — dust_reaper depends on both fields.
                     filters["minNotional"] = float(f["minNotional"])
+                    filters["applyMinToMarket"] = bool(
+                        f.get("applyMinToMarket", False)
+                    )
             return filters
         except Exception:
             logger.error(
@@ -1114,6 +1185,7 @@ class BinanceClient:
             except ClientError as e:
                 self._log_used_weight(e)
                 if e.status_code in (429, 418):
+                    _record_rate_event(str(e.status_code))
                     wait = _parse_retry_after(e, 2 ** (attempt + 1))
                     logger.warning(
                         f"Rate limited getting order (attempt {attempt+1}), waiting {wait}s"
@@ -1134,9 +1206,12 @@ class BinanceClient:
         return None
 
     def get_ticker_price(self, symbol: str) -> float:
-        """Get current ticker price for a symbol."""
+        """Get current ticker price for a symbol (P0-1: backoff-wrapped)."""
         try:
-            resp = self.client.ticker_price(symbol=symbol)
+            resp = _retry_call(
+                lambda: self.client.ticker_price(symbol=symbol),
+                label=f"ticker_price({symbol})",
+            )
             if isinstance(resp, dict) and "price" in resp:
                 return float(resp["price"])
             return float(resp)
@@ -1160,7 +1235,10 @@ class BinanceClient:
             params = {"symbol": symbol, "limit": limit}
             if from_id is not None:
                 params["fromId"] = from_id
-            return self.client.my_trades(**params)
+            return _retry_call(
+                lambda: self.client.my_trades(**params),
+                label=f"my_trades({symbol})",
+            )
         except Exception as e:
             logger.error(f"Failed to get my trades for {symbol}: {e}")
             return []
