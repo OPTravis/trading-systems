@@ -103,6 +103,9 @@ def _order_booked(db, order_id) -> bool:
     return row is not None
 
 
+from src.live_alerts import emit as emit_alert
+
+
 def _fuzzy_booked(db, symbol: str, qty: float, price: float) -> bool:
     """True if a recent NULL-id SELL row already covers this fill.
 
@@ -190,6 +193,11 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
                 "[oco_fill orderId=%s qty=%.8g]",
                 symbol, avg_px, pnl, oid, qty,
             )
+            emit_alert(
+                "OCO_FILL", symbol,
+                {"side": "SELL", "qty": round(qty, 8),
+                 "price": round(avg_px, 8), "pnl": round(pnl, 6),
+                 "order_id": str(oid), "source": "reconcile"})
         remaining_gap -= qty
     return booked
 

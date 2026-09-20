@@ -195,6 +195,13 @@ class EventTriggerEngine:
                 "pct": 0.0, "window_sec": 0,
                 "detail": f"{self.last_regime}->{regime_now}",
             }
+            try:
+                from src.live_alerts import emit as emit_alert
+                emit_alert(
+                    "REGIME_CHANGE", BTC_SYMBOL,
+                    {"from": self.last_regime, "to": regime_now})
+            except Exception:
+                pass  # alerting must never break the trigger engine
 
         # (d) fill on a holding (covers OCO fills); cold start only seeds
         fill = None

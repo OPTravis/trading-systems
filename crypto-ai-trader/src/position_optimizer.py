@@ -14,6 +14,8 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from src.live_alerts import emit as emit_alert
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,6 +101,11 @@ class PositionOptimizer:
                     "switch-protection: SL rejected for %s — TP skipped (ensure_tp_sl will retry)",
                     symbol,
                 )
+                emit_alert(
+                    "PROTECTION_FAILED", symbol,
+                    {"which": "SL", "qty": pqty,
+                     "note": "SL rejected; TP skipped; "
+                             "ensure_tp_sl will retry"})
                 return
             logger.info("switch-protection: SL live for %s %s @ %s", symbol, pqty, sl_px)
             try:
@@ -107,6 +114,9 @@ class PositionOptimizer:
                 logger.error(
                     "switch-protection: TP FAILED for %s @ %s: %s — "
                     "ensure_tp_sl must retry", symbol, tp_px, e)
+                emit_alert(
+                    "PROTECTION_FAILED", symbol,
+                    {"which": "TP", "tp_px": tp_px, "error": str(e)})
                 return
             if tp_ret:
                 logger.info("switch-protection: TP live for %s @ %s", symbol, tp_px)
@@ -118,6 +128,10 @@ class PositionOptimizer:
                     "switch-protection: TP FAILED for %s @ %s (order "
                     "rejected, no exception — e.g. insufficient balance) "
                     "— ensure_tp_sl must retry", symbol, tp_px)
+                emit_alert(
+                    "PROTECTION_FAILED", symbol,
+                    {"which": "TP", "tp_px": tp_px,
+                     "error": "soft rejection (falsy return)"})
         except Exception as e:
             logger.warning("switch-protection: non-fatal failure for %s: %s", symbol, e)
 
@@ -538,6 +552,12 @@ class PositionOptimizer:
                             logger.error(
                                 "SWITCH_RISK_BLOCK: %s -> %s rejected — %s",
                                 from_symbol, to_symbol, check.get("reason"))
+                            emit_alert(
+                                "SWITCH_RISK_BLOCK", to_symbol,
+                                {"from_symbol": from_symbol,
+                                 "reason": check.get("reason"),
+                                 "max_correlation": check.get(
+                                     "max_correlation")})
                             try:
                                 from src.state_db import get_state_db
                                 get_state_db().audit_log(
@@ -662,6 +682,11 @@ class PositionOptimizer:
                             "value": from_value,
                         },
                     )
+                    emit_alert(
+                        "SWITCH_EXIT_TO_USDT", from_symbol,
+                        {"reason": decision.get("reason", ""),
+                         "sell_order_id": sell_order.get("orderId"),
+                         "value_usdt": from_value})
                 except Exception:
                     logger.error(
                         "Failed to log EXIT_TO_USDT audit for %s",
@@ -893,6 +918,15 @@ class PositionOptimizer:
                         "buy_order_id": buy_order.get("orderId"),
                     },
                 )
+                emit_alert(
+                    "SWITCH_EXECUTED", to_symbol,
+                    {"from_symbol": from_symbol,
+                     "to_symbol": to_symbol,
+                     "from_value_usdt": from_value,
+                     "buy_value_usdt": buy_value,
+                     "sell_order_id": sell_order.get("orderId"),
+                     "buy_order_id": buy_order.get("orderId"),
+                     "reason": decision.get("reason", "")})
             except Exception as db_err:
                 logger.warning(f"State DB persistence failed (non-critical): {db_err}")
 
