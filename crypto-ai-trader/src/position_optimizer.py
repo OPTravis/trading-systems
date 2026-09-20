@@ -354,6 +354,11 @@ class PositionOptimizer:
         # Find best alternative opportunity
         best_alt = None
         best_score_gap = 0.0
+        # Net proceeds available for the switch buy (nominal USDT).
+        # Sub-minNotional targets can never hold SL/TP orders —
+        # switching there creates a naked position (XAUT 9/18,
+        # DASH 9/19, SUI 9/20).
+        proceeds = position_value * (1 - self.SWITCH_FEE_PCT / 100)
 
         for opp in opportunities:
             opp_symbol = opp["symbol"]
@@ -374,6 +379,28 @@ class PositionOptimizer:
             if opp_24h > self.BLACKLIST_24H_CHANGE:
                 logger.debug(
                     f"{opp_symbol}: blacklisted (24h={opp_24h:.1f}% > {self.BLACKLIST_24H_CHANGE}%)"
+                )
+                continue
+
+            # minNotional guard: switch buy size ~= net sell proceeds;
+            # a target whose minNotional exceeds proceeds (x1.05 buffer)
+            # would take a buy the exchange accepts but SL/TP orders
+            # it rejects — PROTECTION_SKIP before any score comparison.
+            try:
+                tgt_filters = self.bc.get_symbol_filters(opp_symbol) or {}
+                tgt_min_notional = float(
+                    tgt_filters.get("minNotional", 10.0) or 10.0)
+            except Exception as e:
+                tgt_min_notional = 10.0  # conservative Binance SPOT floor
+                logger.debug(
+                    "PROTECTION_SKIP filter fetch failed for %s: %s",
+                    opp_symbol, e)
+            if proceeds < tgt_min_notional * 1.05:
+                logger.warning(
+                    "PROTECTION_SKIP: %s -> %s rejected — net proceeds "
+                    "$%.2f < minNotional x1.05 $%.2f (buy would hold no "
+                    "SL/TP)",
+                    symbol, opp_symbol, proceeds, tgt_min_notional * 1.05,
                 )
                 continue
 
