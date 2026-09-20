@@ -213,3 +213,40 @@ class TestValidatorStaleReportScope:
         fresh_notif = {"timestamp": (last + timedelta(minutes=30)).isoformat()}
         assert v._balance_claim_in_stale_scope(fresh_notif) is False
         assert v._balance_claim_in_stale_scope({}) is False
+
+
+class TestTpFalsyReport:
+    """2026-09-20 order-2: place_limit_sell returning falsy (soft
+    rejection, no exception) must log TP FAILED, never "TP live"."""
+
+    def _run(self, tp_ret, caplog):
+        import logging as _lg
+        opt = object.__new__(PositionOptimizer)
+        opt.bc = SimpleNamespace(
+            get_symbol_filters=lambda s: {
+                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10"},
+            place_stop_loss_limit=lambda *a, **k: {"orderId": 1},
+            place_limit_sell=lambda *a, **k: tp_ret,
+        )
+        buy_order = {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"}
+        with caplog.at_level(_lg.ERROR, logger="src.position_optimizer"):
+            opt._place_switch_protections("ETHFIUSDT", 53.2, buy_order, 0.7588)
+
+    def test_falsy_tp_logs_failed_not_live(self, caplog):
+        self._run(None, caplog)
+        assert "TP FAILED" in caplog.text
+        assert "TP live" not in caplog.text
+
+    def test_truthy_tp_logs_live(self, caplog):
+        import logging as _lg
+        opt = object.__new__(PositionOptimizer)
+        opt.bc = SimpleNamespace(
+            get_symbol_filters=lambda s: {
+                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10"},
+            place_stop_loss_limit=lambda *a, **k: {"orderId": 1},
+            place_limit_sell=lambda *a, **k: {"orderId": 334},
+        )
+        buy_order = {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"}
+        with caplog.at_level(_lg.INFO, logger="src.position_optimizer"):
+            opt._place_switch_protections("ETHFIUSDT", 53.2, buy_order, 0.7588)
+        assert "TP live" in caplog.text

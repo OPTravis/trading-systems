@@ -102,10 +102,22 @@ class PositionOptimizer:
                 return
             logger.info("switch-protection: SL live for %s %s @ %s", symbol, pqty, sl_px)
             try:
-                self.bc.place_limit_sell(symbol, pqty, tp_px)
-                logger.info("switch-protection: TP live for %s @ %s", symbol, tp_px)
+                tp_ret = self.bc.place_limit_sell(symbol, pqty, tp_px)
             except Exception as e:
-                logger.warning("switch-protection: TP place failed for %s: %s", symbol, e)
+                logger.error(
+                    "switch-protection: TP FAILED for %s @ %s: %s — "
+                    "ensure_tp_sl must retry", symbol, tp_px, e)
+                return
+            if tp_ret:
+                logger.info("switch-protection: TP live for %s @ %s", symbol, tp_px)
+            else:
+                # place_limit_sell returns falsy on soft rejections
+                # (e.g. insufficient balance) without raising — without
+                # this check the log claims "TP live" on a dead order
+                logger.error(
+                    "switch-protection: TP FAILED for %s @ %s (order "
+                    "rejected, no exception — e.g. insufficient balance) "
+                    "— ensure_tp_sl must retry", symbol, tp_px)
         except Exception as e:
             logger.warning("switch-protection: non-fatal failure for %s: %s", symbol, e)
 
