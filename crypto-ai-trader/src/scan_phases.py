@@ -911,7 +911,8 @@ def _step_scan_opportunities():
 
     # ===== Step 4b: Position Optimization (Smart Switch) =====
     optimizer = PositionOptimizer(
-        binance_client=client, portfolio=portfolio, market_scanner=scanner
+        binance_client=client, portfolio=portfolio, market_scanner=scanner,
+        risk_manager=risk_mgr,
     )
     # Pass pre-computed opportunities + BTC change for smart activation (avoids redundant scan_all)
     # Filter opportunities to top 20 for optimizer input

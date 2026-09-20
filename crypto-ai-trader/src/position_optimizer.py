@@ -143,10 +143,12 @@ class PositionOptimizer:
     VOLATILITY激活_THRESHOLD = 2.0  # BTC 24h > 2% → activate optimizer
     POSITION_LOSS激活_THRESHOLD = -2.0  # any position 24h < -2% → activate
 
-    def __init__(self, binance_client, portfolio, market_scanner):
+    def __init__(self, binance_client, portfolio, market_scanner,
+                 risk_manager=None):
         self.bc = binance_client
         self.portfolio = portfolio
         self.scanner = market_scanner
+        self.risk_manager = risk_manager
         self._last_switch_time: Dict[str, float] = {}  # symbol -> timestamp
         self._load_switch_times()
 
@@ -512,6 +514,59 @@ class PositionOptimizer:
             if not from_qty or from_qty <= 0:
                 logger.error(f"No quantity found for {from_symbol} in portfolio")
                 return False
+
+            # 1-pre. RISK GATE — correlation check on the POST-switch
+            # portfolio (current holdings minus from_symbol, plus
+            # to_symbol). Runs BEFORE the sell: a blocked switch
+            # leaves the existing position (and its SL/TP) untouched
+            # instead of parking the proceeds in USDT. Fail-closed —
+            # if the check itself errors, the switch aborts (9/20
+            # BCH->SUI switch ran with no risk gate at all).
+            if to_symbol and self.risk_manager is not None:
+                try:
+                    corr = getattr(self.risk_manager, "correlation_risk", None)
+                    if corr is not None:
+                        held_after = [
+                            (p.get("symbol") or "").replace("USDT", "")
+                            for p in positions
+                            if p.get("symbol")
+                            and p["symbol"] != from_symbol
+                        ]
+                        check = corr.check_new_position(
+                            to_symbol.replace("USDT", ""), held_after)
+                        if not check.get("allowed", False):
+                            logger.error(
+                                "SWITCH_RISK_BLOCK: %s -> %s rejected — %s",
+                                from_symbol, to_symbol, check.get("reason"))
+                            try:
+                                from src.state_db import get_state_db
+                                get_state_db().audit_log(
+                                    "SWITCH_RISK_BLOCK",
+                                    {"from_symbol": from_symbol,
+                                     "to_symbol": to_symbol,
+                                     "reason": check.get("reason"),
+                                     "max_correlation": check.get(
+                                         "max_correlation")},
+                                    source="position_optimizer")
+                            except Exception:
+                                logger.error(
+                                    "Failed to log SWITCH_RISK_BLOCK audit",
+                                    exc_info=True)
+                            return False
+                        sm = check.get("size_multiplier", 1.0)
+                        if sm < 1.0:
+                            # switch qty is proceeds-driven, no size
+                            # knob — record the advisory and proceed
+                            logger.info(
+                                "switch risk gate: %s correlation advisory "
+                                "x%.2f (%s) — proceeds-driven size, proceeding",
+                                to_symbol, sm, check.get("reason"))
+                except Exception as e:
+                    logger.error(
+                        "switch risk gate error for %s -> %s: %s — "
+                        "aborting (fail-closed)",
+                        from_symbol, to_symbol, e)
+                    return False
 
             # 1b. Validate sell quantity against exchange filters (minQty, minNotional, stepSize)
             sell_filters = self.bc.get_symbol_filters(from_symbol)
