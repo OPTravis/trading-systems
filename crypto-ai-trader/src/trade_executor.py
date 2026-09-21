@@ -1467,6 +1467,23 @@ def execute_auto_trade(
     _dl_multiplier = risk_check["dl_multiplier"]
     _sd_multiplier = risk_check["sd_multiplier"]
 
+    # ── P0-2 defense item 1: multi-stage circuit tiers entry gate ──
+    # Tier >= 1 blocks new entries (STOP_NEW enforced in every mode).
+    # Independent of the legacy breakers above — fail-open on internal
+    # errors so a tier-gate bug cannot freeze legitimate trading.
+    try:
+        from src.circuit_tiers import entry_blocked
+        from src.state_db import StateDB
+
+        _tiers_block = entry_blocked(StateDB())
+        if _tiers_block:
+            logger.warning("execute_auto_trade: blocked by %s", _tiers_block)
+            return {"success": False,
+                    "error": f"Risk gate: {_tiers_block}"}
+    except Exception:
+        logger.warning("circuit_tiers entry gate check failed (fail-open)",
+                       exc_info=True)
+
     # Count existing positions
     active_positions = count_active_positions(client)
     max_positions = _RISK_MAX_ACTIVE_POSITIONS

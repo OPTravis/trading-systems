@@ -135,8 +135,13 @@ def cmd_cron_scan():
             return
 
         _step_event_driven_adjustment(ctx)
-        _step_execute_trades(ctx)
+        if _step_kv_preflight(ctx):
+            _step_execute_trades(ctx)
+        else:
+            logger.warning(
+                "kv_preflight: FAIL — skipping new entries this scan")
         _step_reconcile_portfolio(ctx)
+        _step_defense_sweep(ctx)
         _step_evolve_strategies(ctx)
         _append_scan_summary(ctx)
     finally:
@@ -216,6 +221,60 @@ def _step_reconcile_portfolio(ctx):
             logger.warning("dust/health step failed (non-fatal)", exc_info=True)
     except Exception:
         logger.warning("reconcile step failed (non-fatal)", exc_info=True)
+
+
+def _step_kv_preflight(ctx) -> bool:
+    """P0-2 defense item 3: KV/state freshness gate before new entries.
+
+    Returns True when the execute step may run. Any preflight failure
+    (including an internal exception — a broken gate must fail closed)
+    returns False so no new positions are opened on stale/corrupt state.
+    """
+    portfolio = ctx.get("portfolio")
+    db = getattr(portfolio, "_db", None) if portfolio is not None else None
+    if db is None:
+        logger.warning("kv_preflight: no db handle — skipping new entries")
+        return False
+    try:
+        from src.kv_preflight import run as kv_preflight_run
+
+        result = kv_preflight_run(db)
+        return bool(result.get("ok"))
+    except Exception:
+        logger.warning("kv_preflight: internal error — skipping new entries",
+                       exc_info=True)
+        return False
+
+
+def _step_defense_sweep(ctx):
+    """P0-2 defense items 1/2: stuck-order monitor + circuit tiers.
+
+    Runs after reconcile/dust/health so tier evaluation sees the freshest
+    booked state. Both sub-steps are individually fail-open (non-fatal).
+    """
+    client = ctx.get("client")
+    portfolio = ctx.get("portfolio")
+    if client is None or portfolio is None:
+        return
+    try:
+        from src.stuck_order_monitor import run as stuck_order_run
+
+        stuck = stuck_order_run(client)
+        if stuck.get("stuck"):
+            logger.warning("stuck_order_monitor: %s", stuck)
+    except Exception:
+        logger.warning("stuck order monitor failed (non-fatal)",
+                       exc_info=True)
+    try:
+        from src.circuit_tiers import evaluate_and_act
+
+        tiers = evaluate_and_act(client, portfolio)
+        if tiers.get("tier", 0) > 0 or tiers.get("action") not in (
+                "HOLD", None):
+            logger.warning("circuit_tiers: %s", tiers)
+    except Exception:
+        logger.warning("circuit tiers step failed (non-fatal)",
+                       exc_info=True)
 
 
 def _bull_phase2_status_line(opportunities=None) -> str:
