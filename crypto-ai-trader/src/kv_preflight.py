@@ -44,6 +44,15 @@ KV_KEYS = ("cash_balance", "hmm_regime")
 #: round-trip probe key (value equality proves the store is transparent)
 _PROBE_KEY = "kv_preflight:probe"
 
+#: fail-state key — {first_ts, last_alert_ts, count, escalated}
+KV_FAIL_STATE = "kv_preflight:fail_state"
+
+#: FAIL alerts: immediate on first, then at most one per hour (Travis
+#: 2026-09-21 acceptance: no 10-min spam); continuous failure past
+#: ESCALATE_AFTER_S upgrades to a human-intervention alert.
+FAIL_ALERT_THROTTLE_S = 3600
+ESCALATE_AFTER_S = 2 * 3600
+
 
 def _kv_age_s(db: Any, key: str) -> Optional[float]:
     row = (
@@ -94,11 +103,24 @@ def run(db: Any, log: Optional[logging.Logger] = None) -> Dict[str, Any]:
     # -- guard: db handle must be usable at all --
     if db is None:
         _pass("db", {"note": "no db handle — checker blind, not blocking"})
-        return _finish(True, checks, log, note="NO_DB_OPINION")
+        return _finish(True, checks, log, note="NO_DB_OPINION", db=db)
 
     if not _db_is_transparent(db, log):
         _pass("db", {"note": "opaque db handle — semantics not evaluable"})
-        return _finish(True, checks, log, note="OPAQUE_DB")
+        # Acceptance addendum: opacity must be VISIBLE even though it does
+        # not block — frequent opacity inside the observation window is a
+        # persistence-layer alarm signal someone has to be able to see.
+        # Scan cadence is ~1h so one alert per round == "first + hourly".
+        from src.live_alerts import emit as _emit
+
+        _emit("KV_PREFLIGHT_OPAQUE", None, {
+            "note": "db reads do not reflect writes — checker blind, "
+                    "trading NOT blocked",
+            "ts": time.time(),
+        })
+        log.warning("kv_preflight: opaque db handle (not blocking) — "
+                    "persistence layer may be unhealthy")
+        return _finish(True, checks, log, note="OPAQUE_DB", db=db)
 
     try:
         # -- kv keys: readable + parseable + fresh --
@@ -167,14 +189,35 @@ def run(db: Any, log: Optional[logging.Logger] = None) -> Dict[str, Any]:
                           {"age_s": round(age), "rows": len(rows)})
     except Exception as exc:  # noqa: BLE001
         _fail("preflight", f"internal error: {exc}", {})
-        return _finish(ok, checks, log, error="INTERNAL")
+        return _finish(ok, checks, log, error="INTERNAL", db=db)
 
-    return _finish(ok, checks, log)
+    return _finish(ok, checks, log, db=db)
+
+
+def _fail_state_load(db) -> Dict[str, Any]:
+    try:
+        raw = db.kv_get(KV_FAIL_STATE)
+        if isinstance(raw, dict):
+            return raw
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {}
+
+
+def _fail_state_save(db, state: Dict[str, Any]) -> None:
+    try:
+        db.kv_set(KV_FAIL_STATE, state)
+    except Exception:
+        log_only = logging.getLogger(__name__)
+        log_only.warning("kv_preflight: fail-state save failed",
+                         exc_info=True)
 
 
 def _finish(ok: bool, checks: list, log: logging.Logger,
-            error: Optional[str] = None, note: Optional[str] = None
-            ) -> Dict[str, Any]:
+            error: Optional[str] = None, note: Optional[str] = None,
+            db: Any = None) -> Dict[str, Any]:
     from src.live_alerts import emit as emit_alert
 
     result = {
@@ -187,9 +230,41 @@ def _finish(ok: bool, checks: list, log: logging.Logger,
     if note:
         result["note"] = note
     if not ok:
-        emit_alert("KV_PREFLIGHT_FAIL", None, {
-            "checks": checks, "error": error, "ts": time.time(),
-        })
-        log.warning("kv_preflight: FAIL — skipping new entries this round: "
-                    "%s", [c for c in checks if c["status"] == "FAIL"])
+        # Throttled + escalating alerting (acceptance addendum):
+        #   - first failure alerts immediately
+        #   - repeats at most once per FAIL_ALERT_THROTTLE_S
+        #   - continuous failure past ESCALATE_AFTER_S flips to the
+        #     human-intervention alert and re-alerts hourly at that level
+        now = time.time()
+        st = _fail_state_load(db) if db is not None else {}
+        first_ts = float(st.get("first_ts") or now)
+        last_alert = float(st.get("last_alert_ts") or 0)
+        was_escalated = bool(st.get("escalated"))
+        escalated = (now - first_ts) >= ESCALATE_AFTER_S
+        do_alert = (
+            not st                       # first failure
+            or now - last_alert >= FAIL_ALERT_THROTTLE_S
+            or escalated != was_escalated
+        )
+        if do_alert:
+            event = ("KV_PREFLIGHT_ESCALATED" if escalated
+                     else "KV_PREFLIGHT_FAIL")
+            emit_alert(event, None, {
+                "checks": checks, "error": error,
+                "continuous_fail_s": round(now - first_ts),
+                "escalated": escalated, "ts": now,
+            })
+            log.warning(
+                "kv_preflight: %s — skipping new entries this round: %s",
+                event, [c for c in checks if c["status"] == "FAIL"])
+        if db is not None:
+            _fail_state_save(db, {
+                "first_ts": first_ts, "last_alert_ts": now,
+                "escalated": escalated,
+            })
+    elif db is not None:
+        # healthy round clears the fail streak
+        if _fail_state_load(db):
+            _fail_state_save(db, {})
+    return result
     return result

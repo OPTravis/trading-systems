@@ -431,3 +431,74 @@ def test_tier_escalation_t1_to_t2_same_day(_no_live_alerts):
     res2 = ct.evaluate_and_act(FakeClient({"BTCUSDT": 0.87}), portfolio)
     assert res2["tier"] == 2 and res2["prev_tier"] == 1
     assert res2["action"] in ("DELEVERAGE", "DELEVERAGE_REPORTED")
+
+
+# ── acceptance addendum: alert visibility + throttling/escalation ─────────────
+
+def test_opaque_db_emits_visibility_alert(_no_live_alerts):
+    class OpaqueDB:
+        def kv_get(self, key, default=None):
+            return "<mock>"
+
+        def kv_set(self, key, value):
+            pass
+
+    kpf.run(OpaqueDB())
+    assert any(e["event_type"] == "KV_PREFLIGHT_OPAQUE"
+               for e in _no_live_alerts)
+    # opaque must NOT emit a blocking FAIL alert
+    assert not any(e["event_type"] == "KV_PREFLIGHT_FAIL"
+                   for e in _no_live_alerts)
+
+
+def test_fail_alert_throttled_to_hourly(_no_live_alerts):
+    db = _bind_conn(FakeDB(
+        kv={"cash_balance": "50", "hmm_regime": "{}"},
+        portfolio_rows=[("BTCUSDT", 0.1, 50000, 50)],
+        kv_ages={"cash_balance": 3 * 3600},  # stale → FAIL
+    ))
+    kpf.run(db)   # first failure → immediate alert
+    kpf.run(db)   # second failure seconds later → throttled, no new alert
+    fails = [e for e in _no_live_alerts
+             if e["event_type"] == "KV_PREFLIGHT_FAIL"]
+    assert len(fails) == 1
+
+
+def test_continuous_fail_escalates_after_2h(_no_live_alerts):
+    db = _bind_conn(FakeDB(
+        kv={"cash_balance": "50", "hmm_regime": "{}"},
+        portfolio_rows=[("BTCUSDT", 0.1, 50000, 50)],
+        kv_ages={"cash_balance": 3 * 3600},
+    ))
+    kpf.run(db)  # trip
+    # fast-forward: first failure 3h ago, last alert just now → throttle
+    # window open (>=1h), escalation boundary crossed
+    st = db.kv_get("kv_preflight:fail_state")
+    st["first_ts"] = time.time() - 3 * 3600
+    db.kv_set("kv_preflight:fail_state", st)
+    kpf.run(db)
+    assert any(e["event_type"] == "KV_PREFLIGHT_ESCALATED"
+               for e in _no_live_alerts)
+
+
+def test_healthy_round_clears_fail_streak(_no_live_alerts):
+    db = _bind_conn(FakeDB(
+        kv={"cash_balance": "50", "hmm_regime": "{}"},
+        portfolio_rows=[("BTCUSDT", 0.1, 50000, 50)],
+        kv_ages={"cash_balance": 3 * 3600},
+    ))
+    kpf.run(db)  # trip + state saved
+    assert db.kv_get("kv_preflight:fail_state")
+    # heal: fresh cash_balance
+    db2 = _bind_conn(FakeDB(
+        kv={"cash_balance": "50", "hmm_regime": "{}"},
+        portfolio_rows=[("BTCUSDT", 0.1, 50000, 50)],
+        kv_ages={"cash_balance": 3 * 3600},
+    ))
+    db2.kv = {"cash_balance": "50", "hmm_regime": "{}",
+              "kv_preflight:fail_state":
+                  db.kv_get("kv_preflight:fail_state")}
+    db2.kv_ages = {}  # everything fresh
+    res = kpf.run(db2)
+    assert res["ok"] is True
+    assert db2.kv_get("kv_preflight:fail_state") == {}
