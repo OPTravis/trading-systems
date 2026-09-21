@@ -48,6 +48,39 @@ DEFAULT_TP_PCT = 0.04
 _OCO_MARKERS = ("STOP_LOSS", "TAKE_PROFIT", "OCO")
 
 
+_BREACH_ALERT_INTERVAL_S = 3600  # one PROTECTION_TP_TARGET_BREACHED
+# per symbol per hour while the state persists
+
+
+def _emit_breach_throttled(sym: str, payload: dict) -> None:
+    """TP-target-breached persists for hours — without throttling that
+    is ~144 alerts/day/position at the 10-min scan cadence. First alert
+    immediate, then hourly; state cleared when the breach resolves."""
+    try:
+        from src.state_db import get_state_db
+        db = get_state_db()
+        now = time.time()
+        key = f"tp_breach_state:{sym}"
+        st = db.kv_get(key)
+        st = st if isinstance(st, dict) else {}
+        last = float(st.get("last_alert_ts") or 0)
+        first = float(st.get("first_ts") or now)
+        if last <= 0 or now - last >= _BREACH_ALERT_INTERVAL_S:
+            emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, payload)
+            db.kv_set(key, {"first_ts": first, "last_alert_ts": now})
+    except Exception:
+        # opaque/unavailable db —宁可重复告警也不静默
+        emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, payload)
+
+
+def _clear_breach_state(sym: str) -> None:
+    try:
+        from src.state_db import get_state_db
+        get_state_db().kv_set(f"tp_breach_state:{sym}", {})
+    except Exception:
+        pass
+
+
 def _track(symbol: str, entry: float, qty: float, tp_orders: list,
            sl_order: Optional[dict]) -> None:
     """Persist tp_sl_tracker state after a heal (best-effort)."""
@@ -187,7 +220,7 @@ def run(client: Any, portfolio: Any,
             # take-profit-target-breached state; deciding to sell is a
             # strategy decision, not the guardian's).
             if tp_px <= price * 1.001:
-                emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, {
+                _emit_breach_throttled(sym, {
                     "tp_px": tp_px, "price": price,
                     "note": "price at/above TP target — "
                             "take-profit is a strategy decision",
@@ -230,6 +263,9 @@ def run(client: Any, portfolio: Any,
                 else:
                     summary["skipped"] += 1
                 continue
+
+            # breach resolved — clear throttle state
+            _clear_breach_state(sym)
 
             free_qty = _step_floor(qty - oco_qty - tp_qty - sl_qty, step)
             if free_qty >= min_qty and free_qty * price >= min_notional:

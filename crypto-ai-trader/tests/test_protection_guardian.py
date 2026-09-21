@@ -321,6 +321,61 @@ class TestV3FieldLessons:
         assert pg._is_plain_sl(bare) is True
 
 
+class TestBreachThrottle:
+    def _db(self):
+        store = {}
+        db = SimpleNamespace(
+            kv_get=lambda k: store.get(k),
+            kv_set=lambda k, v: store.__setitem__(k, v))
+        return store, db
+
+    def test_first_immediate_then_hourly(self, monkeypatch):
+        store, db = self._db()
+        monkeypatch.setattr(pg, "get_state_db", lambda: db, raising=False)
+        # run() imports get_state_db inside the helper — patch the module
+        import src.state_db as sdb
+        monkeypatch.setattr(sdb, "get_state_db", lambda: db)
+        sent = []
+        monkeypatch.setattr(pg, "emit_alert",
+                            lambda ev, sym, p: sent.append((ev, sym)))
+        c = FakeClient(orders=[])
+        pos = _pos("FETUSDT", 84.6, 0.1879, take_profit=0.199174,
+                   price=0.2056)
+        pg.run(c, FakePortfolio([pos]))   # FET: SL-less? no SL → naked+breach
+        # breach branch fires only via _emit_breach_throttled
+        # (naked case also places emergency SL)
+        assert any(e == "PROTECTION_TP_TARGET_BREACHED" for e, _ in sent)
+        n1 = len(sent)
+        pg.run(c, FakePortfolio([pos]))   # within the hour → suppressed
+        breach2 = [1 for e, _ in sent if
+                   e == "PROTECTION_TP_TARGET_BREACHED"]
+        assert len(breach2) == 1  # no second breach alert
+        # simulate 1h elapsed
+        store["tp_breach_state:FETUSDT"]["last_alert_ts"] -= 3601
+        pg.run(c, FakePortfolio([pos]))
+        breach3 = [1 for e, _ in sent if
+                   e == "PROTECTION_TP_TARGET_BREACHED"]
+        assert len(breach3) == 2  # hourly re-alert fired
+
+    def test_resolution_clears_state(self, monkeypatch):
+        store, db = self._db()
+        import src.state_db as sdb
+        monkeypatch.setattr(sdb, "get_state_db", lambda: db)
+        sent = []
+        monkeypatch.setattr(pg, "emit_alert",
+                            lambda ev, sym, p: sent.append((ev, sym)))
+        # breached now, healthy later
+        c = FakeClient(orders=[])
+        pos_bad = _pos("FETUSDT", 84.6, 0.1879, take_profit=0.199174,
+                       price=0.2056)
+        pg.run(c, FakePortfolio([pos_bad]))
+        assert store["tp_breach_state:FETUSDT"]  # state written
+        pos_ok = _pos("FETUSDT", 84.6, 0.1879, take_profit=0.2130,
+                      price=0.2056)  # tp above market
+        pg.run(c, FakePortfolio([pos_ok]))
+        assert not store["tp_breach_state:FETUSDT"]  # cleared
+
+
 class TestStepFloor:
     def test_step_floor_and_tick(self):
         assert pg._step_floor(0.00715042, 0.001) == pytest.approx(0.007)
