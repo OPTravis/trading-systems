@@ -143,3 +143,9 @@ trade_executor:
 # To re-blacklist: add symbols back to this list.
 trading:
   disabled_symbols: []
+# WO-016-3: bollinger SL = ATR14(1h) × atr_sl_mult, clamped [4, 15].
+# Multiplier picked from 90d/1h backtest grid (1.5/2.0/2.25/2.5/3.0 on
+# FET/ENA/WLD/BNB/HBAR): 2.5 best total return & lowest max drawdown,
+# trades 707->664 (fewer sweeps), win% 60.5->61.9, PF 0.79.
+bollinger:
+  atr_sl_mult: 2.5

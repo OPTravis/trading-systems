@@ -5,6 +5,7 @@ Extracted from scan_orchestrator for maintainability.
 
 import logging
 import os
+from typing import Dict, List, Optional
 
 from src.bear_analyst import BearAnalyst
 from src.paper_trader import get_trading_client, is_paper_mode
@@ -422,6 +423,33 @@ def _dca_fallback_direction_ok(ctx, client, symbol, klines=None):
     )
 
 
+def _bollinger_atr_sl(klines: List[Dict], price: float) -> Optional[float]:
+    """WO-016-3: per-symbol ATR-anchored SL for bollinger entries.
+
+    SL% = ATR14(1h)/price × 100 × atr_sl_mult, clamped to [4, 15]
+    (bandit SL bounds). Aligned with the backtester SL model
+    (SL_ATR_MULT on ATR). Returns None on any failure — caller keeps
+    the regime/GARCH ladder value (fail-open to legacy behavior).
+    """
+    try:
+        from src.indicators import Indicators
+        from src.risk_config import get_risk_param
+
+        if not klines or price <= 0:
+            return None
+        _atr = Indicators.atr(klines, period=14)
+        if not _atr or _atr <= 0:
+            return None
+        _mult = float(get_risk_param("bollinger", "atr_sl_mult", 2.0) or 2.0)
+        _atr_pct = _atr / price * 100
+        _sl = min(max(_atr_pct * _mult, 4.0), 15.0)
+        return round(_sl, 2)
+    except Exception:
+        logger.warning("ATR SL calc failed — keeping adapted sl_pct",
+                       exc_info=True)
+        return None
+
+
 def _step_research_top_n(ctx):
     """Step 2: Risk checks, deep research on top candidates, and bear analysis.
 
@@ -727,6 +755,19 @@ def _step_research_top_n(ctx):
         tp_levels = cfg.get("take_profit_levels", [])
         max_hold = cfg.get("max_hold_hours", 48)
         size_multiplier = 1.0
+
+    # ── WO-016-3: bollinger SL anchored to per-symbol ATR ──
+    # The adapted sl_pct is BTC-GARCH based (or a fixed 7.0/8.0 when
+    # GARCH fails) — disconnected from this symbol's own volatility.
+    # In RANGE chop a fixed % either gets swept (high-vol coin) or sits
+    # uselessly far (low-vol coin). Anchor bollinger entries to this
+    # symbol's ATR14(1h) × multiplier, aligned with the backtester's
+    # SL model (SL_ATR_MULT on ATR), clamped to the bandit SL bounds.
+    # Other strategies keep the regime/GARCH ladder (unchanged scope).
+    if strategy == "bollinger" and klines_data:
+        _sl = _bollinger_atr_sl(klines_data, price)
+        if _sl is not None:
+            stop_loss_pct = _sl
 
     # ── Layered position sizing in fear regime ──
     # Per investment advisor: in FEAR/EXTREME_FEAR, scale position by signal quality.

@@ -344,6 +344,111 @@ class BullRegimeDetector:
             "last_transition_reason": state.last_transition_reason,
         }
 
+    # ------------------------------------------------------------------
+    # WO-016-2: production wiring — evaluate on live market data
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _fetch_klines(client, symbol: str, interval: str, limit: int) -> List[Dict]:
+        """Fetch klines as dicts (get_klines or raw klines clients)."""
+        try:
+            if hasattr(client, "get_klines"):
+                raw = client.get_klines(symbol, interval, limit=limit)
+            elif hasattr(client, "klines"):
+                raw = client.klines(symbol, interval, limit=limit)
+            else:
+                return []
+            if not raw:
+                return []
+            if isinstance(raw[0], dict):
+                return raw
+            # raw list format -> dicts
+            return [
+                {"open_time": k[0], "open": float(k[1]), "high": float(k[2]),
+                 "low": float(k[3]), "close": float(k[4]), "volume": float(k[5]),
+                 "close_time": k[6]}
+                for k in raw
+            ]
+        except Exception:
+            logger.warning("bull_regime: klines fetch failed for %s",
+                           symbol, exc_info=True)
+            return []
+
+    def _load_fng_history(self) -> Dict[int, int]:
+        """F&G history from cache.db fng_history (date 'YYYY-MM-DD')."""
+        hist: Dict[int, int] = {}
+        try:
+            import sqlite3
+            import time as _time
+            from src.data_feed_base import _get_conn
+            conn = _get_conn()
+            rows = conn.execute(
+                "SELECT date, value FROM fng_history "
+                "ORDER BY date DESC LIMIT 30"
+            ).fetchall()
+            for r in rows:
+                d = str(r[0])[:10]
+                try:
+                    # evaluate_regime uses UTC day keys (ts - ts%86400)
+                    import calendar
+                    ts = calendar.timegm(_time.strptime(d, "%Y-%m-%d"))
+                    hist[int(ts)] = int(r[1])
+                except ValueError:
+                    continue
+            conn.close()
+        except Exception:
+            logger.debug("bull_regime: fng_history unavailable",
+                         exc_info=True)
+        return hist
+
+    def update_from_market(self, client) -> "RegimeState":
+        """Evaluate regime on the latest BTC 4H bar and persist.
+
+        Idempotent per 4H bar (re-evaluating the same bar is a no-op) so
+        a */10 sweep can call this freely. Data: BTC daily closes ->
+        SMA200 + last closed daily close; BTC 4H close for deep-bear
+        demotion; 14-period ADX on 4H klines; F&G 7d from cache.db.
+        Never raises — failures keep the previous state (fail-open).
+        """
+        try:
+            k4 = self._fetch_klines(client, "BTCUSDT", "4h", 30)
+            if len(k4) < 20:
+                return self.load_state()
+            bar = k4[-1]
+            bar_ts = int(bar["open_time"])
+            state = self.load_state()
+            if state.last_4h_ts == bar_ts:
+                return state  # same 4H bar already evaluated
+
+            daily = self._fetch_klines(client, "BTCUSDT", "1d", 210)
+            if len(daily) < 200:
+                return state
+            closed = [float(k["close"]) for k in daily[:-1]]
+            if len(closed) < 200:
+                closed = [float(k["close"]) for k in daily]
+            daily_close = closed[-1]
+            sma200 = sum(closed[-200:]) / 200.0
+
+            from src.indicators import Indicators
+            adx = Indicators.adx(k4, period=14)
+
+            state, transition = evaluate_regime(
+                state, daily_close, sma200, float(bar["close"]),
+                adx if adx and adx > 0 else None,
+                self._load_fng_history(), bar_ts)
+            self.save_state(state)
+            if transition:
+                self.record_transition(transition)
+                logger.info(
+                    "[BULL_REGIME] persisted transition %s -> %s (%s)",
+                    transition["from"], transition["to"],
+                    transition["reason"])
+            return state
+        except Exception:
+            logger.warning(
+                "BullRegimeDetector.update_from_market failed (state kept)",
+                exc_info=True)
+            return self.load_state()
+
     def format_report_line(self) -> str:
         """One-line regime status for scan reports."""
         state = self.load_state()

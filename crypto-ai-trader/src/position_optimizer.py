@@ -618,30 +618,69 @@ class PositionOptimizer:
                         check = corr.check_new_position(
                             to_symbol.replace("USDT", ""), held_after)
                         if not check.get("allowed", False):
-                            logger.error(
-                                "SWITCH_RISK_BLOCK: %s -> %s rejected — %s",
-                                from_symbol, to_symbol, check.get("reason"))
-                            emit_alert(
-                                "SWITCH_RISK_BLOCK", to_symbol,
-                                {"from_symbol": from_symbol,
-                                 "reason": check.get("reason"),
-                                 "max_correlation": check.get(
-                                     "max_correlation")})
-                            try:
-                                from src.state_db import get_state_db
-                                get_state_db().audit_log(
-                                    "SWITCH_RISK_BLOCK",
+                            # WO-016-1: de-risk switches bypass the corr
+                            # gate. The gate stops same-beta stacking, not
+                            # risk-reduction moves (ENA->ETH @ corr 0.711
+                            # was wrongly blocked 9/21). Exempt when target
+                            # is BTC/ETH or target beta clearly below
+                            # source beta.
+                            _dr_fn = getattr(
+                                corr, "is_de_risk_switch", None)
+                            de_risk, de_reason = (
+                                _dr_fn(to_symbol.replace("USDT", ""),
+                                       from_symbol.replace("USDT", ""))
+                                if callable(_dr_fn) else (False, ""))
+                            if de_risk:
+                                logger.info(
+                                    "SWITCH_RISK_GATE: %s -> %s de-risk "
+                                    "exemption — %s (corr: %s)",
+                                    from_symbol, to_symbol, de_reason,
+                                    check.get("reason"))
+                                emit_alert(
+                                    "SWITCH_RISK_DERISK_PASS", to_symbol,
                                     {"from_symbol": from_symbol,
-                                     "to_symbol": to_symbol,
+                                     "de_risk": de_reason,
+                                     "corr_detail": check.get("reason")})
+                                try:
+                                    from src.state_db import get_state_db
+                                    get_state_db().audit_log(
+                                        "SWITCH_RISK_DERISK_PASS",
+                                        {"from_symbol": from_symbol,
+                                         "to_symbol": to_symbol,
+                                         "de_risk": de_reason,
+                                         "corr_detail": check.get(
+                                             "reason")},
+                                        source="position_optimizer")
+                                except Exception:
+                                    logger.error(
+                                        "Failed to log DERISK_PASS audit",
+                                        exc_info=True)
+                            else:
+                                logger.error(
+                                    "SWITCH_RISK_BLOCK: %s -> %s rejected — %s",
+                                    from_symbol, to_symbol,
+                                    check.get("reason"))
+                                emit_alert(
+                                    "SWITCH_RISK_BLOCK", to_symbol,
+                                    {"from_symbol": from_symbol,
                                      "reason": check.get("reason"),
                                      "max_correlation": check.get(
-                                         "max_correlation")},
-                                    source="position_optimizer")
-                            except Exception:
-                                logger.error(
-                                    "Failed to log SWITCH_RISK_BLOCK audit",
-                                    exc_info=True)
-                            return False
+                                         "max_correlation")})
+                                try:
+                                    from src.state_db import get_state_db
+                                    get_state_db().audit_log(
+                                        "SWITCH_RISK_BLOCK",
+                                        {"from_symbol": from_symbol,
+                                         "to_symbol": to_symbol,
+                                         "reason": check.get("reason"),
+                                         "max_correlation": check.get(
+                                             "max_correlation")},
+                                        source="position_optimizer")
+                                except Exception:
+                                    logger.error(
+                                        "Failed to log SWITCH_RISK_BLOCK audit",
+                                        exc_info=True)
+                                return False
                         sm = check.get("size_multiplier", 1.0)
                         if sm < 1.0:
                             # switch qty is proceeds-driven, no size

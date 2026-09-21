@@ -10,6 +10,7 @@ This module:
 3. Enforces maximum portfolio correlation (average pairwise correlation)
 """
 
+import json
 import logging
 import time
 from typing import Any, Dict, List, Tuple
@@ -21,6 +22,15 @@ logger = logging.getLogger(__name__)
 # Correlation thresholds
 MAX_PAIRWISE_CORR = 0.70  # Block if new symbol correlates >0.7 with any holding
 MAX_PORTFOLIO_CORR = 0.60  # Block if average pairwise correlation >0.6
+# WO-016-2: BULL regimes relax the pairwise threshold to 0.85
+# (8/26 red-line spec: BULL 0.85 / others 0.70). Read live from
+# bull_regime_state kv so regime transitions apply without restart.
+BULL_PAIRWISE_CORR = 0.85
+# WO-016-1: switches toward these majors are de-risk by construction
+LOW_BETA_SYMBOLS = {"BTC", "ETH"}
+# WO-016-1: a switch counts as de-risk when target beta < source beta
+# times this ratio (strictly-lower with noise margin over 45d estimates)
+DE_RISK_BETA_RATIO = 0.85
 MIN_HISTORY_DAYS = 15  # Minimum days of price history required
 CACHE_TTL_SECONDS = 3600  # Recompute correlations every hour
 
@@ -39,8 +49,17 @@ class CorrelationRiskManager:
         self._cache = _CLASS_CACHE
 
     def _get_price_history(self, symbol: str, days: int = 45) -> List[float]:
-        """Fetch daily closing prices for correlation calculation."""
+        """Fetch daily closing prices for correlation calculation.
+
+        Per-symbol result is cached (class-level, CACHE_TTL_SECONDS) so
+        beta lookups and matrix builds share API calls.
+        """
         try:
+            _now = time.time()
+            _ck = f"hist:{symbol}"
+            _cached = self._cache.get(_ck)
+            if _cached and (_now - _cached["ts"]) < CACHE_TTL_SECONDS:
+                return _cached["closes"]
             # Handle both get_klines() (DataFeed) and klines() (BinanceSpotClient)
             client = self.client
             symbol_usdt = f"{symbol}USDT"
@@ -71,7 +90,9 @@ class CorrelationRiskManager:
 
             if not klines or len(klines) < MIN_HISTORY_DAYS:
                 return []
-            return [k["close"] for k in klines]
+            closes = [k["close"] for k in klines]
+            self._cache[_ck] = {"closes": closes, "ts": _now}
+            return closes
         except Exception as e:
             logger.warning(f"Failed to get price history for {symbol}: {e}")
             return []
@@ -140,6 +161,67 @@ class CorrelationRiskManager:
 
         return corr_matrix, histories
 
+    def _pairwise_threshold(self) -> float:
+        """Effective pairwise-correlation threshold.
+
+        BULL regimes (CONFIRMED_BULL / MILD_BULL from the bull_regime
+        state machine) relax 0.70 -> 0.85. Any read failure falls back
+        to the conservative default 0.70 (fail-closed).
+        """
+        try:
+            from src.state_db import get_state_db
+            raw = get_state_db().kv_get("bull_regime_state")
+            if raw:
+                state = json.loads(raw) if isinstance(raw, str) else raw
+                regime = str((state or {}).get("regime", "")).upper()
+                if "BULL" in regime:
+                    return BULL_PAIRWISE_CORR
+        except Exception:
+            pass
+        return MAX_PAIRWISE_CORR
+
+    def _get_beta(self, symbol: str) -> Any:
+        """45-day daily-return beta vs BTC (BTC itself = 1.0).
+
+        Returns None when history is insufficient — callers must treat
+        that as 'unknown', never as low beta.
+        """
+        if symbol.upper() == "BTC":
+            return 1.0
+        try:
+            hist = self._get_price_history(symbol.upper(), days=45)
+            btc = self._get_price_history("BTC", days=45)
+            n = min(len(hist), len(btc))
+            if n < MIN_HISTORY_DAYS:
+                return None
+            ra = np.diff(np.log(hist[-n:]))
+            rb = np.diff(np.log(btc[-n:]))
+            var_b = float(np.var(rb))
+            if var_b <= 0:
+                return None
+            return float(np.cov(ra, rb)[0, 1] / var_b)
+        except Exception:
+            return None
+
+    def is_de_risk_switch(self, to_symbol: str, from_symbol: str) -> Tuple[bool, str]:
+        """WO-016-1: does switching from_symbol -> to_symbol reduce beta?
+
+        De-risk switches (alt -> BTC/ETH, or clearly lower beta) are
+        exempt from the correlation gate: the gate exists to stop
+        same-beta stacking, not to block risk-reduction moves
+        (e.g. 9/21 ENA->ETH blocked at corr 0.711 was wrong).
+        """
+        to_s = (to_symbol or "").upper()
+        from_s = (from_symbol or "").upper()
+        if to_s in LOW_BETA_SYMBOLS and from_s not in LOW_BETA_SYMBOLS:
+            return True, f"low-beta major {to_s}"
+        b_to = self._get_beta(to_s)
+        b_from = self._get_beta(from_s)
+        if b_to is not None and b_from is not None and b_from > 0:
+            if b_to < b_from * DE_RISK_BETA_RATIO:
+                return True, f"beta {from_s}={b_from:.2f} -> {to_s}={b_to:.2f}"
+        return False, ""
+
     def check_new_position(self, new_symbol: str, current_positions: List[str]) -> Dict:
         """Check if adding new_symbol would violate correlation limits.
 
@@ -193,15 +275,16 @@ class CorrelationRiskManager:
                     corr = corr_matrix[new_symbol][pos]
                     correlations[pos] = round(corr, 3)
                     max_corr = max(max_corr, abs(corr))
+            thr = self._pairwise_threshold()
             blocked_by_pair = [
                 f"{p} ({c:.2f})"
                 for p, c in correlations.items()
-                if abs(c) > MAX_PAIRWISE_CORR
+                if abs(c) > thr
             ]
             if blocked_by_pair:
                 return {
                     "allowed": False,
-                    "reason": f"High correlation with other holdings: {', '.join(blocked_by_pair)}. Limit={MAX_PAIRWISE_CORR}",
+                    "reason": f"High correlation with other holdings: {', '.join(blocked_by_pair)}. Limit={thr}",
                     "correlations": correlations,
                     "avg_correlation": round(max_corr, 3),
                     "max_correlation": round(max_corr, 3),
@@ -220,6 +303,7 @@ class CorrelationRiskManager:
                 "size_multiplier": 0.8,  # slight reduction for safety
             }
 
+        thr = self._pairwise_threshold()
         # Include new symbol in correlation calculation
         all_symbols = list(set(current_positions + [new_symbol]))
         corr_matrix, histories = self._build_correlation_matrix(all_symbols)
@@ -249,7 +333,7 @@ class CorrelationRiskManager:
         # Check if any pairwise correlation exceeds threshold
         blocked_by_pair = []
         for pos, corr in correlations.items():
-            if abs(corr) > MAX_PAIRWISE_CORR:
+            if abs(corr) > thr:
                 blocked_by_pair.append(f"{pos} ({corr:.2f})")
 
         # Calculate portfolio average correlation if added
@@ -266,7 +350,7 @@ class CorrelationRiskManager:
 
         # Decision
         if blocked_by_pair:
-            reason = f"High correlation with: {', '.join(blocked_by_pair)}. Limit={MAX_PAIRWISE_CORR}"
+            reason = f"High correlation with: {', '.join(blocked_by_pair)}. Limit={thr}"
             allowed = False
             size_multiplier = 1.0
         elif avg_corr > MAX_PORTFOLIO_CORR and len(current_positions) >= 2:

@@ -288,6 +288,22 @@ def _step_defense_sweep(ctx):
         logger.warning("protection_guardian step failed (non-fatal)",
                        exc_info=True)
 
+    # WO-016-2: bull regime state machine update — evaluates on the
+    # latest BTC 4H bar (idempotent per bar). Downstream readers: the
+    # correlation gate's BULL threshold (0.85). Fail-open.
+    try:
+        from src.bull_regime import BullRegimeDetector
+        from src.state_db import get_state_db
+
+        detector = BullRegimeDetector(
+            db=get_state_db(), client=client)
+        st = detector.update_from_market(client)
+        logger.info("bull_regime: %s", detector.format_report_line())
+        _ = st  # state persisted inside detector; sweep only logs
+    except Exception:
+        logger.warning("bull_regime update failed (non-fatal)",
+                       exc_info=True)
+
 
 def _bull_phase2_status_line(opportunities=None) -> str:
     """Run BULL Phase 2 paper scan and return report section.
