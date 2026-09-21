@@ -44,6 +44,20 @@ def _fill(symbol, oid, qty, price, ts, is_buyer=False, commission="0",
     }
 
 
+def _db_buy(db, symbol, qty, price, ts=None):
+    """Insert a BUY row with an explicit timestamp (default: 2h ago) so the
+    P0-2 lifecycle anchor (latest BUY) predates the fills under test, as in
+    production. Plain trade_add() stamps 'now' which would exclude every
+    past fill from booking candidates."""
+    db.trade_add(symbol, "BUY", qty, price)
+    if ts is None:
+        ts = time.time() - 7200
+    db._get_conn().execute(
+        "UPDATE trades SET timestamp = ? WHERE symbol = ? AND side = 'BUY' "
+        "AND timestamp > ?", (ts, symbol, ts))
+    db._get_conn().commit()
+
+
 @pytest.fixture
 def db(tmp_path):
     d = StateDB(db_path=str(tmp_path / "state.db"))
@@ -54,7 +68,7 @@ def db(tmp_path):
 # ---------- steady state ----------
 
 def test_clean_round_zero_api_no_writes(db):
-    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    _db_buy(db, "ARBUSDT", 67.8, 0.15)
     db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15})
     client = FakeClient([_bal("ARB", 67.8), _bal("USDT", 400)], {})
     booked = reconcile_portfolio_drift(client, db)
@@ -68,7 +82,7 @@ def test_clean_round_zero_api_no_writes(db):
 
 def test_drift_books_sell_with_correct_pnl_and_idempotent(db, caplog):
     # ARB incident: DB holds 67.8, exchange flat, OCO TP filled @ 0.1611
-    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    _db_buy(db, "ARBUSDT", 67.8, 0.15)
     db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15,
                                  "strategy": "trend", "opened_at": time.time()})
     fills = [_fill("ARBUSDT", 555, 67.8, 0.1611, time.time() - 3600,
@@ -106,8 +120,8 @@ def test_drift_books_sell_with_correct_pnl_and_idempotent(db, caplog):
 
 def test_pnl_uses_db_buy_weighted_average(db):
     # ETHFI-style: two BUY lots → weighted entry, partial SELL booked on drift
-    db.trade_add("ETHFIUSDT", "BUY", 33.4, 0.7078)
-    db.trade_add("ETHFIUSDT", "BUY", 8.7, 0.6821)
+    _db_buy(db, "ETHFIUSDT", 33.4, 0.7078)
+    _db_buy(db, "ETHFIUSDT", 8.7, 0.6821)
     db.portfolio_set("ETHFIUSDT", {"quantity": 20.0, "entry_price": 0.7024})
     fills = [_fill("ETHFIUSDT", 777, 20.0, 0.7284, time.time() - 7200)]
     client = FakeClient([_bal("ETHFI", 0.0)], {"ETHFIUSDT": fills})
@@ -118,7 +132,7 @@ def test_pnl_uses_db_buy_weighted_average(db):
 
 
 def test_partial_drift_trims_position_to_exchange_qty(db):
-    db.trade_add("XUSDT", "BUY", 100, 1.0)
+    _db_buy(db, "XUSDT", 100, 1.0)
     db.portfolio_set("XUSDT", {"quantity": 100.0, "entry_price": 1.0})
     fills = [_fill("XUSDT", 888, 90, 1.2, time.time() - 600)]
     client = FakeClient([_bal("X", 10.0)], {"XUSDT": fills})
@@ -133,7 +147,7 @@ def test_partial_drift_trims_position_to_exchange_qty(db):
 def test_cross_round_disappearance_books_after_sync_cleared(db):
     # last round the position existed (kv snapshot); this round sync's
     # clear-and-rebuild already dropped it — trades never recorded
-    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    _db_buy(db, "ARBUSDT", 67.8, 0.15)
     db.kv_set(KV_PREV_POSITIONS, {"ARBUSDT": 67.8, "_ts": time.time()})
     fills = [_fill("ARBUSDT", 556, 67.8, 0.1611, time.time() - 3600)]
     client = FakeClient([_bal("ARB", 0.0), _bal("USDT", 410)],
@@ -145,7 +159,7 @@ def test_cross_round_disappearance_books_after_sync_cleared(db):
 
 
 def test_stale_snapshot_beyond_max_age_ignored(db):
-    db.trade_add("OLDUSDT", "BUY", 10, 1.0)
+    _db_buy(db, "OLDUSDT", 10, 1.0)
     db.kv_set(KV_PREV_POSITIONS,
               {"OLDUSDT": 10.0, "_ts": time.time() - PREV_SNAPSHOT_MAX_AGE_S - 3600})
     client = FakeClient([_bal("OLD", 0.0)], {"OLDUSDT": [_fill("OLDUSDT", 9, 10, 1.1, 1)]})
@@ -159,7 +173,7 @@ def test_stale_snapshot_beyond_max_age_ignored(db):
 def test_gap_guard_blocks_overbooking_when_ledger_already_balanced(db):
     # ledger already explains everything (BUY 67.8 − SELL 67.8 booked, old
     # NULL-id rows) → even an unbooked stray SELL in history must NOT be added
-    db.trade_add("ARBUSDT", "BUY", 67.8, 0.15)
+    _db_buy(db, "ARBUSDT", 67.8, 0.15)
     db.trade_add("ARBUSDT", "SELL", 67.8, 0.1611, client_order_id=None)
     db.portfolio_set("ARBUSDT", {"quantity": 67.8, "entry_price": 0.15})
     stray = _fill("ARBUSDT", 999, 50.0, 0.2, time.time() - 100)
@@ -179,7 +193,7 @@ def test_gap_guard_limits_booking_to_missing_qty(db, caplog):
     # 50 units against a 20-unit gap) is exactly what fabricated the ZAMA
     # 443-vs-64 record. Neither 50 nor 30 fits a 20-unit gap; both are
     # skipped with a warning and the gap stays visible for follow-up.
-    db.trade_add("YUSDT", "BUY", 20, 1.0)
+    _db_buy(db, "YUSDT", 20, 1.0)
     db.portfolio_set("YUSDT", {"quantity": 20.0, "entry_price": 1.0})
     fills = [
         _fill("YUSDT", 1001, 50, 0.9, time.time() - 500),
@@ -198,7 +212,7 @@ def test_gap_guard_limits_booking_to_missing_qty(db, caplog):
 # ---------- fail-open ----------
 
 def test_api_failure_fail_open_no_state_touched(db):
-    db.trade_add("ZUSDT", "BUY", 5, 1.0)
+    _db_buy(db, "ZUSDT", 5, 1.0)
     db.portfolio_set("ZUSDT", {"quantity": 5.0, "entry_price": 1.0})
 
     class DeadClient:
@@ -216,7 +230,7 @@ def test_api_failure_fail_open_no_state_touched(db):
 
 def test_multi_leg_order_booked_as_one_trade(db):
     # one OCO SELL order filling in two legs (18.7 + 1.3, the ETHFI pattern)
-    db.trade_add("MUSDT", "BUY", 20, 1.0)
+    _db_buy(db, "MUSDT", 20, 1.0)
     db.portfolio_set("MUSDT", {"quantity": 20.0, "entry_price": 1.0})
     ts = time.time() - 300
     fills = [
@@ -234,7 +248,7 @@ def test_multi_leg_order_booked_as_one_trade(db):
 # ---------- partial-ladder detection (main axis, 9/17 night incidents) -------
 
 def _book_buy(db, sym, qty, px):
-    db.trade_add(sym, "BUY", qty, px)
+    _db_buy(db, sym, qty, px, ts=time.time() - 14 * 3600)
 
 
 def test_uni_tp1_partial_close_after_sync_flattened_portfolio(db):
@@ -402,9 +416,7 @@ class TestP015StaleLegGuards:
         """April orderId 98217977 (SELL 443) must be filtered out by the
         time window before the cap guard is even consulted."""
         now = time.time()
-        db.trade_add(
-            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
-        )
+        _db_buy(db, "ZAMAUSDT", 64.0, 0.09418)
         db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
                                  "strategy": "trend", "opened_at": time.time()})
         stale = _fill("ZAMAUSDT", 98217977, 443.0, 0.03178, now - 150 * 86400)
@@ -430,9 +442,7 @@ class TestP015StaleLegGuards:
         the following 64-unit leg must book. This reproduces the exact
         incident ordering, with only the window filter disabled."""
         now = time.time()
-        db.trade_add(
-            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
-        )
+        _db_buy(db, "ZAMAUSDT", 64.0, 0.09418)
         db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
                                  "strategy": "trend", "opened_at": time.time()})
         # both fills inside FILL_LOOKBACK_S so only the cap guard protects
@@ -457,9 +467,7 @@ class TestP015StaleLegGuards:
         booked, gap stays visible for human follow-up instead of being
         'fixed' with a foreign leg."""
         now = time.time()
-        db.trade_add(
-            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
-        )
+        _db_buy(db, "ZAMAUSDT", 64.0, 0.09418)
         db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
                                  "strategy": "trend", "opened_at": time.time()})
         old = _fill("ZAMAUSDT", 98217977, 443.0, 0.03178, now - 90 * 86400)
@@ -477,9 +485,7 @@ class TestP015StaleLegGuards:
         (e.g. partial fill slightly above the gap due to dust rounding)
         must keep booking as before."""
         now = time.time()
-        db.trade_add(
-            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
-        )
+        _db_buy(db, "ZAMAUSDT", 64.0, 0.09418)
         db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
                                  "strategy": "trend", "opened_at": time.time()})
         # 64 x 1.03 is inside 1.05 tolerance
@@ -492,3 +498,73 @@ class TestP015StaleLegGuards:
             "AND side='SELL'"
         ).fetchone()[0]
         assert qty == pytest.approx(64.0 * 1.03)
+
+
+# ---------------------------------------------------------------------------
+# P0-2 (2026-09-21): lifecycle anchor + live-price sanity — the INJ/SUI
+# round booked five more stale legs the 24h window alone could not catch
+# (9/15, 9/16, 9/19 fills all sit inside the 24h window but predate the
+# current position's opening BUY).
+# ---------------------------------------------------------------------------
+from src.portfolio_reconciler import FILL_PRICE_SANITY_REL
+
+
+class TickerClient(FakeClient):
+    def __init__(self, balances, trades_by_symbol, price=None, raise_=False):
+        super().__init__(balances, trades_by_symbol)
+        self._price = price
+        self._raise = raise_
+
+    def get_ticker_price(self, symbol):
+        if self._raise:
+            raise RuntimeError("ticker down")
+        return self._price
+
+
+class TestP02LifecycleAndPriceGuards:
+    def test_fill_predating_last_buy_excluded(self, db):
+        """INJ scenario: a SELL fill inside the 24h window but BEFORE the
+        position's opening BUY belongs to a previous closed position and
+        must not book. The post-BUY leg is the only valid candidate."""
+        now = time.time()
+        _db_buy(db, "INJUSDT", 7.45, 8.058, ts=now - 4 * 3600)   # 07:31 BUY
+        db.portfolio_set("INJUSDT", {"quantity": 7.45, "entry_price": 8.058,
+                                     "opened_at": now - 4 * 3600})
+        pre_buy = _fill("INJUSDT", 3170937513, 3.35, 6.547, now - 6 * 3600)
+        post_buy = _fill("INJUSDT", 3175955775, 7.45, 7.492, now - 3600)
+        c = TickerClient([_bal("INJ", 0.0)],
+                         {"INJUSDT": [pre_buy, post_buy]}, price=7.5)
+        booked = reconcile_portfolio_drift(c, db)
+        assert [b["order_id"] for b in booked] == ["3175955775"]
+        assert booked[0]["qty"] == pytest.approx(7.45)
+        assert booked[0]["price"] == pytest.approx(7.492)
+
+    def test_price_deviation_beyond_sanity_skips_and_warns(self, db, caplog):
+        """ZAMA scenario for the third line of defence: even a fill inside
+        the window and after the BUY is rejected when its price deviates
+        >5% from the live ticker (April leg @0.03178 vs live @0.088)."""
+        now = time.time()
+        _db_buy(db, "ZAMAUSDT", 64.0, 0.09418, ts=now - 7200)
+        db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
+                                      "opened_at": now - 7200})
+        weird = _fill("ZAMAUSDT", 982199, 64.0, 0.03178, now - 300)
+        c = TickerClient([_bal("ZAMA", 0.0)], {"ZAMAUSDT": [weird]},
+                         price=0.088)
+        with caplog.at_level("WARNING"):
+            booked = reconcile_portfolio_drift(c, db)
+        assert booked == []
+        assert any("deviates" in r.message for r in caplog.records)
+
+    def test_ticker_failure_fails_open_and_books(self, db):
+        """Validation must never block booking: ticker API down -> the leg
+        still books through the window + lifecycle + gap guards."""
+        now = time.time()
+        _db_buy(db, "SUIUSDT", 6.9, 0.8623, ts=now - 7200)
+        db.portfolio_set("SUIUSDT", {"quantity": 6.9, "entry_price": 0.8623,
+                                     "opened_at": now - 7200})
+        leg = _fill("SUIUSDT", 8874168544, 6.9, 0.8214, now - 300)
+        c = TickerClient([_bal("SUI", 0.0)], {"SUIUSDT": [leg]}, raise_=True)
+        booked = reconcile_portfolio_drift(c, db)
+        assert len(booked) == 1
+        assert booked[0]["pnl"] == pytest.approx(
+            round(6.9 * (0.8214 - 0.8623), 6), abs=1e-6)

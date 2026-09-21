@@ -64,6 +64,11 @@ FILL_LOOKBACK_S = 24 * 3600
 # a single aggregated order leg may exceed the gap by at most this factor
 # before it is rejected as a stale/foreign leg
 LEG_GAP_TOLERANCE = 1.05
+# P0-2: before booking, the leg's avg fill price must sit within this
+# relative distance of the live ticker price — an April leg @0.03178 vs a
+# live 0.088 market fails by 177% and is rejected. Fail-open when the
+# ticker cannot be fetched (validation must never block booking).
+FILL_PRICE_SANITY_REL = 0.05
 #: symbols from the previous snapshot stay suspects for this many days
 PREV_SNAPSHOT_MAX_AGE_S = 7 * 24 * 3600
 
@@ -140,7 +145,22 @@ def _fuzzy_booked(db, symbol: str, qty: float, price: float) -> bool:
     return False
 
 
-def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> List[Dict]:
+def _last_buy_ts_ms(db, symbol: str) -> int:
+    """P0-2: latest BUY row for the symbol anchors the current position
+    lifecycle. Any SELL fill older than it belongs to a previous, already
+    closed position and must never book against the current gap (INJ 9/20:
+    fills from 5/13, 9/15, 9/16, 9/19 all predate the 07:31 BUY and were
+    still booked). Returns 0 when no BUY exists."""
+    row = db._get_conn().execute(
+        "SELECT MAX(timestamp) FROM trades WHERE symbol = ? AND side = 'BUY'",
+        (symbol,),
+    ).fetchone()
+    ts = row[0] if row else None
+    return int(float(ts) * 1000) if ts else 0
+
+
+def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
+                        client=None) -> List[Dict]:
     """Aggregate SELL fills by orderId and book the unrecorded ones.
 
     Booking stops once the accumulated qty reaches the drift gap — the gap
@@ -149,11 +169,15 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
     """
     booked: List[Dict] = []
     cutoff = int((time.time() - FILL_LOOKBACK_S) * 1000)  # fills are ms
+    # P0-2: candidates must postdate BOTH the 24h window and the latest
+    # BUY row — the stricter of the two anchors the current position
+    # lifecycle and excludes fills from any earlier closed position.
+    lifecycle = max(cutoff, _last_buy_ts_ms(db, symbol))
     sells = [
         f for f in fills
         if not f.get("isBuyer")
         and int(f.get("orderId") or 0) > 0
-        and int(f.get("time") or 0) >= cutoff   # P0-1.5: stale legs excluded
+        and int(f.get("time") or 0) >= lifecycle  # P0-1.5/P0-2: stale legs excluded
     ]
     if not sells:
         return booked
@@ -195,6 +219,18 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
                 symbol, oid, qty, remaining_gap, LEG_GAP_TOLERANCE,
             )
             continue
+        if client is not None:
+            try:
+                live = client.get_ticker_price(symbol)
+            except Exception:
+                live = None   # fail-open: never block booking on validation
+            if live and live > 0 and abs(avg_px - live) / live > FILL_PRICE_SANITY_REL:
+                logger.warning(
+                    "reconcile: SELL %s orderId=%s avg %.8g deviates >%.0f%% "
+                    "from live %.8g — stale/foreign leg, skipped",
+                    symbol, oid, avg_px, FILL_PRICE_SANITY_REL * 100, live,
+                )
+                continue
         if _fuzzy_booked(db, symbol, qty, avg_px):
             logger.info(
                 "reconcile: SELL %s orderId=%s matches a recent NULL-id row "
@@ -290,7 +326,7 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
             continue
         # the gap doubles as the booking cap — a balanced ledger can never
         # be over-booked, and legacy NULL-id rows cannot inflate it
-        booked_total.extend(_book_missing_sells(db, sym, fills, suspects[sym]))
+        booked_total.extend(_book_missing_sells(db, sym, fills, suspects[sym], client=client))
 
         # keep the portfolio row aligned with the exchange (belt and
         # braces; sync normally handles this at Step 0)
