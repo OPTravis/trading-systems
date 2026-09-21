@@ -35,9 +35,10 @@ def _pos(symbol, quantity, entry, take_profit=None, stop_loss=None,
 
 
 def _oco_leg(sym, qty, order_id, list_id=777):
+    # production shape: OCO legs carry orderListId>0 and NO listId key
+    # (22:03 first sweep confirmed the field name)
     return {
         "symbol": sym, "orderId": order_id, "orderListId": list_id,
-        "listId": list_id, "contingencyType": "OCO",
         "status": "NEW", "type": "STOP_LOSS_LIMIT", "side": "SELL",
         "price": "0", "stopPrice": "0.70", "origQty": str(qty),
     }
@@ -45,16 +46,17 @@ def _oco_leg(sym, qty, order_id, list_id=777):
 
 def _tp_leg(sym, qty, order_id, px):
     return {
-        "symbol": sym, "orderId": order_id, "status": "NEW",
-        "type": "LIMIT", "side": "SELL",
+        "symbol": sym, "orderId": order_id, "orderListId": -1,
+        "status": "NEW", "type": "LIMIT", "side": "SELL",
         "price": str(px), "stopPrice": "0", "origQty": str(qty),
     }
 
 
 def _sl_leg(sym, qty, order_id, stop_px):
+    # production shape: independent stop, orderListId == -1
     return {
-        "symbol": sym, "orderId": order_id, "status": "NEW",
-        "type": "STOP_LOSS_LIMIT", "side": "SELL",
+        "symbol": sym, "orderId": order_id, "orderListId": -1,
+        "status": "NEW", "type": "STOP_LOSS_LIMIT", "side": "SELL",
         "price": str(stop_px), "stopPrice": str(stop_px),
         "origQty": str(qty),
     }
@@ -272,6 +274,51 @@ class TestTrackerRegistration:
         sym, entry, qty, tps, sl = recorded[1 - 1]
         assert tps[0]["side"] == "OCO_TP" and sl is not None
         assert sl["stop_price"] == pytest.approx(0.4324)
+
+
+class TestV3FieldLessons:
+    """Lessons from the 22:03 first production sweep."""
+
+    def test_tp_target_breached_keeps_sl(self):
+        """FET case: price 0.2056 already above DB TP 0.199174 → OCO
+        would be rejected forever; SL must be kept, no cancel."""
+        c = FakeClient(orders=[_sl_leg("FETUSDT", 84.6, 11, 0.1747)])
+        pos = _pos("FETUSDT", 84.6, 0.1879, take_profit=0.199174,
+                   price=0.2056)
+        res = pg.run(c, FakePortfolio([pos]))
+        assert res["skipped"] == 1 and res["healed"] == 0
+        assert c.cancelled == [] and c.ocos == []
+
+    def test_old_stop_out_of_band_aborts_swap(self):
+        """ENA case: old stop 0.17955 is -19.8% from px 0.2226 —
+        cancelling it would strand the position (restore -1013)."""
+        c = FakeClient(orders=[_sl_leg("ENAUSDT", 140.41, 12, 0.17955)])
+        pos = _pos("ENAUSDT", 140.41, 0.189, take_profit=0.20034,
+                   price=0.2226)
+        res = pg.run(c, FakePortfolio([pos]))
+        assert res["skipped"] == 1 and res["healed"] == 0
+        assert c.cancelled == [] and c.ocos == []
+
+    def test_naked_position_gets_emergency_sl(self):
+        """ENA aftermath: no orders at all → wide -13% stop placed."""
+        c = FakeClient(orders=[])
+        pos = _pos("ENAUSDT", 140.41, 0.189, price=0.2226)
+        res = pg.run(c, FakePortfolio([pos]))
+        assert res["healed"] == 1
+        assert len(c.sl_placed) == 1
+        sym, qty, lim, stop = c.sl_placed[0]
+        assert stop == pytest.approx(0.1936, abs=1e-4)  # 0.2226×0.87
+
+    def test_orderlistid_marks_oco_legs(self):
+        """Production Binance orders carry orderListId, not listId."""
+        o = {"symbol": "X", "orderListId": 24843818146, "type":
+             "STOP_LOSS_LIMIT"}
+        assert pg._is_oco_leg(o) is True
+        assert pg._is_plain_sl(o) is False
+        bare = {"symbol": "X", "orderListId": -1, "type":
+                "STOP_LOSS_LIMIT"}
+        assert pg._is_oco_leg(bare) is False
+        assert pg._is_plain_sl(bare) is True
 
 
 class TestStepFloor:

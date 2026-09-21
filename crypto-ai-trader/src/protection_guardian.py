@@ -83,9 +83,17 @@ def _order_qty(o: Dict[str, Any]) -> float:
 
 
 def _is_oco_leg(o: Dict[str, Any]) -> bool:
-    """Only a genuine OCO member order counts here (listId set). A bare
-    STOP_LOSS_LIMIT without a listId is an INDEPENDENT stop order — it
-    still locks the balance and must be treated as a plain SL leg."""
+    """Only a genuine OCO member order counts here. Production Binance
+    get_open_orders marks OCO legs via orderListId (> 0; -1 for
+    independent orders) — the 'listId' key does not exist there. A bare
+    STOP_LOSS_LIMIT with orderListId == -1 is an INDEPENDENT stop order:
+    it still locks the balance and must be treated as a plain SL leg."""
+    try:
+        olid = float(o.get("orderListId") or -1)
+        if olid > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
     return bool(o.get("listId") or o.get("contingencyType"))
 
 
@@ -174,6 +182,55 @@ def run(client: Any, portfolio: Any,
                 tp_px = entry * (1 + DEFAULT_TP_PCT)
             tp_px = _tick_round(tp_px, tick)
 
+            # A LIMIT SELL at/below market fills IMMEDIATELY — never
+            # place a TP the market has already run past (that is the
+            # take-profit-target-breached state; deciding to sell is a
+            # strategy decision, not the guardian's).
+            if tp_px <= price * 1.001:
+                emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, {
+                    "tp_px": tp_px, "price": price,
+                    "note": "price at/above TP target — "
+                            "take-profit is a strategy decision",
+                    "ts": time.time(),
+                })
+                log.info("protection_guardian: %s TP target %.8g "
+                         "breached (px %.8g) — no TP placement", sym,
+                         tp_px, price)
+                # no protection at all → emergency SL instead of naked
+                if oco_qty <= 0 and tp_qty <= 0 and sl_qty <= 0:
+                    em_stop = _tick_round(price * 0.87, tick)
+                    try:
+                        ret = client.place_stop_loss_limit(
+                            sym, _step_floor(qty, step),
+                            _tick_round(em_stop * 0.995, tick), em_stop)
+                    except Exception:
+                        ret = None
+                    if ret:
+                        summary["healed"] += 1
+                        emit_alert("PROTECTION_HEALED", sym, {
+                            "mode": "emergency_sl", "qty": qty,
+                            "sl_px": em_stop, "urgent": True,
+                            "note": "naked position + TP target "
+                                    "breached — wide -13% stop, manual "
+                                    "review advised",
+                            "ts": time.time()})
+                        _track(sym, entry, qty, [], {
+                            "order_id": (ret.get("orderId")
+                                         if isinstance(ret, dict) else
+                                         None),
+                            "price": em_stop, "qty": qty,
+                            "stop_price": em_stop})
+                    else:
+                        summary["failed"] += 1
+                        emit_alert("PROTECTION_HEAL_FAILED", sym, {
+                            "mode": "emergency_sl", "urgent": True,
+                            "note": "naked position, SL place FAILED — "
+                                    "manual protection required",
+                            "ts": time.time()})
+                else:
+                    summary["skipped"] += 1
+                continue
+
             free_qty = _step_floor(qty - oco_qty - tp_qty - sl_qty, step)
             if free_qty >= min_qty and free_qty * price >= min_notional:
                 # free slice big enough → plain TP on it (no lock dance)
@@ -203,14 +260,71 @@ def run(client: Any, portfolio: Any,
                 })
                 continue
 
+            if sl_qty <= 0 and oco_qty <= 0 and tp_qty <= 0:
+                # NAKED position (e.g. ENA 22:03: OCO rejected, old SL
+                # cancel already done, restore hit PERCENT_PRICE -1013).
+                # A wide emergency SL beats staying unprotected.
+                em_stop = _tick_round(price * 0.87, tick)
+                try:
+                    ret = client.place_stop_loss_limit(
+                        sym, _step_floor(qty, step),
+                        _tick_round(em_stop * 0.995, tick), em_stop)
+                except Exception:
+                    ret = None
+                if ret:
+                    summary["healed"] += 1
+                    emit_alert("PROTECTION_HEALED", sym, {
+                        "mode": "emergency_sl", "qty": qty,
+                        "sl_px": em_stop, "urgent": True,
+                        "note": "naked position — wide -13% stop, manual "
+                                "review advised", "ts": time.time(),
+                    })
+                    _track(sym, entry, qty, [], {
+                        "order_id": (ret.get("orderId")
+                                     if isinstance(ret, dict) else None),
+                        "price": em_stop, "qty": qty,
+                        "stop_price": em_stop,
+                    })
+                else:
+                    summary["failed"] += 1
+                    emit_alert("PROTECTION_HEAL_FAILED", sym, {
+                        "mode": "emergency_sl", "urgent": True,
+                        "note": "naked position, SL place FAILED — "
+                                "manual protection required",
+                        "ts": time.time(),
+                    })
+                continue
+
             if sl_qty > 0 and oco_qty <= 0:
                 # fully locked by plain SL → cancel-first OCO swap with
-                # safety net (re-place old SL if OCO fails)
+                # safety net (re-place old SL if OCO fails).
+                # Precondition learned from the 22:03 first sweep: the
+                # old SL stop must still be re-placeable — Binance
+                # PERCENT_PRICE_BY_SIDE rejects stops >~15% from market
+                # (ENA restore hit -1013). Never cancel a leg we cannot
+                # put back.
                 old_legs = [{
                     "qty": _order_qty(o),
                     "stop": float(o.get("stopPrice") or o.get("price") or 0),
                     "id": o.get("orderId"),
                 } for o in sl_orders]
+                max_old_stop = max((float(l["stop"] or 0)
+                                    for l in old_legs), default=0.0)
+                if max_old_stop and max_old_stop < price * 0.87:
+                    # restoring the old stop after a failed OCO would hit
+                    # PERCENT_PRICE (-1013) — never cancel a leg we
+                    # cannot put back
+                    summary["skipped"] += 1
+                    emit_alert("PROTECTION_SL_OUT_OF_BAND", sym, {
+                        "old_stop": max_old_stop, "price": price,
+                        "note": "old SL too far below market to "
+                                "re-place — swap aborted, SL kept",
+                        "ts": time.time(),
+                    })
+                    log.info("protection_guardian: %s old stop %.8g "
+                             "outside ±13%% band of px %.8g — skip swap",
+                             sym, max_old_stop, price)
+                    continue
                 cancelled = []
                 for leg in old_legs:
                     try:
@@ -276,6 +390,7 @@ def run(client: Any, portfolio: Any,
                     emit_alert("PROTECTION_HEAL_FAILED", sym, {
                         "mode": "oco_swap_failed_sl_restored",
                         "restored": restored, "legs": len(cancelled),
+                        "urgent": restored < len(cancelled),
                         "ts": time.time(),
                     })
                     log.error("protection_guardian: OCO swap failed for "
