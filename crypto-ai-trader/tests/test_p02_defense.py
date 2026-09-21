@@ -73,8 +73,8 @@ class FakeDB:
                 ts = (now - self.outer.portfolio_age
                       if self.outer.portfolio_age is not None else now)
                 return FakeDB._Result([
-                    FakeDB._Row(symbol=r[0], qty=r[1], avg_price=r[2],
-                                cash_balance=r[3], updated_at=ts)
+                    FakeDB._Row(symbol=r[0], quantity=r[1], entry_price=r[2],
+                                updated_at=ts)
                     for r in self.outer.portfolio_rows])
             raise AssertionError("unexpected sql: %s" % sql)
 
@@ -84,6 +84,15 @@ class FakeDB:
 
 def _bind_conn(db):
     return db
+
+
+def _pos(symbol, quantity, price, stale=False):
+    """Production-shaped position row from PortfolioManager.get_all_positions()."""
+    return {
+        "symbol": symbol, "quantity": quantity, "entry_price": 1.0,
+        "current_price": price, "price_is_stale": stale,
+        "stop_loss": None, "take_profit": None, "invest_pct": 0.0,
+    }
 
 
 class FakePortfolio:
@@ -153,7 +162,8 @@ def _anchored_db(mode=None, regime=None, day_start_equity=100.0):
 
 def test_t1_trip_on_6pct_and_blocks_entries(_no_live_alerts):
     db = _anchored_db()
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 0.94, stale=True)], db=db)
     client = FakeClient({"BTCUSDT": 0.94})  # -6% from 100 anchor
     res = ct.evaluate_and_act(client, portfolio)
     assert res["tier"] == 1 and res["action"] == "STOP_NEW"
@@ -165,7 +175,8 @@ def test_t1_trip_on_6pct_and_blocks_entries(_no_live_alerts):
 
 def test_t1_no_trip_below_threshold(_no_live_alerts):
     db = _anchored_db()
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 0.97, stale=True)], db=db)
     client = FakeClient({"BTCUSDT": 0.97})  # -3%: below -6% tier1
     res = ct.evaluate_and_act(client, portfolio)
     assert res["tier"] == 0
@@ -174,8 +185,9 @@ def test_t1_no_trip_below_threshold(_no_live_alerts):
 
 def test_t2_deleverage_report_mode_keeps_positions(_no_live_alerts):
     db = _anchored_db(mode="report")
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 80},
-                               "ETHUSDT": {"qty": 20}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 80, 0.88, stale=True),
+         _pos("ETHUSDT", 20, 0.85, stale=True)], db=db)
     # equity = 80*0.88 + 20*0.85 = 87.4 vs anchor 100 → -12.6% → tier2
     client = FakeClient({"BTCUSDT": 0.88, "ETHUSDT": 0.85})
     res = ct.evaluate_and_act(client, portfolio)
@@ -189,8 +201,9 @@ def test_t2_deleverage_report_mode_keeps_positions(_no_live_alerts):
 
 def test_t2_deleverage_act_mode_compresses_exposure(_no_live_alerts):
     db = _anchored_db(mode="act", day_start_equity=111.2)
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 80},
-                               "ETHUSDT": {"qty": 40}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 80, 0.5, stale=True),
+         _pos("ETHUSDT", 40, 1.0, stale=True)], db=db)
     client = FakeClient({"BTCUSDT": 0.5, "ETHUSDT": 1.0})
     # equity = 0 cash + 40 + 40 = 80; dd = (80-111.2)/111.2 = -28% → T3!
     # Instead: equity must land between -10% and -15%: anchor 111.2, want
@@ -212,7 +225,8 @@ def test_t2_deleverage_act_mode_compresses_exposure(_no_live_alerts):
 
 def test_t3_report_mode_alerts_and_latches(_no_live_alerts):
     db = _anchored_db(mode="report")
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 0.80, stale=True)], db=db)
     client = FakeClient({"BTCUSDT": 0.80})  # -20% ≤ -15%
     res = ct.evaluate_and_act(client, portfolio)
     assert res["tier"] == 3 and res["action"] == "LIQUIDATE_REPORTED"
@@ -229,7 +243,8 @@ def test_t3_report_mode_alerts_and_latches(_no_live_alerts):
 
 def test_t1_auto_release_requires_all_three_conditions(_no_live_alerts):
     db = _anchored_db()  # regime absent → not extreme
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 1.0, stale=True)], db=db)
     ct.evaluate_and_act(FakeClient({"BTCUSDT": 0.93}), portfolio)  # trip T1
     assert ct.entry_blocked(db) is not None
 
@@ -247,7 +262,8 @@ def test_t1_auto_release_requires_all_three_conditions(_no_live_alerts):
 
     # extreme regime blocks release even with recovery + cooldown
     db2 = _anchored_db(regime="bear_trend")
-    portfolio2 = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db2)
+    portfolio2 = FakePortfolio(
+        [_pos("BTCUSDT", 100, 1.0, stale=True)], db=db2)
     ct.evaluate_and_act(FakeClient({"BTCUSDT": 0.93}), portfolio2)
     state2 = db2.kv_get(ct.KV_STATE)
     state2["tripped_at"] = time.time() - 5 * 3600
@@ -258,8 +274,9 @@ def test_t1_auto_release_requires_all_three_conditions(_no_live_alerts):
 
 def test_missing_mark_skips_round_fail_open(_no_live_alerts):
     db = _anchored_db()
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100},
-                               "ETHUSDT": {"qty": 10}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 0.80, stale=True),
+         _pos("ETHUSDT", 10, None, stale=True)], db=db)
     client = FakeClient({"BTCUSDT": 0.80}, fail_symbols=("ETHUSDT",))
     res = ct.evaluate_and_act(client, portfolio)
     assert res["action"] == "SKIP_NO_MARKS"
@@ -423,7 +440,8 @@ def test_preflight_none_db_blind_not_blocking(_no_live_alerts):
 def test_tier_escalation_t1_to_t2_same_day(_no_live_alerts):
     """Depth increase must escalate across tiers even while latched."""
     db = _anchored_db()
-    portfolio = FakePortfolio({"BTCUSDT": {"qty": 100}}, db=db)
+    portfolio = FakePortfolio(
+        [_pos("BTCUSDT", 100, 0.93, stale=True)], db=db)
     # -7% → trip tier 1
     res1 = ct.evaluate_and_act(FakeClient({"BTCUSDT": 0.93}), portfolio)
     assert res1["tier"] == 1
@@ -502,3 +520,26 @@ def test_healthy_round_clears_fail_streak(_no_live_alerts):
     res = kpf.run(db2)
     assert res["ok"] is True
     assert db2.kv_get("kv_preflight:fail_state") == {}
+
+
+def test_positions_list_production_shape(_no_live_alerts):
+    """Regression guard: get_all_positions() returns List[Dict] with
+    'quantity'/'current_price' (hotfix 2026-09-21 — .items() crashed on
+    the production list shape and preflight SQL used wrong column names)."""
+    db = _anchored_db()
+    # live batch price (non-stale) must be used without ticker fallback
+    portfolio = FakePortfolio([_pos("BTCUSDT", 100, 0.94, stale=False)],
+                              db=db)
+    client = FakeClient({})  # empty ticker map — must not be consulted
+    res = ct.evaluate_and_act(client, portfolio)
+    assert res["tier"] == 1  # 94 vs anchor 100 = -6% using current_price
+    # mixed: stale row falls back to client ticker
+    db2 = _anchored_db()
+    portfolio2 = FakePortfolio(
+        [_pos("BTCUSDT", 50, 0.90, stale=False),
+         _pos("ETHUSDT", 50, 1.0, stale=True)], db=db2)
+    client2 = FakeClient({"ETHUSDT": 0.10})  # stale row → own ticker
+    res2 = ct.evaluate_and_act(client2, portfolio2)
+    # equity = 45 + 5 = 50 vs 100 → -50% → T3 (report default, no sells)
+    assert res2["tier"] == 3
+    assert client2.orders_placed == []

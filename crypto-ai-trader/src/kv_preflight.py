@@ -157,7 +157,7 @@ def run(db: Any, log: Optional[logging.Logger] = None) -> Dict[str, Any]:
             rows = (
                 db._get_conn()
                 .execute(
-                    "SELECT symbol, qty, avg_price, cash_balance, "
+                    "SELECT symbol, quantity, entry_price, "
                     "updated_at FROM portfolio")
                 .fetchall()
             )

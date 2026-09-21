@@ -127,17 +127,27 @@ def _equity_and_positions(client, portfolio):
             logger.warning("circuit_tiers: cash balance read failed",
                            exc_info=True)
             return None
-    positions = portfolio.get_all_positions() or {}
+    # PortfolioManager.get_all_positions() returns List[Dict] with live
+    # batch-fetched current_price (price_is_stale=False means live).
+    positions = portfolio.get_all_positions() or []
+    if isinstance(positions, dict):
+        positions = list(positions.values())
     marks = []
     total_pos = 0.0
-    for sym, pos in positions.items():
-        qty = float(pos.get("qty") or pos.get("quantity") or 0.0)
-        if qty <= 0:
+    for pos in positions:
+        sym = pos.get("symbol")
+        qty = float(pos.get("quantity") or pos.get("qty") or 0.0)
+        if not sym or qty <= 0:
             continue
-        try:
-            price = client.get_ticker_price(sym)
-        except Exception:
-            price = None
+        price = None
+        if not pos.get("price_is_stale", True):
+            price = pos.get("current_price")
+        if not price or price <= 0:
+            # stale/missing batch price — fetch our own live mark
+            try:
+                price = client.get_ticker_price(sym)
+            except Exception:
+                price = None
         if not price or price <= 0:
             logger.warning(
                 "circuit_tiers: no live mark for %s — skipping round (fail-open)",
