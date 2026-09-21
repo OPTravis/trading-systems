@@ -171,11 +171,14 @@ def test_gap_guard_blocks_overbooking_when_ledger_already_balanced(db):
     ).fetchone()["c"] == 0
 
 
-def test_gap_guard_limits_booking_to_missing_qty(db):
+def test_gap_guard_limits_booking_to_missing_qty(db, caplog):
     # gap is 20 (DB net 20, exchange flat) but history holds a 50-qty SELL
-    # order → booking capped by the gap, not the raw order size? NO — a
-    # single order fills what it fills; the guard simply stops before
-    # booking MORE orders than the gap. One order within gap → booked whole.
+    # order. P0-1.5 behavior change (ZAMA incident 9/21): a leg larger than
+    # the gap beyond tolerance is a stale/foreign leg — it is SKIPPED, not
+    # booked whole. The pre-P0-1.5 semantics (book order 1001 entirely,
+    # 50 units against a 20-unit gap) is exactly what fabricated the ZAMA
+    # 443-vs-64 record. Neither 50 nor 30 fits a 20-unit gap; both are
+    # skipped with a warning and the gap stays visible for follow-up.
     db.trade_add("YUSDT", "BUY", 20, 1.0)
     db.portfolio_set("YUSDT", {"quantity": 20.0, "entry_price": 1.0})
     fills = [
@@ -183,10 +186,13 @@ def test_gap_guard_limits_booking_to_missing_qty(db):
         _fill("YUSDT", 1002, 30, 0.9, time.time() - 400),
     ]
     client = FakeClient([_bal("Y", 0.0)], {"YUSDT": fills})
-    booked = reconcile_portfolio_drift(client, db)
-    # oldest unbooked order 1001 covers the gap fully; 1002 must not book
-    ids = [b["order_id"] for b in booked]
-    assert "1001" in ids and "1002" not in ids
+    with caplog.at_level("WARNING"):
+        booked = reconcile_portfolio_drift(client, db)
+    assert booked == []
+    assert db._get_conn().execute(
+        "SELECT COUNT(*) c FROM trades WHERE symbol='YUSDT' AND side='SELL'"
+    ).fetchone()["c"] == 0
+    assert any("stale/foreign leg" in r.message for r in caplog.records)
 
 
 # ---------- fail-open ----------
@@ -382,3 +388,107 @@ def test_close_position_signature_carries_client_order_id():
     assert "client_order_id" in sig.parameters
     src_text = inspect.getsource(pf.PortfolioManager.close_position)
     assert "client_order_id=client_order_id" in src_text
+
+
+# ---------------------------------------------------------------------------
+# P0-1.5 (2026-09-21): ZAMA incident — stale fills from a long-closed position
+# must never book against the current gap, and no single leg may exceed it.
+# ---------------------------------------------------------------------------
+from src.portfolio_reconciler import FILL_LOOKBACK_S, LEG_GAP_TOLERANCE
+
+
+class TestP015StaleLegGuards:
+    def test_stale_leg_older_than_lookback_excluded(self, db, caplog):
+        """April orderId 98217977 (SELL 443) must be filtered out by the
+        time window before the cap guard is even consulted."""
+        now = time.time()
+        db.trade_add(
+            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
+        )
+        db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
+                                 "strategy": "trend", "opened_at": time.time()})
+        stale = _fill("ZAMAUSDT", 98217977, 443.0, 0.03178, now - 150 * 86400)
+        fresh = _fill("ZAMAUSDT", 233705997, 64.0, 0.087829, now - 300)
+        c = FakeClient(
+            [_bal("ZAMA", 0.0)],
+            {"ZAMAUSDT": [stale, fresh]},
+        )
+        with caplog.at_level("WARNING"):
+            booked = reconcile_portfolio_drift(c, db)
+        assert len(booked) == 1
+        rows = db._get_conn().execute(
+            "SELECT side, qty, price, client_order_id FROM trades "
+            "WHERE symbol='ZAMAUSDT' ORDER BY id"
+        ).fetchall()
+        last = tuple(rows[-1])
+        assert last == ("SELL", 64.0, 0.087829, "233705997")
+        assert all(r["qty"] != 443.0 for r in rows)
+
+    def test_oversized_leg_skipped_younger_leg_books(self, db, caplog):
+        """Both legs inside the window, but the first (by min fill time)
+        aggregates to 443 vs a 64-unit gap: the cap guard must skip it and
+        the following 64-unit leg must book. This reproduces the exact
+        incident ordering, with only the window filter disabled."""
+        now = time.time()
+        db.trade_add(
+            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
+        )
+        db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
+                                 "strategy": "trend", "opened_at": time.time()})
+        # both fills inside FILL_LOOKBACK_S so only the cap guard protects
+        big = _fill("ZAMAUSDT", 98217977, 443.0, 0.03178, now - 5000)
+        right = _fill("ZAMAUSDT", 233705997, 64.0, 0.087829, now - 300)
+        c = FakeClient(
+            [_bal("ZAMA", 0.0)],
+            {"ZAMAUSDT": [big, right]},
+        )
+        with caplog.at_level("WARNING"):
+            booked = reconcile_portfolio_drift(c, db)
+        assert len(booked) == 1
+        assert any("stale/foreign leg" in r.message for r in caplog.records)
+        qty = db._get_conn().execute(
+            "SELECT qty FROM trades WHERE symbol='ZAMAUSDT' "
+            "AND side='SELL'"
+        ).fetchone()[0]
+        assert qty == 64.0
+
+    def test_all_legs_stale_leaves_gap_unbooked(self, db, caplog):
+        """Degenerate case: every SELL is historical — nothing may be
+        booked, gap stays visible for human follow-up instead of being
+        'fixed' with a foreign leg."""
+        now = time.time()
+        db.trade_add(
+            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
+        )
+        db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
+                                 "strategy": "trend", "opened_at": time.time()})
+        old = _fill("ZAMAUSDT", 98217977, 443.0, 0.03178, now - 90 * 86400)
+        c = FakeClient([_bal("ZAMA", 0.0)], {"ZAMAUSDT": [old]})
+        with caplog.at_level("WARNING"):
+            booked = reconcile_portfolio_drift(c, db)
+        assert booked == []
+        pos = db._get_conn().execute(
+            "SELECT quantity FROM portfolio WHERE symbol='ZAMAUSDT'"
+        ).fetchone()
+        assert pos is None or pos[0] != 443.0
+
+    def test_leg_within_tolerance_still_books(self, db, caplog):
+        """Sanity: a normal leg sized inside gap x tolerance + abs drift
+        (e.g. partial fill slightly above the gap due to dust rounding)
+        must keep booking as before."""
+        now = time.time()
+        db.trade_add(
+            "ZAMAUSDT", "BUY", 64.0, 0.09418, client_order_id=None,
+        )
+        db.portfolio_set("ZAMAUSDT", {"quantity": 64.0, "entry_price": 0.09418,
+                                 "strategy": "trend", "opened_at": time.time()})
+        # 64 x 1.03 is inside 1.05 tolerance
+        leg = _fill("ZAMAUSDT", 233705997, 64.0 * 1.03, 0.087829, now - 300)
+        c = FakeClient([_bal("ZAMA", 0.0)], {"ZAMAUSDT": [leg]})
+        booked = reconcile_portfolio_drift(c, db)
+        assert len(booked) == 1
+        qty = db._get_conn().execute(
+            "SELECT qty FROM trades WHERE symbol='ZAMAUSDT' "
+            "AND side='SELL'"
+        ).fetchone()[0]
+        assert qty == pytest.approx(64.0 * 1.03)

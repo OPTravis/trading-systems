@@ -56,6 +56,14 @@ FUZZY_PRICE_REL_TOL = 0.005
 #: only recent rows are matched — the active path books within
 #: seconds of the fill, so a 15-min window is ample
 FUZZY_WINDOW_S = 15 * 60
+# P0-1.5: fills older than this are never candidates for gap booking —
+# they belong to positions closed long before the current ledger window
+# (ZAMA 9/21 incident: an April orderId 98217977 leg of 443 got booked
+# against a 64-unit gap because my_trades returns full history).
+FILL_LOOKBACK_S = 24 * 3600
+# a single aggregated order leg may exceed the gap by at most this factor
+# before it is rejected as a stale/foreign leg
+LEG_GAP_TOLERANCE = 1.05
 #: symbols from the previous snapshot stay suspects for this many days
 PREV_SNAPSHOT_MAX_AGE_S = 7 * 24 * 3600
 
@@ -140,7 +148,13 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
     Returns the booked entries.
     """
     booked: List[Dict] = []
-    sells = [f for f in fills if not f.get("isBuyer") and int(f.get("orderId") or 0) > 0]
+    cutoff = int((time.time() - FILL_LOOKBACK_S) * 1000)  # fills are ms
+    sells = [
+        f for f in fills
+        if not f.get("isBuyer")
+        and int(f.get("orderId") or 0) > 0
+        and int(f.get("time") or 0) >= cutoff   # P0-1.5: stale legs excluded
+    ]
     if not sells:
         return booked
     by_order: Dict[int, List[Dict]] = {}
@@ -169,6 +183,17 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float) -> L
         )
         qty = max(leg_qty_raw - comm, 0.0)
         if qty <= DRIFT_QTY_ABS:
+            continue
+        if qty > remaining_gap * LEG_GAP_TOLERANCE + DRIFT_QTY_ABS:
+            # P0-1.5: a single leg larger than the gap (beyond tolerance) is a
+            # stale/foreign leg — booking it would over-sell the ledger
+            # (ZAMA incident: 443 booked against a 64-unit gap). Skip it and
+            # keep scanning younger orders; a real 64-unit leg follows.
+            logger.warning(
+                "reconcile: SELL %s orderId=%s qty %.8g exceeds gap %.8g "
+                "x%.2f — stale/foreign leg, skipped",
+                symbol, oid, qty, remaining_gap, LEG_GAP_TOLERANCE,
+            )
             continue
         if _fuzzy_booked(db, symbol, qty, avg_px):
             logger.info(
