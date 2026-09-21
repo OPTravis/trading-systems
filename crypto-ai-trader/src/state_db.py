@@ -89,7 +89,7 @@ class StateDB:
             # switch itself can wait out concurrent writers), then WAL.
             # The old config forced journal_mode=DELETE: every commit needed an
             # EXCLUSIVE file lock + multiple fsyncs while up to three cron
-            # processes (trailing-check */5, ensure_tp_sl, long-running
+            # processes (trailing-check */5, protection_guardian, long-running
             # cron-scan) collided on the same sqlite file at :00/:30 cron
             # boundaries. WAL lets readers and the writer proceed concurrently
             # and removes the exclusive-lock fsync storm.

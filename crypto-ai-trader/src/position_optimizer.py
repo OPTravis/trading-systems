@@ -64,17 +64,29 @@ class PositionOptimizer:
 
     def _place_switch_protections(self, symbol: str, qty: float, buy_order, entry_price: float) -> None:
         """bug#41a (2026-09-15): place SL/TP on the fresh switch position
-        immediately after the buy fills. SL first — capital protection gates
-        profit-taking; TP goes on only once the SL is confirmed live. Levels
-        default to SL 7% / TP 4%, identical to ensure_tp_sl's targets, so the
-        next cron pass sees full coverage and never double-places. Every
-        failure here logs a warning only: ensure_tp_sl remains the retrying
-        backstop and must never be blocked by this step."""
+        immediately after the buy fills.
+
+        WO-0921-013 (2026-09-21) rewrite — OCO-first. The legacy sequence
+        (full-qty SL, then equal-qty TP limit sell) deadlocked on Binance
+        SPOT: a STOP_LOSS_LIMIT locks the full base balance, so the
+        same-qty TP always failed with -2010 insufficient balance
+        (9/20 16:31 TRX, 9/21 17:52 FET/WLD/BNB). The old comments claimed
+        "ensure_tp_sl will retry" — that function never existed, so TP
+        coverage was silently lost for good. One OCO order covers both
+        legs on a single locked quantity: no contention, and the TP leg
+        filling auto-cancels the SL leg.
+
+        Fallback when OCO is rejected: split-qty separate orders
+        (trade_executor Strategy C semantics — TP ~70% / SL ~30%), which
+        also avoids lock contention. If any leg still fails we emit
+        PROTECTION_FAILED and let protection_guardian (scan-cycle
+        backstop, src/protection_guardian.py) heal coverage later."""
         try:
             filters = self.bc.get_symbol_filters(symbol) or {}
             step = float(filters.get("stepSize", 0.0) or 0.0)
             tick = float(filters.get("tickSize", 0.0) or 0.0)
             min_notional = float(filters.get("minNotional", 10.0) or 10.0)
+            min_qty = float(filters.get("minQty", 0.0) or 0.0)
             dec = 8
             if step > 0:
                 s = repr(step).split(".")
@@ -83,55 +95,88 @@ class PositionOptimizer:
             fill_px = self._fill_avg_price(buy_order, entry_price)
             if fill_px <= 0 or pqty <= 0 or pqty * fill_px < min_notional:
                 logger.warning(
-                    "switch-protection: %s notional below minNotional — skipped (ensure_tp_sl backstop)",
+                    "switch-protection: %s notional below minNotional — skipped (protection_guardian backstop)",
                     symbol,
                 )
                 return
             sl_px = self._round_tick(fill_px * (1 - 0.07), tick)
             tp_px = self._round_tick(fill_px * (1 + 0.04), tick)
-            sl_ret = None
+
+            # --- OCO-first: one locked quantity, both legs ---
+            try:
+                oco = self.bc.place_oco(symbol, pqty, tp_px, sl_px)
+            except Exception as e:
+                logger.warning("switch-protection: OCO place failed for %s: %s", symbol, e)
+                oco = None
+            if oco:
+                logger.info(
+                    "switch-protection: OCO live for %s %s @ tp %s / sl %s",
+                    symbol, pqty, tp_px, sl_px)
+                return
+
+            # --- fallback: split-qty separate legs (Strategy C semantics) ---
+            tp_qty = round(int(pqty * 0.7 / step) * step, dec) if step > 0 else round(pqty * 0.7, dec)
+            sl_qty = round(pqty - tp_qty, dec)
+            if sl_qty < min_qty or sl_qty * fill_px < min_notional:
+                # split SL slice would be rejected → full-qty SL is the
+                # lesser evil (capital first); TP left to guardian, which
+                # can swap the locked SL into an OCO later
+                try:
+                    sl_ret = self.bc.place_stop_loss_limit(
+                        symbol, pqty, round(sl_px * 0.995, 8), sl_px)
+                except Exception as e:
+                    sl_ret = None
+                    logger.warning("switch-protection: SL place failed for %s: %s", symbol, e)
+                if not sl_ret:
+                    emit_alert(
+                        "PROTECTION_FAILED", symbol,
+                        {"which": "ALL", "qty": pqty,
+                         "note": "OCO rejected + full SL rejected; "
+                                 "protection_guardian must heal"})
+                    return
+                logger.info(
+                    "switch-protection: full-qty SL live for %s %s @ %s "
+                    "(split SL slice below min; guardian will swap to OCO)",
+                    symbol, pqty, sl_px)
+                emit_alert(
+                    "PROTECTION_FAILED", symbol,
+                    {"which": "TP", "qty": pqty,
+                     "note": "OCO rejected; SL full-qty live; "
+                             "protection_guardian will swap SL→OCO"})
+                return
             try:
                 sl_ret = self.bc.place_stop_loss_limit(
-                    symbol, pqty, round(sl_px * 0.995, 8), sl_px
-                )
+                    symbol, sl_qty, round(sl_px * 0.995, 8), sl_px)
             except Exception as e:
+                sl_ret = None
                 logger.warning("switch-protection: SL place failed for %s: %s", symbol, e)
             if not sl_ret:
-                logger.warning(
-                    "switch-protection: SL rejected for %s — TP skipped (ensure_tp_sl will retry)",
-                    symbol,
-                )
                 emit_alert(
                     "PROTECTION_FAILED", symbol,
-                    {"which": "SL", "qty": pqty,
-                     "note": "SL rejected; TP skipped; "
-                             "ensure_tp_sl will retry"})
+                    {"which": "ALL", "qty": pqty,
+                     "note": "OCO rejected + SL rejected; "
+                             "protection_guardian must heal"})
                 return
-            logger.info("switch-protection: SL live for %s %s @ %s", symbol, pqty, sl_px)
+            logger.info("switch-protection: SL live for %s %s @ %s (split)", symbol, sl_qty, sl_px)
             try:
-                tp_ret = self.bc.place_limit_sell(symbol, pqty, tp_px)
+                tp_ret = self.bc.place_limit_sell(symbol, tp_qty, tp_px)
             except Exception as e:
+                tp_ret = None
                 logger.error(
                     "switch-protection: TP FAILED for %s @ %s: %s — "
-                    "ensure_tp_sl must retry", symbol, tp_px, e)
-                emit_alert(
-                    "PROTECTION_FAILED", symbol,
-                    {"which": "TP", "tp_px": tp_px, "error": str(e)})
-                return
+                    "protection_guardian will retry", symbol, tp_px, e)
             if tp_ret:
-                logger.info("switch-protection: TP live for %s @ %s", symbol, tp_px)
+                logger.info("switch-protection: TP live for %s %s @ %s (split)", symbol, tp_qty, tp_px)
             else:
-                # place_limit_sell returns falsy on soft rejections
-                # (e.g. insufficient balance) without raising — without
-                # this check the log claims "TP live" on a dead order
+                # falsy return = soft rejection (insufficient balance etc.)
                 logger.error(
-                    "switch-protection: TP FAILED for %s @ %s (order "
-                    "rejected, no exception — e.g. insufficient balance) "
-                    "— ensure_tp_sl must retry", symbol, tp_px)
+                    "switch-protection: TP FAILED for %s @ %s (soft rejection) "
+                    "— protection_guardian will retry", symbol, tp_px)
                 emit_alert(
                     "PROTECTION_FAILED", symbol,
                     {"which": "TP", "tp_px": tp_px,
-                     "error": "soft rejection (falsy return)"})
+                     "error": "soft rejection (falsy return)",
+                     "note": "protection_guardian will retry"})
         except Exception as e:
             logger.warning("switch-protection: non-fatal failure for %s: %s", symbol, e)
 
@@ -913,7 +958,7 @@ class PositionOptimizer:
                 # Non-critical: next sync_from_binance will correct it
 
             # 8b. bug#41a (2026-09-15): protective orders NOW, not on the next
-            # ensure_tp_sl cron cycle — a crash/cron gap in between left the
+            # protection_guardian sweep — a crash/cron gap in between left the
             # fresh position with NO stop at all (ETHFI 9/12: naked for hours).
             try:
                 self._place_switch_protections(to_symbol, buy_qty, buy_order, to_price)

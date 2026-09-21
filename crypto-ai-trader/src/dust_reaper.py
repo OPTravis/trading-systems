@@ -6,7 +6,7 @@ permission is permanently off):
 - position HAS protection (any open order on the symbol) → healthy, skip;
   if it was in dust_watch, remove it (can hold protections again).
 - position UNPROTECTED and notional >= minNotional x 1.05 → healthy enough to
-  place protections; not reaper's business (ensure_tp_sl owns that).
+  place protections; not reaper's business (protection_guardian owns that).
 - position UNPROTECTED, notional < minNotional x 1.05, and market-sellable
   (notional >= market floor: minNotional when NOTIONAL.applyMinToMarket=true,
   else minQty) → LIQUIDATE_CANDIDATE.

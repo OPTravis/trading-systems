@@ -113,73 +113,112 @@ class TestFillAvgPrice:
 
 
 class TestSwitchProtectionAndFillPrice:
-    """bug#41a: SL/TP placed immediately after the switch buy fills."""
+    """bug#41a + WO-0921-013: OCO-first protection after the switch buy.
+
+    The legacy SL-full→TP-full sequence hit -2010 (SL locks the whole
+    balance) — tests now assert the OCO path and the split fallback.
+    """
+
+    @staticmethod
+    def _bc(calls, oco_ret=None, sl_ret=None, tp_ret=None, min_notional="10"):
+        def _oco(sym, q, tp, sl):
+            calls.setdefault("oco", []).append((sym, q, tp, sl))
+            if oco_ret is None:
+                raise RuntimeError("OCO rejected")
+            return oco_ret
+        return SimpleNamespace(
+            get_symbol_filters=lambda s: {
+                "stepSize": "0.1", "tickSize": "0.0001",
+                "minNotional": min_notional, "minQty": "0.1",
+            },
+            place_oco=_oco,
+            place_stop_loss_limit=lambda *a, **k: (
+                calls.setdefault("sl", []).append(a) and False
+                if sl_ret is False else (
+                    calls.setdefault("sl", []).append(a) or
+                    {"orderId": 333} if sl_ret is None else sl_ret)),
+            place_limit_sell=lambda *a, **k: (
+                calls.setdefault("tp", []).append(a) and False
+                if tp_ret is False else (
+                    calls.setdefault("tp", []).append(a) or
+                    {"orderId": 334} if tp_ret is None else tp_ret)),
+        )
 
     def test_protection_placed_immediately(self):
-        calls = {"sl": [], "tp": []}
+        """OCO-first: one order covers both legs on the full qty."""
+        calls = {}
         opt = object.__new__(PositionOptimizer)
-        opt.bc = SimpleNamespace(
-            get_symbol_filters=lambda s: {
-                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10",
-            },
-            place_stop_loss_limit=lambda *a, **k: calls.__setitem__(
-                "sl", calls["sl"] + [a]) or {"orderId": 333},
-            place_limit_sell=lambda *a, **k: calls.__setitem__(
-                "tp", calls["tp"] + [a]) or {"orderId": 334},
-        )
+        opt.bc = self._bc(calls, oco_ret={"orderListId": 9})
         buy_order = {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"}
         opt._place_switch_protections("ETHFIUSDT", 53.2, buy_order, 0.7588)
-        assert len(calls["sl"]) == 1 and len(calls["tp"]) == 1
-        assert calls["sl"][0][1] == pytest.approx(53.2)
-        assert calls["sl"][0][3] == pytest.approx(0.7062, abs=1e-6)
+        assert len(calls.get("oco", [])) == 1
+        assert calls.get("sl", []) == [] and calls.get("tp", []) == []
+        sym, q, tp_px, sl_px = calls["oco"][0]
+        assert q == pytest.approx(53.2)
+        assert sl_px == pytest.approx(0.7062, abs=1e-6)  # fill×0.93 tick
 
     def test_entry_fill_price_levels(self):
-        """SL/TP derive from the FILL price, not the stale signal price."""
-        seen = {}
+        """OCO legs derive from the FILL price, not the stale signal price."""
+        calls = {}
         opt = object.__new__(PositionOptimizer)
-        opt.bc = SimpleNamespace(
-            get_symbol_filters=lambda s: {
-                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10",
-            },
-            place_stop_loss_limit=lambda sym, q, lim, px: seen.update(sl=px) or {"orderId": 1},
-            place_limit_sell=lambda sym, q, px: seen.update(tp=px) or {"orderId": 2},
-        )
+        opt.bc = self._bc(calls, oco_ret={"orderListId": 9})
         opt._place_switch_protections("ETHFIUSDT", 53.2,
                                       {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"},
                                       0.7588)
         fill = 40.4 / 53.2
-        assert seen["sl"] == pytest.approx(int(fill * 0.93 / 0.0001) * 0.0001, abs=1e-9)
-        assert seen["tp"] == pytest.approx(int(fill * 1.04 / 0.0001) * 0.0001, abs=1e-9)
+        _, q, tp_px, sl_px = calls["oco"][0]
+        assert sl_px == pytest.approx(int(fill * 0.93 / 0.0001) * 0.0001, abs=1e-9)
+        assert tp_px == pytest.approx(int(fill * 1.04 / 0.0001) * 0.0001, abs=1e-9)
 
-    def test_no_tp_when_sl_rejected(self):
-        calls = {"tp": 0}
+    def test_oco_rejected_falls_back_to_split(self):
+        """OCO rejected → split legs (Strategy C semantics), no lock clash."""
+        calls = {}
         opt = object.__new__(PositionOptimizer)
-        opt.bc = SimpleNamespace(
-            get_symbol_filters=lambda s: {
-                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10",
-            },
-            place_stop_loss_limit=lambda *a, **k: None,
-            place_limit_sell=lambda *a, **k: calls.__setitem__("tp", calls["tp"] + 1),
-        )
+        opt.bc = self._bc(calls)  # oco raises
         opt._place_switch_protections("ETHFIUSDT", 53.2,
                                       {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"},
                                       0.7588)
-        assert calls["tp"] == 0
+        assert len(calls["sl"]) == 1 and len(calls["tp"]) == 1
+        sl_qty = calls["sl"][0][1]
+        tp_qty = calls["tp"][0][1]
+        assert sl_qty == pytest.approx(53.2 - 37.2)  # 70% TP floor→37.2
+        assert tp_qty == pytest.approx(37.2)
+        assert sl_qty + tp_qty == pytest.approx(53.2)
+
+    def test_split_sl_slice_below_min_full_qty_sl(self):
+        """Tiny position: split SL slice below minNotional → full-qty SL +
+        PROTECTION_FAILED(TP) alert, guardian to heal later."""
+        calls = {}
+        opt = object.__new__(PositionOptimizer)
+        # qty 20 @ ~0.76: total 15.2 > 10 OK; TP70% floor→14, SL slice 6
+        # → 6×0.76=4.56 < 10 minNotional → full-qty SL branch
+        opt.bc = self._bc(calls)
+        opt._place_switch_protections("ETHFIUSDT", 20.0,
+                                      {"cummulativeQuoteQty": "15.2", "executedQty": "20.0"},
+                                      0.76)
+        assert len(calls["sl"]) == 1
+        assert calls["sl"][0][1] == pytest.approx(20.0)  # full qty
+        assert calls.get("tp", []) == []
+
+    def test_no_tp_when_sl_rejected(self):
+        """OCO + split SL both rejected → no naked TP (capital first)."""
+        calls = {}
+        opt = object.__new__(PositionOptimizer)
+        opt.bc = self._bc(calls, sl_ret=False)
+        opt._place_switch_protections("ETHFIUSDT", 53.2,
+                                      {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"},
+                                      0.7588)
+        assert calls.get("tp", []) == []
 
     def test_below_minnotional_skipped(self):
-        calls = {"sl": 0, "tp": 0}
+        calls = {}
         opt = object.__new__(PositionOptimizer)
-        opt.bc = SimpleNamespace(
-            get_symbol_filters=lambda s: {
-                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "500",
-            },
-            place_stop_loss_limit=lambda *a, **k: calls.__setitem__("sl", calls["sl"] + 1),
-            place_limit_sell=lambda *a, **k: calls.__setitem__("tp", calls["tp"] + 1),
-        )
+        opt.bc = self._bc(calls, min_notional="500")
         opt._place_switch_protections("ETHFIUSDT", 5.0,
                                       {"cummulativeQuoteQty": "3.8", "executedQty": "5.0"},
                                       0.76)
-        assert calls["sl"] == 0 and calls["tp"] == 0
+        assert calls.get("sl", []) == [] and calls.get("tp", []) == [] \
+            and calls.get("oco", []) == []
 
 
 class TestValidatorStaleReportScope:

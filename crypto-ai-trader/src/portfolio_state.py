@@ -83,7 +83,7 @@ class StateMixin:
                             continue
                     if db_row is None and known_ts is not None:
                         # We loaded this symbol earlier but the row is gone:
-                        # another process closed it (e.g. ensure_tp_sl TP close).
+                        # another process closed it (e.g. guardian TP close).
                         # Never resurrect — drop it from memory and log.
                         logger.warning(
                             "_save_state: %s was removed from DB after our snapshot "

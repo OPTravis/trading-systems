@@ -609,7 +609,7 @@ def cmd_trailing_check():
         sl_moved = False
 
         if sl_orders:
-            # bug#17 fix: consolidate ALL stop orders (ensure_tp_sl may have
+            # bug#17 fix: consolidate ALL stop orders (protection_guardian may have
             # placed extra SL legs at different prices — 8/22 SOL had 3).
             # old_sl_price = the tightest (highest) stop among them.
             sl_order = max(sl_orders, key=lambda o: float(o.get('stopPrice', 0) or o.get('price', 0)))
@@ -845,10 +845,10 @@ def cmd_trailing_check():
         # unprotected — tiered TP1/TP2 is the executor's designed exit
         # ladder. Treating them as uncovered made this loop cannibalize a
         # TP every 5-min cycle (19:15 TP1, 19:20 TP2, then eating the TP
-        # ensure_tp_sl re-added at 19:35/20:00), flipping every position to
+        # protection_guardian re-added at 19:35/20:00), flipping every position to
         # SL-only that stops out on noise — directly against the "upside >
         # drawdown" mandate. TP-locked qty now counts as covered. Crash tail
-        # (SL fired, TPs left hanging) is backstopped by ensure_tp_sl's OCO
+        # (SL fired, TPs left hanging) is backstopped by protection_guardian's OCO
         # restructure (*/30min) and the adaptive trailing trigger's
         # cancel-all + market sell.
         uncovered_by_sl = total_qty - sl_covered - tp_covered  # units with NO exit order at all

@@ -247,10 +247,10 @@ def _step_kv_preflight(ctx) -> bool:
 
 
 def _step_defense_sweep(ctx):
-    """P0-2 defense items 1/2: stuck-order monitor + circuit tiers.
+    """Defense sweep: stuck-order monitor + circuit tiers + TP guardian.
 
     Runs after reconcile/dust/health so tier evaluation sees the freshest
-    booked state. Both sub-steps are individually fail-open (non-fatal).
+    booked state. All sub-steps are individually fail-open (non-fatal).
     """
     client = ctx.get("client")
     portfolio = ctx.get("portfolio")
@@ -274,6 +274,18 @@ def _step_defense_sweep(ctx):
             logger.warning("circuit_tiers: %s", tiers)
     except Exception:
         logger.warning("circuit tiers step failed (non-fatal)",
+                       exc_info=True)
+    # WO-0921-013: TP-coverage backstop (replaces the never-implemented
+    # ensure_tp_sl). Heals positions whose TP failed to place (e.g. -2010
+    # lock contention) — free-slice TP or SL→OCO swap. Fail-open.
+    try:
+        from src.protection_guardian import run as guardian_run
+
+        healed = guardian_run(client, portfolio)
+        if healed.get("healed") or healed.get("failed"):
+            logger.warning("protection_guardian: %s", healed)
+    except Exception:
+        logger.warning("protection_guardian step failed (non-fatal)",
                        exc_info=True)
 
 
