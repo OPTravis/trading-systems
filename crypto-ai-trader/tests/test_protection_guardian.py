@@ -246,6 +246,34 @@ class TestGuardian:
         assert res["healed"] == 1 and res["skipped"] == 1
 
 
+class TestTrackerRegistration:
+    def test_heal_registers_tp_sl_tracker(self, monkeypatch):
+        """Every successful heal persists tp_sl_tracker state (best-effort,
+        never raises) — the legacy switch path never did, which is why
+        FET/WLD/BNB had no tracker entries."""
+        recorded = []
+        monkeypatch.setattr(pg, "_track",
+                            lambda sym, entry, qty, tps, sl: recorded.append(
+                                (sym, entry, qty, tps, sl)))
+        # free-slice heal
+        c = FakeClient(orders=[])
+        pg.run(c, FakePortfolio([_pos("FETUSDT", 84.6, 0.1954,
+                                      take_profit=0.2031)]))
+        assert len(recorded) == 1
+        sym, entry, qty, tps, sl = recorded[0]
+        assert sym == "FETUSDT" and qty == pytest.approx(84.6)
+        assert sl is None and tps[0]["side"] == "LIMIT"
+        # OCO swap heal
+        recorded.clear()
+        c2 = FakeClient(orders=[_sl_leg("WLDUSDT", 30.0, 21, 0.4324)])
+        pg.run(c2, FakePortfolio([_pos("WLDUSDT", 30.0, 0.4649,
+                                       take_profit=0.4835)]))
+        assert len(recorded) == 1
+        sym, entry, qty, tps, sl = recorded[1 - 1]
+        assert tps[0]["side"] == "OCO_TP" and sl is not None
+        assert sl["stop_price"] == pytest.approx(0.4324)
+
+
 class TestStepFloor:
     def test_step_floor_and_tick(self):
         assert pg._step_floor(0.00715042, 0.001) == pytest.approx(0.007)

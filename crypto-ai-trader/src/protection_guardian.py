@@ -48,6 +48,17 @@ DEFAULT_TP_PCT = 0.04
 _OCO_MARKERS = ("STOP_LOSS", "TAKE_PROFIT", "OCO")
 
 
+def _track(symbol: str, entry: float, qty: float, tp_orders: list,
+           sl_order: Optional[dict]) -> None:
+    """Persist tp_sl_tracker state after a heal (best-effort)."""
+    try:
+        from src.tp_sl_tracker import save_state
+        save_state(symbol, entry, qty, tp_orders, sl_order)
+    except Exception:
+        logger.warning("protection_guardian: tracker save failed for %s",
+                       symbol, exc_info=True)
+
+
 def _step_floor(qty: float, step: float) -> float:
     if step and step > 0:
         return math.floor(qty / step + 1e-9) * step
@@ -179,6 +190,11 @@ def run(client: Any, portfolio: Any,
                     log.info("protection_guardian: TP placed for %s "
                              "%.8g @ %.8g (free slice)", sym, free_qty,
                              tp_px)
+                    _track(sym, entry, qty, [{
+                        "order_id": res.get("orderId"),
+                        "price": tp_px, "qty": free_qty, "tier": 1,
+                        "pct": None, "side": "LIMIT",
+                    }], None)
                     continue
                 summary["failed"] += 1
                 emit_alert("PROTECTION_HEAL_FAILED", sym, {
@@ -231,6 +247,17 @@ def run(client: Any, portfolio: Any,
                     log.warning("protection_guardian: %s SL→OCO swapped "
                                 "(TP restored) qty %.8g tp %.8g sl %.8g",
                                 sym, oco_qty_step, tp_px, old_stop)
+                    _list_id = (oco.get("orderListId")
+                                if isinstance(oco, dict) else None)
+                    _track(sym, entry, qty, [{
+                        "order_id": _list_id,
+                        "price": tp_px, "qty": oco_qty_step, "tier": 1,
+                        "pct": None, "side": "OCO_TP",
+                    }], {
+                        "order_id": _list_id,
+                        "price": old_stop, "qty": oco_qty_step,
+                        "stop_price": old_stop,
+                    })
                 else:
                     # safety net: restore old SL legs immediately
                     restored = 0
