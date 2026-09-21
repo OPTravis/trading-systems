@@ -35,6 +35,7 @@ FABRICATED = {
     62: ("SUIUSDT", "SELL", 6.7, 0.9355, "8370533427"),   # 4/23 stale leg
     63: ("SUIUSDT", "SELL", 5.4, 0.9331, "8372669858"),   # 4/23 stale leg
     68: ("ZAMAUSDT", "SELL", 443.0, 0.03178, "98217977"), # 4/14 (P0-1.5)
+    55: ("FILUSDT", "SELL", 42.48, 1.182, "5150976521"),   # 5/9 stale leg
 }
 
 # --- the two real fills the ledger is missing (INSERT if absent) -----------
@@ -48,6 +49,9 @@ BACKFILL = [
     dict(symbol="ZAMAUSDT", side="SELL", qty=64.0, price=0.08782890625,
          pnl=-0.40657, oid="233705997",
          ts=epoch(2026, 9, 20, 22, 42, 24)),              # P0-1.5 backfill
+    dict(symbol="FILUSDT", side="SELL", qty=8.69, price=0.9757,
+         pnl=round(8.69 * (0.9757 - 1.04092660406886), 6),  # -0.566819
+         oid="5284631286", ts=epoch(2026, 9, 20, 6, 1, 55)),
 ]
 
 # --- rows that must be verified present and correct (NEVER rewritten) ------
@@ -57,9 +61,11 @@ VERIFY = [
     (51, "SUIUSDT", "BUY", 6.9, 0.8623, None),           # 9/20 real entry
     (54, "INJUSDT", "BUY", 7.45, 8.058, None),           # 9/20 real entry
     (65, "ZAMAUSDT", "BUY", 64.0, 0.0941815625, None),   # 9/20 real entry
+    (52, "FILUSDT", "BUY", 25.56, 1.04092660406886, None),  # 9/20 real entry
+    (56, "FILUSDT", "SELL", 16.87, 0.9519, "5286550265"),   # 9/20 real close
 ]
 
-SYMBOLS = ("SUIUSDT", "INJUSDT", "ZAMAUSDT")
+SYMBOLS = ("SUIUSDT", "INJUSDT", "ZAMAUSDT", "FILUSDT")
 
 
 def pnl_sum(conn, symbol):
@@ -129,13 +135,13 @@ def main(apply: bool):
         conn.close()
         return
 
-    backup = f"/Coze/Drive/Crypto_Trading_Monitor/backups/state.db.20260921_pre_p02_sui_inj_fix"
+    backup = f"/Coze/Drive/Crypto_Trading_Monitor/backups/state.db.20260921_pre_p02b_fil_fix"
     import shutil
     shutil.copy(DB, backup)
     print(f"\nbackup written: {backup}")
 
     evidence = {
-        "ticket": "P0-2 stale SELL backfill correction",
+        "ticket": "P0-2B FIL stale SELL backfill correction",
         "deleted": [dict(id=t, row=g, pnl=p) for t, g, p in plan_del],
         "inserted": plan_ins,
         "verified": [list(v) for v in VERIFY],
@@ -151,7 +157,7 @@ def main(apply: bool):
     conn.execute(
         "INSERT INTO audit_log (timestamp, action, details, old_value, new_value, source) "
         "VALUES (?,?,?,?,?,?)",
-        (time.time(), "TRADES_P02_STALE_SELL_FIX",
+        (time.time(), "TRADES_P02B_FIL_FIX",
          json.dumps(evidence, ensure_ascii=False, indent=1),
          json.dumps({str(t): g for t, g, _ in plan_del}, ensure_ascii=False),
          json.dumps({b["oid"]: b for b in plan_ins}, ensure_ascii=False),
@@ -164,13 +170,13 @@ def main(apply: bool):
         now_sum = pnl_sum(conn, sym)
         print(f"  after:  {sym:9s} realized pnl = {now_sum:+.6f}")
     rows = {r["symbol"]: r["qty"] for r in conn.execute(
-        "SELECT symbol, COUNT(*) qty FROM trades WHERE symbol IN (?,?,?) "
+        "SELECT symbol, COUNT(*) qty FROM trades WHERE symbol IN (?,?,?,?) "
         "GROUP BY symbol", SYMBOLS)}
     print(f"  rows per symbol: {rows}")
     aid = conn.execute(
-        "SELECT id FROM audit_log WHERE action='TRADES_P02_STALE_SELL_FIX' "
+        "SELECT id FROM audit_log WHERE action='TRADES_P02B_FIL_FIX' "
         "ORDER BY id DESC LIMIT 1").fetchone()
-    print(f"  audit_log id={aid[0]} TRADES_P02_STALE_SELL_FIX")
+    print(f"  audit_log id={aid[0]} TRADES_P02B_FIL_FIX")
     conn.close()
 
 
