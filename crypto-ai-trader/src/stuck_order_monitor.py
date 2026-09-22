@@ -28,7 +28,7 @@ STUCK_TIMEOUT_S = 15 * 60
 
 #: orderType / type substrings marking protective orders — never cancel.
 PROTECTIVE_TYPES = (
-    "STOP_LOSS", "TAKE_PROFIT", "OCO", "STOP", "TRAILING",
+    "STOP_LOSS", "TAKE_PROFIT", "OCO", "STOP", "TRAILING", "LIMIT_MAKER",
 )
 
 #: Statuses considered live-but-unfilled.
@@ -44,8 +44,20 @@ def _is_protective(order: Dict[str, Any]) -> bool:
     # OCO parents/legs expose contingencyType (e.g. OCO/OTO)
     if order.get("contingencyType") or order.get("listStatusType"):
         return True
-    # OCO legs carry listId / origClientOrderId linkage
-    if order.get("listId") or order.get("origClientOrderId"):
+    # OCO legs carry orderListId > 0 (Binance native field, preserved by wrapper);
+    # legacy listId kept for compatibility. Fix WO-0922-017-iv: `listId` never
+    # existed on openOrders legs, so LIMIT_MAKER TP legs were misjudged as plain
+    # entry orders and cancelled, stripping positions of SL via OCO atomicity.
+    try:
+        if int(order.get("orderListId") or 0) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    if (order.get("listId") or order.get("origClientOrderId")
+            or order.get("listClientOrderId")):
+        return True
+    # guardian-healed protective orders use cat_ clientOrderId prefix
+    if str(order.get("clientOrderId") or "").startswith("cat_"):
         return True
     return False
 
