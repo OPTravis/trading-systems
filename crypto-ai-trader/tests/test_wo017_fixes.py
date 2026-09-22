@@ -68,10 +68,12 @@ class FakeClient:
         return self.live.get(symbol)
 
 
-def _sell_fill(order_id, qty, price, age_s=60, commission=0.0):
+def _sell_fill(order_id, qty, price, age_s=60, commission=0.0,
+               client_order_id=""):
     return {"orderId": order_id, "isBuyer": False, "qty": str(qty),
             "price": str(price), "time": int((time.time() - age_s) * 1000),
-            "commission": str(commission), "commissionAsset": "USDT"}
+            "commission": str(commission), "commissionAsset": "USDT",
+            "clientOrderId": client_order_id}
 
 
 # ---------------- 1. suffix-aware idempotency ----------------
@@ -232,4 +234,87 @@ class TestStaleSanityExemption:
             fills={"PROVEUSDT": [_sell_fill(313400527, 24.1, 0.2566,
                                             age_s=60)]})
         booked = pr.reconcile_portfolio_drift(client, db)
+        assert len(booked) == 1
+
+
+# ---------------- 4. WO-017-vi: own-fill attribution beats deviation ----------------
+
+class TestOwnFillAttribution:
+    """BCH 9/22 20:41 regression: own OCO TP filled 283.1 while live had
+    run to 299.2 — sanity rejected a real fill. Attribution (tracker row
+    or cat_ clientOrderId prefix) must waive the deviation check;
+    unattributable orders still face it."""
+
+    def _setup(self, tmp_path, monkeypatch, fills, tracked=None):
+        db = FakeDB()
+        db.trade_add("BCHUSDT", "BUY", 0.022, 272.3, 0.0)
+        # lifecycle anchor: the BUY must predate the 60s-old fill or the
+        # P0-2 guard correctly excludes the leg
+        db.conn.execute(
+            "UPDATE trades SET timestamp = ? WHERE side = 'BUY'",
+            (time.time() - 7200,))
+        db.conn.commit()
+        client = FakeClient(fills={"BCHUSDT": fills},
+                            live={"BCHUSDT": 299.2})  # +5.7% vs fill 283.1
+        monkeypatch.setattr(
+            "src.tp_sl_tracker.get_all_tracked",
+            lambda: tracked or {})
+        return db, client
+
+    def test_tracked_tp_fill_far_from_live_books(self, tmp_path, monkeypatch):
+        """Fresh fill on a tracker-recorded TP order, live price 5.7% away:
+        attributed -> booked despite deviation."""
+        from src.portfolio_reconciler import _book_missing_sells
+        db, client = self._setup(
+            tmp_path, monkeypatch,
+            fills=[_sell_fill(5510690989, 0.022, 283.1)],
+            tracked={"BCHUSDT": {"tp_orders": [
+                {"order_id": 5510690989, "price": 283.1, "qty": 0.022}],
+                "sl_order": None}})
+        booked = _book_missing_sells(db, "BCHUSDT",
+                                     client.get_my_trades("BCHUSDT"),
+                                     0.022, client)
+        assert len(booked) == 1
+        assert booked[0]["qty"] == pytest.approx(0.022)
+
+    def test_cat_prefixed_fill_far_from_live_books(self, tmp_path, monkeypatch):
+        """BCH live-fire shape: tracker already removed at reconcile time;
+        attribution survives via the wrappers' cat_ prefix."""
+        from src.portfolio_reconciler import _book_missing_sells
+        db, client = self._setup(
+            tmp_path, monkeypatch,
+            fills=[_sell_fill(5510690989, 0.022, 283.1,
+                              client_order_id="cat_BCHUSDT_SELL_x1")],
+            tracked={})
+        booked = _book_missing_sells(db, "BCHUSDT",
+                                     client.get_my_trades("BCHUSDT"),
+                                     0.022, client)
+        assert len(booked) == 1
+
+    def test_foreign_manual_fill_far_from_live_skipped(self, tmp_path, monkeypatch):
+        """No tracker row, no cat_ marker (exchange-UI/manual order):
+        deviation check still rejects the leg."""
+        from src.portfolio_reconciler import _book_missing_sells
+        db, client = self._setup(
+            tmp_path, monkeypatch,
+            fills=[_sell_fill(5510690989, 0.022, 283.1)],
+            tracked={})
+        booked = _book_missing_sells(db, "BCHUSDT",
+                                     client.get_my_trades("BCHUSDT"),
+                                     0.022, client)
+        assert booked == []
+
+    def test_tracker_sl_order_id_attributed(self, tmp_path, monkeypatch):
+        """SL leg recorded in tracker (not tp_orders) also waives sanity."""
+        from src.portfolio_reconciler import _book_missing_sells
+        db, client = self._setup(
+            tmp_path, monkeypatch,
+            fills=[_sell_fill(6251429617, 0.03, 240.0)],
+            tracked={"ZECUSDT": {
+                "tp_orders": [],
+                "sl_order": {"order_id": 6251429617,
+                             "stop_price": 241.0, "qty": 0.03}}})
+        booked = _book_missing_sells(db, "BCHUSDT",
+                                     client.get_my_trades("BCHUSDT"),
+                                     0.03, client)
         assert len(booked) == 1

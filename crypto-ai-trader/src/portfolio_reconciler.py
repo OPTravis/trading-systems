@@ -169,6 +169,44 @@ def _last_buy_ts_ms(db, symbol: str) -> int:
     return int(float(ts) * 1000) if ts else 0
 
 
+def _is_own_fill(order_id, legs) -> bool:
+    """WO-017-vi: attribution first, deviation second.
+
+    A fill on an order THIS system placed (TP/SL legs, OCO legs, guardian
+    heals, switch-flow exits) is bookable regardless of how far the live
+    price has traveled since the exit — a resting limit that filled and
+    then the market moved on is drift, not a foreign leg (BCH 9/22 20:41:
+    own OCO TP filled 283.1, live 299.2, sanity rejected a real fill and
+    the ledger stayed short until a manual id95 backfill).
+
+    Two independent attribution signals:
+      1. order_id recorded in the live TP/SL tracker (placed by us);
+      2. fill clientOrderId carries the wrappers' universal ``cat_``
+         prefix — survives tracker cleanup after the position closed
+         (the BCH tracker was already removed when reconcile ran).
+    Manual/exchange-UI orders carry no cat_ marker and no tracker row,
+    so they still face the deviation check.
+    """
+    oid = str(order_id)
+    try:
+        from src.tp_sl_tracker import get_all_tracked
+        for state in (get_all_tracked() or {}).values():
+            if not isinstance(state, dict):
+                continue
+            for tp in state.get("tp_orders") or []:
+                if str((tp or {}).get("order_id")) == oid:
+                    return True
+            sl = state.get("sl_order") or {}
+            if str(sl.get("order_id") or "") == oid:
+                return True
+    except Exception:
+        pass  # tracker unavailable -> fall through to prefix check
+    for f in legs:
+        if str(f.get("clientOrderId") or "").startswith("cat_"):
+            return True
+    return False
+
+
 def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                         client=None) -> List[Dict]:
     """Aggregate SELL fills by orderId and book the unrecorded ones.
@@ -237,7 +275,15 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
         # guard against foreign legs for stale fills.
         fill_age_ms = int(time.time() * 1000) - min(int(f["time"]) for f in legs)
         sanity_applies = fill_age_ms <= STALE_SANITY_EXEMPT_MS
-        if client is not None and sanity_applies:
+        # WO-017-vi: own fills bypass the deviation check entirely
+        own_fill = _is_own_fill(oid, legs)
+        if own_fill:
+            logger.info(
+                "reconcile: SELL %s orderId=%s attributed to our own order "
+                "(tracker/cat_ prefix) — sanity check waived",
+                symbol, oid,
+            )
+        if not own_fill and client is not None and sanity_applies:
             try:
                 live = client.get_ticker_price(symbol)
             except Exception:
