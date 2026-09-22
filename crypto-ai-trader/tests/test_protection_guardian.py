@@ -181,7 +181,9 @@ class TestGuardian:
 
     def test_take_profit_stop_order_counts_as_cover(self):
         """Independent TAKE_PROFIT_LIMIT order (no listId) is TP coverage,
-        not an OCO leg — must not trigger a heal."""
+        not an OCO leg — but WO-017-4a: with zero SL behind it the
+        position is downside-naked, so the TP is rebuilt as a full OCO
+        (SL side restored alongside)."""
         tp_stop = {
             "symbol": "BNBUSDT", "orderId": 55, "status": "NEW",
             "type": "TAKE_PROFIT_LIMIT", "side": "SELL",
@@ -191,8 +193,8 @@ class TestGuardian:
         c = FakeClient(orders=[tp_stop])
         pos = _pos("BNBUSDT", 0.05, 812.47, take_profit=844.97)
         res = pg.run(c, FakePortfolio([pos]))
-        assert res["healed"] == 0 and res["failed"] == 0
-        assert c.tp_placed == [] and c.ocos == []
+        assert res["healed"] == 1 and res["failed"] == 0
+        assert c.ocos and c.ocos[0][2] == pytest.approx(844.97)
 
     def test_tp_split_70pct_covered_skips(self):
         """Strategy-C split (TP 70% + SL 30%) already covers → skip."""

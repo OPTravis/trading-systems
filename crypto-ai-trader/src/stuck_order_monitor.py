@@ -56,8 +56,18 @@ def _is_protective(order: Dict[str, Any]) -> bool:
     if (order.get("listId") or order.get("origClientOrderId")
             or order.get("listClientOrderId")):
         return True
-    # guardian-healed protective orders use cat_ clientOrderId prefix
-    if str(order.get("clientOrderId") or "").startswith("cat_"):
+    # Plain (non-OCO) resting exits -- guardian heals and trade_executor
+    # TP limit sells -- are LIMIT SELLs stamped with the `cat_` prefix.
+    # That prefix is the UNIVERSAL clientOrderId marker of both exchange
+    # wrappers (ccxt_client/_binance_sdk_client place_order), NOT a
+    # guardian-only marker: TWAP entry slices are plain LIMIT BUYs that
+    # carry cat_ too (WO-0922-017-iv review fix -- the unscoped check
+    # neutered the monitor for its documented target). On SPOT a resting
+    # LIMIT SELL is always a protective exit; LIMIT BUYs are entries the
+    # monitor must still police. Unknown side stays protected (fail-safe
+    # against catastrophic cancels).
+    if (str(order.get("clientOrderId") or "").startswith("cat_")
+            and str(order.get("side") or "").upper() != "BUY"):
         return True
     return False
 

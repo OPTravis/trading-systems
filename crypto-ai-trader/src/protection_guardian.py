@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 #: fraction of holding is considered protected
 TP_COVER_MIN_FRAC = 0.5
 
+#: WO-017-4a: default SL distance for SL-side restores (pos.stop_loss wins)
+DEFAULT_SL_PCT = 0.08
+#: WO-017-4c: tracker entries with SL=no older than this raise an alert (s)
+SL_MISSING_WARN_S = 15 * 60
+
 #: fallback TP level when the DB row carries none
 DEFAULT_TP_PCT = 0.04
 
@@ -202,9 +207,18 @@ def run(client: Any, portfolio: Any,
             sl_orders = [o for o in orders if _is_plain_sl(o)]
             sl_qty = sum(_order_qty(o) for o in sl_orders)
 
-            covered = oco_qty + tp_qty
-            if covered >= qty * TP_COVER_MIN_FRAC:
-                continue  # protected enough — idempotent skip
+            # WO-017-4a: pair check — BOTH sides must be covered. The
+            # old single-axis check treated a TP-only state as protected
+            # and never looked at the SL side (TRUMP 9/22 14:31: stuck
+            # cancel killed the OCO, heal re-placed only the TP leg).
+            tp_covered = oco_qty + tp_qty
+            sl_covered = oco_qty + sl_qty
+            # SL side uses an existence check (not a fraction): partial
+            # SL ladders are a legitimate strategy end-state (Strategy-C
+            # 70/30 split), but ZERO SL means the downside is naked.
+            if (tp_covered >= qty * TP_COVER_MIN_FRAC
+                    and sl_covered > 0.0):
+                continue  # both sides protected — idempotent skip
 
             tp_px = pos.get("take_profit")
             try:
@@ -229,8 +243,9 @@ def run(client: Any, portfolio: Any,
                 log.info("protection_guardian: %s TP target %.8g "
                          "breached (px %.8g) — no TP placement", sym,
                          tp_px, price)
-                # no protection at all → emergency SL instead of naked
-                if oco_qty <= 0 and tp_qty <= 0 and sl_qty <= 0:
+                # WO-017-4a: nakedness is judged on the SL side — a
+                # hanging TP does not protect the downside
+                if oco_qty <= 0 and sl_qty <= 0:
                     em_stop = _tick_round(price * 0.87, tick)
                     try:
                         ret = client.place_stop_loss_limit(
@@ -329,6 +344,123 @@ def run(client: Any, portfolio: Any,
                                 "manual protection required",
                         "ts": time.time(),
                     })
+                continue
+
+            if tp_qty > 0 and oco_qty <= 0 and sl_qty <= 0:
+                # WO-017-4a: TP-only lock — the mirror case of the
+                # SL→OCO swap below. Plain TP sells lock the base asset,
+                # so an independent SL would double-lock and reject;
+                # the only correct restore is cancelling the orphan TP
+                # legs and rebuilding a full OCO over the same slice
+                # (TRUMP 9/22: the manual 15:02 restore path).
+                tp_legs = [{
+                    "qty": _order_qty(o),
+                    "px": float(o.get("price") or 0),
+                    "id": o.get("orderId"),
+                } for o in orders if _is_plain_tp(o)]
+                tp_px_live = (sum(l["qty"] * l["px"] for l in tp_legs)
+                              / sum(l["qty"] for l in tp_legs
+                                    if l["qty"] > 0)
+                              ) if tp_legs else 0.0
+                if not tp_px_live or tp_px_live <= price * 1.001:
+                    tp_px_live = tp_px  # computed default above
+                sl_px_new = pos.get("stop_loss")
+                try:
+                    sl_px_new = float(sl_px_new) if sl_px_new else 0.0
+                except (TypeError, ValueError):
+                    sl_px_new = 0.0
+                if not sl_px_new or sl_px_new <= 0:
+                    sl_px_new = _tick_round(
+                        (entry or price) * (1 - DEFAULT_SL_PCT), tick)
+                else:
+                    sl_px_new = _tick_round(sl_px_new, tick)
+                # never cancel a leg whose replacement would be rejected:
+                # Binance PERCENT_PRICE_BY_SIDE refuses stops >~13% away
+                if sl_px_new < price * 0.87:
+                    summary["skipped"] += 1
+                    emit_alert("PROTECTION_SL_OUT_OF_BAND", sym, {
+                        "planned_stop": sl_px_new, "price": price,
+                        "note": "TP-only position, planned SL too far "
+                                "below market — rebuild aborted, manual "
+                                "review advised",
+                        "ts": time.time(),
+                    })
+                    log.info("protection_guardian: %s planned stop %.8g "
+                             "outside ±13%% band of px %.8g — skip "
+                             "TP→OCO rebuild", sym, sl_px_new, price)
+                    continue
+                cancelled_tp = []
+                for leg in tp_legs:
+                    try:
+                        client.cancel_order(sym, leg["id"])
+                        cancelled_tp.append(leg)
+                    except Exception:
+                        log.warning("protection_guardian: cancel TP %s "
+                                    "failed for %s", leg["id"], sym,
+                                    exc_info=True)
+                if len(cancelled_tp) != len(tp_legs):
+                    summary["failed"] += 1
+                    emit_alert("PROTECTION_HEAL_FAILED", sym, {
+                        "mode": "tp_oco_rebuild_partial_cancel",
+                        "cancelled": len(cancelled_tp),
+                        "total": len(tp_legs), "ts": time.time(),
+                    })
+                    continue
+                rebuild_qty = _step_floor(
+                    min(qty, sum(l["qty"] for l in cancelled_tp)
+                        + max(qty - tp_qty - sl_qty, 0.0)), step)
+                try:
+                    oco = client.place_oco(
+                        sym, rebuild_qty, tp_px_live, sl_px_new)
+                except Exception:
+                    oco = None
+                if oco:
+                    summary["healed"] += 1
+                    emit_alert("PROTECTION_HEALED", sym, {
+                        "mode": "tp_oco_rebuild", "qty": rebuild_qty,
+                        "tp_px": tp_px_live, "sl_px": sl_px_new,
+                        "note": "TP-only lock rebuilt as full OCO — "
+                                "SL side restored",
+                        "ts": time.time(),
+                    })
+                    log.warning("protection_guardian: %s TP→OCO rebuilt "
+                                "(SL restored) qty %.8g tp %.8g sl %.8g",
+                                sym, rebuild_qty, tp_px_live, sl_px_new)
+                    _list_id = (oco.get("orderListId")
+                                if isinstance(oco, dict) else None)
+                    _track(sym, entry, rebuild_qty, [{
+                        "order_id": _list_id,
+                        "price": tp_px_live, "qty": rebuild_qty,
+                        "tier": 1, "pct": None, "side": "OCO_TP",
+                    }], {
+                        "order_id": _list_id,
+                        "price": sl_px_new, "qty": rebuild_qty,
+                        "stop_price": sl_px_new,
+                    })
+                else:
+                    # safety net: restore the cancelled TP legs
+                    re_placed = 0
+                    for leg in cancelled_tp:
+                        try:
+                            client.place_limit_sell(sym, leg["qty"],
+                                                    leg["px"])
+                            re_placed += 1
+                        except Exception:
+                            logger.error("protection_guardian: TP restore "
+                                         "FAILED for %s leg %s", sym,
+                                         leg["id"], exc_info=True)
+                    summary["failed"] += 1
+                    emit_alert("PROTECTION_HEAL_FAILED", sym, {
+                        "mode": "tp_oco_rebuild_failed_tp_restored",
+                        "restored": re_placed, "legs": len(cancelled_tp),
+                        "urgent": True,
+                        "note": "SL restore FAILED — TP legs re-placed, "
+                                "manual SL required",
+                        "ts": time.time(),
+                    })
+                    log.error("protection_guardian: TP→OCO rebuild failed "
+                              "for %s — %d/%d TP legs restored", sym,
+                              re_placed, len(cancelled_tp))
                 continue
 
             if sl_qty > 0 and oco_qty <= 0:
@@ -440,6 +572,32 @@ def run(client: Any, portfolio: Any,
             summary["failed"] += 1
             log.warning("protection_guardian: per-position error (%s)",
                         pos.get("symbol"), exc_info=True)
+
+    # WO-017-4c: a held position whose tracker says SL=no for longer
+    # than SL_MISSING_WARN_S must be visible in the logs/alerts (TRUMP
+    # 9/22 sat SL=no for ~30min with zero output anywhere).
+    try:
+        from src.tp_sl_tracker import get_all_tracked
+        held = {p.get("symbol") for p in positions
+                if isinstance(p, dict) and p.get("symbol")}
+        now = time.time()
+        for _sym, _st in (get_all_tracked() or {}).items():
+            if _sym not in held or _st.get("sl_order"):
+                continue
+            _upd = float(_st.get("updated_at")
+                         or _st.get("created_at") or 0)
+            _age = now - _upd
+            if _age >= SL_MISSING_WARN_S:
+                log.warning("protection_guardian: %s tracker SL=no for "
+                            "%.0f min — stop protection missing", _sym,
+                            _age / 60)
+                emit_alert("SL_MISSING_STALE", _sym, {
+                    "sl_missing_age_s": round(_age, 1), "urgent": True,
+                    "note": "tracker shows no SL for a held position",
+                    "ts": now,
+                })
+    except Exception:
+        logger.debug("guardian SL-stale check failed", exc_info=True)
 
     if summary["healed"] or summary["failed"]:
         log.warning("protection_guardian: sweep %s", summary)
