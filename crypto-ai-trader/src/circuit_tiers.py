@@ -117,7 +117,103 @@ def _day_anchor(state, equity):
 
 
 def _equity_and_positions(client, portfolio):
-    """Cash + sum(qty * live price). Returns None when marks are unavailable."""
+    """Cash + sum(qty * live price). Returns None when marks are unavailable.
+
+    WO-0922-017-vii: equity is computed from EXCHANGE balances when the
+    client exposes them. The DB snapshot path (cash table + positions
+    table) updates non-atomically — right after a buy, cash is debited
+    while the position row is not yet written, so equity drops by the
+    full buy notional (TRUMP 9/22 21:51: 424.86 - 36.54 -> phantom
+    -8.22% dd -> tier-1 TRIP blocked entries for 4h). Exchange balances
+    are atomically consistent at read time, killing the race. The
+    snapshot path remains as fallback for clients without get_account.
+    """
+    snap = _equity_from_balances(client, portfolio)
+    if snap is not None:
+        return snap
+    return _equity_from_snapshot(client, portfolio)
+
+
+#: quote assets counted as cash in the balances path
+_QUOTE_ASSETS = ("USDT", "BUSD", "USDC", "FDUSD")
+
+
+def _equity_from_balances(client, portfolio):
+    """Equity straight from client.get_account() balances, or None when
+    the client offers no (usable) account payload -> caller falls back."""
+    getter = getattr(client, "get_account", None)
+    if getter is None:
+        return None
+    try:
+        account = getter()
+    except Exception:
+        logger.warning("circuit_tiers: get_account failed",
+                       exc_info=True)
+        return None
+    if not isinstance(account, dict):
+        return None
+    rows = account.get("balances") or []
+    if not rows:
+        # empty account payload is suspicious (auth/filter quirk) —
+        # fall back to the snapshot path rather than equity=0 (which
+        # would instantly phantom-trip every tier)
+        return None
+
+    # symbols the DB still believes we hold: these MUST be marked, or the
+    # whole round is skipped (fail-open) — a missing mark there would
+    # silently shrink equity and fabricate a drawdown
+    db = getattr(portfolio, "_db", None)
+    must_mark = set()
+    try:
+        for pos in (portfolio.get_all_positions() or []):
+            sym = pos.get("symbol")
+            qty = float(pos.get("quantity") or pos.get("qty") or 0.0)
+            if sym and qty > 0:
+                must_mark.add(str(sym))
+    except Exception:
+        must_mark = set()  # snapshot unreadable — balances remain truth
+
+    cash = 0.0
+    total_pos = 0.0
+    marks = []
+    for b in rows:
+        asset = str(b.get("asset") or "")
+        qty = float(b.get("free") or 0.0) + float(b.get("locked") or 0.0)
+        if qty <= 0:
+            continue
+        if asset in _QUOTE_ASSETS:
+            cash += qty
+            continue
+        sym = asset + "USDT"
+        price = None
+        try:
+            price = client.get_ticker_price(sym)
+        except Exception:
+            price = None
+        if not price or price <= 0:
+            if sym in must_mark:
+                logger.warning(
+                    "circuit_tiers: no live mark for %s — skipping round "
+                    "(fail-open)", sym)
+                return None
+            # off-strategy asset without a market (airdrop/retired dust):
+            # exclude from equity instead of blinding the breaker
+            continue
+        notional = qty * price
+        total_pos += notional
+        marks.append({
+            "symbol": sym, "qty": qty, "price": price,
+            "notional": notional,
+        })
+    marks.sort(key=lambda m: m["notional"], reverse=True)
+    return {
+        "cash": cash, "positions": marks, "open_notional": total_pos,
+        "equity": cash + total_pos,
+    }
+
+
+def _equity_from_snapshot(client, portfolio):
+    """Legacy path: DB cash + DB positions with live marks."""
     db = getattr(portfolio, "_db", None)
     cash = 0.0
     if db is not None:
@@ -163,6 +259,7 @@ def _equity_and_positions(client, portfolio):
         "cash": cash, "positions": marks, "open_notional": total_pos,
         "equity": cash + total_pos,
     }
+
 
 
 def _regime_extreme(db):
