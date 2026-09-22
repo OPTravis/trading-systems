@@ -165,7 +165,10 @@ def test_stale_snapshot_beyond_max_age_ignored(db):
     client = FakeClient([_bal("OLD", 0.0)], {"OLDUSDT": [_fill("OLDUSDT", 9, 10, 1.1, 1)]})
     booked = reconcile_portfolio_drift(client, db)
     assert booked == []
-    assert client.my_trades_calls == []
+    # WO-017-2: Path C may still *probe* a 24h-active symbol (fresh BUY row,
+    # exchange flat) — the ancient fill is rejected by the lookback window,
+    # so nothing books. Only the no-booking contract is asserted here.
+    assert all(b["symbol"] != "OLDUSDT" for b in booked)
 
 
 # ---------- gap guard ----------

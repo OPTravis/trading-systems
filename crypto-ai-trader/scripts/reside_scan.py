@@ -30,10 +30,14 @@ def log(msg):
         pass
 
 def gate_open():
+    # WO-017-3: cron-phase jitter (flock startup + log IO) can leave the
+    # gate file age at 1199.x s on the due tick — a strict `<` comparison
+    # then skips the round and pushes cadence out a full cycle ("gate:
+    # skip (0s remaining)" 9/22 03:30). A <2s residual counts as expired.
     try:
         age = time.time() - os.path.getmtime(GATE_FILE)
-        if age < GATE_SEC:
-            log(f"gate: skip ({GATE_SEC - age:.0f}s remaining)")
+        if age < GATE_SEC - 2:
+            log(f"gate: skip ({max(GATE_SEC - age, 0):.0f}s remaining)")
             return False
     except FileNotFoundError:
         pass

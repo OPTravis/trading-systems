@@ -69,6 +69,8 @@ LEG_GAP_TOLERANCE = 1.05
 # live 0.088 market fails by 177% and is rejected. Fail-open when the
 # ticker cannot be fetched (validation must never block booking).
 FILL_PRICE_SANITY_REL = 0.05
+# WO-017-2: fills older than this skip the live-price sanity check (ms)
+STALE_SANITY_EXEMPT_MS = 30 * 60 * 1000
 #: symbols from the previous snapshot stay suspects for this many days
 PREV_SNAPSHOT_MAX_AGE_S = 7 * 24 * 3600
 
@@ -110,8 +112,16 @@ def _db_net_qty(db, symbol: str) -> float:
 
 
 def _order_booked(db, order_id) -> bool:
+    """WO-017-2: match the orderId as an exact key OR as a ``<prefix>_<oid>``
+    suffix. Manual/active-path rows carry prefixes (``wo0921015_<oid>``,
+    ``oco_tp_<oid>``, ``oco_fill_<oid>``); a plain equality check misses
+    them and reconcile re-books the same physical fill (FET 9/22: id79
+    wo-prefixed + id86 re-booked under the bare orderId)."""
+    oid = str(order_id)
     row = db._get_conn().execute(
-        "SELECT 1 FROM trades WHERE client_order_id = ? LIMIT 1", (str(order_id),)
+        "SELECT 1 FROM trades WHERE client_order_id = ? "
+        "OR client_order_id LIKE '%\\_' || ? ESCAPE '\\' LIMIT 1",
+        (oid, oid),
     ).fetchone()
     return row is not None
 
@@ -219,7 +229,15 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                 symbol, oid, qty, remaining_gap, LEG_GAP_TOLERANCE,
             )
             continue
-        if client is not None:
+        # WO-017-2: the live-price sanity check only guards FRESH fills.
+        # A fill older than the exemption window has legitimately drifted
+        # from the live price (the asset kept trading after the exit) —
+        # rejecting it forever is how PROVE 9/22 stayed unbooked for 10h
+        # (fill 0.2566 vs live 0.2261). Lifecycle anchor + gap cap already
+        # guard against foreign legs for stale fills.
+        fill_age_ms = int(time.time() * 1000) - min(int(f["time"]) for f in legs)
+        sanity_applies = fill_age_ms <= STALE_SANITY_EXEMPT_MS
+        if client is not None and sanity_applies:
             try:
                 live = client.get_ticker_price(symbol)
             except Exception:
@@ -344,6 +362,46 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
                     upd["quantity"] = leftover
                     db.portfolio_set(sym, upd)
                     log.info("reconcile: trimmed %s to exchange qty %.8g", sym, leftover)
+
+    # --- Path C: 24h myTrades lookback (WO-017-2) ---
+    # A fully-closed symbol whose portfolio row was dropped by the sync
+    # rebuild falls out of both the main axis (positions) and Path B
+    # (prev snapshot, refreshed every round) after a single missed round —
+    # permanently (PROVE 9/22: OCO filled 03:09, ledger still short at
+    # 14:59). This axis is snapshot-independent: any symbol with a ledger
+    # row inside 24h gets a myTrades lookback; unbooked SELL fills go
+    # through the full _book_missing_sells guard chain, capped at the
+    # ledger net gap (orderId idempotency + gap cap prevent double-booking).
+    cutoff_s = time.time() - FILL_LOOKBACK_S
+    try:
+        rows = db._get_conn().execute(
+            "SELECT DISTINCT symbol FROM trades WHERE timestamp >= ?",
+            (cutoff_s,),
+        ).fetchall()
+        recent_syms = {r["symbol"] for r in rows if r["symbol"]}
+    except Exception:
+        recent_syms = set()
+        log.warning("reconcile: Path C symbol query failed", exc_info=True)
+    for sym in sorted(recent_syms - set(suspects)):
+        net = _db_net_qty(db, sym)
+        if net <= DRIFT_QTY_ABS:
+            continue  # ledger already balanced for this symbol
+        gap = net - ex.get(_base_of(sym), 0.0)
+        if gap <= max(net * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
+            continue  # no meaningful SELL-side gap
+        try:
+            fills = client.get_my_trades(sym, limit=100)
+        except Exception:
+            log.warning("reconcile: Path C get_my_trades(%s) failed", sym,
+                        exc_info=True)
+            continue
+        if fills:
+            log.info(
+                "reconcile: Path C lookback %s (ledger net %.8g, gap %.8g)",
+                sym, net, gap,
+            )
+            booked_total.extend(
+                _book_missing_sells(db, sym, fills, gap, client=client))
 
     # snapshot for the next round's Path B (post-booking state, so cleaned
     # positions don't re-enter the suspect set next round)
