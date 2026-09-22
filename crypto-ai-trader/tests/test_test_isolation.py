@@ -103,3 +103,35 @@ class TestTestIsolation:
 
 
 import pytest  # noqa: E402
+
+
+class TestLayer4BareInstantiation:
+    """WO-0922-017-v: bare StateDB() must not reach production.
+
+    Incident (9/22): trade_executor.entry_blocked(StateDB()) and three
+    other call sites instantiate StateDB directly — bypassing
+    get_state_db()'s env/guard/singleton layers — so e2e tests read the
+    production circuit_tiers tier-1 HOLD state and 29 cases failed
+    (e2e_auto 15, e2e_edge 10, e2e_risk 1, trade_executor 3).
+    conftest layer 4 wraps StateDB.__init__ to inject the per-test tmp
+    path; these tests pin that contract.
+    """
+
+    PRODUCTION_DB = str(__import__("src.state_db", fromlist=["x"]).DEFAULT_DB_PATH)
+
+    def test_bare_statedb_instantiation_is_isolated(self):
+        from src.state_db import StateDB
+        db = StateDB()
+        assert str(db.db_path) != self.PRODUCTION_DB, (
+            f"FATAL: bare StateDB() resolved production DB "
+            f"({self.PRODUCTION_DB}) — layer-4 isolation is broken."
+        )
+        assert str(db.db_path) == os.environ.get("STATE_DB_PATH")
+
+    def test_bare_statedb_cannot_read_production_circuit_state(self):
+        """Regression for the 9/22 incident: circuit_tiers tier-1 HOLD
+        leaked from production kv into e2e via entry_blocked(StateDB())."""
+        from src.state_db import StateDB
+        db = StateDB()
+        raw = db.kv_get("circuit_tiers:state")
+        assert not raw, f"production circuit state leaked: {raw!r}"

@@ -88,10 +88,19 @@ def _set_env(monkeypatch, tmp_path):
 def _isolate_statedb(monkeypatch, tmp_path):
     """Redirect StateDB to temporary database for test isolation.
 
-    Three-layer protection against test contamination of production DB:
+    Four-layer protection against test contamination of production DB:
     1. STATE_DB_PATH → temp file (already existed)
     2. TESTING=1 → hard guard in get_state_db() refuses production path
     3. Singleton reset → picks up new path on next call
+    4. StateDB.__init__ default-path patch → bare ``StateDB()`` calls
+       (WO-0922-017-v: trade_executor.entry_blocked(StateDB()),
+       scan_orchestrator, cmd_trailing_check, report_validator) bypass
+       get_state_db() entirely — no env lookup, no TESTING guard, so the
+       layers above never fired and tests READ production kv state
+       (circuit_tiers tier-1 HOLD leaked into 29 e2e cases on 9/22).
+       Wrapping __init__ injects the per-test tmp path when db_path is
+       None; DEFAULT_DB_PATH itself stays untouched so the layer-2 guard
+       semantics (refuse production during TESTING) are preserved.
     """
     test_db_path = str(tmp_path / "test_state.db")
     monkeypatch.setenv("STATE_DB_PATH", test_db_path)
@@ -104,6 +113,14 @@ def _isolate_statedb(monkeypatch, tmp_path):
     # Bandit singleton carries in-memory priors across tests; Thompson sampling
     # from leaked priors makes size assertions flaky (e.g. test_neutral_regime).
     cb_mod._bandit_instance = None
+
+    # Layer 4: intercept bare StateDB() instantiation
+    _orig_init = sd_mod.StateDB.__init__
+
+    def _isolated_init(self, db_path=None):
+        _orig_init(self, db_path or test_db_path)
+
+    monkeypatch.setattr(sd_mod.StateDB, "__init__", _isolated_init)
     yield
     sd_mod._state_db_instance = None
     cb_mod._bandit_instance = None
