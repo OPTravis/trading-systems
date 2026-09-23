@@ -86,6 +86,45 @@ def _clear_breach_state(sym: str) -> None:
         pass
 
 
+def _err_tag(exc) -> str:
+    """WO-0923-viii: classify an exchange error for the rescue ladder.
+
+    Wrapper business errors surface as tuple (http, code, msg, headers,
+    body); anything else is treated as transient network noise.
+    """
+    code, msg = None, str(exc)
+    try:
+        t = exc.args[0] if exc.args else None
+        if isinstance(t, tuple) and len(t) >= 3:
+            code, msg = t[1], str(t[2])
+    except Exception:
+        pass
+    low = msg.lower()
+    if code in (-1001, -1003, -1006, -1021) or any(
+            k in low for k in ("timeout", "disconnect", "timed out")):
+        return "transient"
+    if code == -2010 and "insufficient" in low:
+        return "insufficient"
+    return "business"
+
+
+def _audit(action: str, details: dict) -> None:
+    """Best-effort audit_log row (timestamp/action/details schema)."""
+    try:
+        import json as _json
+        from src.state_db import get_state_db
+        conn = get_state_db()._get_conn()
+        conn.execute(
+            "INSERT INTO audit_log (timestamp, action, details)"
+            " VALUES (?,?,?)",
+            (time.time(), action,
+             _json.dumps(details, ensure_ascii=False)))
+        conn.commit()
+    except Exception:
+        logger.warning("protection_guardian: audit write failed (%s)",
+                       action, exc_info=True)
+
+
 def _track(symbol: str, entry: float, qty: float, tp_orders: list,
            sl_order: Optional[dict]) -> None:
     """Persist tp_sl_tracker state after a heal (best-effort)."""
@@ -409,11 +448,30 @@ def run(client: Any, portfolio: Any,
                 rebuild_qty = _step_floor(
                     min(qty, sum(l["qty"] for l in cancelled_tp)
                         + max(qty - tp_qty - sl_qty, 0.0)), step)
-                try:
-                    oco = client.place_oco(
-                        sym, rebuild_qty, tp_px_live, sl_px_new)
-                except Exception:
-                    oco = None
+                oco = None
+                oco_err = None
+                # WO-0923-viii: retry transient/rate-limit errors with
+                # backoff; business errors (-2010 price-relationship,
+                # insufficient balance, filter rejects) fall through to
+                # the rescue ladder immediately — blind retries cannot
+                # fix a rejected price relationship.
+                for attempt in range(3):
+                    try:
+                        oco = client.place_oco(
+                            sym, rebuild_qty, tp_px_live, sl_px_new)
+                        oco_err = None
+                        break
+                    except Exception as e:
+                        oco_err = e
+                        if (_err_tag(e) == "transient"
+                                and attempt < 2):
+                            log.warning(
+                                "protection_guardian: OCO rebuild for %s "
+                                "transient failure (attempt %d) — "
+                                "retrying", sym, attempt + 1)
+                            time.sleep(0.5 * (2 ** attempt))
+                            continue
+                        break
                 if oco:
                     summary["healed"] += 1
                     emit_alert("PROTECTION_HEALED", sym, {
@@ -438,29 +496,101 @@ def run(client: Any, portfolio: Any,
                         "stop_price": sl_px_new,
                     })
                 else:
-                    # safety net: restore the cancelled TP legs
-                    re_placed = 0
-                    for leg in cancelled_tp:
+                    # WO-0923-viii rescue ladder — invariant: the position
+                    # must never end this branch without SL or equivalent
+                    # downside protection, and never silently.
+                    #   1. transient OCO failures already retried above
+                    #   2. DEMOTE: restore all TP legs except the last,
+                    #      then place a plain STOP_LOSS_LIMIT over that
+                    #      leg's qty (its base stays free, so no -2010
+                    #      double-lock; Travis 9/23 UNI manual play:
+                    #      cancel TP2 -> SL 9.251/9.112 qty 0.78)
+                    #   3. plain SL fails too -> restore the demoted TP
+                    #      leg as well and emit an ERROR-grade invariant
+                    #      breach alert (cron bridge must see it)
+                    demote_leg = cancelled_tp[-1]
+                    keep_legs = cancelled_tp[:-1]
+                    kept_orders = []
+                    for leg in keep_legs:
                         try:
-                            client.place_limit_sell(sym, leg["qty"],
-                                                    leg["px"])
-                            re_placed += 1
+                            ret = client.place_limit_sell(
+                                sym, leg["qty"], leg["px"])
+                            kept_orders.append({
+                                "order_id": (ret.get("orderId")
+                                             if isinstance(ret, dict)
+                                             else None),
+                                "price": leg["px"], "qty": leg["qty"],
+                                "tier": None, "pct": None,
+                                "side": "LIMIT",
+                            })
                         except Exception:
                             logger.error("protection_guardian: TP restore "
                                          "FAILED for %s leg %s", sym,
                                          leg["id"], exc_info=True)
-                    summary["failed"] += 1
-                    emit_alert("PROTECTION_HEAL_FAILED", sym, {
-                        "mode": "tp_oco_rebuild_failed_tp_restored",
-                        "restored": re_placed, "legs": len(cancelled_tp),
-                        "urgent": True,
-                        "note": "SL restore FAILED — TP legs re-placed, "
-                                "manual SL required",
-                        "ts": time.time(),
-                    })
-                    log.error("protection_guardian: TP→OCO rebuild failed "
-                              "for %s — %d/%d TP legs restored", sym,
-                              re_placed, len(cancelled_tp))
+                    sl_px_limit = _tick_round(sl_px_new * 0.995, tick)
+                    demoted_qty = _step_floor(demote_leg["qty"], step)
+                    sl_ret = None
+                    try:
+                        sl_ret = client.place_stop_loss_limit(
+                            sym, demoted_qty, sl_px_limit, sl_px_new)
+                    except Exception:
+                        sl_ret = None
+                    if sl_ret:
+                        summary["healed"] += 1
+                        sl_id = (sl_ret.get("orderId")
+                                 if isinstance(sl_ret, dict) else None)
+                        _track(sym, entry, qty, kept_orders, {
+                            "order_id": sl_id, "price": sl_px_limit,
+                            "qty": demoted_qty, "stop_price": sl_px_new,
+                        })
+                        _audit("GUARDIAN_SL_DEMOTE", {
+                            "symbol": sym,
+                            "reason": "tp_oco_rebuild_failed",
+                            "oco_error": str(oco_err),
+                            "demoted_tp": {"id": demote_leg["id"],
+                                           "px": demote_leg["px"],
+                                           "qty": demoted_qty},
+                            "kept_tps": len(kept_orders),
+                            "sl": {"stop": sl_px_new,
+                                   "limit": sl_px_limit,
+                                   "qty": demoted_qty,
+                                   "order_id": sl_id},
+                            "ts": time.time(),
+                        })
+                        emit_alert("PROTECTION_HEALED", sym, {
+                            "mode": "sl_demote", "qty": demoted_qty,
+                            "sl_stop": sl_px_new, "sl_limit": sl_px_limit,
+                            "note": "OCO rebuild rejected — TP leg demoted "
+                                    "to plain SL, downside protected",
+                            "ts": time.time(),
+                        })
+                        log.warning("protection_guardian: %s OCO rebuild "
+                                    "failed (%s) — demoted 1 TP leg to "
+                                    "plain SL qty %.8g stop %.8g",
+                                    sym, oco_err, demoted_qty, sl_px_new)
+                    else:
+                        # restore the demoted TP too, then scream
+                        try:
+                            client.place_limit_sell(
+                                sym, demote_leg["qty"], demote_leg["px"])
+                        except Exception:
+                            logger.error("protection_guardian: demoted TP "
+                                         "restore also FAILED for %s", sym,
+                                         exc_info=True)
+                        summary["failed"] += 1
+                        emit_alert("PROTECTION_HEAL_FAILED", sym, {
+                            "mode": "sl_rescue_failed",
+                            "urgent": True,
+                            "oco_error": str(oco_err),
+                            "note": "OCO rebuild AND plain SL demote both "
+                                    "FAILED — position may lack downside "
+                                    "protection, manual action REQUIRED",
+                            "ts": time.time(),
+                        })
+                        log.error("protection_guardian: %s SL rescue "
+                                  "failed (OCO err: %s) — TP legs "
+                                  "restored, NO SL, manual action "
+                                  "required", sym, oco_err)
                 continue
 
             if sl_qty > 0 and oco_qty <= 0:

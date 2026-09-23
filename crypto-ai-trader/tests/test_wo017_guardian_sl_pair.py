@@ -114,11 +114,16 @@ class TestPairCheck:
         assert call["tp"] == pytest.approx(2.255, abs=1e-3)
         assert 0 < call["sl"] < 2.128  # sane stop below entry
 
-    def test_tp_only_oco_fail_restores_tp(self):
+    def test_tp_only_oco_fail_now_sl_only(self):
+        """WO-0923-viii: OCO rebuild failure no longer leaves the
+        position naked — the single TP leg demotes to a plain SL over
+        its qty (downside outranks the upside exit)."""
         c = FakeClient(orders=[_tp_leg()], oco_result="fail")
         s = pg.run(c, FakePortfolio([_pos(tp=2.255)]))
-        assert s["failed"] == 1
-        assert c.limit_calls and c.limit_calls[0]["price"] == 2.255
+        assert s["healed"] == 1 and s["failed"] == 0
+        assert c.sl_calls and c.sl_calls[0]["qty"] == pytest.approx(
+            2.827, abs=1e-6)
+        assert not c.limit_calls  # nothing re-locked; SL holds the slice
 
     def test_planned_stop_out_of_band_aborts(self):
         """Deep pos.stop_loss would reject — never cancel the TP."""
