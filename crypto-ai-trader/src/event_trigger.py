@@ -98,6 +98,7 @@ class EventTriggerEngine:
 
     def save(self) -> None:
         data = {
+            "version": 1,
             "price_history": self.price_history,
             "last_nonregime_trigger_ts": self.last_nonregime_trigger_ts,
             "last_regime": self.last_regime,

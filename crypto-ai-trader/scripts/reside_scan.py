@@ -192,6 +192,7 @@ def main():
         if "opportunities after adapted threshold" in l:
             opp = l.strip()
     verdict = {
+        "version": 1,
         "host": "cloud-travis-resident",
         "scanned_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "elapsed_s": round(elapsed, 1),

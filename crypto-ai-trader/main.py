@@ -410,7 +410,7 @@ def cmd_auto_dust():
     try:
         acct = client.get_account()
     except Exception as e:
-        print(_json.dumps({"action": "error", "reason": f"account_fetch_failed: {e}"}))
+        print(_json.dumps({"version": 1, "action": "error", "reason": f"account_fetch_failed: {e}"}))
         return
 
     # Find dust (free balance worth < $1)
@@ -434,7 +434,7 @@ def cmd_auto_dust():
             dust_assets.append({"asset": asset, "free": free, "value_usd": round(value_usd, 4)})
 
     if not dust_assets:
-        print(_json.dumps({"action": "none", "reason": "no_dust"}))
+        print(_json.dumps({"version": 1, "action": "none", "reason": "no_dust"}))
         return
 
     results = []
@@ -484,6 +484,7 @@ def cmd_auto_dust():
             logger.debug(f"Dust transfer failed: {e}")
 
     print(_json.dumps({
+        "version": 1,
         "action": "dust_cleaned",
         "found": len(dust_assets),
         "converted": len(converted),
