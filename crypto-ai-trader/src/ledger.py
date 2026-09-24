@@ -74,6 +74,29 @@ FUZZY_PRICE_REL = 0.005
 #: many consecutive rounds is promoted to a true diff
 PENDING_MAX_ROUNDS = 2
 
+# ---------------------------------------------------------------------------
+# P2-④ promotion gate (shadow -> primary switchover readiness)
+#
+# PROMOTE_ROUNDS is the "N consecutive clean rounds" threshold that lets
+# the shadow book REQUEST a promotion review:
+#   N = 432 = 3 consecutive fully-clean days at the 10-minute scan
+#       cadence (144 rounds/day).
+# Streak reset rules (mirrors shadow_diff's consecutive_clean semantics):
+#   - any round with a TRUE diff          -> streak resets to 0
+#   - any round left in the PENDING layer -> streak resets to 0
+#     (pending means the legacy pipeline still hasn't settled its own
+#     cleanup — the two books are not yet provably in agreement)
+#   - shadow_diff internal errors         -> streak is neither advanced
+#     nor reset (the round didn't run), counted as 'error' rounds in
+#     the weekly report instead.
+# Reaching the threshold emits ONE LEDGER_PROMOTE_READY audit row +
+# alert per clean cycle (diff rounds clear the notified latch so a new
+# cycle can notify again). It NEVER switches modes: flipping to primary
+# is a separate, owner-approved `python -m src.ledger set-mode primary`.
+# ---------------------------------------------------------------------------
+PROMOTE_ROUNDS = 432
+PROMOTE_NOTIFIED_KEY = "ledger:shadow:promote_notified"
+
 
 class LedgerError(Exception):
     """Raised only on the PRIMARY path: the atomic write failed and was
@@ -529,6 +552,59 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
             "pending_ages": pending_ages,
         })
 
+        # P2-④: durable per-round history for the weekly aggregate.
+        outcome = "clean" if clean else ("diff" if true_diffs else "pending")
+        kinds = sorted({d.get("kind") for d in true_diffs if d.get("kind")})
+        conn.execute(
+            "INSERT INTO ledger_shadow_rounds "
+            "(ts, round, round_id, outcome, diff_count, pending_count, "
+            " diff_kinds, consecutive_clean) VALUES (?,?,?,?,?,?,?,?)",
+            (time.time(), rounds, round_id, outcome, len(true_diffs),
+             len(pending), json.dumps(kinds), consecutive_clean),
+        )
+        conn.commit()
+
+        # P2-④ promotion latch: notify once per clean cycle at the
+        # threshold; a non-clean round re-arms the latch for the next
+        # cycle. Never flips the mode itself.
+        if clean and consecutive_clean >= PROMOTE_ROUNDS:
+            if not db.kv_get(PROMOTE_NOTIFIED_KEY):
+                db.kv_set(PROMOTE_NOTIFIED_KEY, {
+                    "ts": time.time(), "streak": consecutive_clean,
+                })
+                try:
+                    db.audit_log(
+                        "LEDGER_PROMOTE_READY",
+                        {"streak": consecutive_clean,
+                         "threshold": PROMOTE_ROUNDS},
+                        source="ledger",
+                    )
+                except Exception:
+                    logger.warning("ledger: promote audit failed",
+                                   exc_info=True)
+                if emit:
+                    try:
+                        from src.live_alerts import emit as emit_alert
+                        emit_alert("LEDGER_PROMOTE_READY", "PORTFOLIO", {
+                            "streak": consecutive_clean,
+                            "threshold": PROMOTE_ROUNDS,
+                            "note": "request promotion review; "
+                                    "switch is a separate manual gate",
+                            "ts": time.time(),
+                        })
+                    except Exception:
+                        logger.warning("ledger: promote alert failed",
+                                       exc_info=True)
+                logger.info(
+                    "ledger shadow: PROMOTE READY — %d consecutive clean "
+                    "rounds >= threshold %d (review requested; mode "
+                    "switch remains manual)",
+                    consecutive_clean, PROMOTE_ROUNDS,
+                )
+        elif not clean and db.kv_get(PROMOTE_NOTIFIED_KEY):
+            # streak broke inside a notified cycle -> re-arm the latch
+            db.kv_remove(PROMOTE_NOTIFIED_KEY)
+
         report = {
             "status": "ok",
             "round": rounds,
@@ -581,6 +657,18 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
         return report
     except Exception:
         logger.warning("ledger: shadow_diff failed", exc_info=True)
+        try:  # P2-④: error rounds show up in the weekly report too
+            _stats = db.kv_get(STATS_KEY) or {} if db else {}
+            db._get_conn().execute(
+                "INSERT INTO ledger_shadow_rounds "
+                "(ts, round, round_id, outcome, diff_count, pending_count, "
+                " diff_kinds, consecutive_clean) "
+                "VALUES (?,?,?,'error',0,0,'[]',0)",
+                (time.time(), int(_stats.get("rounds") or 0) + 1, round_id),
+            )
+            db._get_conn().commit()
+        except Exception:
+            pass
         return {"status": "error"}
 
 
@@ -600,8 +688,114 @@ def reset_shadow(db=None) -> None:
     with db.transaction() as conn:
         conn.execute("DELETE FROM ledger_events")
         conn.execute("DELETE FROM ledger_shadow_positions")
-        conn.execute("DELETE FROM kv WHERE key IN (?, ?)", (STATS_KEY, BOOTSTRAP_TS_KEY))
+        conn.execute("DELETE FROM ledger_shadow_rounds")
+        conn.execute(
+            "DELETE FROM kv WHERE key IN (?, ?, ?)",
+            (STATS_KEY, BOOTSTRAP_TS_KEY, PROMOTE_NOTIFIED_KEY),
+        )
     logger.warning("ledger: shadow book reset")
+
+
+def promote_status(db=None) -> Dict:
+    """P2-④: where the shadow book stands on the promotion gate."""
+    if db is None:
+        from src.state_db import get_state_db
+        db = get_state_db()
+    stats = db.kv_get(STATS_KEY) or {}
+    current = int(stats.get("consecutive_clean") or 0)
+    return {
+        "threshold_rounds": PROMOTE_ROUNDS,
+        "threshold_desc": (
+            "432 = 3 consecutive fully-clean days at the 10-min scan "
+            "cadence (144 rounds/day)"
+        ),
+        "current_streak": current,
+        "remaining_rounds": max(0, PROMOTE_ROUNDS - current),
+        "ready": current >= PROMOTE_ROUNDS,
+        "notified": db.kv_get(PROMOTE_NOTIFIED_KEY),
+        "reset_rules": (
+            "streak resets to 0 on any round with a true diff OR a "
+            "pending position; shadow_diff errors neither advance nor "
+            "reset (counted as error rounds in the weekly report)"
+        ),
+        "switch_note": (
+            "reaching the threshold only REQUESTS a review; switching to "
+            "primary is a separate owner-approved manual gate "
+            "(python -m src.ledger set-mode primary)"
+        ),
+    }
+
+
+def shadow_report(db=None, days: int = 7) -> Dict:
+    """P2-④ weekly report: aggregate ledger_shadow_rounds by day.
+
+    Read-only (never runs a diff round). Coverage starts at the first
+    row in ledger_shadow_rounds — i.e. the moment P2-④ shipped; older
+    history doesn't exist because clean rounds used to leave no trace.
+    """
+    if db is None:
+        from src.state_db import get_state_db
+        db = get_state_db()
+    if get_mode(db) == "off":
+        return {"status": "off"}
+    conn = db._get_conn()
+    cutoff = time.time() - days * 86400
+    rows = conn.execute(
+        """SELECT ts, round, outcome, diff_count, pending_count,
+                  diff_kinds, consecutive_clean
+           FROM ledger_shadow_rounds WHERE ts >= ? ORDER BY ts""",
+        (cutoff,),
+    ).fetchall()
+
+    daily: Dict[str, Dict] = {}
+    kinds_total: Dict[str, int] = {}
+    for r in rows:
+        day = time.strftime("%Y-%m-%d", time.localtime(r["ts"]))
+        d = daily.setdefault(day, {
+            "date": day, "rounds": 0, "clean": 0, "diff": 0,
+            "pending": 0, "error": 0, "diffs_by_kind": {},
+        })
+        d["rounds"] += 1
+        d[r["outcome"]] = d.get(r["outcome"], 0) + 1
+        if r["diff_count"]:
+            try:
+                kinds = json.loads(r["diff_kinds"] or "[]")
+            except Exception:
+                kinds = []
+            for k in kinds:
+                d["diffs_by_kind"][k] = d["diffs_by_kind"].get(k, 0) + 1
+                kinds_total[k] = kinds_total.get(k, 0) + 1
+    for d in daily.values():
+        d["clean_rate"] = round(d["clean"] / d["rounds"], 4) if d["rounds"] else 0.0
+
+    clean_n = sum(d["clean"] for d in daily.values())
+    diff_n = sum(d["diff"] for d in daily.values())
+    pend_n = sum(d["pending"] for d in daily.values())
+    err_n = sum(d["error"] for d in daily.values())
+    total = len(rows)
+    overall = {
+        "days_requested": days,
+        "rounds": total,
+        "clean_rounds": clean_n,
+        "clean_rate": round(clean_n / total, 4) if total else None,
+        "diff_rounds": diff_n,
+        "pending_rounds": pend_n,
+        "error_rounds": err_n,
+        "diffs_by_kind": kinds_total,
+        "max_consecutive_clean": (
+            max((r["consecutive_clean"] for r in rows), default=0)
+        ),
+        "coverage_start": (
+            time.strftime("%Y-%m-%d %H:%M", time.localtime(rows[0]["ts"]))
+            if rows else None
+        ),
+        "promote": promote_status(db),
+    }
+    return {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "overall": overall,
+        "daily": [daily[k] for k in sorted(daily)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1145,10 +1339,20 @@ def _cli() -> None:  # pragma: no cover - manual ops entry
     elif cmd == "set-repairs":
         db.kv_set("ledger:repairs", 1 if sys.argv[2] == "1" else 0)
         print("repairs flag ->", db.kv_get("ledger:repairs"))
+    elif cmd == "weekly":
+        days = int(sys.argv[2]) if len(sys.argv) > 2 else 7
+        print(json.dumps(shadow_report(db, days=days),
+                         indent=2, ensure_ascii=False, default=str))
     else:
         print("usage: python -m src.ledger "
-              "[bootstrap|report|stats|set-mode <off|shadow|primary>|reset|"
-              "set-repairs <0|1>]")
+              "[bootstrap|report|stats|weekly [days]|"
+              "set-mode <off|shadow|primary>|set-repairs <0|1>|reset]\n"
+              "  bootstrap   one-time shadow baseline snapshot\n"
+              "  report      run ONE shadow diff round (prints the round)\n"
+              "  stats       current counters + mode\n"
+              "  weekly      aggregate report: daily clean rate / diff "
+              "kinds / pending lag / longest streak + promotion gate "
+              "(default 7 days)")
 
 
 if __name__ == "__main__":  # pragma: no cover

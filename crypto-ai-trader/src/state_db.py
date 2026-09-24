@@ -455,6 +455,22 @@ class StateDB:
                 opened_at REAL,
                 updated_at REAL
             );
+            -- P2-④: one row per shadow_diff round — the durable history
+            -- behind the weekly aggregate report (clean rate / diff kinds /
+            -- pending lag / longest clean streak).
+            CREATE TABLE IF NOT EXISTS ledger_shadow_rounds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                round INTEGER NOT NULL,
+                round_id TEXT,
+                outcome TEXT NOT NULL,          -- clean | diff | pending | error
+                diff_count INTEGER NOT NULL DEFAULT 0,
+                pending_count INTEGER NOT NULL DEFAULT 0,
+                diff_kinds TEXT,                -- JSON array of kinds
+                consecutive_clean INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_ledger_shadow_rounds_ts
+                ON ledger_shadow_rounds(ts);
             """)
         conn.commit()
 
