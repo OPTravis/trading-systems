@@ -60,6 +60,22 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
                        COOLDOWN_HOURS)),
             }
         count = int(db.kv_get("entry_count:" + _today(now)) or 0)
+        # WO-0924-z P1-2: cold-start backstop — the kv counter starts
+        # empty whenever the governor first goes live (or is rede-
+        # ployed); real same-day BUYs booked in trades keep the cap
+        # honest. Conservative: DCA adds count too (over-block, never
+        # under-block).
+        try:
+            import datetime as _dt
+            _day0 = _dt.datetime.fromtimestamp(
+                now).replace(hour=0, minute=0, second=0,
+                             microsecond=0).timestamp()
+            _row = db._get_conn().execute(
+                "SELECT COUNT(*) FROM trades WHERE side = 'BUY' "
+                "AND timestamp >= ?", (_day0,)).fetchone()
+            count = max(count, int(_row[0] if _row else 0))
+        except Exception:
+            pass  # trades unreadable — fall back to kv counter
         if count >= DAILY_ENTRY_CAP:
             return {
                 "ok": False, "gate": "daily_entry_cap",

@@ -315,6 +315,16 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                     note_loss_exit(symbol, pnl)
                 except Exception:
                     pass
+            # WO-0924-z P1-3: close the outcome lifecycle — reconciled
+            # exits are the LAST exit path with no record_outcome hook
+            # (the 27-row stale pile-up root cause).
+            try:
+                from src.trade_outcome_recorder import TradeOutcomeRecorder
+                TradeOutcomeRecorder().record_outcome(
+                    symbol, exit_price=avg_px,
+                    exit_reason="reconciled" if pnl >= 0 else "sl")
+            except Exception:
+                pass
             booked.append(
                 {"symbol": symbol, "qty": round(qty, 8), "price": round(avg_px, 8),
                  "pnl": round(pnl, 6), "order_id": str(oid), "source": "reconcile/oco_fill"}

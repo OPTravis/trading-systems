@@ -125,158 +125,167 @@ def _step_execute_trades(ctx):
         logger.info(
             f"AUTO_EXECUTE enabled - executing {ctx['symbol']} trade automatically"
         )
-        result = execute_auto_trade(
-            symbol=ctx["symbol"],
-            price=ctx["price"],
-            strategy=ctx["strategy"],
-            stop_loss_pct=ctx["stop_loss_pct"],
-            tp_levels=ctx["tp_levels"],
-            stop_price=ctx["stop_price"],
-            max_hold=ctx["max_hold"],
-            signals=ctx["signals"],
-            reason=ctx["reason"],
-            score=int(ctx["adjusted_score"]),
-            cash_reserve_pct=ctx["adapted"]["global"].get("cash_reserve_pct", 30),
-            max_position_pct=ctx["adapted"]["global"].get("max_position_pct", 15),
-            max_total_exposure_pct=ctx["adapted"]["global"].get(
-                "max_total_exposure_pct", 70
-            ),
-            strategy_size_multiplier=ctx.get(
-                "size_multiplier", 1.0
-            ),  # P0-3: pass strategy-level size_multiplier
-            order_value=ctx.get("top", {}).get("order_value"),  # DeepValueBTC / Fear Acc
-            surge_alert_level=(
-                ctx.get("surge_result", {}).get("alert_level", "SILENCE")
-                if ctx.get("surge_result")
-                else "SILENCE"
-            ),
-            bandit_sltp=ctx.get("adapted", {}).get("bandit_sltp"),
-        )
-        if result["success"]:
-            # Record trade in journal
-            _step_journal_results(ctx, result=result, decision="BUY")
-
-            # Phase 0: Record trade entry for self-learning pipeline
-            try:
-                from src.trade_outcome_recorder import TradeOutcomeRecorder
-
-                recorder = TradeOutcomeRecorder()
-                # Extract factor scores from opportunity data (best available)
-                tech_score_entry = ctx["top"].get("technical_score", 0)
-                trend_score_entry = ctx["top"].get(
-                    "trend_score", ctx["top"].get("trend_strength", 0)
-                )
-                ctx["top"].get("funding_rate", 0)
-                # Get all factor scores from market_scanner
-                fs = ctx["top"].get("factor_scores", {})
-                # Build TP percentages
-                tp_pcts = [tp.get("pct", 0) for tp in ctx["tp_levels"]]
-                while len(tp_pcts) < 3:
-                    tp_pcts.append(0)
-                entry_rowid = recorder.record_entry(
-                    symbol=ctx["symbol"],
-                    entry_price=result["price"],
-                    qty=result["qty"],
-                    score=ctx["adjusted_score"],
-                    strategy=ctx["strategy"],
-                    f_technical=(
-                        float(fs.get("technical", tech_score_entry))
-                        if isinstance(
-                            fs.get("technical", tech_score_entry), (int, float)
-                        )
-                        else 0
-                    ),
-                    f_trend=(
-                        float(fs.get("trend", trend_score_entry))
-                        if isinstance(fs.get("trend", trend_score_entry), (int, float))
-                        else 0
-                    ),
-                    f_volume=float(fs.get("volume", 0)),
-                    f_sentiment=float(fs.get("sentiment", 0)),
-                    f_price_action=float(fs.get("price_action", 0)),
-                    f_obv_divergence=float(fs.get("obv_divergence", 0)),
-                    f_consolidation=float(fs.get("consolidation", 0)),
-                    f_bb_squeeze=float(fs.get("bb_squeeze", 0)),
-                    f_rsi_divergence=float(fs.get("rsi_divergence", 0)),
-                    f_onchain=float(
-                        fs.get("onchain", ctx["top"].get("onchain_score", 0))
-                    ),
-                    f_market_sentiment=float(
-                        fs.get(
-                            "market_sentiment",
-                            ctx["top"].get("market_sentiment_score", 0),
-                        )
-                    ),
-                    regime=ctx["adapted"].get("regime", ""),
-                    fng_score=int(ctx["fng"]),
-                    fng_label=ctx["fng_label"],
-                    btc_trend=ctx["btc_trend"],
-                    kelly_pct=result.get("invest_pct", 0),
-                    kelly_win_rate=result.get("kelly", {}).get("win_rate", 0),
-                    kelly_confidence=result.get("kelly", {}).get("confidence", ""),
-                    stop_loss_pct=ctx["stop_loss_pct"],
-                    tp1_pct=tp_pcts[0],
-                    tp2_pct=tp_pcts[1],
-                    tp3_pct=tp_pcts[2],
-                    max_hold_hours=ctx["max_hold"],
-                    research_adj=ctx["research_adj"],
-                    bear_score=(
-                        ctx["bear_result"].bear_score
-                        if ctx["bear_result"]
-                        and hasattr(ctx["bear_result"], "bear_score")
-                        else 0
-                    ),
-                    bear_veto=(
-                        ctx["bear_result"].veto
-                        if ctx["bear_result"] and hasattr(ctx["bear_result"], "veto")
-                        else False
-                    ),
-                )
-                # Store entry_rowid on position for precise outcome matching
-                if entry_rowid and ctx["symbol"] in ctx["portfolio"].positions:
-                    ctx["portfolio"].positions[ctx["symbol"]][
-                        "entry_rowid"
-                    ] = entry_rowid
-            except Exception as e:
-                logger.warning(f"Trade outcome entry recording failed: {e}")
-
-                _explore_tag = " 🔬EXPLORATION" if result.get("is_exploration") else ""
-                print(
-                    f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}{_explore_tag}"
-                )
-            # Write signal to pending.json for heartbeat notification
-            send_signal(
-                signal_type="BUY",
+        try:  # WO-0924-z P1-4: entry failures must never take
+              # down the cron round — reconcile/guardian/notify
+              # still have to run downstream.
+            result = execute_auto_trade(
                 symbol=ctx["symbol"],
-                action="OPEN",
-                price=result["price"],
-                quantity=result["qty"],
-                reason=ctx["reason"],
+                price=ctx["price"],
                 strategy=ctx["strategy"],
+                stop_loss_pct=ctx["stop_loss_pct"],
+                tp_levels=ctx["tp_levels"],
+                stop_price=ctx["stop_price"],
+                max_hold=ctx["max_hold"],
+                signals=ctx["signals"],
+                reason=ctx["reason"],
+                score=int(ctx["adjusted_score"]),
+                cash_reserve_pct=ctx["adapted"]["global"].get("cash_reserve_pct", 30),
+                max_position_pct=ctx["adapted"]["global"].get("max_position_pct", 15),
+                max_total_exposure_pct=ctx["adapted"]["global"].get(
+                    "max_total_exposure_pct", 70
+                ),
+                strategy_size_multiplier=ctx.get(
+                    "size_multiplier", 1.0
+                ),  # P0-3: pass strategy-level size_multiplier
+                order_value=ctx.get("top", {}).get("order_value"),  # DeepValueBTC / Fear Acc
+                surge_alert_level=(
+                    ctx.get("surge_result", {}).get("alert_level", "SILENCE")
+                    if ctx.get("surge_result")
+                    else "SILENCE"
+                ),
+                bandit_sltp=ctx.get("adapted", {}).get("bandit_sltp"),
             )
-        else:
-            # Self-heal: diagnose failure at point of error
-            heal_info = ""
-            try:
-                from src.self_healer import diagnose_and_fix
+            if result["success"]:
+                # Record trade in journal
+                _step_journal_results(ctx, result=result, decision="BUY")
 
-                # WO-0924-y: executor failure returns mix "error" and
-                # "reason" keys (shutdown/blacklist/governor paths) —
-                # read both until the contract is unified (audit z).
-                _err = result.get("error") or result.get("reason") or str(result)
-                heal = diagnose_and_fix(
-                    _err, {"symbol": ctx["symbol"], "price": ctx["price"]}
-                )
-                if heal["diagnosed"]:
-                    status = "✅已修復" if heal["fixed"] else "🔧待修"
-                    heal_info = (
-                        f"\n  {status} {heal['diagnosis']}: {heal['fix_result']}"
+                # Phase 0: Record trade entry for self-learning pipeline
+                try:
+                    from src.trade_outcome_recorder import TradeOutcomeRecorder
+
+                    recorder = TradeOutcomeRecorder()
+                    # Extract factor scores from opportunity data (best available)
+                    tech_score_entry = ctx["top"].get("technical_score", 0)
+                    trend_score_entry = ctx["top"].get(
+                        "trend_score", ctx["top"].get("trend_strength", 0)
                     )
-            except Exception:
-                logger.error(
-                    "Self-healer diagnosis failed for %s", ctx["symbol"], exc_info=True
+                    ctx["top"].get("funding_rate", 0)
+                    # Get all factor scores from market_scanner
+                    fs = ctx["top"].get("factor_scores", {})
+                    # Build TP percentages
+                    tp_pcts = [tp.get("pct", 0) for tp in ctx["tp_levels"]]
+                    while len(tp_pcts) < 3:
+                        tp_pcts.append(0)
+                    entry_rowid = recorder.record_entry(
+                        symbol=ctx["symbol"],
+                        entry_price=result["price"],
+                        qty=result["qty"],
+                        score=ctx["adjusted_score"],
+                        strategy=ctx["strategy"],
+                        f_technical=(
+                            float(fs.get("technical", tech_score_entry))
+                            if isinstance(
+                                fs.get("technical", tech_score_entry), (int, float)
+                            )
+                            else 0
+                        ),
+                        f_trend=(
+                            float(fs.get("trend", trend_score_entry))
+                            if isinstance(fs.get("trend", trend_score_entry), (int, float))
+                            else 0
+                        ),
+                        f_volume=float(fs.get("volume", 0)),
+                        f_sentiment=float(fs.get("sentiment", 0)),
+                        f_price_action=float(fs.get("price_action", 0)),
+                        f_obv_divergence=float(fs.get("obv_divergence", 0)),
+                        f_consolidation=float(fs.get("consolidation", 0)),
+                        f_bb_squeeze=float(fs.get("bb_squeeze", 0)),
+                        f_rsi_divergence=float(fs.get("rsi_divergence", 0)),
+                        f_onchain=float(
+                            fs.get("onchain", ctx["top"].get("onchain_score", 0))
+                        ),
+                        f_market_sentiment=float(
+                            fs.get(
+                                "market_sentiment",
+                                ctx["top"].get("market_sentiment_score", 0),
+                            )
+                        ),
+                        regime=ctx["adapted"].get("regime", ""),
+                        fng_score=int(ctx["fng"]),
+                        fng_label=ctx["fng_label"],
+                        btc_trend=ctx["btc_trend"],
+                        kelly_pct=result.get("invest_pct", 0),
+                        kelly_win_rate=result.get("kelly", {}).get("win_rate", 0),
+                        kelly_confidence=result.get("kelly", {}).get("confidence", ""),
+                        stop_loss_pct=ctx["stop_loss_pct"],
+                        tp1_pct=tp_pcts[0],
+                        tp2_pct=tp_pcts[1],
+                        tp3_pct=tp_pcts[2],
+                        max_hold_hours=ctx["max_hold"],
+                        research_adj=ctx["research_adj"],
+                        bear_score=(
+                            ctx["bear_result"].bear_score
+                            if ctx["bear_result"]
+                            and hasattr(ctx["bear_result"], "bear_score")
+                            else 0
+                        ),
+                        bear_veto=(
+                            ctx["bear_result"].veto
+                            if ctx["bear_result"] and hasattr(ctx["bear_result"], "veto")
+                            else False
+                        ),
+                    )
+                    # Store entry_rowid on position for precise outcome matching
+                    if entry_rowid and ctx["symbol"] in ctx["portfolio"].positions:
+                        ctx["portfolio"].positions[ctx["symbol"]][
+                            "entry_rowid"
+                        ] = entry_rowid
+                except Exception as e:
+                    logger.warning(f"Trade outcome entry recording failed: {e}")
+
+                    _explore_tag = " 🔬EXPLORATION" if result.get("is_exploration") else ""
+                    print(
+                        f"✅ Auto-executed {ctx['symbol']}: BUY {result['qty']} @ ${ctx['price']:.6f} | Invest: {result['invest_pct']}% | F&G: {ctx['fng']} ({ctx['fng_label']}) | Research: {ctx['research_adj']:+.1f}{_explore_tag}"
+                    )
+                # Write signal to pending.json for heartbeat notification
+                send_signal(
+                    signal_type="BUY",
+                    symbol=ctx["symbol"],
+                    action="OPEN",
+                    price=result["price"],
+                    quantity=result["qty"],
+                    reason=ctx["reason"],
+                    strategy=ctx["strategy"],
                 )
-            print(f"❌ Auto-execute failed: {_err}{heal_info}")
+            else:
+                # Self-heal: diagnose failure at point of error
+                heal_info = ""
+                try:
+                    from src.self_healer import diagnose_and_fix
+
+                    # WO-0924-y: executor failure returns mix "error" and
+                    # "reason" keys (shutdown/blacklist/governor paths) —
+                    # read both until the contract is unified (audit z).
+                    _err = result.get("error") or result.get("reason") or str(result)
+                    heal = diagnose_and_fix(
+                        _err, {"symbol": ctx["symbol"], "price": ctx["price"]}
+                    )
+                    if heal["diagnosed"]:
+                        status = "✅已修復" if heal["fixed"] else "🔧待修"
+                        heal_info = (
+                            f"\n  {status} {heal['diagnosis']}: {heal['fix_result']}"
+                        )
+                except Exception:
+                    logger.error(
+                        "Self-healer diagnosis failed for %s", ctx["symbol"], exc_info=True
+                    )
+                print(f"❌ Auto-execute failed: {_err}{heal_info}")
+        except Exception:
+            logger.error(
+                "auto-execute raised for %s — isolated; cron round "
+                "continues (reconcile/guardian/notify unaffected)",
+                ctx["symbol"], exc_info=True,
+            )
     else:
         lines.extend(
             [

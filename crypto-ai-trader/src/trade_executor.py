@@ -1308,6 +1308,19 @@ def _place_sl_tp_orders(
     }
 
 
+def _fail(reason, **extra):
+    """WO-0924-z P1-1: unified failure contract.
+
+    Every execute_auto_trade failure path returns success=False with
+    BOTH "error" and "reason" carrying the same string — old readers
+    keyed on either name keep working; new code has one contract.
+    Extra keys (gate/governor etc.) pass through.
+    """
+    out = {"success": False, "error": reason, "reason": reason}
+    out.update(extra)
+    return out
+
+
 def execute_auto_trade(
     symbol,
     price,
@@ -1351,7 +1364,7 @@ def execute_auto_trade(
             f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — shutdown in progress, "
             f"symbol={symbol}"
         )
-        return {"success": False, "reason": "shutdown_in_progress"}
+        return _fail("shutdown_in_progress")
 
     # WO-0924-x: entry frequency governor (pure risk layer) —
     # loss-exit cooldown / daily cap / fallback-under-drawdown.
@@ -1365,8 +1378,7 @@ def execute_auto_trade(
                     f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
                     f"{_gov.get('reason')}"
                 )
-                return {"success": False, "reason": _gov.get("reason"),
-                        "governor": _gov.get("gate")}
+                return _fail(_gov.get("reason"), governor=_gov.get("gate"))
         except Exception:
             pass  # fail-open — governor must never break trading
 
@@ -1387,7 +1399,7 @@ def execute_auto_trade(
                     f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
                     f"symbol {symbol} is disabled (blacklisted)"
                 )
-                return {"success": False, "reason": f"symbol_blacklisted: {symbol}"}
+                return _fail(f"symbol_blacklisted: {symbol}")
         except Exception:
             pass  # Fail open — if config can't be read, don't block trades
 
@@ -1406,10 +1418,9 @@ def execute_auto_trade(
                 f"DEEP_BEAR: BTC below 100-SMA & 200-SMA declining "
                 f"(deviation: {_dev:+.1f}%, 200SMA slope: {_slope:+.2f}%)"
             )
-            return {
-                "success": False,
-                "reason": f"btc_trend_gate: DEEP_BEAR — BTC below 100-SMA & 200-SMA declining ({_dev:+.1f}%)",
-            }
+            return _fail(
+                f"btc_trend_gate: DEEP_BEAR — BTC below 100-SMA & "
+                f"200-SMA declining ({_dev:+.1f}%)")
         elif _btc_trend_multiplier < 1.0:
             logger.info(
                 f"[trade_id={_trade_id}] BTC trend gate: {_trend_tier} "
@@ -1426,7 +1437,7 @@ def execute_auto_trade(
     MAX_SINGLE_LOSS_PCT = _RISK_MAX_SINGLE_LOSS_PCT  # Maximum single trade loss as % of position
     if stop_loss_pct <= 0:
         logger.error(f"stop_loss_pct={stop_loss_pct}% is invalid (≤0), blocking trade")
-        return {"success": False, "reason": f"Invalid stop_loss_pct={stop_loss_pct}%"}
+        return _fail(f"Invalid stop_loss_pct={stop_loss_pct}%")
     if stop_loss_pct < MIN_STOP_LOSS_PCT:
         logger.warning(
             f"stop_loss_pct={stop_loss_pct}% is below minimum {MIN_STOP_LOSS_PCT}%, "
@@ -1461,10 +1472,7 @@ def execute_auto_trade(
 
     _base = symbol.replace("/USDT", "").replace("USDT", "")
     if _base in _dca_coins:
-        return {
-            "success": False,
-            "error": f"DCA-managed coin {_base}, skipped by auto-trade",
-        }
+        return _fail(f"DCA-managed coin {_base}, skipped by auto-trade")
 
     tp_levels = copy.deepcopy(tp_levels)  # prevent mutation of cached strategy data
     client = get_trading_client()
@@ -1473,12 +1481,12 @@ def execute_auto_trade(
     # Get available USDT balance
     usdt_bal = client.get_free_balance("USDT")
     if usdt_bal < 10:
-        return {"success": False, "error": f"Insufficient USDT: ${usdt_bal:.2f}"}
+        return _fail(f"Insufficient USDT: ${usdt_bal:.2f}")
 
     # ── Pre-trade risk checks (circuit breakers, daily loss, drawdown) ──
     risk_check = _pretrade_risk_checks(client, usdt_bal)
     if risk_check["blocked"]:
-        return {"success": False, "error": risk_check["reason"]}
+        return _fail(risk_check["reason"])
     _total_invested = risk_check["total_invested"]
     _total_portfolio = risk_check["total_portfolio"]
     _dl_multiplier = risk_check["dl_multiplier"]
@@ -1495,8 +1503,7 @@ def execute_auto_trade(
         _tiers_block = entry_blocked(StateDB())
         if _tiers_block:
             logger.warning("execute_auto_trade: blocked by %s", _tiers_block)
-            return {"success": False,
-                    "error": f"Risk gate: {_tiers_block}"}
+            return _fail(f"Risk gate: {_tiers_block}")
     except Exception:
         logger.warning("circuit_tiers entry gate check failed (fail-open)",
                        exc_info=True)
@@ -1507,16 +1514,10 @@ def execute_auto_trade(
 
     # P1-8: fail-closed — if count failed, block trade
     if active_positions < 0:
-        return {
-            "success": False,
-            "error": "count_active_positions failed (account fetch error) — blocking trade for safety",
-        }
+        return _fail("count_active_positions failed (account fetch error) — blocking trade for safety")
 
     if active_positions >= max_positions:
-        return {
-            "success": False,
-            "error": f"Max positions reached: {active_positions}/{max_positions}",
-        }
+        return _fail(f"Max positions reached: {active_positions}/{max_positions}")
 
     # Duplicate-entry guard — must come after position counting so the
     # log trail shows both the count and the held-symbol skip.
@@ -1525,15 +1526,12 @@ def execute_auto_trade(
             f"Duplicate-entry guard: already holding {symbol}, "
             f"skipping fresh auto-execute (rescan/overlap protection)"
         )
-        return {
-            "success": False,
-            "error": f"Already holding {symbol} — duplicate entry blocked",
-        }
+        return _fail(f"Already holding {symbol} — duplicate entry blocked")
 
     # Score below minimum threshold — no trade regardless of Kelly
     if score < 60:
         logger.info(f"Score {score} below minimum threshold (60), skipping trade")
-        return {"success": False, "error": f"Score too low: {score} (min 60)"}
+        return _fail(f"Score too low: {score} (min 60)")
 
     # P0-B (2026-08-26): New-position halt (double safety net on top of Kelly
     # deadlock). We must allow this function to run FAR ENOUGH to compute Kelly
@@ -1547,9 +1545,9 @@ def execute_auto_trade(
         surge_alert_level=surge_alert_level,
     )
     if sizing is None:
-        return {"success": False, "error": "Position sizing returned None"}
+        return _fail("Position sizing returned None")
     if "error" in sizing:
-        return {"success": False, "error": sizing["error"]}
+        return _fail(sizing["error"])
     invest_pct = sizing["invest_pct"]
     invest_amount = sizing["invest_amount"]
     fee_rate = sizing["fee_rate"]
@@ -1564,11 +1562,7 @@ def execute_auto_trade(
             f"(regular new position; symbol={symbol} strategy={strategy} score={score}). "
             f"Only Kelly exploration probes allowed."
         )
-        return {
-            "success": False,
-            "error": "new_positions_halted",
-            "reason": "NEW_POSITIONS_HALTED is active (P0-B)",
-        }
+        return _fail("NEW_POSITIONS_HALTED is active (P0-B)")
 
     # ── Exploration exposure cap ──
     # Total exploration positions must not exceed 5% of USDT balance.
@@ -1589,10 +1583,7 @@ def execute_auto_trade(
                 f"{_MAX_EXPLORATION_PCT*100:.0f}% of ${usdt_bal:.2f}. "
                 f"Skipping new exploration position."
             )
-            return {
-                "success": False,
-                "error": f"Exploration cap reached ({_current_exploration:.1%} of balance)",
-            }
+            return _fail(f"Exploration cap reached ({_current_exploration:.1%} of balance)")
         if invest_amount > _exploration_room:
             logger.info(
                 f"Exploration cap partial: ${invest_amount:.2f} → ${_exploration_room:.2f}"
@@ -1832,10 +1823,7 @@ def execute_auto_trade(
         qty = round(qty, _qty_decimals)
 
     if qty < _min_qty:
-        return {
-            "success": False,
-            "error": f"Qty too small: {qty} (min {_min_qty}). Invest amount: ${invest_amount:.2f}",
-        }
+        return _fail(f"Qty too small: {qty} (min {_min_qty}). Invest amount: ${invest_amount:.2f}")
 
     logger.info(
         f"Kelly: {tier_label} | Score: {score} | WinRate: {kelly_result.get('win_rate',0):.1%} | "
@@ -1848,17 +1836,11 @@ def execute_auto_trade(
 
     # ── P0 #1: 異常價格過濾 (flash crash / pump protection) ──
     if not _check_price_deviation(client, symbol, price):
-        return {
-            "success": False,
-            "error": f"Price anomaly: {symbol} ${price:.6f} deviates >3σ from 14h avg",
-        }
+        return _fail(f"Price anomaly: {symbol} ${price:.6f} deviates >3σ from 14h avg")
 
     # ── P0 #2: 雙重下單防護 ──
     if not _check_duplicate_order(client, symbol):
-        return {
-            "success": False,
-            "error": f"Duplicate order: {symbol} already has pending BUY",
-        }
+        return _fail(f"Duplicate order: {symbol} already has pending BUY")
 
     # Market buy - use TWAP for large orders, MARKET for small ones
     from src.twap_vwap import should_use_twap, execute_twap
@@ -1893,10 +1875,7 @@ def execute_auto_trade(
         buy_result = client.place_market_buy(symbol, qty)
 
     if buy_result is None:
-        return {
-            "success": False,
-            "error": f"BUY MARKET failed - {symbol} may be unavailable or balance insufficient",
-        }
+        return _fail(f"BUY MARKET failed - {symbol} may be unavailable or balance insufficient")
 
     # Get actual executed quantity from fills
     # Skip fills parsing if TWAP already populated executed_qty and avg_price
