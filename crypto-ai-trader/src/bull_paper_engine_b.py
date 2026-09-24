@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.bull_paper_engine import (
@@ -95,6 +94,17 @@ class BullPaperEngineB(BullPaperEngine):
         self._adx_latched: Dict[str, bool] = {}
 
     @property
+    def store(self):
+        """WO-0924-z2 P6-B1: paper_bull SQL lives in BullPaperStore.
+        Lazy so __new__-based test stubs that skip __init__ still work."""
+        st = self.__dict__.get("_store")
+        if st is None or st.db is not self.db:
+            from src.bull_paper_store import BullPaperStore
+            st = BullPaperStore(self.db)
+            self.__dict__["_store"] = st
+        return st
+
+    @property
     def portfolio(self):
         if self._b_portfolio is None:
             from src.bull_paper_portfolio import BullPaperPortfolio
@@ -106,21 +116,16 @@ class BullPaperEngineB(BullPaperEngine):
     def _log_decision(self, symbol, decision, *, score=None, fail_filter="",
                       ind=None, rvol=None, r_multiple=None, regime="", notes=""):
         try:
-            with self.db._get_conn() as conn:
-                conn.execute(
-                    """INSERT INTO paper_bull_filter_decisions
-                       (scan_time, ab_group, symbol, score, decision, fail_filter,
-                        atr14_4h, ema20_4h, ema50_4h, ema200_4h,
-                        adx14_4h, rvol20, r_multiple, regime, notes)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (int(time.time() * 1000), "B", symbol, score, decision,
-                     fail_filter,
-                     (ind or {}).get("atr"),
-                     (ind or {}).get("ema20"), (ind or {}).get("ema50"),
-                     (ind or {}).get("ema200"),
-                     (ind or {}).get("adx"), rvol, r_multiple, regime, notes),
-                )
-                conn.commit()
+            self.store.log_filter_decision(
+                symbol=symbol, decision=decision, ab_group="B",
+                score=score, fail_filter=fail_filter,
+                atr=(ind or {}).get("atr"),
+                ema20=(ind or {}).get("ema20"),
+                ema50=(ind or {}).get("ema50"),
+                ema200=(ind or {}).get("ema200"),
+                adx=(ind or {}).get("adx"),
+                rvol=rvol, r_multiple=r_multiple, regime=regime,
+                notes=notes)
         except Exception as e:
             logger.warning(f"[B] filter-decision log failed {symbol}: {e}")
 
@@ -243,23 +248,17 @@ class BullPaperEngineB(BullPaperEngine):
                 "r_multiple": ctx["r_multiple"]}
 
     def _arm_scaleouts(self, position_id, symbol, entry, sl_dist, atr_entry=0.0, original_qty=0.0):
+        from src.bull_paper_store import new_scaleout_id
         now = int(time.time() * 1000)
         rows = [
-            (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
+            (new_scaleout_id(), position_id, "B", symbol,
              1, B_STAGE1_R, B_STAGE1_FRAC, entry, atr_entry, original_qty,
              entry + B_STAGE1_R * sl_dist, "pending", 0, 0.0, now),
-            (f"so_{uuid.uuid4().hex[:10]}", position_id, "B", symbol,
+            (new_scaleout_id(), position_id, "B", symbol,
              2, B_STAGE2_R, B_STAGE2_FRAC, entry, atr_entry, original_qty,
              entry + B_STAGE2_R * sl_dist, "pending", 0, 0.0, now),
         ]
-        with self.db._get_conn() as conn:
-            conn.executemany(
-                """INSERT INTO paper_bull_scaleouts
-                   (id, position_id, ab_group, symbol, stage, r_multiple,
-                    fraction, entry_price, atr_at_entry, original_qty, trigger_price,
-                    status, fired_time, fired_price, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
-            conn.commit()
+        self.store.insert_scaleouts(rows)
 
     def process_b_thesis_exits(self, regime, prices):
         """Thesis-level exits on B sleeve: regime drop and break of 4H EMA200.
@@ -342,19 +341,10 @@ class BullPaperEngineB(BullPaperEngine):
         return events
 
     def _get_pos(self, position_id):
-        with self.db._get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM paper_bull_positions WHERE id=?", (position_id,)
-            ).fetchone()
-        return dict(row) if row else None
+        return self.store.get_position(position_id)
 
     def _process_scaleouts(self, pos, px):
-        with self.db._get_conn() as conn:
-            pendings = conn.execute(
-                """SELECT * FROM paper_bull_scaleouts
-                   WHERE position_id=? AND status='pending' ORDER BY stage""",
-                (pos["id"],),
-            ).fetchall()
+        pendings = self.store.pending_scaleouts(pos["id"])
         for so in pendings:
             if px >= so["trigger_price"]:
                 # Use original entry qty (stored at arm time), not remaining qty,
@@ -363,15 +353,9 @@ class BullPaperEngineB(BullPaperEngine):
                 # original_qty -> qty of the entry BUY leg -> caller snapshot.
                 base_qty = so["original_qty"]
                 if base_qty <= 0:
-                    with self.db._get_conn() as conn:
-                        _row = conn.execute(
-                            """SELECT quantity FROM paper_bull_trades
-                               WHERE position_id=? AND action='BUY'
-                               ORDER BY timestamp LIMIT 1""",
-                            (pos["id"],),
-                        ).fetchone()
-                    if _row is not None and _row["quantity"] > 0:
-                        base_qty = _row["quantity"]
+                    _qty = self.store.entry_buy_qty(pos["id"])
+                    if _qty is not None and _qty > 0:
+                        base_qty = _qty
                     else:
                         base_qty = pos["quantity"]
                 close_qty = base_qty * so["fraction"]
@@ -382,17 +366,7 @@ class BullPaperEngineB(BullPaperEngine):
                 self.portfolio.close_position(
                     pos["id"], px, quantity=close_qty,
                     reason=f"B_TP_{so['stage']}R")
-                with self.db._get_conn() as conn:
-                    conn.execute(
-                        """UPDATE paper_bull_scaleouts SET status='fired',
-                           fired_time=?, fired_price=? WHERE id=?""",
-                        (int(time.time() * 1000), px, so["id"]))
-                    conn.commit()
+                self.store.fire_scaleout(so["id"], int(time.time() * 1000), px)
 
     def _void_scaleouts(self, position_id):
-        with self.db._get_conn() as conn:
-            conn.execute(
-                """UPDATE paper_bull_scaleouts SET status='voided'
-                   WHERE position_id=? AND status='pending'""",
-                (position_id,))
-            conn.commit()
+        self.store.void_pending_scaleouts(position_id)

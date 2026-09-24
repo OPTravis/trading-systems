@@ -162,11 +162,16 @@ def main():
 
     # 4. Summary
     print("[4/5] Paper trading tables ready:")
+    # WO-0924-z2 P6-B1: paper_bull counts via BullPaperStore (no raw SQL
+    # outside the store); bull_regime_log stays on the main-chain reader.
+    from src.bull_paper_store import BullPaperStore
+    bp_store = BullPaperStore(db)
+    for table in ["paper_bull_positions", "paper_bull_trades", "paper_bull_state"]:
+        print(f"  {table}: {bp_store.table_row_count(table)} rows")
     import sqlite3
     conn = sqlite3.connect(DB_PATH)
-    for table in ["paper_bull_positions", "paper_bull_trades", "paper_bull_state", "bull_regime_log"]:
-        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        print(f"  {table}: {count} rows")
+    count = conn.execute("SELECT COUNT(*) FROM bull_regime_log").fetchone()[0]
+    print(f"  bull_regime_log: {count} rows")
     # Verify isolation
     live_outcomes = conn.execute("SELECT COUNT(*) FROM trade_outcomes").fetchone()[0]
     print(f"  trade_outcomes (live, untouched): {live_outcomes} rows")

@@ -1,6 +1,11 @@
 """P0-C: A/B daily metrics + comparison. Computes per-group stats from
 paper_bull_positions / paper_bull_trades and snapshots them into
-paper_bull_ab_daily. Crypto is 24/7 so Sharpe uses sqrt(365) on daily returns."""
+paper_bull_ab_daily. Crypto is 24/7 so Sharpe uses sqrt(365) on daily returns.
+
+WO-0924-z2 P6-B1: raw SQL moved to BullPaperStore; this module keeps the
+analytics math (win/PF/hold distribution, SL-sweep windows, re-entry
+churn, MaxDD, Sharpe) and the snapshot/report orchestration.
+"""
 from __future__ import annotations
 
 import math
@@ -9,31 +14,20 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from .bull_paper_store import BullPaperStore
 
 HOURS_MS = 3600 * 1000
 
 
 def _closed_trades(db, group: str, days: int = 30) -> List[Dict]:
     since = int((time.time() - days * 86400) * 1000)
-    with db._get_conn() as c:
-        rows = c.execute(
-            """SELECT * FROM paper_bull_positions
-               WHERE status='closed' AND COALESCE(ab_group,'A')=?
-                 AND exit_time >= ? ORDER BY exit_time""",
-            (group, since),
-        ).fetchall()
-    return [dict(r) for r in rows]
+    return BullPaperStore(db).closed_positions_since(group, since)
 
 
 def _daily_returns(db, group: str, days: int = 30) -> List[float]:
     """Build daily return series from per-day equity snapshots; fall back to
     realized PnL / start_cash if no snapshots exist."""
-    with db._get_conn() as c:
-        rows = c.execute(
-            """SELECT snapshot_date, equity FROM paper_bull_ab_daily
-               WHERE ab_group=? ORDER BY snapshot_date""",
-            (group,),
-        ).fetchall()
+    rows = BullPaperStore(db).daily_equity_series(group)
     if len(rows) >= 2:
         rets = []
         for i in range(1, len(rows)):
@@ -48,6 +42,7 @@ def _daily_returns(db, group: str, days: int = 30) -> List[float]:
 def compute_group_stats(db, group: str, start_cash: float,
                         prices: Optional[Dict[str, float]] = None,
                         days: int = 30) -> Dict[str, Any]:
+    store = BullPaperStore(db)
     trades = _closed_trades(db, group, days=days)
     wins = [t for t in trades if (t.get("realized_pnl") or 0) > 0]
     losses = [t for t in trades if (t.get("realized_pnl") or 0) <= 0]
@@ -72,15 +67,7 @@ def compute_group_stats(db, group: str, start_cash: float,
             if held_h < 8 and ("SL" in (t.get("notes") or "") or "SL" in str(t.get("exit_price"))):
                 sl_sweeps += 1
     # more robust: use trades table details for B_ATR_SL / SL_HIT under 8h
-    with db._get_conn() as c:
-        rr = c.execute(
-            """SELECT p.entry_time, p.exit_time, t.details
-               FROM paper_bull_positions p
-               JOIN paper_bull_trades t ON t.position_id=p.id
-               WHERE p.status='closed' AND COALESCE(p.ab_group,'A')=?
-                 AND t.action='SELL' AND t.details LIKE '%SL%'""",
-            (group,),
-        ).fetchall()
+    rr = store.sl_sweep_rows(group)
     sl_sweeps = sum(
         1 for r in rr
         if r["entry_time"] and r["exit_time"]
@@ -89,20 +76,12 @@ def compute_group_stats(db, group: str, start_cash: float,
     sl_sweep_rate = sl_sweeps / len(trades) if trades else 0.0
 
     # equity + MaxDD
-    with db._get_conn() as c:
-        cash_row = c.execute(
-            "SELECT value FROM paper_bull_state WHERE key=?",
-            ("cash_balance" if group == "A" else f"cash_balance_{group}",),
-        ).fetchone()
-    cash = float(cash_row["value"]) if cash_row else 0.0
+    cash_key = "cash_balance" if group == "A" else f"cash_balance_{group}"
+    cash_val = store.state_get(cash_key)
+    cash = float(cash_val) if cash_val else 0.0
     mv = 0.0
     if prices:
-        with db._get_conn() as c:
-            opens = c.execute(
-                "SELECT symbol, quantity, entry_price FROM paper_bull_positions "
-                "WHERE status='open' AND COALESCE(ab_group,'A')=?",
-                (group,),
-            ).fetchall()
+        opens = store.open_position_mv_rows(group)
         for o in opens:
             px = prices.get(o["symbol"], o["entry_price"])
             mv += o["quantity"] * px
@@ -132,53 +111,21 @@ def compute_group_stats(db, group: str, start_cash: float,
         if sd > 0:
             sharpe = (statistics.mean(rets) / sd) * math.sqrt(365)
 
-    n_open = 0
-    with db._get_conn() as c:
-        n_open = c.execute(
-            "SELECT count(*) FROM paper_bull_positions WHERE status='open' "
-            "AND COALESCE(ab_group,'A')=?", (group,)).fetchone()[0]
+    n_open = store.count_open_positions(group)
 
     # P0-C review: re-entry churn = SL close followed by re-open of same
     # symbol within 4h (P1 cooldown trigger if >3 over the 14d window)
     reentry_after_sl_count = 0
     REENTRY_WIN = 4 * HOURS_MS
-    with db._get_conn() as c:
-        # only SL closes count (Leo 2026-08-26: "同一幣 SL 後 4h 內 re-open")
-        for sym_row in c.execute(
-            "SELECT DISTINCT symbol FROM paper_bull_positions WHERE COALESCE(ab_group,'A')=?",
-            (group,),
-        ).fetchall():
-            sym = sym_row["symbol"]
-            closes = c.execute(
-                """SELECT p.exit_time FROM paper_bull_positions p
-                   JOIN paper_bull_trades t ON t.position_id=p.id
-                   WHERE p.status='closed' AND COALESCE(p.ab_group,'A')=? AND p.symbol=?
-                     AND p.exit_time IS NOT NULL
-                     AND t.action='SELL' AND t.details LIKE '%SL%'
-                   GROUP BY p.id
-                   ORDER BY p.exit_time""",
-                (group, sym),
-            ).fetchall()
-            for cl in closes:
-                hit = c.execute(
-                    """SELECT 1 FROM paper_bull_trades
-                       WHERE ab_group=? AND symbol=? AND action='BUY'
-                         AND timestamp > ? AND timestamp <= ?
-                       LIMIT 1""",
-                    (group, sym, cl["exit_time"], cl["exit_time"] + REENTRY_WIN),
-                ).fetchone()
-                if hit:
-                    reentry_after_sl_count += 1
+    # only SL closes count (Leo 2026-08-26: "同一幣 SL 後 4h 內 re-open")
+    for sym in store.distinct_position_symbols(group):
+        for exit_time in store.sl_exit_times(group, sym):
+            if store.reentry_buy_exists(group, sym, exit_time,
+                                        exit_time + REENTRY_WIN):
+                reentry_after_sl_count += 1
 
     # P0-C review: core SL count (BTC/SOL core thesis stops — high-signal events)
-    with db._get_conn() as c:
-        core_sl = c.execute(
-            """SELECT count(*) FROM paper_bull_positions p
-               JOIN paper_bull_trades t ON t.position_id=p.id
-               WHERE p.status='closed' AND COALESCE(p.ab_group,'A')=?
-                 AND p.side='core' AND t.action='SELL' AND t.details LIKE '%SL%'""",
-            (group,),
-        ).fetchone()[0]
+    core_sl = store.core_sl_count(group)
 
     return {
         "cash": cash, "market_value": mv, "equity": equity,
@@ -201,55 +148,32 @@ def snapshot_daily(db, prices: Dict[str, float], a_start: float, b_start: float,
                    grid_active: int = 0, exploration: int = 0,
                    whipsaw: int = 0):
     """Persist today's A/B snapshot (one row per group)."""
+    store = BullPaperStore(db)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for group, sc in (("A", a_start), ("B", b_start)):
         st = compute_group_stats(db, group, sc, prices=prices)
-        with db._get_conn() as c:
-            c.execute(
-                """INSERT INTO paper_bull_ab_daily
-                   (snapshot_date, ab_group, start_cash, cash, market_value,
-                    equity, total_return, daily_return,
-                    n_trades, n_wins, win_rate, gross_profit, gross_loss,
-                    profit_factor, sharpe, max_drawdown,
-                    avg_hold_hours, median_hold_hours,
-                    min_hold_hours, max_hold_hours,
-                    sl_sweep_count, sl_sweep_rate, whipsaw_count,
-                    kelly_f, kelly_tstat, grid_active_count,
-                    exploration_count, n_open,
-                    reentry_after_sl_count, core_sl_count)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                   ON CONFLICT(snapshot_date, ab_group) DO UPDATE SET
-                     cash=excluded.cash, market_value=excluded.market_value,
-                     equity=excluded.equity, total_return=excluded.total_return,
-                     n_trades=excluded.n_trades, n_wins=excluded.n_wins,
-                     win_rate=excluded.win_rate, gross_profit=excluded.gross_profit,
-                     gross_loss=excluded.gross_loss,
-                     profit_factor=excluded.profit_factor, sharpe=excluded.sharpe,
-                     max_drawdown=excluded.max_drawdown,
-                     avg_hold_hours=excluded.avg_hold_hours,
-                     median_hold_hours=excluded.median_hold_hours,
-                     min_hold_hours=excluded.min_hold_hours,
-                     max_hold_hours=excluded.max_hold_hours,
-                     sl_sweep_count=excluded.sl_sweep_count,
-                     sl_sweep_rate=excluded.sl_sweep_rate,
-                     whipsaw_count=excluded.whipsaw_count,
-                     kelly_f=excluded.kelly_f, kelly_tstat=excluded.kelly_tstat,
-                     grid_active_count=excluded.grid_active_count,
-                     exploration_count=excluded.exploration_count,
-                     n_open=excluded.n_open,
-                     reentry_after_sl_count=excluded.reentry_after_sl_count,
-                     core_sl_count=excluded.core_sl_count""",
-                (today, group, sc, st["cash"], st["market_value"], st["equity"],
-                 st["total_return"], 0.0,
-                 st["n_trades"], st["n_wins"], st["win_rate"],
-                 st["gross_profit"], st["gross_loss"], st["profit_factor"],
-                 st["sharpe"], st["max_drawdown"],
-                 st["avg_hold_hours"], st["median_hold_hours"],
-                 st["min_hold_hours"], st["max_hold_hours"],
-                 st["sl_sweep_count"], st["sl_sweep_rate"], whipsaw,
-                 kelly_f, kelly_tstat, grid_active, exploration, st["n_open"]),
-            )
-            c.commit()
+        store.upsert_ab_daily(
+            snapshot_date=today, ab_group=group, start_cash=sc,
+            cash=st["cash"], market_value=st["market_value"],
+            equity=st["equity"], total_return=st["total_return"],
+            n_trades=st["n_trades"], n_wins=st["n_wins"],
+            win_rate=st["win_rate"], gross_profit=st["gross_profit"],
+            gross_loss=st["gross_loss"], profit_factor=st["profit_factor"],
+            sharpe=st["sharpe"], max_drawdown=st["max_drawdown"],
+            avg_hold_hours=st["avg_hold_hours"],
+            median_hold_hours=st["median_hold_hours"],
+            min_hold_hours=st["min_hold_hours"],
+            max_hold_hours=st["max_hold_hours"],
+            sl_sweep_count=st["sl_sweep_count"],
+            sl_sweep_rate=st["sl_sweep_rate"], whipsaw_count=whipsaw,
+            kelly_f=kelly_f, kelly_tstat=kelly_tstat,
+            grid_active_count=grid_active, exploration_count=exploration,
+            n_open=st["n_open"],
+            # WO-0924-z2 P6-B1: the 30-col INSERT previously supplied
+            # only 28 bindings — snapshot_daily crashed on any DB with
+            # the full schema (fresh deployments hit this immediately).
+            reentry_after_sl_count=st["reentry_after_sl_count"],
+            core_sl_count=st["core_sl_count"])
     return today
 
 
@@ -257,21 +181,17 @@ def b_activity_warning(db, b_start: float) -> str:
     """P0-C review: after 3+ days of B running, if B has 0 trades AND 0 open
     positions, flag that the B filters may be too strict (likely RVOL 1.2) so
     we don't wait 14 days to discover there's no comparison data."""
-    import time as _t
+    store = BullPaperStore(db)
     # days since B cash initialised
-    with db._get_conn() as c:
-        row = c.execute("SELECT updated_at FROM paper_bull_state WHERE key='cash_balance_B'").fetchone()
-        n_closed = c.execute("SELECT count(*) FROM paper_bull_positions WHERE status='closed' AND ab_group='B'").fetchone()[0]
-        n_open = c.execute("SELECT count(*) FROM paper_bull_positions WHERE status='open' AND ab_group='B'").fetchone()[0]
-    if not row:
+    updated_at = store.state_key_updated_at("cash_balance_B")
+    n_closed = store.count_positions("closed", "B")
+    n_open = store.count_positions("open", "B")
+    if not updated_at:
         return ""
-    days = (_t.time() * 1000 - row["updated_at"]) / 86400_000
+    days = (time.time() * 1000 - updated_at) / 86400_000
     if days >= 3 and n_closed == 0 and n_open == 0:
         # pull reject breakdown to suggest the binding constraint
-        with db._get_conn() as c:
-            rows = c.execute("""SELECT fail_filter, count(*) c FROM paper_bull_filter_decisions
-                                WHERE ab_group='B' AND decision='reject'
-                                GROUP BY fail_filter ORDER BY c DESC LIMIT 3""").fetchall()
+        rows = store.top_reject_fail_filters("B", limit=3)
         top = ", ".join(f"{r['fail_filter']}={r['c']}" for r in rows) or "n/a"
         return (f"⚠️ B 組跑咗 {days:.1f} 日但 0 筆交易、0 倉位——過濾可能過嚴，"
                 f"主要 reject: {top}。建議討論是否將 RVOL 1.2 降到 1.0-1.1。")
@@ -280,71 +200,9 @@ def b_activity_warning(db, b_start: float) -> str:
 
 def verify_ab_isolation(db) -> Dict[str, Any]:
     """P0-C protocol: daily check that A and B sleeves never cross-contaminate.
-    Returns a dict with ok(bool) and any anomalies. Anomalies:
-      - a position/trade row with NULL/empty ab_group (untagged legacy is
-        acceptable for pre-P0-C rows only if created before P0-C deploy)
-      - B rows touching A cash key or vice-versa (structural check)
-      - B group using legacy 'cash_balance' key instead of 'cash_balance_B'
-      - any position_id shared across groups (impossible by design but guard)
-    """
-    P0C_DEPLOY_MS = 1787757200000  # 2026-08-26 ~23:13 HKT, first P0-C scan
-    anomalies = []
-    with db._get_conn() as c:
-        # untagged rows created after P0-C deploy (should all be tagged)
-        untagged = c.execute(
-            """SELECT count(*) FROM paper_bull_positions
-               WHERE ab_group IS NULL AND entry_time > ?""",
-            (P0C_DEPLOY_MS,),
-        ).fetchone()[0]
-        if untagged:
-            anomalies.append(f"{untagged} post-deploy position(s) with NULL ab_group")
-        untagged_t = c.execute(
-            """SELECT count(*) FROM paper_bull_trades
-               WHERE ab_group IS NULL AND timestamp > ?""",
-            (P0C_DEPLOY_MS,),
-        ).fetchone()[0]
-        if untagged_t:
-            anomalies.append(f"{untagged_t} post-deploy trade(s) with NULL ab_group")
-
-        # a position_id must map to exactly one group
-        mixed = c.execute(
-            """SELECT position_id, count(DISTINCT COALESCE(ab_group,'A')) g
-               FROM paper_bull_trades GROUP BY position_id HAVING g > 1""").fetchall()
-        if mixed:
-            anomalies.append(f"{len(mixed)} position_id(s) span multiple ab_groups")
-
-        # cash keys sanity
-        keys = {r[0] for r in c.execute(
-            "SELECT key FROM paper_bull_state WHERE key LIKE 'cash_balance%' OR key LIKE 'start_cash%'")}
-        if "cash_balance_B" not in keys:
-            anomalies.append("B cash key cash_balance_B missing")
-        # B positions must not exist if no B cash (already covered)
-        b_pos = c.execute("SELECT count(*) FROM paper_bull_positions WHERE ab_group='B'").fetchone()[0]
-        b_cash = c.execute("SELECT value FROM paper_bull_state WHERE key='cash_balance_B'").fetchone()
-        if b_pos > 0 and not b_cash:
-            anomalies.append(f"{b_pos} B positions but no B cash balance")
-
-        # cash arithmetic: per-group cash must equal start_cash + sum(BUY notional) - sum(SELL notional)
-        for grp, ck in (("A", "cash_balance"), ("B", "cash_balance_B")):
-            crow = c.execute("SELECT value FROM paper_bull_state WHERE key=?", (ck,)).fetchone()
-            if not crow:
-                continue
-            cash_now = float(crow[0])
-            bought = c.execute(
-                """SELECT COALESCE(SUM(notional+fee),0) FROM paper_bull_trades
-                   WHERE COALESCE(ab_group,'A')=? AND action='BUY'""", (grp,)).fetchone()[0] or 0
-            sold = c.execute(
-                """SELECT COALESCE(SUM(notional-fee),0) FROM paper_bull_trades
-                   WHERE COALESCE(ab_group,'A')=? AND action='SELL'""", (grp,)).fetchone()[0] or 0
-            sk = "start_cash" if grp == "A" else "start_cash_B"
-            srow = c.execute("SELECT value FROM paper_bull_state WHERE key=?", (sk,)).fetchone()
-            start = float(srow[0]) if srow else 0.0
-            expected = start - bought + sold
-            if abs(cash_now - expected) > 0.05:
-                anomalies.append(
-                    f"{grp} cash mismatch: state=${cash_now:.2f} vs ledger=${expected:.2f}")
-
-    return {"ok": not anomalies, "anomalies": anomalies}
+    Returns a dict with ok(bool) and any anomalies. (Integrity probes live in
+    BullPaperStore.verify_isolation; see there for the anomaly catalogue.)"""
+    return BullPaperStore(db).verify_isolation()
 
 
 def format_ab_report(db, a_start: float, b_start: float,

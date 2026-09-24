@@ -16,16 +16,25 @@ NONE of these tables touch:
   - core_positions used by live system
 
 All BULL paper P&L stays inside these tables.
+
+WO-0924-z2 P6-B1: all paper_bull SQL now lives in BullPaperStore
+(src/bull_paper_store.py); this class keeps the domain math (pnl, fees,
+cash accounting, bug#33 partial-close accumulation) and delegates
+persistence to the store.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import time
-import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+from .bull_paper_store import (
+    BullPaperStore,
+    new_position_id,
+    new_trade_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,159 +75,14 @@ class BullPaperPortfolio:
         self.db = db
         self._start_cash = start_cash
         self.group = group  # P0-C: "A" (control/baseline) or "B" (variant)
+        self.store = BullPaperStore(db)
         self._ensure_tables()
 
     def _ensure_tables(self):
-        with self.db._get_conn() as conn:
-            # P0-C review (2026-08-26): columns added after first migration run
-            for tbl, col, ddl in (
-                ("paper_bull_scaleouts", "entry_price",
-                 "ALTER TABLE paper_bull_scaleouts ADD COLUMN entry_price REAL DEFAULT 0"),
-                ("paper_bull_scaleouts", "atr_at_entry",
-                 "ALTER TABLE paper_bull_scaleouts ADD COLUMN atr_at_entry REAL DEFAULT 0"),
-                ("paper_bull_scaleouts", "original_qty",
-                 "ALTER TABLE paper_bull_scaleouts ADD COLUMN original_qty REAL DEFAULT 0"),
-                ("paper_bull_ab_daily", "min_hold_hours",
-                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN min_hold_hours REAL"),
-                ("paper_bull_ab_daily", "max_hold_hours",
-                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN max_hold_hours REAL"),
-                ("paper_bull_ab_daily", "reentry_after_sl_count",
-                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN reentry_after_sl_count INTEGER DEFAULT 0"),
-                ("paper_bull_ab_daily", "core_sl_count",
-                 "ALTER TABLE paper_bull_ab_daily ADD COLUMN core_sl_count INTEGER DEFAULT 0"),
-            ):
-                _cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
-                if not _cols:
-                    # bug#33: fresh DB — table is created with the full schema
-                    # by the executescript() below; nothing to ALTER yet.
-                    continue
-                if col not in _cols:
-                    conn.execute(ddl)
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS paper_bull_positions (
-                    id TEXT PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    quantity REAL NOT NULL,
-                    entry_price REAL NOT NULL,
-                    entry_time INTEGER NOT NULL,
-                    stop_loss REAL DEFAULT 0,
-                    take_profit REAL DEFAULT 0,
-                    atr_entry REAL DEFAULT 0,
-                    tier INTEGER DEFAULT 1,
-                    status TEXT DEFAULT 'open',
-                    exit_price REAL DEFAULT 0,
-                    exit_time INTEGER DEFAULT 0,
-                    realized_pnl REAL DEFAULT 0,
-                    fees REAL DEFAULT 0,
-                    notes TEXT DEFAULT '',
-                    hold_seconds REAL DEFAULT 0,
-                    slippage_bps REAL DEFAULT 0
-                );
-                CREATE INDEX IF NOT EXISTS idx_pbp_symbol ON paper_bull_positions(symbol);
-                CREATE INDEX IF NOT EXISTS idx_pbp_side ON paper_bull_positions(side);
-                CREATE INDEX IF NOT EXISTS idx_pbp_status ON paper_bull_positions(status);
+        self.store.ensure_tables()
+        self._init_cash_state()
 
-                CREATE TABLE IF NOT EXISTS paper_bull_trades (
-                    id TEXT PRIMARY KEY,
-                    position_id TEXT,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    quantity REAL NOT NULL,
-                    price REAL NOT NULL,
-                    fee REAL DEFAULT 0,
-                    notional REAL DEFAULT 0,
-                    timestamp INTEGER NOT NULL,
-                    details TEXT DEFAULT ''
-                );
-                CREATE INDEX IF NOT EXISTS idx_pbt_time ON paper_bull_trades(timestamp);
-                CREATE INDEX IF NOT EXISTS idx_pbt_symbol ON paper_bull_trades(symbol);
-
-                CREATE TABLE IF NOT EXISTS paper_bull_state (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL
-                );
-            """)
-            conn.commit()
-
-        # P0-A6 (2026-08-26): tracking columns for existing paper DBs
-        with self.db._get_conn() as conn:
-            for col, ddl in (
-                ("hold_seconds", "ALTER TABLE paper_bull_positions ADD COLUMN hold_seconds REAL DEFAULT 0"),
-                ("slippage_bps", "ALTER TABLE paper_bull_positions ADD COLUMN slippage_bps REAL DEFAULT 0"),
-                # P0-C (2026-08-26): A/B engine grouping
-                ("ab_group", "ALTER TABLE paper_bull_positions ADD COLUMN ab_group TEXT DEFAULT 'A'"),
-            ):
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_bull_positions)").fetchall()}
-                if col not in cols:
-                    conn.execute(ddl)
-            # P0-C: trades table also tagged with ab_group (NULL for pre-P0-C)
-            tcols = {r[1] for r in conn.execute("PRAGMA table_info(paper_bull_trades)").fetchall()}
-            if "ab_group" not in tcols:
-                conn.execute("ALTER TABLE paper_bull_trades ADD COLUMN ab_group TEXT DEFAULT 'A'")
-            # P0-C: tiered scale-out / staged TP tracking
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS paper_bull_scaleouts (
-                    id TEXT PRIMARY KEY,
-                    position_id TEXT NOT NULL,
-                    ab_group TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    stage INTEGER NOT NULL,
-                    r_multiple REAL NOT NULL,
-                    fraction REAL NOT NULL,
-                    entry_price REAL DEFAULT 0,
-                    atr_at_entry REAL DEFAULT 0,
-                    original_qty REAL DEFAULT 0,
-                    trigger_price REAL NOT NULL,
-                    status TEXT DEFAULT 'pending',
-                    fired_time INTEGER DEFAULT 0,
-                    fired_price REAL DEFAULT 0,
-                    created_at INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_pbs_pos ON paper_bull_scaleouts(position_id);
-                CREATE INDEX IF NOT EXISTS idx_pbs_status ON paper_bull_scaleouts(ab_group, status);
-
-                CREATE TABLE IF NOT EXISTS paper_bull_filter_decisions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scan_time INTEGER NOT NULL,
-                    ab_group TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    score REAL,
-                    decision TEXT NOT NULL,
-                    fail_filter TEXT DEFAULT '',
-                    atr14_4h REAL, atr22_1d REAL,
-                    ema20_4h REAL, ema50_4h REAL, ema200_4h REAL,
-                    adx14_4h REAL, rvol20 REAL,
-                    r_multiple REAL,
-                    regime TEXT,
-                    notes TEXT DEFAULT ''
-                );
-                CREATE INDEX IF NOT EXISTS idx_pbfd_scan ON paper_bull_filter_decisions(scan_time);
-                CREATE INDEX IF NOT EXISTS idx_pbfd_group ON paper_bull_filter_decisions(ab_group, decision);
-
-                CREATE TABLE IF NOT EXISTS paper_bull_ab_daily (
-                    snapshot_date TEXT NOT NULL,
-                    ab_group TEXT NOT NULL,
-                    start_cash REAL, cash REAL, market_value REAL,
-                    equity REAL, total_return REAL, daily_return REAL,
-                    n_trades INTEGER, n_wins INTEGER, win_rate REAL,
-                    gross_profit REAL, gross_loss REAL, profit_factor REAL,
-                    sharpe REAL, max_drawdown REAL,
-                    avg_hold_hours REAL, median_hold_hours REAL,
-                    min_hold_hours REAL, max_hold_hours REAL,
-                    sl_sweep_count INTEGER, sl_sweep_rate REAL,
-                    whipsaw_count INTEGER,
-                    kelly_f REAL, kelly_tstat REAL,
-                    grid_active_count INTEGER,
-                    exploration_count INTEGER,
-                    n_open INTEGER,
-                    PRIMARY KEY (snapshot_date, ab_group)
-                );
-            """)
-            conn.commit()
-
+    def _init_cash_state(self):
         # Init cash if not present (per-group keyed for P0-C; group A keeps legacy "cash_balance")
         _ck = self._cash_key()
         if self._get_state(_ck) is None:
@@ -238,21 +102,10 @@ class BullPaperPortfolio:
 
     # ── State KV ──────────────────────────────────────────────────────────
     def _get_state(self, key: str) -> Optional[str]:
-        with self.db._get_conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM paper_bull_state WHERE key = ?", (key,)
-            ).fetchone()
-        return row["value"] if row else None
+        return self.store.state_get(key)
 
     def _set_state(self, key: str, value: str):
-        with self.db._get_conn() as conn:
-            conn.execute(
-                """INSERT INTO paper_bull_state (key, value, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
-                (key, value, int(time.time() * 1000)),
-            )
-            conn.commit()
+        self.store.state_set(key, value)
 
     # ── Cash ──────────────────────────────────────────────────────────────
     @property
@@ -292,7 +145,7 @@ class BullPaperPortfolio:
             )
 
         pos = PaperPosition(
-            id=f"paper_{uuid.uuid4().hex[:12]}",
+            id=new_position_id(),
             symbol=symbol,
             side=side,
             quantity=quantity,
@@ -306,24 +159,19 @@ class BullPaperPortfolio:
             notes=notes,
         )
 
-        with self.db._get_conn() as conn:
-            conn.execute(
-                """INSERT INTO paper_bull_positions
-                   (id, symbol, side, quantity, entry_price, entry_time,
-                    stop_loss, take_profit, atr_entry, tier, status, fees, notes, ab_group)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
-                (pos.id, pos.symbol, pos.side, pos.quantity, pos.entry_price,
-                 pos.entry_time, pos.stop_loss, pos.take_profit, pos.atr_entry,
-                 pos.tier, pos.fees, pos.notes, self.group),
-            )
-            conn.execute(
-                """INSERT INTO paper_bull_trades
-                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details, ab_group)
-                   VALUES (?, ?, ?, ?, 'BUY', ?, ?, ?, ?, ?, ?, ?)""",
-                (f"trade_{uuid.uuid4().hex[:12]}", pos.id, symbol, side,
-                 quantity, price, fee, notional, pos.entry_time, notes, self.group),
-            )
-            conn.commit()
+        with self.store.transaction():
+            self.store.insert_position(
+                pos_id=pos.id, symbol=pos.symbol, side=pos.side,
+                quantity=pos.quantity, entry_price=pos.entry_price,
+                entry_time=pos.entry_time, stop_loss=pos.stop_loss,
+                take_profit=pos.take_profit, atr_entry=pos.atr_entry,
+                tier=pos.tier, fees=pos.fees, notes=pos.notes,
+                ab_group=self.group)
+            self.store.insert_trade(
+                trade_id=new_trade_id(), position_id=pos.id, symbol=symbol,
+                side=side, action="BUY", quantity=quantity, price=price,
+                fee=fee, notional=notional, timestamp=pos.entry_time,
+                details=notes, ab_group=self.group)
 
         self._update_cash(-total_cost)
         logger.info(
@@ -341,11 +189,8 @@ class BullPaperPortfolio:
         reason: str = "",
     ) -> Optional[PaperPosition]:
         """Close (fully or partially) a paper position."""
-        with self.db._get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM paper_bull_positions WHERE id = ? AND status = 'open'",
-                (position_id,),
-            ).fetchone()
+        with self.store.transaction():
+            row = self.store.get_open_position(position_id)
             if not row:
                 return None
             pos = _row_to_pos(row)
@@ -370,26 +215,15 @@ class BullPaperPortfolio:
                 # priced only the LAST leg yet subtracted every fee, so
                 # earlier TP-leg gains were swallowed (ZKP 8/30: booked
                 # $0.67 vs true ~$7.60).
-                entry_fee = 0.0
-                fee_row = conn.execute(
-                    """SELECT fee FROM paper_bull_trades
-                       WHERE position_id=? AND action='BUY'
-                       ORDER BY timestamp LIMIT 1""",
-                    (pos.id,),
-                ).fetchone()
-                if fee_row is not None and fee_row["fee"] is not None:
-                    entry_fee = float(fee_row["fee"])
+                entry_fee = self.store.entry_buy_fee(pos.id) or 0.0
                 total_fees = pos.fees + fee
                 total_pnl = (pos.realized_pnl or 0.0) + pnl - entry_fee
                 _exit_ms = int(time.time() * 1000)
                 _hold_s = (_exit_ms - pos.entry_time) / 1000.0
-                conn.execute(
-                    """UPDATE paper_bull_positions
-                       SET status='closed', exit_price=?, exit_time=?,
-                           realized_pnl=?, fees=?, hold_seconds=?
-                       WHERE id=?""",
-                    (exit_price, _exit_ms, total_pnl, total_fees, _hold_s, pos.id),
-                )
+                self.store.update_position_full_close(
+                    pos.id, exit_price=exit_price, exit_time=_exit_ms,
+                    realized_pnl=total_pnl, fees=total_fees,
+                    hold_seconds=_hold_s)
             else:
                 # Partial close — update remaining qty, realize proportional P&L
                 # bug#33: ACCUMULATE realized_pnl on the position row (old code
@@ -397,29 +231,23 @@ class BullPaperPortfolio:
                 # up in position.realized_pnl and full close under-reported).
                 total_fees = pos.fees + fee
                 realized_pnl = (pos.realized_pnl or 0.0) + pnl
-                conn.execute(
-                    """UPDATE paper_bull_positions
-                       SET quantity=?, fees=?, realized_pnl=?, notes=notes || ?
-                       WHERE id=?""",
-                    (remaining, total_fees, realized_pnl,
-                     f" | partial close {close_qty:.6f} @ ${exit_price:.4f} pnl=${pnl:.2f}",
-                     pos.id),
-                )
+                self.store.update_position_partial_close(
+                    pos.id, remaining_qty=remaining, fees=total_fees,
+                    realized_pnl=realized_pnl,
+                    note_append=(
+                        f" | partial close {close_qty:.6f} @ ${exit_price:.4f}"
+                        f" pnl=${pnl:.2f}"))
                 # Re-fetch for return
-                row = conn.execute(
-                    "SELECT * FROM paper_bull_positions WHERE id = ?", (position_id,)
-                ).fetchone()
+                row = self.store.get_position(position_id)
                 pos = _row_to_pos(row)
                 pos.realized_pnl = realized_pnl
 
-            conn.execute(
-                """INSERT INTO paper_bull_trades
-                   (id, position_id, symbol, side, action, quantity, price, fee, notional, timestamp, details, ab_group)
-                   VALUES (?, ?, ?, ?, 'SELL', ?, ?, ?, ?, ?, ?, ?)""",
-                (f"trade_{uuid.uuid4().hex[:12]}", pos.id, pos.symbol, pos.side,
-                 close_qty, exit_price, fee, notional, int(time.time() * 1000), reason, self.group),
-            )
-            conn.commit()
+            self.store.insert_trade(
+                trade_id=new_trade_id(), position_id=pos.id,
+                symbol=pos.symbol, side=pos.side, action="SELL",
+                quantity=close_qty, price=exit_price, fee=fee,
+                notional=notional, timestamp=int(time.time() * 1000),
+                details=reason, ab_group=self.group)
 
         self._update_cash(proceeds)
         logger.info(
@@ -432,41 +260,16 @@ class BullPaperPortfolio:
         self, position_id: str, stop_loss: float = 0.0, take_profit: float = 0.0
     ):
         """Update SL/TP on an open position."""
-        with self.db._get_conn() as conn:
-            conn.execute(
-                "UPDATE paper_bull_positions SET stop_loss=?, take_profit=? WHERE id=?",
-                (stop_loss, take_profit, position_id),
-            )
-            conn.commit()
+        self.store.update_stops(position_id, stop_loss, take_profit)
 
     def get_open_positions(self, side: Optional[str] = None) -> List[Dict]:
-        q = "SELECT * FROM paper_bull_positions WHERE status = 'open' AND COALESCE(ab_group,'A') = ?"
-        params: list = [self.group]
-        if side:
-            q += " AND side = ?"
-            params.append(side)
-        q += " ORDER BY entry_time DESC"
-        with self.db._get_conn() as conn:
-            rows = conn.execute(q, params).fetchall()
-        return [dict(r) for r in rows]
+        return self.store.get_open_positions(self.group, side=side)
 
     def get_all_positions(self, limit: int = 100) -> List[Dict]:
-        with self.db._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM paper_bull_positions WHERE COALESCE(ab_group,'A') = ? "
-                "ORDER BY entry_time DESC LIMIT ?",
-                (self.group, limit),
-            ).fetchall()
-        return [dict(r) for r in rows]
+        return self.store.get_all_positions(self.group, limit)
 
     def get_trade_history(self, limit: int = 50) -> List[Dict]:
-        with self.db._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM paper_bull_trades WHERE COALESCE(ab_group,'A') = ? "
-                "ORDER BY timestamp DESC LIMIT ?",
-                (self.group, limit),
-            ).fetchall()
-        return [dict(r) for r in rows]
+        return self.store.get_trade_history(self.group, limit)
 
     def portfolio_value(self, prices: Dict[str, float]) -> Dict[str, Any]:
         """Calculate total paper portfolio value.
@@ -513,12 +316,7 @@ class BullPaperPortfolio:
         """P0-A6: when a core lot is rotated/closed, also close any open
         satellite position on the SAME symbol so core/sat stay in sync."""
         closed = 0
-        with self.db._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM paper_bull_positions WHERE symbol=? AND side='satellite' "
-                "AND status='open' AND COALESCE(ab_group,'A') = ?",
-                (symbol, self.group),
-            ).fetchall()
+        rows = self.store.get_open_satellites_by_symbol(symbol, self.group)
         for r in rows:
             try:
                 self.close_position(r["id"], exit_price, reason=reason)
@@ -530,14 +328,7 @@ class BullPaperPortfolio:
     def hold_time_stats(self, side: Optional[str] = None, days: int = 30) -> Dict[str, float]:
         """P0-A6: hold-time distribution (hours) for closed positions."""
         since_ms = int((time.time() - days * 86400) * 1000)
-        q = ("SELECT hold_seconds FROM paper_bull_positions "
-             "WHERE status='closed' AND exit_time >= ? AND COALESCE(ab_group,'A') = ?")
-        params = [since_ms, self.group]
-        if side:
-            q += " AND side=?"
-            params.append(side)
-        with self.db._get_conn() as conn:
-            rows = conn.execute(q, params).fetchall()
+        rows = self.store.closed_positions_since(self.group, since_ms, side=side)
         secs = [r["hold_seconds"] for r in rows if r["hold_seconds"] and r["hold_seconds"] > 0]
         if not secs:
             return {"count": 0}
@@ -556,12 +347,6 @@ class BullPaperPortfolio:
 
     def reset(self):
         """Nuke all paper BULL data. Use with caution."""
-        with self.db._get_conn() as conn:
-            conn.executescript("""
-                DROP TABLE IF EXISTS paper_bull_positions;
-                DROP TABLE IF EXISTS paper_bull_trades;
-                DROP TABLE IF EXISTS paper_bull_state;
-            """)
-            conn.commit()
-        self._ensure_tables()
+        self.store.reset_core_tables()
+        self._init_cash_state()  # re-seed cash keys (pre-migration behavior)
         logger.warning("[PAPER_BULL] Portfolio reset complete")

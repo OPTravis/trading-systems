@@ -174,28 +174,35 @@ class TestWeeklyReport(unittest.TestCase):
         db.kv_set("ledger:shadow:bootstrap_ts", time.time())
         db.kv_set("ledger:shadow:stats",
                   {"rounds": 10, "consecutive_clean": 7, "pending_ages": {}})
-        now = time.time()
-        day = lambda offset, hour: now - offset * 86400 - hour * 3600
-        # day -1: 3 clean + 1 diff(2 kinds) + 1 pending
-        for i in range(3):
-            self._seed_round(db, day(1, i), "clean", streak=i + 1, round_n=i)
-        self._seed_round(db, day(1, 4), "diff",
-                         kinds=["position_qty", "trades_missing"])
-        self._seed_round(db, day(1, 5), "pending")
-        # day 0 (today): 2 clean
-        for i in range(2):
-            self._seed_round(db, now - (i + 1) * 60, "clean",
-                             streak=6 + i, round_n=10 + i)
-        rep = ledger.shadow_report(db, days=7)
-        self.assertEqual(rep["overall"]["rounds"], 7)
-        self.assertEqual(rep["overall"]["clean_rounds"], 5)
-        self.assertEqual(rep["overall"]["clean_rate"], round(5 / 7, 4))
-        self.assertEqual(rep["overall"]["diff_rounds"], 1)
-        self.assertEqual(rep["overall"]["pending_rounds"], 1)
-        self.assertEqual(rep["overall"]["diffs_by_kind"],
+        # WO-0924 P6-B1 followup: freeze the report clock. Seeding offsets
+        # from wall-clock `now` made the daily buckets depend on time of
+        # day (run between 00:00-06:00, "now - 86400 - 5h" lands two
+        # calendar days back → 3 buckets instead of 2 → flake). Anchoring
+        # both the seeds and shadow_report's cutoff to the same fixed
+        # noon timestamp makes the test deterministic at any run hour.
+        FIXED_NOW = 1789905600.0  # 2026-09-23 12:00:00 HKT (a Wednesday noon)
+        day = lambda offset, hour: FIXED_NOW - offset * 86400 - hour * 3600
+        with mock.patch.object(ledger.time, "time", return_value=FIXED_NOW):
+            # day -1: 3 clean + 1 diff(2 kinds) + 1 pending
+            for i in range(3):
+                self._seed_round(db, day(1, i), "clean", streak=i + 1, round_n=i)
+            self._seed_round(db, day(1, 4), "diff",
+                             kinds=["position_qty", "trades_missing"])
+            self._seed_round(db, day(1, 5), "pending")
+            # day 0 (today): 2 clean
+            for i in range(2):
+                self._seed_round(db, FIXED_NOW - (i + 1) * 60, "clean",
+                                 streak=6 + i, round_n=10 + i)
+            rep = ledger.shadow_report(db, days=7)
+            self.assertEqual(rep["overall"]["rounds"], 7)
+            self.assertEqual(rep["overall"]["clean_rounds"], 5)
+            self.assertEqual(rep["overall"]["clean_rate"], round(5 / 7, 4))
+            self.assertEqual(rep["overall"]["diff_rounds"], 1)
+            self.assertEqual(rep["overall"]["pending_rounds"], 1)
+            self.assertEqual(rep["overall"]["diffs_by_kind"],
                          {"position_qty": 1, "trades_missing": 1})
-        self.assertEqual(rep["overall"]["max_consecutive_clean"], 7)
-        self.assertEqual(len(rep["daily"]), 2)
+            self.assertEqual(rep["overall"]["max_consecutive_clean"], 7)
+            self.assertEqual(len(rep["daily"]), 2)
         d0 = rep["daily"][0]
         self.assertEqual(d0["rounds"], 5)
         self.assertEqual(d0["clean"], 3)
