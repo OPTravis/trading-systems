@@ -260,8 +260,12 @@ def _step_execute_trades(ctx):
             try:
                 from src.self_healer import diagnose_and_fix
 
+                # WO-0924-y: executor failure returns mix "error" and
+                # "reason" keys (shutdown/blacklist/governor paths) —
+                # read both until the contract is unified (audit z).
+                _err = result.get("error") or result.get("reason") or str(result)
                 heal = diagnose_and_fix(
-                    result["error"], {"symbol": ctx["symbol"], "price": ctx["price"]}
+                    _err, {"symbol": ctx["symbol"], "price": ctx["price"]}
                 )
                 if heal["diagnosed"]:
                     status = "✅已修復" if heal["fixed"] else "🔧待修"
@@ -272,7 +276,7 @@ def _step_execute_trades(ctx):
                 logger.error(
                     "Self-healer diagnosis failed for %s", ctx["symbol"], exc_info=True
                 )
-            print(f"❌ Auto-execute failed: {result['error']}{heal_info}")
+            print(f"❌ Auto-execute failed: {_err}{heal_info}")
     else:
         lines.extend(
             [
