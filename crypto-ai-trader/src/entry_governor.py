@@ -39,6 +39,22 @@ def _db():
     return get_state_db()
 
 
+def _kv_get_migrated(key_new, key_old):
+    """WO-0924-z 1A-1: read new gov: key, fall back to the legacy
+    spelling once and self-heal the migration in place."""
+    db = _db()
+    val = db.kv_get(key_new)
+    if val is None:
+        val = db.kv_get(key_old)
+        if val is not None:
+            db.kv_set(key_new, val)
+            try:
+                db.kv_remove(key_old)
+            except Exception:
+                pass
+    return val
+
+
 def _today(now=None):
     return time.strftime("%Y%m%d", time.localtime(now or time.time()))
 
@@ -48,7 +64,8 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
     now = now if now is not None else time.time()
     try:
         db = _db()
-        cd = db.kv_get("entry_cooldown:" + symbol) or {}
+        cd = _kv_get_migrated("gov:cooldown:" + symbol,
+                              "entry_cooldown:" + symbol) or {}
         if cd.get("ts") and now - float(cd["ts"]) < COOLDOWN_HOURS * 3600:
             return {
                 "ok": False, "gate": "loss_exit_cooldown",
@@ -59,7 +76,9 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
                        float(cd.get("pnl") or 0),
                        COOLDOWN_HOURS)),
             }
-        count = int(db.kv_get("entry_count:" + _today(now)) or 0)
+        count = int(_kv_get_migrated(
+            "gov:entry_count:" + _today(now),
+            "entry_count:" + _today(now)) or 0)
         # WO-0924-z P1-2: cold-start backstop — the kv counter starts
         # empty whenever the governor first goes live (or is rede-
         # ployed); real same-day BUYs booked in trades keep the cap
@@ -84,7 +103,8 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
                     "(entry_count:%s=%d)"
                     % (DAILY_ENTRY_CAP, _today(now), count)),
             }
-        flag = db.kv_get("entry_fallback:" + symbol) or {}
+        flag = _kv_get_migrated("gov:fallback:" + symbol,
+                                "entry_fallback:" + symbol) or {}
         if (flag.get("ts") and now - float(flag["ts"]) <= FALLBACK_FLAG_TTL
                 and float(size_mult) < 1.0):
             return {
@@ -107,8 +127,9 @@ def note_entry(symbol, now=None):
     now = now if now is not None else time.time()
     try:
         db = _db()
-        key = "entry_count:" + _today(now)
-        db.kv_set(key, int(db.kv_get(key) or 0) + 1)
+        key = "gov:entry_count:" + _today(now)
+        db.kv_set(key, int(_kv_get_migrated(
+            key, "entry_count:" + _today(now)) or 0) + 1)
     except Exception:
         logger.warning("entry_governor: note_entry failed for %s",
                        symbol, exc_info=True)
@@ -120,7 +141,7 @@ def note_loss_exit(symbol, pnl, now=None):
         return  # winners rotate freely; only losses cool down
     now = now if now is not None else time.time()
     try:
-        _db().kv_set("entry_cooldown:" + symbol,
+        _db().kv_set("gov:cooldown:" + symbol,
                      {"ts": now, "pnl": float(pnl)})
         logger.info("entry_governor: %s loss exit (pnl %+.4f) — %.0fh "
                     "re-entry cooldown stamped", symbol, float(pnl),
@@ -135,7 +156,7 @@ def note_fallback(symbol, now=None):
     gate reads it within FALLBACK_FLAG_TTL."""
     now = now if now is not None else time.time()
     try:
-        _db().kv_set("entry_fallback:" + symbol, {"ts": now})
+        _db().kv_set("gov:fallback:" + symbol, {"ts": now})
     except Exception:
         logger.warning("entry_governor: note_fallback failed for %s",
                        symbol, exc_info=True)

@@ -1,0 +1,23 @@
+class TestTpReport:
+    def _run_protection(self, tp_ret):
+        opt = object.__new__(PositionOptimizer)
+        opt.bc = SimpleNamespace(
+            get_symbol_filters=lambda s: {
+                "stepSize": "0.1", "tickSize": "0.0001", "minNotional": "10"},
+            place_stop_loss_limit=lambda *a, **k: {"orderId": 1},
+            place_limit_sell=lambda *a, **k: tp_ret,
+        )
+        buy_order = {"cummulativeQuoteQty": "40.4", "executedQty": "53.2"}
+        opt._place_switch_protections("ETHFIUSDT", 53.2, buy_order, 0.7588)
+
+    def test_falsy_tp_logs_failed_not_live(self, caplog):
+        with caplog.at_level(logging.ERROR, logger="src.position_optimizer"):
+            self._run_protection(None)
+        joined = caplog.text
+        assert "TP FAILED" in joined
+        assert "TP live" not in joined
+
+    def test_truthy_tp_logs_live(self, caplog):
+        with caplog.at_level(logging.INFO, logger="src.position_optimizer"):
+            self._run_protection({"orderId": 334})
+        assert "TP live" in caplog.text

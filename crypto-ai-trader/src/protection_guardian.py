@@ -611,9 +611,13 @@ def run(client: Any, portfolio: Any,
                 try:
                     from src.state_db import get_state_db
                     _db = get_state_db()
-                    _last_swap = float(((_db.kv_get(
-                        "guardian_swap_ts:" + sym) or {}).get("ts"))
-                        or 0)
+                    _mig = _db.kv_get("gov:swap_ts:" + sym)
+                    if _mig is None:
+                        _mig = _db.kv_get("guardian_swap_ts:" + sym)
+                        if _mig is not None:
+                            _db.kv_set("gov:swap_ts:" + sym, _mig)
+                            _db.kv_remove("guardian_swap_ts:" + sym)
+                    _last_swap = float(((_mig or {}).get("ts")) or 0)
                 except Exception:
                     _last_swap = 0.0
                 if _last_swap and time.time() - _last_swap < 24 * 3600:
@@ -682,7 +686,7 @@ def run(client: Any, portfolio: Any,
                     try:
                         from src.state_db import get_state_db
                         get_state_db().kv_set(
-                            "guardian_swap_ts:" + sym,
+                            "gov:swap_ts:" + sym,
                             {"ts": time.time()})
                     except Exception:
                         pass
@@ -731,7 +735,7 @@ def run(client: Any, portfolio: Any,
                             })
                         from src.state_db import get_state_db
                         get_state_db().kv_set(
-                            "guardian_swap_ts:" + sym,
+                            "gov:swap_ts:" + sym,
                             {"ts": time.time()})
                     except Exception:
                         log.warning("guardian: swap safety-net tracker "

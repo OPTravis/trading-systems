@@ -60,3 +60,26 @@ def _mk_ctx():
             "fng_label": "Greed", "btc_trend": "BULLISH", "portfolio": {},
             "active_pos": 4, "research_adj": 0, "research_confidence": "H",
             "research_summary": "ok"}
+
+
+class TestKvNamespaceMigration:
+    """1A-1: gov: prefix + legacy-key self-healing fallback."""
+
+    def test_legacy_cooldown_reads_through(self):
+        from src.state_db import get_state_db
+        import time as t
+        db = get_state_db()
+        db.kv_set("entry_cooldown:LEGACY", {"ts": t.time(), "pnl": -1.0})
+        r = gov.check_entry("LEGACY")
+        assert not r["ok"] and r["gate"] == "loss_exit_cooldown"
+        # self-healed: new key written, old key gone
+        assert db.kv_get("gov:cooldown:LEGACY") is not None
+        assert db.kv_get("entry_cooldown:LEGACY") is None
+
+    def test_new_key_wins_no_double_count(self):
+        from src.state_db import get_state_db
+        import time as t
+        db = get_state_db()
+        db.kv_set("gov:cooldown:LEGACY2", {"ts": t.time(), "pnl": -1.0})
+        db.kv_set("entry_cooldown:LEGACY2", {"ts": 0, "pnl": 0})  # stale
+        assert not gov.check_entry("LEGACY2")["ok"]

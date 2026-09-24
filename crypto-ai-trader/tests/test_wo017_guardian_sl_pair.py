@@ -201,14 +201,14 @@ class TestSwapLegalityDebounce:
         s = pg.run(c, FakePortfolio([_pos(sl=2.011)]))
         assert s["healed"] == 1
         assert len(c.oco_calls) == 1 and c.cancelled
-        rec = self._db().kv_get("guardian_swap_ts:TRUMPUSDT")
+        rec = self._db().kv_get("gov:swap_ts:TRUMPUSDT")
         assert rec and float(rec["ts"]) > 0
 
     def test_swap_debounce_24h(self):
         """A swap attempt inside the 24h window is skipped even for a
         genuine SL-only shape (weight-loop breaker)."""
         import time as _t
-        self._db().kv_set("guardian_swap_ts:TRUMPUSDT", {"ts": _t.time()})
+        self._db().kv_set("gov:swap_ts:TRUMPUSDT", {"ts": _t.time()})
         c = FakeClient(orders=[_plain_sl_leg()])
         s = pg.run(c, FakePortfolio([_pos(sl=2.011)]))
         assert s["healed"] == 0 and s["failed"] == 0
@@ -225,5 +225,5 @@ class TestSwapLegalityDebounce:
         st = get_state("TRUMPUSDT")
         assert st and st.get("sl_order", {}).get("order_id") == \
             "plain_sl_restored"
-        rec = self._db().kv_get("guardian_swap_ts:TRUMPUSDT")
+        rec = self._db().kv_get("gov:swap_ts:TRUMPUSDT")
         assert rec and float(rec["ts"]) > 0
