@@ -163,3 +163,67 @@ class TestTrackerStaleAlert:
 
 
 # (stuck-monitor cases moved to tests/test_stuck_monitor_protective.py)
+
+# ---------------- WO-0924-ix: swap legality + debounce ----------------
+
+def _plain_sl_leg(oid=31, qty="2.827", stop="2.011", lim="2.001"):
+    return {"symbol": "TRUMPUSDT", "orderId": oid, "side": "SELL",
+            "type": "STOP_LOSS_LIMIT", "price": lim,
+            "stopPrice": stop, "origQty": qty, "status": "NEW",
+            "orderListId": -1}
+
+
+class TestSwapLegalityDebounce:
+    def _db(self):
+        from src.state_db import get_state_db
+        return get_state_db()
+
+    def test_demote_pair_legal_no_swap(self):
+        """9/23 UNI loop root cause: SL-demote product (plain TP1 +
+        plain SL, TP cover 49.7% < 50% so the pair-check does NOT
+        absorb it) was torn apart hourly by the swap branch. A live
+        plain TP makes the pair legal — guardian must not touch it."""
+        c = FakeClient(orders=[
+            _tp_leg(oid=1, qty="0.77", px="9.90"),
+            _plain_sl_leg(qty="0.78", stop="8.86", lim="8.82"),
+        ])
+        s = pg.run(c, FakePortfolio([
+            _pos(qty=1.55, entry=9.20, tp=9.90, sl=8.86)]))
+        assert s["healed"] == 0 and s["failed"] == 0
+        assert c.cancelled == [] and c.oco_calls == []
+        assert c.sl_calls == []      # no safety-net re-place loop
+        assert s["skipped"] >= 1
+
+    def test_sl_only_still_swaps(self):
+        """True SL-only full lock (no TP anywhere) keeps the swap path
+        and stamps the debounce kv."""
+        c = FakeClient(orders=[_plain_sl_leg()])
+        s = pg.run(c, FakePortfolio([_pos(sl=2.011)]))
+        assert s["healed"] == 1
+        assert len(c.oco_calls) == 1 and c.cancelled
+        rec = self._db().kv_get("guardian_swap_ts:TRUMPUSDT")
+        assert rec and float(rec["ts"]) > 0
+
+    def test_swap_debounce_24h(self):
+        """A swap attempt inside the 24h window is skipped even for a
+        genuine SL-only shape (weight-loop breaker)."""
+        import time as _t
+        self._db().kv_set("guardian_swap_ts:TRUMPUSDT", {"ts": _t.time()})
+        c = FakeClient(orders=[_plain_sl_leg()])
+        s = pg.run(c, FakePortfolio([_pos(sl=2.011)]))
+        assert s["healed"] == 0 and s["failed"] == 0
+        assert c.oco_calls == [] and c.cancelled == []
+
+    def test_swap_fail_safety_net_tracks(self):
+        """Swap failure restores the SL AND syncs tp_sl_tracker (was
+        left stale → symbol re-visited every sweep) + stamps kv."""
+        c = FakeClient(orders=[_plain_sl_leg()], oco_result="fail")
+        s = pg.run(c, FakePortfolio([_pos(sl=2.011)]))
+        assert s["failed"] == 1
+        assert c.sl_calls, "safety net must re-place the SL"
+        from src.tp_sl_tracker import get_state
+        st = get_state("TRUMPUSDT")
+        assert st and st.get("sl_order", {}).get("order_id") == \
+            "plain_sl_restored"
+        rec = self._db().kv_get("guardian_swap_ts:TRUMPUSDT")
+        assert rec and float(rec["ts"]) > 0

@@ -594,6 +594,34 @@ def run(client: Any, portfolio: Any,
                 continue
 
             if sl_qty > 0 and oco_qty <= 0:
+                # WO-0924-ix: plain TP(s) + plain SL is a LEGAL terminal
+                # shape (SL-demote rescue product, or manual de-escalation
+                # like Travis' 9/23 UNI TP1+SL). Swap is only needed when
+                # the plain SL locks the FULL base and NO TP can stand —
+                # if any plain TP leg is live, don't touch the pair.
+                if tp_qty > 0:
+                    summary["skipped"] += 1
+                    log.info("protection_guardian: %s plain TP(%.8g)+SL "
+                             "pair legal — skip SL→OCO swap", sym, tp_qty)
+                    continue
+                # 24h debounce: at most one swap attempt per symbol per
+                # day. Stored under own kv key — tp_sl_tracker state may
+                # be missing (stale/absent) exactly in the situations
+                # that need debouncing.
+                try:
+                    from src.state_db import get_state_db
+                    _db = get_state_db()
+                    _last_swap = float(((_db.kv_get(
+                        "guardian_swap_ts:" + sym) or {}).get("ts"))
+                        or 0)
+                except Exception:
+                    _last_swap = 0.0
+                if _last_swap and time.time() - _last_swap < 24 * 3600:
+                    summary["skipped"] += 1
+                    log.info("protection_guardian: %s SL→OCO swap "
+                             "debounced (%.1fh since last attempt) — skip",
+                             sym, (time.time() - _last_swap) / 3600)
+                    continue
                 # fully locked by plain SL → cancel-first OCO swap with
                 # safety net (re-place old SL if OCO fails).
                 # Precondition learned from the 22:03 first sweep: the
@@ -651,6 +679,13 @@ def run(client: Any, portfolio: Any,
                     oco = None
                 if oco:
                     summary["healed"] += 1
+                    try:
+                        from src.state_db import get_state_db
+                        get_state_db().kv_set(
+                            "guardian_swap_ts:" + sym,
+                            {"ts": time.time()})
+                    except Exception:
+                        pass
                     emit_alert("PROTECTION_HEALED", sym, {
                         "mode": "oco_swap", "qty": oco_qty_step,
                         "tp_px": tp_px, "sl_px": old_stop,
@@ -685,6 +720,22 @@ def run(client: Any, portfolio: Any,
                                          "FAILED for %s leg %s", sym,
                                          leg["id"], exc_info=True)
                     summary["failed"] += 1
+                    # WO-0924-ix fix ②: keep tp_sl_tracker in sync with
+                    # the restored plain-SL reality (was left stale →
+                    # every sweep re-visited the symbol).
+                    try:
+                        if restored:
+                            _track(sym, entry, qty, [], {
+                                "order_id": "plain_sl_restored",
+                                "price": old_stop, "qty": qty,
+                            })
+                        from src.state_db import get_state_db
+                        get_state_db().kv_set(
+                            "guardian_swap_ts:" + sym,
+                            {"ts": time.time()})
+                    except Exception:
+                        log.warning("guardian: swap safety-net tracker "
+                                    "sync failed for %s", sym, exc_info=True)
                     emit_alert("PROTECTION_HEAL_FAILED", sym, {
                         "mode": "oco_swap_failed_sl_restored",
                         "restored": restored, "legs": len(cancelled),
