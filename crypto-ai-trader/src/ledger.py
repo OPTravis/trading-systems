@@ -504,8 +504,49 @@ def _reverse_unmatched(conn, bootstrap_ts: float) -> List[Dict]:
     return unmatched
 
 
+def _tracker_orphans(conn) -> List[str]:
+    """Tracker kv rows whose symbol is in NEITHER the live portfolio nor
+    the shadow book — dead trackers from closed positions (WO-0924
+    tracker lifecycle defect). Info layer only: the reconciler zombie
+    sweep + booking-time collapse own the cleanup, so this counter should
+    drain to zero and stay there; it is not promoted to a true diff
+    because the shadow book itself has no tracker copy to diff against.
+    """
+    try:
+        live = {
+            r["symbol"] for r in conn.execute(
+                "SELECT symbol FROM portfolio WHERE quantity > ?",
+                (EPS_QTY,)).fetchall()
+        }
+        shadow = {
+            r["symbol"] for r in conn.execute(
+                "SELECT symbol FROM ledger_shadow_positions WHERE net_qty > ?",
+                (EPS_QTY,)).fetchall()
+        }
+        rows = conn.execute(
+            "SELECT key FROM kv WHERE key LIKE 'tp_sl_tracker:%'").fetchall()
+        return [
+            r["key"][len("tp_sl_tracker:"):] for r in rows
+            if r["key"][len("tp_sl_tracker:"):] not in live
+            and r["key"][len("tp_sl_tracker:"):] not in shadow
+        ][:10]
+    except Exception:
+        return []
+
+
 def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> Dict:
     """Compare the shadow book against the live four sources.
+
+    Scope note (P2 order item 3): the shadow book replicates the
+    portfolio and trades sources only. tp_sl_tracker has no shadow copy
+    by design — in shadow mode the tracker is still owned by the legacy
+    writers (entry save_state / guardian heal / reconciler collapse),
+    all of which now funnel through record_repair and leave REPAIR
+    events in ledger_events, so tracker mutations stay observable.
+    A tracker-vs-shadow diff becomes meaningful only after the switch to
+    primary mode, where record_fill owns the tracker kv inside its
+    single transaction. Until then, orphan trackers surface in the
+    info layer (see _tracker_orphans).
 
     Writes one audit row (LEDGER_SHADOW_DIFF) and one alert ONLY when a
     true diff exists; clean rounds just advance the stats counter. Never
@@ -533,6 +574,7 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
         consecutive_clean = int(stats.get("consecutive_clean") or 0) + 1 if clean else 0
 
         info = {
+            "tracker_orphans": _tracker_orphans(conn),
             "unmatched_trades_rows": _reverse_unmatched(conn, bootstrap_ts)[:10],
             "outcomes_open_live_cutoff": conn.execute(
                 "SELECT COUNT(*) FROM trade_outcomes WHERE status = 'open' "
@@ -1141,7 +1183,10 @@ def _repair_tracker_state(conn, repair: Dict) -> Dict:
         "tp_orders": tp_orders,
         "sl_order": p.get("sl_order") or None,
         "tp_filled": [False] * len(tp_orders),
-        "sl_moved_after_tp": 0,
+        # optional trailing-SL history so a collapse rebuild doesn't
+        # forget SL already moved after TP1/TP2 (guardian never passes
+        # it -> 0, unchanged behavior)
+        "sl_moved_after_tp": int(p.get("sl_moved") or 0),
         "created_at": now,
         "updated_at": now,
     }
@@ -1215,9 +1260,10 @@ _REPAIR_KINDS = {
 #     marks a healed position; breach_state excluded — throttle state,
 #     no audit pre-P2 either; snapshot excluded — routine every round)
 #   event: everything except the routine snapshot
-_REPAIR_AUDIT_KINDS = {"tracker_state", "portfolio_fix", "swap_ts"}
+_REPAIR_AUDIT_KINDS = {"tracker_state", "portfolio_fix", "swap_ts",
+                       "tracker_cleanup"}
 _REPAIR_EVENT_KINDS = {"tracker_state", "portfolio_fix", "guard_audit",
-                       "swap_ts", "breach_state"}
+                       "swap_ts", "breach_state", "tracker_cleanup"}
 
 
 def record_repair(repair: Dict, db=None) -> Dict:
@@ -1234,6 +1280,8 @@ def record_repair(repair: Dict, db=None) -> Dict:
 
     Routing table (per kind):
       tracker_state      kv tp_sl_tracker:{sym}   +audit +event
+      tracker_cleanup    kv tp_sl_tracker:{sym} DEL +audit +event
+                         (position flat / SL fill / zombie sweep)
       swap_ts            kv gov:swap_ts:{sym}      +audit +event
       breach_state       kv tp_breach_state:{sym}   -audit +event  (throttle
                           state: high frequency, no audit today either)
@@ -1268,6 +1316,12 @@ def record_repair(repair: Dict, db=None) -> Dict:
                 conn, f"tp_breach_state:{sym}", payload.get("state") or {}
             )
             applied = {"action": "breach_state", "symbol": sym}
+        elif kind == "tracker_cleanup":
+            conn.execute(
+                "DELETE FROM kv WHERE key = ?",
+                (f"tp_sl_tracker:{str(sym)}",),
+            )
+            applied = {"action": "tracker_cleanup", "symbol": sym}
         elif kind == "reconciler_snapshot":
             _kv_upsert_raw(conn, "reconcile_prev_positions",
                            payload.get("data") or {})
@@ -1315,6 +1369,41 @@ def record_repair(repair: Dict, db=None) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+def remove_tracker(symbol: str, reason: str, db=None) -> bool:
+    """Tracker lifecycle fix (WO-0924): remove a tp_sl_tracker kv row via
+    the repairs funnel (audit + REPAIR event) with the legacy direct
+    remove_state as rollback fallback. Returns True when the row was
+    actually removed (either path); False when nothing was there."""
+    if db is None:
+        from src.state_db import get_state_db
+        db = get_state_db()
+    sym = str(symbol).replace("/", "")
+    try:
+        from src.tp_sl_tracker import get_state
+        if get_state(sym) is None:
+            return False
+    except Exception:
+        pass  # probe failed — still attempt the removal below
+    try:
+        from src.ledger import record_repair, repairs_enabled
+        if repairs_enabled(db):
+            record_repair({"kind": "tracker_cleanup", "symbol": sym,
+                           "source": "tracker_lifecycle",
+                           "payload": {"reason": reason}}, db=db)
+            return True
+    except Exception:
+        logger.warning("ledger: tracker_cleanup funnel failed for %s — "
+                       "legacy fallback", sym, exc_info=True)
+    try:
+        from src.tp_sl_tracker import remove_state
+        remove_state(sym)
+        return True
+    except Exception:
+        logger.warning("ledger: tracker removal failed for %s", sym,
+                       exc_info=True)
+        return False
+
+
 # CLI: python -m src.ledger <bootstrap|report|stats|set-mode X|reset>
 # ---------------------------------------------------------------------------
 

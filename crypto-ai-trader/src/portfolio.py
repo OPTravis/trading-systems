@@ -545,6 +545,18 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                 exc_info=True,
             )
 
+        # WO-0924 tracker lifecycle: a full close retires the tracker —
+        # nothing left to track. Funnel (audit + REPAIR event) with
+        # legacy fallback inside; non-fatal by contract.
+        try:
+            from src.ledger import remove_tracker
+            remove_tracker(symbol, "position_closed")
+        except Exception:
+            logger.warning(
+                "tracker cleanup after close failed for %s", symbol,
+                exc_info=True,
+            )
+
         return pos
 
     def get_position(self, symbol: str) -> Optional[Dict]:

@@ -85,6 +85,125 @@ def _repair_snapshot(db, data: dict) -> None:
                            "payload": {"data": data}}):
         return
     db.kv_set(KV_PREV_POSITIONS, data)
+
+
+def _repair_tracker_state(db, symbol, entry, qty, tp_orders, sl_order,
+                          sl_moved=0) -> None:
+    """Collapse write via the ledger repairs funnel (tracker_state kind,
+    sl_moved carried so trailing-SL history survives the rebuild);
+    legacy fallback = tp_sl_tracker.update_state."""
+    try:
+        from src.ledger import record_repair, repairs_enabled
+        if repairs_enabled(db):
+            record_repair({"kind": "tracker_state", "symbol": symbol,
+                           "source": "portfolio_reconciler",
+                           "payload": {"entry": entry, "qty": qty,
+                                       "tp_orders": tp_orders,
+                                       "sl_order": sl_order,
+                                       "sl_moved": sl_moved}}, db=db)
+            return
+    except Exception:
+        logger.warning("reconcile: tracker collapse funnel failed for %s",
+                       symbol, exc_info=True)
+    try:
+        from src.tp_sl_tracker import update_state
+        update_state(symbol, total_qty=qty, tp_orders=tp_orders,
+                     tp_filled=[False] * len(tp_orders), sl_order=sl_order,
+                     sl_moved_after_tp=sl_moved)
+    except Exception:
+        logger.warning("reconcile: tracker collapse fallback failed for %s",
+                       symbol, exc_info=True)
+
+
+def _collapse_tracker(db, symbol: str, order_id: str, fill_qty: float) -> dict:
+    """Booking-time tracker collapse (WO-0924 tracker lifecycle defect,
+    root cause ②): booking an OCO/TP SELL fill must fold the tracker
+    forward, or it keeps advertising filled legs as active protection
+    (LTC 9/24: total_qty 0.559718 vs actual 0.181718, two filled TP
+    groups left as zombies).
+
+      - fill matches the SL leg          -> position closed -> remove
+      - fill matches a TP leg (order_id) -> drop that tier, decrement
+        total_qty, carry sl_moved_after_tp to max(prior, tier) so the
+        trailing-SL history survives the rebuild
+      - no leg match (switch-out/manual) -> just decrement total_qty
+      - resulting total_qty <= EPS       -> remove (nothing left to
+        track; the exchange is flat and sync will drop the row)
+    Removal goes through ledger.remove_tracker (funnel + legacy
+    fallback); partial collapses go through _repair_tracker_state.
+    """
+    try:
+        from src.tp_sl_tracker import get_state
+        state = get_state(symbol)
+    except Exception:
+        return {"action": "skipped", "symbol": symbol}
+    if not state:
+        return {"action": "skipped", "symbol": symbol}
+
+    tp_orders = list(state.get("tp_orders") or [])
+    tp_filled = list(state.get("tp_filled") or [])
+    sl_order = state.get("sl_order") or {}
+    total_qty = float(state.get("total_qty") or 0)
+    entry = float(state.get("entry_price") or 0)
+    sl_moved = int(state.get("sl_moved_after_tp") or 0)
+    oid = str(order_id)
+
+    if str(sl_order.get("order_id") or "") == oid:
+        from src.ledger import remove_tracker
+        remove_tracker(symbol, "sl_fill", db=db)
+        return {"action": "removed_sl_fill", "symbol": symbol}
+
+    matched_tier = None
+    kept = []
+    for i, tp in enumerate(tp_orders):
+        if str((tp or {}).get("order_id") or "") == oid:
+            matched_tier = int((tp or {}).get("tier") or 0)
+        else:
+            kept.append(i)
+    if matched_tier is not None:
+        tp_orders = [tp_orders[i] for i in kept]
+        tp_filled = [tp_filled[i] for i in kept if i < len(tp_filled)]
+
+    new_qty = max(0.0, total_qty - float(fill_qty))
+    if new_qty <= DRIFT_QTY_ABS:
+        from src.ledger import remove_tracker
+        remove_tracker(symbol, "qty_zero", db=db)
+        return {"action": "removed_qty_zero", "symbol": symbol,
+                "tier": matched_tier}
+
+    _repair_tracker_state(db, symbol, entry, new_qty, tp_orders, sl_order,
+                          sl_moved=max(sl_moved, matched_tier or 0))
+    return {"action": "tp_collapsed" if matched_tier is not None
+            else "qty_decremented",
+            "symbol": symbol, "total_qty": new_qty,
+            "tier": matched_tier}
+
+
+def _sweep_tracker_zombies(db, positions: Dict, ex: Dict) -> List[str]:
+    """Root cause ① fix: nothing schedules cmd_trailing_check's tracker
+    cleanup (no cron, reside_scan doesn't call it), so closed positions
+    keep dead tracker rows forever (9/24 pile-up: BTC/RAY/INJ/BCH/NEAR/
+    HBAR/DASH). A tracker whose symbol has NO ledger position and NO
+    exchange balance is a zombie -> remove via the funnel."""
+    removed: List[str] = []
+    try:
+        from src.tp_sl_tracker import get_all_tracked
+        tracked = get_all_tracked() or {}
+    except Exception:
+        logger.warning("reconcile: zombie sweep load failed", exc_info=True)
+        return removed
+    from src.ledger import remove_tracker
+    for sym in sorted(tracked):
+        pos = positions.get(sym)
+        if pos is not None and float(pos.get("quantity") or 0) > DRIFT_QTY_ABS:
+            continue  # live position owns this tracker
+        if ex.get(_base_of(sym), 0.0) > DRIFT_QTY_ABS:
+            continue  # exchange still holds the asset — not a zombie yet
+        if remove_tracker(sym, "zombie_sweep", db=db):
+            removed.append(sym)
+            logger.info("reconcile: tracker zombie swept for %s "
+                        "(no position, exchange flat)", sym)
+    return removed
 #: exchange balance below this fraction of the DB qty ⇒ drift
 DRIFT_QTY_FRACTION = 0.98
 #: absolute qty slack (dust-sized remainders are not drift)
@@ -395,6 +514,16 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                     "reconcile: ledger shadow observe failed for %s", symbol,
                     exc_info=True,
                 )
+            # WO-0924 tracker lifecycle: fold the tracker forward for the
+            # booked leg (TP tier drop / SL removal / qty decrement).
+            # Non-fatal — booking already succeeded.
+            try:
+                _collapse_tracker(db, symbol, str(oid), qty)
+            except Exception:
+                logger.warning(
+                    "reconcile: tracker collapse failed for %s", symbol,
+                    exc_info=True,
+                )
             logger.info(
                 "🔁 RECONCILE OCO FILL: SELL %s @ %.6g (pnl %+.4f) "
                 "[oco_fill orderId=%s qty=%.8g]",
@@ -531,6 +660,16 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
             booked_total.extend(
                 _book_missing_sells(db, sym, fills, gap, client=client))
 
+    # --- tracker zombie sweep (root cause ①): re-read positions after
+    # drift fixes so removed rows count as flat ---
+    try:
+        positions_now = db.portfolio_get_all()
+        zombies = _sweep_tracker_zombies(db, positions_now, ex)
+    except Exception:
+        zombies = []
+        logger.warning("reconcile: tracker zombie sweep failed",
+                       exc_info=True)
+
     # snapshot for the next round's Path B (post-booking state, so cleaned
     # positions don't re-enter the suspect set next round)
     try:
@@ -553,7 +692,8 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
         "ts": time.time(),
         "suspects": {s: round(g, 8) for s, g in suspects.items()},
         "booked": len(booked_total),
-        "actionable": bool(booked_total),
+        "tracker_zombies_swept": len(zombies),
+        "actionable": bool(booked_total or zombies),
     }
     try:
         _ledger_repair(db, {
