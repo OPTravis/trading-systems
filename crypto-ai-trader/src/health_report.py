@@ -70,10 +70,17 @@ def run(client, portfolio, dust_summary: Optional[Dict[str, Any]] = None,
         "unprotected_candidates": int(dust.get("liquidate_candidates", 0)),
     }
 
-    # rate-limit accounting from the SDK client (if present)
+    # rate-limit accounting from the ACTIVE client impl (P6 facade
+    # consolidation). Resolve the impl module through the facade's
+    # BinanceClient.__module__ — never import the concrete impls here.
+    # ccxt impl has no module-level RATE_STATS today — empty dict is the
+    # honest signal.
     try:
-        from src import _binance_sdk_client as _sdk
-        signals["rate_events"] = dict(getattr(_sdk, "RATE_STATS", {}) or {})
+        import importlib
+        from src import binance_client as _facade
+        _impl_mod = importlib.import_module(_facade.BinanceClient.__module__)
+        signals["rate_events"] = dict(
+            getattr(_impl_mod, "RATE_STATS", {}) or {})
     except Exception:
         pass
 

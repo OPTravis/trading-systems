@@ -122,7 +122,9 @@ class ExchangeFacts:
         client = self._client
         if client is None:
             try:
-                from src.ccxt_client import BinanceClient
+                # P6 facade consolidation (WO-0924-z2): the binance_client
+                # facade routes USE_CCXT to the active impl.
+                from src.binance_client import BinanceClient
                 client = BinanceClient()
             except Exception as e:
                 out["errors"].append(f"client-init: {e}")

@@ -22,7 +22,9 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src._binance_sdk_client import BinanceClient
+# P6 client-facade consolidation (WO-0924-z2): route through the
+# binance_client facade so USE_CCXT selects the active impl.
+from src.binance_client import BinanceClient
 from src.state_db import get_state_db
 from src.trade_outcome_recorder import TradeOutcomeRecorder
 

@@ -25,3 +25,9 @@ if _use_ccxt:
     from src.ccxt_client import BinanceClient  # type: ignore[assignment]  # noqa: F401
 else:
     from src._binance_sdk_client import BinanceClient  # type: ignore[assignment]  # noqa: F401
+
+
+def get_active_impl() -> str:
+    """P6 (WO-0924-z2): name of the active implementation for health
+    reporting and ops introspection. Never used for behavior branching."""
+    return "ccxt" if _use_ccxt else "sdk"

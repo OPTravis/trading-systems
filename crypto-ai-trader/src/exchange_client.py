@@ -7,6 +7,21 @@ BinanceClient. This enables:
   - Future migration to other exchanges (OKX, Bybit, etc.)
   - Cleaner dependency injection
 
+P6 client consolidation (WO-0924-z2, 9/24): the exchange layer is
+facade-routed and protocol-pinned —
+
+    src.binance_client  → facade (entry point for ALL importers)
+        ├─ USE_CCXT=1  → src.ccxt_client.BinanceClient
+        └─ default     → src._binance_sdk_client.BinanceClient
+
+Rules (enforced by tests/test_wo0924_p6_client_consolidation.py):
+  1. No module outside the facade may import the concrete implementations
+     (_binance_sdk_client / ccxt_client). Import via src.binance_client.
+  2. Both implementations must structurally satisfy every method of this
+     Protocol — a method added to one impl but not the other fails CI.
+  3. binance_client.get_active_impl() reports the active implementation
+     for health/introspection only; behavior never branches on it.
+
 Usage:
     from src.exchange_client import ExchangeClient
 
