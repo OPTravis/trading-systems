@@ -329,6 +329,30 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                 {"symbol": symbol, "qty": round(qty, 8), "price": round(avg_px, 8),
                  "pnl": round(pnl, 6), "order_id": str(oid), "source": "reconcile/oco_fill"}
             )
+            # WO-0924 P2 (Ledger shadow): observe the booked OCO fill.
+            # Fires only on a real insert (order_id-idempotent with the
+            # trade_add above), so reconciler retries never double-book
+            # the shadow ledger. Bystander contract: no raises, shadow-only.
+            try:
+                from src.ledger import record_fill
+                record_fill(
+                    {
+                        "type": "SELL",
+                        "symbol": symbol,
+                        "qty": float(round(qty, 8)),
+                        "price": float(round(avg_px, 8)),
+                        "pnl": float(round(pnl, 6)),
+                        "order_id": str(oid),
+                        "exit_reason": "reconciled" if pnl >= 0 else "sl",
+                        "source": "reconciler.oco_fill",
+                    },
+                    observe_only=True,
+                )
+            except Exception:
+                logger.warning(
+                    "reconcile: ledger shadow observe failed for %s", symbol,
+                    exc_info=True,
+                )
             logger.info(
                 "🔁 RECONCILE OCO FILL: SELL %s @ %.6g (pnl %+.4f) "
                 "[oco_fill orderId=%s qty=%.8g]",

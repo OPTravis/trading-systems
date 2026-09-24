@@ -12,6 +12,7 @@ all names that external code and tests may reference.
 
 import os
 import logging
+import time
 
 # ── Re-export names for backward compatibility ────────────────────────────────
 # Tests mock these at src.scan_orchestrator.XXX — keeping them here ensures
@@ -142,6 +143,7 @@ def cmd_cron_scan():
                 "kv_preflight: FAIL — skipping new entries this scan")
         _step_reconcile_portfolio(ctx)
         _step_defense_sweep(ctx)
+        _step_ledger_shadow_diff(ctx)
         _step_evolve_strategies(ctx)
         _append_scan_summary(ctx)
     finally:
@@ -174,6 +176,33 @@ def _step_evolve_strategies(ctx):
             )
     except Exception:
         logger.warning("evolve step failed (non-fatal)", exc_info=True)
+
+
+def _step_ledger_shadow_diff(ctx):
+    """WO-0924 P2: post-round shadow-book vs live-tables diff.
+
+    Runs AFTER execute/reconcile/defense so both books already reflect
+    the round's fills. Fail-open and silent-skip in off/primary modes:
+    shadow only observes; a reporting failure never blocks the scan.
+    """
+    try:
+        from src.state_db import get_state_db
+        from src.ledger import get_mode, shadow_diff
+
+        db = get_state_db()
+        mode = get_mode(db)
+        if mode != "shadow":
+            logger.debug("ledger shadow diff skipped (mode=%s)", mode)
+            return
+        report = shadow_diff(db, round_id=f"scan-{int(time.time())}")
+        logger.info(
+            "ledger shadow round %s: clean=%s true_diffs=%d",
+            report.get("round"), report.get("clean"),
+            len(report.get("true_diffs") or []),
+        )
+    except Exception:
+        logger.warning("ledger shadow diff step failed (non-fatal)",
+                       exc_info=True)
 
 
 def _step_reconcile_portfolio(ctx):

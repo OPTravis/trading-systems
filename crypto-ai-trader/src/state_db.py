@@ -424,6 +424,37 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_outcomes_strategy ON trade_outcomes(strategy);
             CREATE INDEX IF NOT EXISTS idx_portfolio_strategy ON portfolio(strategy);
             CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+
+            -- WO-0924 P2: Ledger (single bookkeeping layer). Append-only
+            -- fill event log + shadow book for the parallel-booking trial.
+            -- Additive only: no existing table or column is touched.
+            CREATE TABLE IF NOT EXISTS ledger_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                type TEXT NOT NULL,              -- BUY / SELL
+                symbol TEXT NOT NULL,
+                qty REAL NOT NULL,
+                price REAL NOT NULL,
+                order_id TEXT,
+                source TEXT,
+                pnl REAL,
+                exit_reason TEXT,
+                deduct_cash INTEGER,
+                payload_json TEXT,
+                round_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_ledger_events_ts ON ledger_events(ts);
+            CREATE INDEX IF NOT EXISTS idx_ledger_events_symbol ON ledger_events(symbol);
+            CREATE INDEX IF NOT EXISTS idx_ledger_events_order ON ledger_events(order_id);
+            CREATE TABLE IF NOT EXISTS ledger_shadow_positions (
+                symbol TEXT PRIMARY KEY,
+                net_qty REAL NOT NULL DEFAULT 0,
+                avg_entry_price REAL NOT NULL DEFAULT 0,
+                cost_basis REAL NOT NULL DEFAULT 0,
+                cash_delta REAL NOT NULL DEFAULT 0,
+                opened_at REAL,
+                updated_at REAL
+            );
             """)
         conn.commit()
 

@@ -327,6 +327,31 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         # Force save on add_position to prevent debounce inconsistency
         self._save_state(force=True)
 
+        # WO-0924 P2 (Ledger shadow): observe this fill for the parallel
+        # book. observe_only=True => never writes the four sources, never
+        # raises, no-ops unless mode == "shadow" — the legacy path above
+        # stays the ONLY writer while shadow runs. _from_sync/_dry_run
+        # fills never happened (reconstruction/validation) — no event.
+        if not _from_sync and not _dry_run:
+            try:
+                from src.ledger import record_fill
+                record_fill(
+                    {
+                        "type": "BUY",
+                        "symbol": symbol,
+                        "qty": float(quantity),
+                        "price": float(entry_price),
+                        "source": "portfolio.add_position",
+                        "deduct_cash": bool(deduct_cash),
+                    },
+                    observe_only=True,
+                )
+            except Exception:
+                logger.warning(
+                    "ledger shadow observe failed for %s BUY", symbol,
+                    exc_info=True,
+                )
+
     def update_position_price(self, symbol: str, current_price: float):
         """Update current price for a position (for PnL tracking)"""
         if symbol in self.positions:
@@ -492,6 +517,33 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             bandit.update_from_outcome(ctx, action_taken=action, pnl_pct=pnl_pct)
         except Exception as e:
             logger.debug(f"Bandit update failed: {e}")
+
+        # WO-0924 P2 (Ledger shadow): observe the SELL fill. Fires only on
+        # the success path (the no-position early return above skips this).
+        # observe_only=True => bystander contract: no four-source writes,
+        # never raises into the host path.
+        try:
+            from src.ledger import record_fill
+            record_fill(
+                {
+                    "type": "SELL",
+                    "symbol": symbol,
+                    "qty": float(pos["quantity"]),
+                    "price": float(price),
+                    "pnl": float(pnl),
+                    "order_id": client_order_id,
+                    "exit_reason": exit_reason or pos.get("exit_reason") or "manual",
+                    "entry_id": pos.get("entry_rowid"),
+                    "full_close": True,
+                    "source": "portfolio.close_position",
+                },
+                observe_only=True,
+            )
+        except Exception:
+            logger.warning(
+                "ledger shadow observe failed for %s SELL", symbol,
+                exc_info=True,
+            )
 
         return pos
 
