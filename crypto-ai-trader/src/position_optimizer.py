@@ -803,6 +803,117 @@ class PositionOptimizer:
                     )
                 return True
 
+            # 4-pre. STEPWISE DRAWDOWN GATE (WO-0924-sb) — exits-only
+            # semantics. The sell leg above already ran (loss-cut takes
+            # priority over entry blocking). While stepwise drawdown sits
+            # at a block_new_trades level (severe 8-10% / critical >10%,
+            # or time-escalated severe from a moderate band), the buy
+            # leg is skipped and the proceeds stay in USDT cash.
+            # Auto-recovers: the gate re-evaluates get_drawdown_action()
+            # on every switch attempt — when the level drops below the
+            # blocking band, switches buy legs again with no manual
+            # reset. Fail-closed: if the check itself errors, skip the
+            # buy leg (mirrors risk_manager.pre_trade_check semantics).
+            #
+            # NOTE (twice-bitten lesson, do not remove): on LIMIT_MAKER
+            # orders the stopPrice field is the TRUTHY STRING '0.00' —
+            # valuation here reads the price field only, never
+            # stopPrice.
+            _dd_gate_ok = False
+            _dd_reason = ""
+            _dd_check: Dict = {}
+            try:
+                from src.drawdown_breaker import DrawdownBreaker
+                from src.stepwise_drawdown import get_drawdown_action
+                from src.trade_executor import NON_POSITION_ASSETS
+
+                _usdt_bal = float(self.bc.get_free_balance("USDT"))
+                _total_value = _usdt_bal
+                try:
+                    _acct = self.bc.get_account()
+                    for _b in _acct.get("balances", []):
+                        _asset = _b.get("asset")
+                        _q = float(_b.get("free", 0)) + float(_b.get("locked", 0))
+                        if _q > 0 and _asset not in NON_POSITION_ASSETS:
+                            try:
+                                _total_value += _q * float(
+                                    self.bc.get_ticker_price(f"{_asset}USDT"))
+                            except (ConnectionError, TimeoutError, ValueError,
+                                    KeyError, OSError):
+                                pass
+                except (ConnectionError, TimeoutError, ValueError, KeyError,
+                        OSError):
+                    logger.warning("drawdown gate: account fetch failed, "
+                                   "using USDT-only total for check")
+                _ddb = DrawdownBreaker(binance_client=self.bc)
+                _dd_check = _ddb.check_drawdown(_total_value)
+                _dd_pct = _dd_check.get("drawdown_pct", 0)
+                _dd_action = get_drawdown_action(_dd_pct)
+                if _dd_action.get("block_new_trades"):
+                    _dd_reason = (
+                        f"StepwiseDrawdown {_dd_action['level']} "
+                        f"({_dd_pct:.1f}%): {_dd_action['reason']}")
+                else:
+                    _dd_gate_ok = True
+            except Exception as e:
+                _dd_reason = f"drawdown gate check failed: {e} — buy leg blocked (fail-closed)"
+
+            if not _dd_gate_ok:
+                # Proceeds are already in USDT from the sell above —
+                # close the position bookkeeping so the cash returns
+                # to the portfolio ledger.
+                try:
+                    _close_px = None
+                    try:
+                        _close_px = float(
+                            self.bc.get_ticker_price(symbol=from_symbol))
+                    except (ConnectionError, TimeoutError, ValueError,
+                            KeyError, OSError):
+                        pass
+                    self.portfolio.close_position(
+                        from_symbol,
+                        close_price=_close_px,
+                        exit_reason="switch",
+                        client_order_id=str(sell_order["orderId"])
+                        if sell_order.get("orderId") else None,
+                    )
+                except Exception as e:
+                    logger.warning(f"Portfolio close failed (non-critical): {e}")
+
+                decision["executed"] = True
+                decision["sell_order_id"] = sell_order.get("orderId")
+                decision["buy_blocked_by_drawdown"] = True
+                try:
+                    from src.state_db import get_state_db
+
+                    get_state_db().audit_log(
+                        "SWITCH_BUY_BLOCKED_BY_DRAWDOWN",
+                        {
+                            "from_symbol": from_symbol,
+                            "to_symbol": to_symbol,
+                            "reason": _dd_reason,
+                            "drawdown_pct": _dd_check.get("drawdown_pct"),
+                            "sell_order_id": sell_order.get("orderId"),
+                            "value_usdt": from_value,
+                        },
+                        source="position_optimizer",
+                    )
+                except Exception:
+                    logger.error(
+                        "Failed to log SWITCH_BUY_BLOCKED_BY_DRAWDOWN audit "
+                        "for %s -> %s", from_symbol, to_symbol, exc_info=True)
+                emit_alert(
+                    "SWITCH_BUY_BLOCKED_BY_DRAWDOWN", to_symbol,
+                    {"from_symbol": from_symbol,
+                     "reason": _dd_reason,
+                     "sell_order_id": sell_order.get("orderId"),
+                     "value_usdt": from_value})
+                logger.info(
+                    "Switch %s -> %s: buy leg BLOCKED (%s) — proceeds in "
+                    "USDT, sell leg completed", from_symbol, to_symbol,
+                    _dd_reason)
+                return True
+
             # 4. Calculate buy quantity using actual USDT balance (not stale from_value)
             try:
                 usdt_balance = float(self.bc.get_free_balance("USDT"))

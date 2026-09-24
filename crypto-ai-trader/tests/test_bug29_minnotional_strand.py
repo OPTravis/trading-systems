@@ -66,7 +66,14 @@ def _run_switch(from_value, usdt_balance):
         {"symbol": "AAAUSDT", "quantity": 5.65}
     ]
 
-    with patch("src.state_db.get_state_db", return_value=MagicMock()):
+    # WO-0924-sb: the switch buy leg now carries a stepwise-drawdown
+    # gate. These tests target the $6 floor logic, not the gate — pin
+    # the drawdown check to a mild (non-blocking) level.
+    with patch("src.state_db.get_state_db", return_value=MagicMock()), \
+         patch("src.drawdown_breaker.DrawdownBreaker") as ddb:
+        ddb.return_value.check_drawdown.return_value = {
+            "drawdown_pct": 1.0, "tripped": False, "high_watermark": 0,
+            "action": "INIT", "reason": ""}
         result = opt._execute_switch(_make_decision(from_value))
     return opt, result
 
