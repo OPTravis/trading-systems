@@ -159,39 +159,19 @@ class TestEvolverIntegration:
     """Integration tests for evaluate_and_evolve with regime awareness."""
 
     def _make_db_mock(self, strategy_data, trade_pnl_data=None):
-        """Create a mock DB that returns the given strategy data."""
+        """Mock DB stubbing the StateDB API surface.
+
+        WO-0924-z2 P6-B2: evolver SQL moved into StateDB, so the mock seam
+        moved from conn.execute SQL-string matching to typed methods.
+        Same canned data, same assertions as before the migration.
+        """
         db = MagicMock()
-        conn = MagicMock()
-        db._get_conn.return_value = conn
-
-        # First call: strategy aggregation
-        # Second call: per-trade PnL (for profit factor)
-        # Third call: get disabled
-        # Fourth call: set disabled
-        # Fifth call: log audit (if needed)
-        call_count = {"n": 0}
-
-        def execute_side_effect(query, *args):
-            call_count["n"] += 1
-            result = MagicMock()
-
-            if "GROUP BY strategy" in query:
-                result.fetchall.return_value = strategy_data
-            elif "ORDER BY exit_time DESC" in query:
-                result.fetchall.return_value = trade_pnl_data or []
-            elif "SELECT value FROM kv WHERE key = 'evolved_disabled'" in query:
-                result.fetchone.return_value = None
-            elif "INSERT OR REPLACE INTO kv" in query:
-                result.fetchall.return_value = []
-            elif "INSERT INTO audit_log" in query:
-                result.fetchall.return_value = []
-            else:
-                result.fetchall.return_value = []
-                result.fetchone.return_value = None
-
-            return result
-
-        conn.execute.side_effect = execute_side_effect
+        db.outcomes_strategy_perf_rows.return_value = list(strategy_data)
+        db.outcomes_strategy_pnls.return_value = list(trade_pnl_data or [])
+        db.outcomes_recent_pnl_per_strategy.return_value = []
+        db.kv_get.return_value = {}          # evolved_disabled / rolling stats
+        db.kv_set.return_value = None
+        db.audit_log.return_value = None
         return db
 
     def test_14_trades_not_enough_to_disable(self):

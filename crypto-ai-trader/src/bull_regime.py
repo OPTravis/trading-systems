@@ -257,29 +257,10 @@ class BullRegimeDetector:
         self._ensure_table()
 
     def _ensure_table(self):
+        # WO-0924-z2 P6-B2: DDL consolidated into StateDB schema init
+        # (bull_regime_log is a main-DB table; see state_db._init_schema)
         if self.db is None:
             return
-        with self.db._get_conn() as conn:
-            conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.TABLE} (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts INTEGER NOT NULL,
-                    bar_ts INTEGER NOT NULL,
-                    from_state TEXT,
-                    to_state TEXT NOT NULL,
-                    reason TEXT,
-                    btc_close REAL,
-                    btc_sma200 REAL,
-                    fng_avg REAL,
-                    fng_today INTEGER,
-                    adx REAL,
-                    conditions_json TEXT
-                )
-            """)
-            conn.execute(
-                f"CREATE INDEX IF NOT EXISTS idx_{self.TABLE}_ts ON {self.TABLE}(ts)"
-            )
-            conn.commit()
 
     def load_state(self) -> RegimeState:
         if self._state is not None:
@@ -303,32 +284,13 @@ class BullRegimeDetector:
     def record_transition(self, t: Dict[str, Any]):
         if self.db is None or t is None:
             return
-        with self.db._get_conn() as conn:
-            conn.execute(
-                f"""INSERT INTO {self.TABLE}
-                    (ts, bar_ts, from_state, to_state, reason,
-                     btc_close, btc_sma200, fng_avg, fng_today, adx, conditions_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    t["ts"], t["bar_ts"], t["from"], t["to"], t["reason"],
-                    t.get("btc_close"), t.get("btc_sma200"),
-                    t.get("fng_avg"), t.get("fng_today"), t.get("adx"),
-                    json.dumps(t.get("conditions", {})),
-                ),
-            )
-            conn.commit()
+        # WO-0924-z2 P6-B2: writer via StateDB.bull_regime_log_add
+        self.db.bull_regime_log_add(t)
 
     def get_transitions(self, limit: int = 50) -> List[Dict]:
         if self.db is None:
             return []
-        with self.db._get_conn() as conn:
-            rows = conn.execute(
-                f"""SELECT ts, from_state, to_state, reason, btc_close,
-                           fng_avg, adx
-                    FROM {self.TABLE} ORDER BY ts DESC LIMIT ?""",
-                (limit,),
-            ).fetchall()
-        return [dict(r) for r in rows]
+        return self.db.bull_regime_log_recent(limit)
 
     def get_time_in_state(self) -> Dict[str, Any]:
         """Get how long we've been in the current state."""

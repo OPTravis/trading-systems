@@ -77,16 +77,11 @@ class KellyPositionSizer:
         if self.db:
             try:
                 # Read from trade_outcomes (has actual PnL data)
-                conn = self.db._get_conn()
-                rows = conn.execute(
-                    """SELECT symbol, net_pnl_pct, is_win, strategy
-                       FROM trade_outcomes
-                       WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
-                       ORDER BY entry_time DESC LIMIT ?""",
-                    (limit,),
-                ).fetchall()
+                # WO-0924-z2 P6-B2: SQL lives in StateDB.outcomes_recent_pnl_signals
+                rows = self.db.outcomes_recent_pnl_signals(limit)
                 trades = [
-                    {"symbol": r[0], "pnl": r[1], "is_win": r[2], "strategy": r[3]}
+                    {"symbol": r["symbol"], "pnl": r["net_pnl_pct"],
+                     "is_win": r["is_win"], "strategy": r["strategy"]}
                     for r in rows
                 ]
                 return trades
@@ -109,14 +104,7 @@ class KellyPositionSizer:
             import time as _time
 
             cutoff = _time.time() - 30 * 86400
-            conn = self.db._get_conn()
-            row = conn.execute(
-                """SELECT COUNT(*) FROM trade_outcomes
-                   WHERE context_json LIKE '%regime warming%'
-                     AND entry_time >= ?""",
-                (cutoff,),
-            ).fetchone()
-            return int(row[0]) if row else 0
+            return self.db.outcomes_count_context_like("regime warming", cutoff)
         except Exception as e:
             logger.warning(f"Exploration cap check failed (fail-open): {e}")
             return 0
@@ -135,14 +123,8 @@ class KellyPositionSizer:
             import time as _time
 
             cutoff = _time.time() - 7 * 86400
-            conn = self.db._get_conn()
-            row = conn.execute(
-                """SELECT COUNT(*) FROM trade_outcomes
-                   WHERE context_json LIKE '%bull regime refresh%'
-                     AND entry_time >= ?""",
-                (cutoff,),
-            ).fetchone()
-            return int(row[0]) if row else 0
+            return self.db.outcomes_count_context_like(
+                "bull regime refresh", cutoff)
         except Exception as e:
             logger.warning(f"Bull-refresh cap check failed (fail-open): {e}")
             return 0

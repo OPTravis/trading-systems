@@ -118,6 +118,14 @@ class MockStateDBWithSQLite:
         )
         self._conn.commit()
 
+    def outcomes_count_closed(self):
+        # WO-0924-z2 P6-B2: should_retrain counts closed outcomes via
+        # StateDB API — mock mirrors it against its own in-memory table
+        row = self._conn.execute(
+            "SELECT COUNT(*) as cnt FROM trade_outcomes"
+            " WHERE status = 'closed'").fetchone()
+        return row["cnt"] if row else 0
+
 
 # ---------------------------------------------------------------------------
 # Tests: Constants

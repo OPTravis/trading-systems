@@ -120,30 +120,12 @@ class TradeOutcomeRecorder:
         rowid = None
         for _attempt in range(2):
             try:
-                conn = self._db._get_conn()
-                rowid = conn.execute(
-                    """INSERT INTO trade_outcomes
-                (symbol, entry_time, entry_date, entry_price, qty, score, strategy,
-                 factors_json, context_json, status,
-                 peak_price, trough_price, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
-                    (
-                        symbol,
-                        now,
-                        date_str,
-                        entry_price,
-                        qty,
-                        score,
-                        strategy,
-                        factors_json,
-                        context_json,
-                        entry_price,
-                        entry_price,  # peak = trough = entry initially
-                        now,
-                        now,
-                    ),
-                ).lastrowid
-                conn.commit()
+                # WO-0924-z2 P6-B2: SQL lives in StateDB now
+                rowid = self._db.outcome_add_entry(
+                    symbol=symbol, entry_time=now, entry_date=date_str,
+                    entry_price=entry_price, qty=qty, score=score,
+                    strategy=strategy, factors_json=factors_json,
+                    context_json=context_json)
                 break
             except Exception as _e:
                 if _attempt == 0 and "i/o" in str(_e).lower():
@@ -167,13 +149,7 @@ class TradeOutcomeRecorder:
         Called periodically (e.g., by unified-monitor) to track max profit
         and max drawdown during the trade lifetime.
         """
-        conn = self._db._get_conn()
-        row = conn.execute(
-            """SELECT id, peak_price, trough_price, entry_price
-            FROM trade_outcomes WHERE symbol = ? AND status = 'open'
-            ORDER BY entry_time DESC LIMIT 1""",
-            (symbol,),
-        ).fetchone()
+        row = self._db.outcome_latest_open(symbol)
 
         if not row:
             return
@@ -182,13 +158,7 @@ class TradeOutcomeRecorder:
         peak = max(row["peak_price"], current_price)
         trough = min(row["trough_price"], current_price)
 
-        conn.execute(
-            """UPDATE trade_outcomes
-            SET peak_price = ?, trough_price = ?, updated_at = ?
-            WHERE id = ?""",
-            (peak, trough, time.time(), row_id),
-        )
-        conn.commit()
+        self._db.outcome_update_extremes(row_id, peak, trough, time.time())
 
     def record_outcome(
         self,
@@ -211,19 +181,10 @@ class TradeOutcomeRecorder:
 
         Returns: outcome dict with computed metrics, or None if no open entry found.
         """
-        conn = self._db._get_conn()
         if entry_id:
-            row = conn.execute(
-                "SELECT * FROM trade_outcomes WHERE id = ?",
-                (entry_id,),
-            ).fetchone()
+            row = self._db.outcome_get_by_id(entry_id)
         else:
-            row = conn.execute(
-                """SELECT * FROM trade_outcomes
-                WHERE symbol = ? AND status = 'open'
-                ORDER BY entry_time DESC LIMIT 1""",
-                (symbol,),
-            ).fetchone()
+            row = self._db.outcome_latest_open(symbol)
 
         if not row:
             logger.warning(f"OUTCOME_UPDATE: No open entry for {symbol}")
@@ -260,36 +221,23 @@ class TradeOutcomeRecorder:
         # Win/loss classification
         is_win = net_pnl_pct > 0
 
-        conn.execute(
-            """UPDATE trade_outcomes SET
-                exit_time = ?, exit_price = ?, exit_reason = ?,
-                pnl_pct = ?, pnl_absolute = ?,
-                net_pnl_pct = ?, net_pnl_absolute = ?,
-                time_held_hours = ?,
-                max_profit_pct = ?, max_drawdown_pct = ?,
-                peak_price = ?, trough_price = ?,
-                is_win = ?, status = 'closed',
-                updated_at = ?
-            WHERE id = ?""",
-            (
-                now,
-                exit_price,
-                exit_reason,
-                round(pnl_pct, 4),
-                round(pnl_absolute, 6),
-                round(net_pnl_pct, 4),
-                round(net_pnl_absolute, 6),
-                round(time_held_hours, 2),
-                round(max_profit_pct, 4),
-                round(max_drawdown_pct, 4),
-                peak,
-                trough,
-                is_win,
-                now,
-                row["id"],
-            ),
+        self._db.outcome_close(
+            row["id"],
+            exit_time=now,
+            exit_price=exit_price,
+            exit_reason=exit_reason,
+            pnl_pct=round(pnl_pct, 4),
+            pnl_absolute=round(pnl_absolute, 6),
+            net_pnl_pct=round(net_pnl_pct, 4),
+            net_pnl_absolute=round(net_pnl_absolute, 6),
+            time_held_hours=round(time_held_hours, 2),
+            max_profit_pct=round(max_profit_pct, 4),
+            max_drawdown_pct=round(max_drawdown_pct, 4),
+            peak_price=peak,
+            trough_price=trough,
+            is_win=is_win,
+            updated_at=now,
         )
-        conn.commit()
 
         outcome = {
             "id": row["id"],
@@ -380,42 +328,13 @@ class TradeOutcomeRecorder:
 
     def get_open_entries(self) -> List[Dict]:
         """Get all open (unclosed) trade entries."""
-        rows = (
-            self._db._get_conn()
-            .execute(
-                "SELECT * FROM trade_outcomes WHERE status = 'open' ORDER BY entry_time DESC"
-            )
-            .fetchall()
-        )
-        return [dict(r) for r in rows]
+        return self._db.outcomes_get_open()
 
     def get_closed_outcomes(
         self, limit: int = 50, strategy: Optional[str] = None
     ) -> List[Dict]:
         """Get closed trade outcomes for analysis."""
-        if strategy:
-            rows = (
-                self._db._get_conn()
-                .execute(
-                    """SELECT * FROM trade_outcomes
-                WHERE status = 'closed' AND strategy = ?
-                ORDER BY exit_time DESC LIMIT ?""",
-                    (strategy, limit),
-                )
-                .fetchall()
-            )
-        else:
-            rows = (
-                self._db._get_conn()
-                .execute(
-                    """SELECT * FROM trade_outcomes
-                WHERE status = 'closed'
-                ORDER BY exit_time DESC LIMIT ?""",
-                    (limit,),
-                )
-                .fetchall()
-            )
-        return [dict(r) for r in rows]
+        return self._db.outcomes_get_closed(limit=limit, strategy=strategy)
 
     def get_factor_stats(self, min_trades: int = 5) -> Optional[Dict]:
         """Compute factor-level statistics from closed trades.
@@ -423,17 +342,10 @@ class TradeOutcomeRecorder:
         Returns per-factor correlation with PnL, and avg score for winners vs losers.
         Used by the learning layer to adjust factor weights.
         """
-        rows = (
-            self._db._get_conn()
-            .execute("SELECT * FROM trade_outcomes WHERE status = 'closed'")
-            .fetchall()
-        )
+        rows = self._db.outcomes_get_closed(newest_first=False)
 
         if len(rows) < min_trades:
             return None
-
-        # Convert sqlite3.Row to dict for .get() access
-        rows = [dict(r) for r in rows]
 
         winners = [r for r in rows if r["is_win"]]
         losers = [r for r in rows if not r["is_win"]]
@@ -510,18 +422,8 @@ class TradeOutcomeRecorder:
 
     def get_summary(self) -> Dict:
         """Get overall outcome summary statistics."""
-        conn = self._db._get_conn()
-
-        open_count = conn.execute(
-            "SELECT COUNT(*) FROM trade_outcomes WHERE status = 'open'"
-        ).fetchone()[0]
-
-        closed_rows = conn.execute(
-            "SELECT * FROM trade_outcomes WHERE status = 'closed'"
-        ).fetchall()
-
-        # Convert sqlite3.Row to dict for consistent access
-        closed_rows = [dict(r) for r in closed_rows]
+        open_count = len(self._db.outcomes_get_open())
+        closed_rows = self._db.outcomes_get_closed(newest_first=False)
 
         if not closed_rows:
             return {

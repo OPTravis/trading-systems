@@ -102,30 +102,21 @@ class StrategyRegistry:
     def _get_optimized_params(self) -> Dict:
         """Read optimized params from DB."""
         try:
-            conn = self._db._get_conn()
-            row = conn.execute(
-                "SELECT value FROM kv WHERE key = 'optimized_params'"
-            ).fetchone()
-            if row:
-                return json.loads(row["value"])
+            # WO-0924-z2 P6-B2: kv reads via StateDB.kv_get
+            val = self._db.kv_get("optimized_params")
+            if isinstance(val, dict):
+                return val
         except Exception:
             logger.error("Failed to parse optimized params from DB", exc_info=True)
         return {}
 
     def get_strategy_weights(self) -> Dict[str, float]:
         """Get per-strategy weights (performance-adjusted or default)."""
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'strategy_weights'"
-        ).fetchone()
+        weights = self._db.kv_get("strategy_weights")
 
-        if row:
-            try:
-                weights = json.loads(row["value"])
-                if all(k in weights for k in DEFAULT_STRATEGY_WEIGHTS):
-                    return weights
-            except (json.JSONDecodeError, TypeError):
-                logger.error("Failed to parse strategy weights from DB", exc_info=True)
+        if isinstance(weights, dict):
+            if all(k in weights for k in DEFAULT_STRATEGY_WEIGHTS):
+                return weights
 
         return dict(DEFAULT_STRATEGY_WEIGHTS)
 
@@ -135,9 +126,7 @@ class StrategyRegistry:
         Uses win rate and avg PnL per strategy to adjust weights.
         Returns None if insufficient data.
         """
-        conn = self._db._get_conn()
-        rows = conn.execute("""SELECT strategy, net_pnl_pct, is_win
-            FROM trade_outcomes WHERE status = 'closed'""").fetchall()
+        rows = self._db.outcomes_strategy_rows_win()
 
         if not rows:
             return None
@@ -192,13 +181,7 @@ class StrategyRegistry:
         if not new_weights:
             return None
 
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('strategy_weights', ?, ?)""",
-            (json.dumps(new_weights), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("strategy_weights", new_weights)
 
         changes = []
         for s in DEFAULT_STRATEGY_WEIGHTS:

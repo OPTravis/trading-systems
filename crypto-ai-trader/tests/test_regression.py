@@ -117,9 +117,11 @@ class TestDataSource:
         from src.strategy_registry import StrategyRegistry
 
         source = inspect.getsource(StrategyRegistry.compute_strategy_weights)
+        # WO-0924-z2 P6-B2: SQL moved to StateDB; the trade_outcomes read
+        # is now expressed through outcomes_strategy_rows_win()
         assert (
-            "trade_outcomes" in source
-        ), "compute_strategy_weights 應從 trade_outcomes 讀取"
+            "outcomes_strategy_rows_win" in source
+        ), "compute_strategy_weights 應從 trade_outcomes (StateDB) 讀取"
 
 
 # ============================================================

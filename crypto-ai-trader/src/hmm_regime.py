@@ -391,27 +391,19 @@ class HMMRegimeDetector:
 
     def get_cached_prediction(self) -> Optional[Dict]:
         """Get the most recent cached prediction from DB."""
-        conn = self._db._get_conn()
-        row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_regime'").fetchone()
-        if row:
-            try:
-                return json.loads(row["value"])
-            except (json.JSONDecodeError, TypeError):
-                logger.error(
-                    "Failed to parse cached HMM regime prediction from DB",
-                    exc_info=True,
-                )
+        # WO-0924-z2 P6-B2: kv reads via StateDB.kv_get (json.loads inside)
+        val = self._db.kv_get("hmm_regime")
+        if isinstance(val, dict):
+            return val
+        if val is not None:
+            logger.error(
+                "Failed to parse cached HMM regime prediction from DB",
+            )
         return None
 
     def _store_prediction(self, result: Dict):
         """Store prediction in DB."""
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('hmm_regime', ?, ?)""",
-            (json.dumps(result), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("hmm_regime", result)
 
     def _store_training_state(self, features: np.ndarray):
         """Store model parameters in DB for persistence."""
@@ -438,13 +430,7 @@ class HMMRegimeDetector:
             "n_samples": len(features),
             "trained_at": time.time(),
         }
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('hmm_model_state', ?, ?)""",
-            (json.dumps(state), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("hmm_model_state", state)
 
     def _store_label_mapping(self, means: np.ndarray):
         """Store current label-to-state mapping for consistency across retraining."""
@@ -455,26 +441,12 @@ class HMMRegimeDetector:
             "means": means.tolist(),
             "timestamp": time.time(),
         }
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('hmm_label_mapping', ?, ?)""",
-            (json.dumps(mapping), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("hmm_label_mapping", mapping)
 
     def _load_label_mapping(self) -> Optional[Dict]:
         """Load previously stored label mapping from DB."""
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'hmm_label_mapping'"
-        ).fetchone()
-        if row:
-            try:
-                return json.loads(row["value"])
-            except (json.JSONDecodeError, TypeError):
-                return None
-        return None
+        val = self._db.kv_get("hmm_label_mapping")
+        return val if isinstance(val, dict) else None
 
     def _load_training_state(self) -> bool:
         """Load model from DB."""
@@ -483,15 +455,11 @@ class HMMRegimeDetector:
         except ImportError:
             return False
 
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'hmm_model_state'"
-        ).fetchone()
-        if not row:
+        state = self._db.kv_get("hmm_model_state")
+        if not isinstance(state, dict):
             return False
 
         try:
-            state = json.loads(row["value"])
             self._mean = np.array(state["mean"])
             self._std = np.array(state["std"])
 
@@ -586,26 +554,17 @@ class HMMRegimeDetector:
         Returns:
             {"should_retrain": bool, "reason": str, "trades_since": int, "days_since": float}
         """
-        conn = self._db._get_conn()
-
         # Get last training metadata
-        row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_model_state'").fetchone()
+        state = self._db.kv_get("hmm_model_state")
         last_trained_at = 0.0
         last_trained_trades = 0
-        if row:
-            try:
-                state = json.loads(row["value"])
-                last_trained_at = state.get("trained_at", 0.0)
-                last_trained_trades = state.get("n_samples", 0)
-            except (json.JSONDecodeError, TypeError):
-                pass
+        if isinstance(state, dict):
+            last_trained_at = state.get("trained_at", 0.0)
+            last_trained_trades = state.get("n_samples", 0)
 
         # Count total closed trades
         try:
-            trade_count_row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM trade_outcomes WHERE status = 'closed'"
-            ).fetchone()
-            total_closed_trades = trade_count_row["cnt"] if trade_count_row else 0
+            total_closed_trades = self._db.outcomes_count_closed()
         except Exception as e:
             logger.warning("hmm_regime.should_retrain: " + str(e))
             total_closed_trades = 0

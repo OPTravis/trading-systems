@@ -121,43 +121,25 @@ class StrategyEvolver:
 
         Returns: {strategy_name: {"disabled_at": timestamp, "reason": str}}
         """
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'evolved_disabled'"
-        ).fetchone()
-
-        if row:
-            try:
-                raw = json.loads(row["value"])
-                if isinstance(raw, dict):
-                    return {
-                        canonical_strategy(k): v for k, v in raw.items()
-                    }
-            except (json.JSONDecodeError, TypeError):
-                logger.warning(
-                    "Failed to parse evolved_disabled JSON from StateDB", exc_info=True
-                )
+        # WO-0924-z2 P6-B2: kv reads via StateDB.kv_get (json.loads inside)
+        raw = self._db.kv_get("evolved_disabled")
+        if isinstance(raw, dict):
+            return {
+                canonical_strategy(k): v for k, v in raw.items()
+            }
         return {}
 
     def _set_disabled(self, disabled: Dict[str, Dict]):
         """Store disabled strategies."""
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('evolved_disabled', ?, ?)""",
-            (json.dumps(disabled), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("evolved_disabled", disabled)
 
     def _log_audit(self, action: str, details: str):
         """Log evolution action to audit_log."""
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT INTO audit_log (timestamp, action, old_value, new_value, source)
-            VALUES (?, ?, ?, ?, 'strategy_evolver')""",
-            (time.time(), action, None, details),
+        # Legacy column mapping preserved: text lands in new_value (not details),
+        # matching pre-migration rows written by this module.
+        self._db.audit_log(
+            action, old_value=None, new_value=details, source="strategy_evolver"
         )
-        conn.commit()
 
     def _get_regime_adjusted_thresholds(self, regime: Optional[str] = None) -> Dict:
         """Get thresholds adjusted for current HMM market regime.
@@ -186,20 +168,7 @@ class StrategyEvolver:
         """Most recent PF_SHORT_WINDOW_TRADES closed-trade PnLs per strategy."""
         pfs: Dict[str, List[float]] = {}
         try:
-            conn = self._db._get_conn()
-            rows = conn.execute(
-                """SELECT strategy, net_pnl_pct FROM (
-                       SELECT strategy, net_pnl_pct,
-                              ROW_NUMBER() OVER (
-                                  PARTITION BY strategy
-                                  ORDER BY exit_time DESC
-                              ) AS rn
-                       FROM trade_outcomes
-                       WHERE status = 'closed' AND strategy IS NOT NULL
-                         AND net_pnl_pct IS NOT NULL
-                   ) WHERE rn <= ?""",
-                (PF_SHORT_WINDOW_TRADES,),
-            ).fetchall()
+            rows = self._db.outcomes_recent_pnl_per_strategy(PF_SHORT_WINDOW_TRADES)
             for r in rows:
                 pfs.setdefault(r["strategy"], []).append(r["net_pnl_pct"])
         except Exception:
@@ -349,15 +318,8 @@ class StrategyEvolver:
 
         Returns list of changes made.
         """
-        conn = self._db._get_conn()
-
         # Get per-strategy performance (including per-trade PnL for profit factor)
-        rows = conn.execute("""SELECT strategy, COUNT(*) as trades,
-                      SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as wins,
-                      AVG(net_pnl_pct) as avg_pnl
-            FROM trade_outcomes
-            WHERE status = 'closed' AND strategy IS NOT NULL
-            GROUP BY strategy""").fetchall()
+        rows = self._db.outcomes_strategy_perf_rows()
 
         if not rows:
             return []
@@ -365,12 +327,7 @@ class StrategyEvolver:
         # Get per-trade PnL for profit factor calculation
         trade_pnls: Dict[str, List[float]] = {}
         try:
-            pnl_rows = conn.execute(
-                """SELECT strategy, net_pnl_pct
-                FROM trade_outcomes
-                WHERE status = 'closed' AND strategy IS NOT NULL AND net_pnl_pct IS NOT NULL
-                ORDER BY exit_time DESC"""
-            ).fetchall()
+            pnl_rows = self._db.outcomes_strategy_pnls()
             for r in pnl_rows:
                 s = r["strategy"]
                 if s not in trade_pnls:
@@ -485,25 +442,13 @@ class StrategyEvolver:
 
     def get_evolution_report(self) -> str:
         """Format evolution status as report."""
-        conn = self._db._get_conn()
-
         # Get per-strategy stats
-        rows = conn.execute("""SELECT strategy, COUNT(*) as trades,
-                      SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as wins,
-                      AVG(net_pnl_pct) as avg_pnl
-            FROM trade_outcomes
-            WHERE status = 'closed' AND strategy IS NOT NULL
-            GROUP BY strategy""").fetchall()
+        rows = self._db.outcomes_strategy_perf_rows()
 
         # Get per-trade PnL for profit factor
         trade_pnls: Dict[str, List[float]] = {}
         try:
-            pnl_rows = conn.execute(
-                """SELECT strategy, net_pnl_pct
-                FROM trade_outcomes
-                WHERE status = 'closed' AND strategy IS NOT NULL AND net_pnl_pct IS NOT NULL
-                ORDER BY exit_time DESC"""
-            ).fetchall()
+            pnl_rows = self._db.outcomes_strategy_pnls()
             for r in pnl_rows:
                 s = r["strategy"]
                 if s not in trade_pnls:

@@ -425,6 +425,25 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_portfolio_strategy ON portfolio(strategy);
             CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
 
+            -- WO-0924-z2 P6-B2: bull regime transition log (main-DB table;
+            -- DDL moved here from bull_regime._ensure_table so the module
+            -- no longer touches raw SQL)
+            CREATE TABLE IF NOT EXISTS bull_regime_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                bar_ts INTEGER NOT NULL,
+                from_state TEXT,
+                to_state TEXT NOT NULL,
+                reason TEXT,
+                btc_close REAL,
+                btc_sma200 REAL,
+                fng_avg REAL,
+                fng_today INTEGER,
+                adx REAL,
+                conditions_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_bull_regime_log_ts ON bull_regime_log(ts);
+
             -- WO-0924 P2: Ledger (single bookkeeping layer). Append-only
             -- fill event log + shadow book for the parallel-booking trial.
             -- Additive only: no existing table or column is touched.
@@ -485,6 +504,7 @@ class StateDB:
                 conn.commit()
         except Exception as e:
             logger.warning("state_db._init_db: invest_pct migration: " + str(e))
+
 
         # P0-A4 (2026-08-26): idempotency key for trades (prevents duplicate
         # trade rows from double-record paths like bug#13).
@@ -968,15 +988,225 @@ class StateDB:
         )
         self._get_conn().commit()
 
-    def audit_get_recent(self, limit: int = 50) -> List[Dict]:
-        """Get recent audit log entries."""
-        rows = (
-            self._get_conn()
-            .execute(
-                "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+    def audit_get_recent(self, limit: int = 50,
+                         action: Optional[str] = None) -> List[Dict]:
+        """Get recent audit log entries (optionally filtered by action —
+        WO-0924-z2 P6-B2: online_learner's weight-history reader)."""
+        if action is not None:
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT * FROM audit_log WHERE action = ?"
+                    " ORDER BY timestamp DESC LIMIT ?", (action, limit)
+                )
+                .fetchall()
             )
-            .fetchall()
+        else:
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+                )
+                .fetchall()
+            )
+        return [dict(r) for r in rows]
+
+    # ==================== Trade Outcomes (P6-B2 learning chain) ====================
+    # WO-0924-z2 P6-B2: trade_outcomes SQL previously lived in
+    # trade_outcome_recorder (writer) + kelly_sizer / strategy_evolver /
+    # online_learner / strategy_registry / hmm_regime (readers). Moved
+    # here verbatim so schema changes have one owner.
+
+    def outcome_add_entry(self, symbol: str, entry_time: float,
+                          entry_date: str, entry_price: float, qty: float,
+                          score, strategy, factors_json: str,
+                          context_json: str) -> int:
+        """INSERT an open outcome row; returns the new rowid."""
+        cur = self._get_conn().execute(
+            """INSERT INTO trade_outcomes
+                (symbol, entry_time, entry_date, entry_price, qty, score, strategy,
+                 factors_json, context_json, status,
+                 peak_price, trough_price, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
+            (symbol, entry_time, entry_date, entry_price, qty, score,
+             strategy, factors_json, context_json,
+             entry_price, entry_price, entry_time, entry_time),
         )
+        self._get_conn().commit()
+        return cur.lastrowid
+
+    def outcome_get_by_id(self, row_id: int) -> Optional[Dict]:
+        row = self._get_conn().execute(
+            "SELECT * FROM trade_outcomes WHERE id = ?", (row_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def outcome_latest_open(self, symbol: str) -> Optional[Dict]:
+        """Most recent open outcome row for a symbol (peak/trough + full row)."""
+        row = self._get_conn().execute(
+            """SELECT * FROM trade_outcomes
+               WHERE symbol = ? AND status = 'open'
+               ORDER BY entry_time DESC LIMIT 1""",
+            (symbol,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def outcome_update_extremes(self, row_id: int, peak: float,
+                                trough: float, updated_at: float):
+        self._get_conn().execute(
+            """UPDATE trade_outcomes
+            SET peak_price = ?, trough_price = ?, updated_at = ?
+            WHERE id = ?""",
+            (peak, trough, updated_at, row_id),
+        )
+        self._get_conn().commit()
+
+    def outcome_close(self, row_id: int, *, exit_time: float,
+                      exit_price: float, exit_reason: str,
+                      pnl_pct: float, pnl_absolute: float,
+                      net_pnl_pct: float, net_pnl_absolute: float,
+                      time_held_hours: float, max_profit_pct: float,
+                      max_drawdown_pct: float, peak_price: float,
+                      trough_price: float, is_win: bool,
+                      updated_at: float):
+        """Close an outcome row with computed metrics (writer owns the math)."""
+        self._get_conn().execute(
+            """UPDATE trade_outcomes SET
+                exit_time = ?, exit_price = ?, exit_reason = ?,
+                pnl_pct = ?, pnl_absolute = ?,
+                net_pnl_pct = ?, net_pnl_absolute = ?,
+                time_held_hours = ?,
+                max_profit_pct = ?, max_drawdown_pct = ?,
+                peak_price = ?, trough_price = ?,
+                is_win = ?, status = 'closed',
+                updated_at = ?
+            WHERE id = ?""",
+            (exit_time, exit_price, exit_reason,
+             pnl_pct, pnl_absolute, net_pnl_pct, net_pnl_absolute,
+             time_held_hours, max_profit_pct, max_drawdown_pct,
+             peak_price, trough_price, is_win, updated_at, row_id),
+        )
+        self._get_conn().commit()
+
+    def outcomes_get_open(self) -> List[Dict]:
+        rows = self._get_conn().execute(
+            "SELECT * FROM trade_outcomes WHERE status = 'open'"
+            " ORDER BY entry_time DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_get_closed(self, limit: Optional[int] = None,
+                            strategy: Optional[str] = None,
+                            newest_first: bool = True) -> List[Dict]:
+        """Closed outcome rows. limit=None returns all (factor-stats and
+        summary callers iterate order-insensitively; newest_first controls
+        the ORDER BY exit_time clause)."""
+        sql = "SELECT * FROM trade_outcomes WHERE status = 'closed'"
+        params: list = []
+        if strategy:
+            sql += " AND strategy = ?"
+            params.append(strategy)
+        if newest_first:
+            sql += " ORDER BY exit_time DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self._get_conn().execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_count_closed(self) -> int:
+        return self._get_conn().execute(
+            "SELECT COUNT(*) as cnt FROM trade_outcomes"
+            " WHERE status = 'closed'").fetchone()[0]
+
+    def outcomes_count_context_like(self, needle: str, since_ts: float) -> int:
+        """Count closed-window entries whose context_json contains needle
+        (exploration / bull-refresh caps)."""
+        row = self._get_conn().execute(
+            """SELECT COUNT(*) FROM trade_outcomes
+               WHERE context_json LIKE ? AND entry_time >= ?""",
+            (f"%{needle}%", since_ts),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def outcomes_recent_pnl_signals(self, limit: int) -> List[Dict]:
+        """(symbol, net_pnl_pct, is_win, strategy) for kelly sizing."""
+        rows = self._get_conn().execute(
+            """SELECT symbol, net_pnl_pct, is_win, strategy
+               FROM trade_outcomes
+               WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
+               ORDER BY entry_time DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_strategy_perf_rows(self) -> List[Dict]:
+        """Per-strategy trades/wins/avg_pnl aggregates (evolver)."""
+        rows = self._get_conn().execute(
+            """SELECT strategy, COUNT(*) as trades,
+                      SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as wins,
+                      AVG(net_pnl_pct) as avg_pnl
+            FROM trade_outcomes
+            WHERE status = 'closed' AND strategy IS NOT NULL
+            GROUP BY strategy""").fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_strategy_pnls(self) -> List[Dict]:
+        """Per-trade net pnl per strategy, newest first (profit factor)."""
+        rows = self._get_conn().execute(
+            """SELECT strategy, net_pnl_pct
+            FROM trade_outcomes
+            WHERE status = 'closed' AND strategy IS NOT NULL AND net_pnl_pct IS NOT NULL
+            ORDER BY exit_time DESC""").fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_recent_pnl_per_strategy(self, n: int) -> List[Dict]:
+        """Window-function query: most recent n closed pnls per strategy."""
+        rows = self._get_conn().execute(
+            """SELECT strategy, net_pnl_pct FROM (
+                   SELECT strategy, net_pnl_pct,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY strategy
+                              ORDER BY exit_time DESC
+                          ) AS rn
+                   FROM trade_outcomes
+                   WHERE status = 'closed' AND strategy IS NOT NULL
+                     AND net_pnl_pct IS NOT NULL
+               ) WHERE rn <= ?""",
+            (n,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_strategy_rows_win(self) -> List[Dict]:
+        """(strategy, net_pnl_pct, is_win) closed rows (registry weighting)."""
+        rows = self._get_conn().execute(
+            """SELECT strategy, net_pnl_pct, is_win
+            FROM trade_outcomes WHERE status = 'closed'""").fetchall()
+        return [dict(r) for r in rows]
+
+    # ==================== Bull regime transition log (P6-B2) ====================
+    def bull_regime_log_add(self, t: Dict):
+        """Append a regime transition (bull_regime writer)."""
+        self._get_conn().execute(
+            """INSERT INTO bull_regime_log
+                (ts, bar_ts, from_state, to_state, reason,
+                 btc_close, btc_sma200, fng_avg, fng_today, adx, conditions_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (t["ts"], t["bar_ts"], t["from"], t["to"], t["reason"],
+             t.get("btc_close"), t.get("btc_sma200"),
+             t.get("fng_avg"), t.get("fng_today"), t.get("adx"),
+             json.dumps(t.get("conditions", {}))),
+        )
+        self._get_conn().commit()
+
+    def bull_regime_log_recent(self, limit: int = 50) -> List[Dict]:
+        """Recent regime transitions (bull_regime reader)."""
+        rows = self._get_conn().execute(
+            """SELECT ts, from_state, to_state, reason, btc_close,
+                       fng_avg, adx
+                FROM bull_regime_log ORDER BY ts DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ==================== Decisions (TradeJournal) ====================

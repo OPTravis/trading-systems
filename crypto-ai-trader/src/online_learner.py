@@ -83,19 +83,13 @@ class OnlineLearner:
         network filesystems).
         """
         try:
-            conn = self._db._get_conn()
-            row = conn.execute(
-                "SELECT value FROM kv WHERE key = 'learned_factor_weights'"
-            ).fetchone()
-
-            if row:
-                try:
-                    weights = json.loads(row["value"])
-                    # Validate: must have all factors
-                    if all(f in weights for f in FACTOR_NAMES):
-                        return weights
-                except (json.JSONDecodeError, TypeError):
-                    logger.error("Failed to parse factor weights from DB", exc_info=True)
+            # WO-0924-z2 P6-B2: kv reads via StateDB.kv_get (json.loads inside;
+            # parse failures surface as raw str, caught by the isinstance guard below)
+            weights = self._db.kv_get("learned_factor_weights")
+            if isinstance(weights, dict):
+                # Validate: must have all factors
+                if all(f in weights for f in FACTOR_NAMES):
+                    return weights
 
             return dict(DEFAULT_WEIGHTS)
 
@@ -135,9 +129,7 @@ class OnlineLearner:
         - meta: learning metadata (n_trades, learning_rate, etc.)
         Or None if insufficient data.
         """
-        conn = self._db._get_conn()
-        query = "SELECT * FROM trade_outcomes WHERE status = 'closed' ORDER BY exit_time DESC"
-        rows = conn.execute(query).fetchall()
+        rows = self._db.outcomes_get_closed()
 
         if max_trades is not None and len(rows) > max_trades:
             rows = rows[:max_trades]
@@ -145,9 +137,6 @@ class OnlineLearner:
         if len(rows) < min_trades:
             logger.info(f"Insufficient trades for learning: {len(rows)}/{min_trades}")
             return None
-
-        # Convert to dicts
-        rows = [dict(r) for r in rows]
 
         # Extract factor scores and PnL
         factor_scores: Dict[str, List[float]] = {f: [] for f in FACTOR_NAMES}
@@ -271,13 +260,7 @@ class OnlineLearner:
         weights = result["weights"]
 
         # Store in kv table
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('learned_factor_weights', ?, ?)""",
-            (json.dumps(weights), time.time()),
-        )
-        conn.commit()
+        self._db.kv_set("learned_factor_weights", weights)
 
         # Log the change
         changes = []
@@ -373,13 +356,7 @@ class OnlineLearner:
                         )
                         blended[factor] = round(0.6 * recent_w + 0.4 * full_w, 2)
                     # Store the blended weights
-                    conn = self._db._get_conn()
-                    conn.execute(
-                        """INSERT OR REPLACE INTO kv (key, value, updated_at)
-                        VALUES ('learned_factor_weights', ?, ?)""",
-                        (json.dumps(blended), time.time()),
-                    )
-                    conn.commit()
+                    self._db.kv_set("learned_factor_weights", blended)
                     result["drift_reoptimized"] = blended
                     logger.info(
                         "Blended drift-adapted weights (60%% recent + 40%% full-sample)"
@@ -391,11 +368,7 @@ class OnlineLearner:
 
     def get_weight_history(self) -> List[Dict]:
         """Get history of weight changes (from audit_log)."""
-        conn = self._db._get_conn()
-        rows = conn.execute("""SELECT * FROM audit_log
-            WHERE action = 'learned_weights_update'
-            ORDER BY timestamp DESC LIMIT 20""").fetchall()
-        return [dict(r) for r in rows]
+        return self._db.audit_get_recent(limit=20, action="learned_weights_update")
 
     def format_report(self, result: Dict) -> str:
         """Format learning result as human-readable report."""
