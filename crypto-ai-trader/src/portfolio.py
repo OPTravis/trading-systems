@@ -406,6 +406,10 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                 recorder = TradeOutcomeRecorder(db=self._db)
                 entry_rowid = pos.get("entry_rowid")
                 recorder.record_outcome(
+                    bandit_context=pos.get("bandit_context"),
+                    bandit_multiplier=pos.get("bandit_multiplier", 0.8),
+                    sl_mult=pos.get("sl_mult", 1.0),
+                    tp_mult=pos.get("tp_mult", 1.0),
                     symbol=symbol,
                     exit_price=price,
                     exit_reason=exit_reason or pos.get("exit_reason") or "manual",

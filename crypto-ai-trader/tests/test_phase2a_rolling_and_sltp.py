@@ -250,20 +250,17 @@ class TestRecorderEndToEnd:
             strategy="rsi", regime="NEUTRAL", fng_score=55,
             btc_trend="BULLISH")
 
-        fake_pos = {
-            "bandit_context": {"hmm_regime": "bull", "fear_greed": 55,
-                               "btc_trend": "BULLISH", "portfolio_heat": "cold"},
-            "bandit_multiplier": 0.8, "sl_mult": 0.9, "tp_mult": 1.1,
-        }
-
-        class FakePM:
-            positions = {"TESTUSDT": fake_pos}
+        # 1A-2 contract: record_outcome takes bandit_context explicitly
+        # (dependency injection) instead of reaching into PortfolioManager.
+        bandit_context = {"hmm_regime": "bull", "fear_greed": 55,
+                          "btc_trend": "BULLISH", "portfolio_heat": "cold"}
 
         with patch("src.contextual_bandit.get_contextual_bandit",
-                   return_value=bandit), \
-             patch("src.portfolio.PortfolioManager", return_value=FakePM()):
+                   return_value=bandit):
             out = recorder.record_outcome(
-                symbol="TESTUSDT", exit_price=110.0, exit_reason="tp1")
+                symbol="TESTUSDT", exit_price=110.0, exit_reason="tp1",
+                bandit_context=bandit_context, bandit_multiplier=0.8,
+                sl_mult=0.9, tp_mult=1.1)
         assert out is not None
 
         # rolling stats refreshed with the closed trade

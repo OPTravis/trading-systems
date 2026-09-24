@@ -155,7 +155,7 @@ class KellyPositionSizer:
         """
         try:
             # lazy import: avoid circular dependency at module load time
-            from src.trade_executor import _check_btc_trend
+            from src.btc_trend_gate import _check_btc_trend
 
             _multiplier, info = _check_btc_trend()
             return info.get("tier") == "CONFIRMED_BULL"
@@ -188,7 +188,7 @@ class KellyPositionSizer:
             return False
         try:
             # lazy import: avoid circular dependency at module load time
-            from src.trade_executor import _check_btc_trend
+            from src.btc_trend_gate import _check_btc_trend
 
             multiplier, _info = _check_btc_trend()
             if multiplier <= 0:

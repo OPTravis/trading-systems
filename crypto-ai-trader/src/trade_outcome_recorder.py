@@ -196,6 +196,10 @@ class TradeOutcomeRecorder:
         exit_price: float,
         exit_reason: str = "unknown",
         entry_id: Optional[int] = None,
+        bandit_context: Optional[Dict] = None,
+        bandit_multiplier: float = 0.8,
+        sl_mult: float = 1.0,
+        tp_mult: float = 1.0,
     ) -> Optional[Dict]:
         """Record trade exit and compute derived metrics.
 
@@ -312,21 +316,12 @@ class TradeOutcomeRecorder:
         # Update ContextualBandit with trade outcome for learning
         try:
             from src.contextual_bandit import get_contextual_bandit
-            from src.portfolio import PortfolioManager
 
             bandit = get_contextual_bandit()
-            # Try to get bandit context from portfolio position (stored at entry time)
-            bandit_context = None
-            bandit_multiplier = 0.8
-            pos = {}
-            try:
-                pm = PortfolioManager()
-                pos = pm.positions.get(symbol, {})
-                bandit_context = pos.get("bandit_context")
-                bandit_multiplier = pos.get("bandit_multiplier", 0.8)
-            except Exception as e:
-                logger.warning("trade_outcome_recorder.record_outcome: " + str(e))
-                pass
+            # WO-0924-z 1A-2: caller may pass the bandit context captured
+            # at entry; otherwise reconstruct from the stored row (the
+            # PortfolioManager back-query is gone — it was the portfolio
+            # <-> recorder import cycle).
             # Fallback: reconstruct context from row data
             if bandit_context is None:
                 try:
@@ -356,15 +351,14 @@ class TradeOutcomeRecorder:
             # reconciler fill-booking path lands here too, so both the
             # normal exit and the booked-fill close update the arms).
             try:
-                # multipliers default to 1.0 when the position metadata
-                # (or the whole portfolio manager) is unavailable
-                sl_mult = float(pos.get("sl_mult", 1.0))
-                tp_mult = float(pos.get("tp_mult", 1.0))
+                # 1A-2: SL/TP multipliers are injected by the caller
+                # (captured at entry, same as bandit_context)
                 bandit.update_sltp(
                     context=bandit_context or {
                         "hmm_regime": "sideways", "fear_greed": 50,
                         "btc_trend": "NEUTRAL", "portfolio_heat": "cold"},
-                    sl_mult=sl_mult, tp_mult=tp_mult, pnl_pct=net_pnl_pct,
+                    sl_mult=float(sl_mult), tp_mult=float(tp_mult),
+                    pnl_pct=net_pnl_pct,
                 )
                 logger.info(
                     f"ContextualBandit SL/TP arms updated: pnl={net_pnl_pct:+.2f}% "
