@@ -1,0 +1,7210 @@
+{
+ "_meta": {
+  "engine": "B (shared _adapt_special_phase) + reference semantics",
+  "freeze": [
+   "requests.get -> OSError",
+   "HMM cached -> None",
+   "CVaR -> unavailable",
+   "bandit sltp -> (1.0, 1.0)",
+   "bandit size -> 0.8 (cold-start, no overlay)"
+  ],
+  "note": "regenerated post-refactor under frozen externals; the frozen contract makes engine A == engine B by construction and the parity tests pin it forever",
+  "source": "src/scan_phases.py:_adapt_special_phase"
+ },
+ "deep_value_btc": {
+  "10": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "15": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "20": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "24": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "25": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "30": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "40": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "45": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "5": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "50": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "55": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "60": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "75": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: enabled \u00d71.2 \u2014 greed regime",
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -2.0,
+    "interval_hours": 8,
+    "max_dca_rounds": 10,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced grid in greed (volatility expansion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "80": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "95": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  }
+ },
+ "fear_accum": {
+  "10": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "15": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "20": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "24": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "25": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "30": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "40": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "45": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "5": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "50": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "55": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "60": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "75": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: enabled \u00d71.2 \u2014 greed regime",
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -2.0,
+    "interval_hours": 8,
+    "max_dca_rounds": 10,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced grid in greed (volatility expansion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "80": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "95": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 50,
+    "max_position_pct": 5,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 0.5,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  }
+ },
+ "hash_ribbon": {
+  "50": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 30,
+    "max_position_pct": 10.0,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  }
+ },
+ "qfl_panic": {
+  "10": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "15": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "20": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "24": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "25": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "30": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "40": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -4.0,
+    "interval_hours": 18,
+    "max_dca_rounds": 7,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "45": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "5": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: disabled \u2014 fear regime (ADX 50)",
+    "dca: size \u00d71.1 \u2014 fear regime DCA (P1: reduced from 1.5)",
+    "trend: disabled \u2014 fear regime",
+    "rsi_reversion: size \u00d71.3 \u2014 fear regime RSI",
+    "bollinger: size \u00d71.2 \u2014 fear regime BB",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -5.0,
+    "interval_hours": 24,
+    "max_dca_rounds": 6,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 40,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_FEAR",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced Bollinger in fear (volatility mean reversion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced DCA in fear (buy dips cautiously)",
+     "size_multiplier": 1.1,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (ADX=50, vol=LOW)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced RSI in fear (oversold bounces)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in fear (trend may be false)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "50": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "55": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "60": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -3.0,
+    "interval_hours": 12,
+    "max_dca_rounds": 8,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "NEUTRAL",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "75": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "grid: enabled \u00d71.2 \u2014 greed regime",
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -2.0,
+    "interval_hours": 8,
+    "max_dca_rounds": 10,
+    "order_size_pct": 8
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50.0,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced grid in greed (volatility expansion)",
+     "size_multiplier": 1.2,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "80": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  },
+  "95": {
+   "bandit_sltp": {
+    "sl_mult": 1.0,
+    "tp_mult": 1.0
+   },
+   "changes": [
+    "dca: disabled \u2014 greed regime",
+    "trend: size \u00d71.3 \u2014 greed regime trend",
+    "rsi_reversion: disabled \u2014 greed regime",
+    "GARCH low(1d): SL=5.0%, TP=8.0%",
+    "Bandit SL/TP x1.0/x1.0 (clamps SL4-15%, TP6-25%)"
+   ],
+   "dca_params": {
+    "dip_threshold_pct": -1.5,
+    "interval_hours": 6,
+    "max_dca_rounds": 12,
+    "order_size_pct": 6
+   },
+   "global": {
+    "cash_reserve_pct": 60,
+    "max_position_pct": 3,
+    "max_total_exposure_pct": 50,
+    "score_threshold": 50
+   },
+   "hmm_regime": null,
+   "regime": "EXTREME_GREED",
+   "strategies": {
+    "bollinger": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "dca": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (no dips to buy)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "grid": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "rsi_reversion": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "disabled in greed (overbought stays overbought)",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "trend": {
+     "enabled": true,
+     "max_hold_hours": 48,
+     "reason": "enhanced trend in greed (momentum continuation)",
+     "size_multiplier": 1.3,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    },
+    "vwap": {
+     "enabled": false,
+     "max_hold_hours": 48,
+     "reason": "default",
+     "size_multiplier": 1.0,
+     "sl_pct": 5.0,
+     "tp_levels": [
+      {
+       "pct": 8.0,
+       "size_pct": 40
+      },
+      {
+       "pct": 12.8,
+       "size_pct": 40
+      },
+      {
+       "pct": 20.0,
+       "size_pct": 20
+      }
+     ]
+    }
+   },
+   "volatility_adjustment": 1.0
+  }
+ }
+}

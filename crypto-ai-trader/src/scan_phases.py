@@ -21,6 +21,43 @@ from src.trade_executor import count_active_positions, get_position_tier
 logger = logging.getLogger(__name__)
 
 
+def _adapt_special_phase(
+    fear_greed: int,
+    btc_trend: str = "BEARISH",
+    *,
+    score_threshold: float = 50,
+    cash_reserve_pct: float = 50,
+    max_position_pct=None,
+    dca_size_mult=None,
+) -> Dict:
+    """P5 (1B): unified conservative-parameter adaptation for special phases.
+
+    StrategyAdaptor is used here as a PARAMETER PROVIDER ONLY — regime
+    detection plus a conservative override set. Strategy selection itself
+    lives in StrategyRegistry (research_phase weighted voting); these
+    special phases (deep-value BTC, fear accumulation, QFL panic bottom,
+    hash ribbon) each already know their strategy and only need the
+    sizing/threshold envelope.
+
+    Replaces four hand-written adapt+override sequences; output must stay
+    byte-identical (see tests/test_wo0924_p5_unification.py A/B snapshot).
+    """
+    from src.strategy_adaptor import StrategyAdaptor
+
+    adaptor = StrategyAdaptor()
+    adapted = adaptor.adapt(
+        fear_greed=fear_greed,
+        btc_trend=btc_trend,
+        btc_price_change_24h=0,
+    )
+    adapted["global"]["score_threshold"] = score_threshold
+    adapted["global"]["cash_reserve_pct"] = cash_reserve_pct
+    if max_position_pct is not None:
+        adapted["global"]["max_position_pct"] = max_position_pct
+    if dca_size_mult is not None and "dca" in adapted.get("strategies", {}):
+        adapted["strategies"]["dca"]["size_multiplier"] = dca_size_mult
+    return adapted
+
 
 
 
@@ -152,17 +189,9 @@ def _try_deep_value_btc(fng, client, scanner, portfolio, risk_mgr):
 
     # Build synthetic opportunity (FeishuNotifier already imported at top)
     from src.market_researcher import MarketResearcher
-    from src.strategy_adaptor import StrategyAdaptor
 
-    adaptor = StrategyAdaptor()
-    adapted = adaptor.adapt(
-        fear_greed=fng_api,
-        btc_trend="BEARISH",
-        btc_price_change_24h=0,
-    )
-    adapted["global"]["score_threshold"] = 50
-    adapted["global"]["cash_reserve_pct"] = 50
-    adapted["global"]["max_position_pct"] = 5
+    adapted = _adapt_special_phase(
+        fng_api, score_threshold=50, cash_reserve_pct=50, max_position_pct=5)
 
     deep_opp = {
         "symbol": SYMBOL,
@@ -329,20 +358,11 @@ def _try_fear_accumulation(all_opportunities, fng, client, scanner, portfolio, r
     # Return a full context dict matching _step_scan_opportunities output
     # with the fear opportunity injected
     from src.market_researcher import MarketResearcher
-    from src.strategy_adaptor import StrategyAdaptor
-    adaptor = StrategyAdaptor()
-    adapted = adaptor.adapt(
-        fear_greed=fng,
-        btc_trend="BEARISH",
-        btc_price_change_24h=0,
-    )
-    # Override threshold and position sizing for fear accumulation
-    adapted["global"]["score_threshold"] = 50
-    adapted["global"]["cash_reserve_pct"] = 50  # keep 50% cash reserve
-    adapted["global"]["max_position_pct"] = 5   # max 5% per position
-    # Reduce DCA size multiplier for fear mode (conservative entry)
-    if "dca" in adapted.get("strategies", {}):
-        adapted["strategies"]["dca"]["size_multiplier"] = 0.5
+    # P5: conservative envelope for fear accumulation — 50% threshold /
+    # 50% cash reserve / 5% max position / halved DCA size
+    adapted = _adapt_special_phase(
+        fng, score_threshold=50, cash_reserve_pct=50, max_position_pct=5,
+        dca_size_mult=0.5)
 
     result = {
         "client": client,
@@ -407,12 +427,8 @@ def _try_qfl_fallback(client, fng, balance):
     )
 
     from src.market_researcher import MarketResearcher
-    from src.strategy_adaptor import StrategyAdaptor
-    adaptor = StrategyAdaptor()
-    adapted = adaptor.adapt(fear_greed=fng, btc_trend="BEARISH", btc_price_change_24h=0)
-    adapted["global"]["score_threshold"] = 50
-    adapted["global"]["cash_reserve_pct"] = 60
-    adapted["global"]["max_position_pct"] = 3
+    adapted = _adapt_special_phase(
+        fng, score_threshold=50, cash_reserve_pct=60, max_position_pct=3)
 
     fear_opp = {
         "symbol": symbol,
@@ -494,12 +510,10 @@ def _try_hash_ribbon(client, portfolio, risk_mgr):
     price = client.get_ticker_price(symbol)
 
     from src.market_researcher import MarketResearcher
-    from src.strategy_adaptor import StrategyAdaptor
-    # Hash ribbon doesn't depend on fear/greed — use neutral adaptation
-    adaptor = StrategyAdaptor()
-    adapted = adaptor.adapt(fear_greed=50, btc_trend="NEUTRAL", btc_price_change_24h=0)
-    adapted["global"]["score_threshold"] = 50  # high conviction — lower threshold
-    adapted["global"]["cash_reserve_pct"] = 30  # deploy up to 20%, keep 30% reserve
+    # Hash ribbon doesn't depend on fear/greed — neutral adaptation,
+    # high conviction threshold, keep 30% reserve
+    adapted = _adapt_special_phase(
+        50, btc_trend="NEUTRAL", score_threshold=50, cash_reserve_pct=30)
 
     hash_opp = {
         "symbol": symbol,

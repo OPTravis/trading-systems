@@ -1,7 +1,14 @@
 """
-Strategy Adaptor - Dynamic strategy selection based on market regime.
+Strategy Adaptor — market-regime PARAMETER PROVIDER (P5 role, 2026-09-24).
 
-Determines trading strategy based on Fear & Greed Index, BTC trend, and volatility.
+Produces the execution envelope (regime label, score threshold, cash
+reserve, per-strategy size/SL/hold, GARCH & bandit SL/TP multipliers)
+from Fear & Greed Index, BTC trend and volatility inputs.
+
+It does NOT select strategies anymore — strategy selection is owned by
+StrategyRegistry (weighted voting, research_phase). Scan phases call the
+adaptor purely for its parameter face; special phases wrap it via
+scan_phases._adapt_special_phase with conservative overrides.
 """
 
 import logging
@@ -52,7 +59,9 @@ def _load_risk_caps() -> Dict[str, float]:
 
 
 class StrategyAdaptor:
-    """Adapts trading strategy based on market regime."""
+    """Market-regime PARAMETER PROVIDER (P5): computes the execution
+    envelope (threshold, sizing, SL/TP). Strategy selection itself is
+    owned by StrategyRegistry; this class no longer selects strategies."""
 
     # Cache TTL (class constant — same for all instances)
     _cache_ttl: float = 300  # 5 minutes
