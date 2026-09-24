@@ -486,7 +486,11 @@ class StateDB:
                 diff_count INTEGER NOT NULL DEFAULT 0,
                 pending_count INTEGER NOT NULL DEFAULT 0,
                 diff_kinds TEXT,                -- JSON array of kinds
-                consecutive_clean INTEGER NOT NULL DEFAULT 0
+                consecutive_clean INTEGER NOT NULL DEFAULT 0,
+                dust_exempt_count INTEGER NOT NULL DEFAULT 0
+                -- Travis A (2026-09-24): per-round dust-tier position_qty
+                -- exemptions (gap < DRIFT_QTY_ABS) — never silent, feeds
+                -- the weekly report's exemption column
             );
             CREATE INDEX IF NOT EXISTS idx_ledger_shadow_rounds_ts
                 ON ledger_shadow_rounds(ts);
@@ -504,6 +508,19 @@ class StateDB:
                 conn.commit()
         except Exception as e:
             logger.warning("state_db._init_db: invest_pct migration: " + str(e))
+
+        # Travis A (2026-09-24): dust_exempt_count for ledger_shadow_rounds
+        # (existing production table predates the dust-exemption column)
+        try:
+            cols = {r[1] for r in conn.execute(
+                "PRAGMA table_info(ledger_shadow_rounds)").fetchall()}
+            if "dust_exempt_count" not in cols:
+                conn.execute(
+                    "ALTER TABLE ledger_shadow_rounds "
+                    "ADD COLUMN dust_exempt_count INTEGER NOT NULL DEFAULT 0")
+                conn.commit()
+        except Exception as e:
+            logger.warning("state_db._init_db: dust_exempt migration: " + str(e))
 
 
         # P0-A4 (2026-08-26): idempotency key for trades (prevents duplicate

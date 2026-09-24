@@ -66,6 +66,14 @@ DEFAULT_MODE = "shadow"
 
 #: quantity below this is "no position" (matches portfolio dust semantics)
 EPS_QTY = 1e-9
+#: dust-tier gap exemption for position_qty shadow diffs (Travis A,
+#: 2026-09-24): an abs shadow-vs-live gap below this is NOT a true
+#: diff — same semantic as portfolio_reconciler.DRIFT_QTY_ABS (dust
+#: remainders are not drift). Demoted to the info layer: streak keeps
+#: running, but every exempted round writes a LEDGER_DUST_EXEMPT audit
+#: row and counts in the weekly report's exemption column (never
+#: silent). Gaps >= this value still report as true diffs.
+DRIFT_QTY_ABS = 0.001
 #: fuzzy trade-row matching tolerances (BUY rows have no client_order_id)
 FUZZY_TS_WINDOW_S = 300.0
 FUZZY_QTY_REL = 0.01
@@ -78,14 +86,22 @@ PENDING_MAX_ROUNDS = 2
 # P2-④ promotion gate (shadow -> primary switchover readiness)
 #
 # PROMOTE_ROUNDS is the "N consecutive clean rounds" threshold that lets
-# the shadow book REQUEST a promotion review:
-#   N = 432 = 3 consecutive fully-clean days at the 10-minute scan
-#       cadence (144 rounds/day).
+# the shadow book REQUEST a promotion review.
+#
+# 2026-09-24 (Travis C, option ②): 432 -> 216. The original acceptance
+# semantics is "3 consecutive fully-clean days at the 10-minute scan
+# cadence" = 432 at 144 rounds/day. After the ded9128 clock-starvation
+# fix the effective cadence is one shadow_diff per 20-minute gate cycle
+# (72 rounds/day), so the same 3-clean-days intent is exactly 216.
+# We changed the denominator, not the semantics.
+#
 # Streak reset rules (mirrors shadow_diff's consecutive_clean semantics):
 #   - any round with a TRUE diff          -> streak resets to 0
 #   - any round left in the PENDING layer -> streak resets to 0
 #     (pending means the legacy pipeline still hasn't settled its own
 #     cleanup — the two books are not yet provably in agreement)
+#   - dust-tier position_qty gaps         -> streak unaffected (info
+#     layer exemption, gap < DRIFT_QTY_ABS — see _positions_diff)
 #   - shadow_diff internal errors         -> streak is neither advanced
 #     nor reset (the round didn't run), counted as 'error' rounds in
 #     the weekly report instead.
@@ -94,7 +110,7 @@ PENDING_MAX_ROUNDS = 2
 # cycle can notify again). It NEVER switches modes: flipping to primary
 # is a separate, owner-approved `python -m src.ledger set-mode primary`.
 # ---------------------------------------------------------------------------
-PROMOTE_ROUNDS = 432
+PROMOTE_ROUNDS = 216
 PROMOTE_NOTIFIED_KEY = "ledger:shadow:promote_notified"
 
 
@@ -400,6 +416,7 @@ def _positions_diff(db, conn, pending_ages: Dict[str, int]) -> tuple:
     """
     true_diffs: List[Dict] = []
     pending: List[Dict] = []
+    dust_exemptions: List[Dict] = []
     shadow = {
         r["symbol"]: float(r["net_qty"] or 0)
         for r in conn.execute(
@@ -413,7 +430,21 @@ def _positions_diff(db, conn, pending_ages: Dict[str, int]) -> tuple:
     for sym in sorted(set(shadow) | set(live)):
         sh_qty = shadow.get(sym, 0.0)
         lv_qty = live.get(sym, 0.0)
-        if abs(sh_qty - lv_qty) <= max(EPS_QTY, abs(lv_qty) * 0.005):
+        gap = abs(sh_qty - lv_qty)
+        if gap <= max(EPS_QTY, abs(lv_qty) * 0.005):
+            # equal (EPS judgment untouched — constraint A-③)
+            pending_ages.pop(sym, None)
+            continue
+        if gap < DRIFT_QTY_ABS:
+            # Travis A (2026-09-24): dust-tier gap — same semantic as
+            # the reconciler's DRIFT_QTY_ABS. NOT a true diff, does not
+            # break the streak, lands in the info layer + audit + the
+            # weekly exemption column (never silent). Gaps >=
+            # DRIFT_QTY_ABS fall through to the pending/true-diff flow.
+            dust_exemptions.append({
+                "kind": "position_qty_dust", "symbol": sym,
+                "shadow_qty": sh_qty, "live_qty": lv_qty, "gap": gap,
+            })
             pending_ages.pop(sym, None)
             continue
         row = db.portfolio_get(sym)
@@ -431,7 +462,7 @@ def _positions_diff(db, conn, pending_ages: Dict[str, int]) -> tuple:
             "shadow_qty": sh_qty, "live_qty": lv_qty,
         })
         pending_ages.pop(sym, None)
-    return true_diffs, pending
+    return true_diffs, pending, dust_exemptions
 
 
 def _traces_diff(conn, bootstrap_ts: float) -> List[Dict]:
@@ -566,10 +597,12 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
             str(k): int(v) for k, v in (stats.get("pending_ages") or {}).items()
         }
 
-        true_diffs, pending = _positions_diff(db, conn, pending_ages)
+        true_diffs, pending, dust_exemptions = _positions_diff(
+            db, conn, pending_ages)
         true_diffs.extend(_traces_diff(conn, bootstrap_ts))
 
         rounds = int(stats.get("rounds") or 0) + 1
+        # dust-tier exemptions do NOT break the clean streak (Travis A)
         clean = not true_diffs and not pending
         consecutive_clean = int(stats.get("consecutive_clean") or 0) + 1 if clean else 0
 
@@ -584,6 +617,7 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
             "shadow_open": conn.execute(
                 "SELECT COUNT(*) FROM ledger_shadow_positions"
             ).fetchone()[0],
+            "dust_exemptions": dust_exemptions,
         }
 
         db.kv_set(STATS_KEY, {
@@ -600,11 +634,36 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
         conn.execute(
             "INSERT INTO ledger_shadow_rounds "
             "(ts, round, round_id, outcome, diff_count, pending_count, "
-            " diff_kinds, consecutive_clean) VALUES (?,?,?,?,?,?,?,?)",
+            " diff_kinds, consecutive_clean, dust_exempt_count) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (time.time(), rounds, round_id, outcome, len(true_diffs),
-             len(pending), json.dumps(kinds), consecutive_clean),
+             len(pending), json.dumps(kinds), consecutive_clean,
+             len(dust_exemptions)),
         )
         conn.commit()
+
+        # Travis A constraint ①: exemptions are never silent — one
+        # aggregated audit row per exempted round (per-symbol detail in
+        # the payload).
+        if dust_exemptions:
+            try:
+                db.audit_log(
+                    "LEDGER_DUST_EXEMPT",
+                    {"round": rounds, "exemptions": dust_exemptions},
+                    source="ledger",
+                )
+            except Exception:
+                logger.warning("ledger: dust-exempt audit write failed",
+                               exc_info=True)
+            logger.info(
+                "ledger shadow: round %d dust-exempted %d position_qty "
+                "gap(s) (< %s): %s",
+                rounds, len(dust_exemptions), DRIFT_QTY_ABS,
+                ", ".join(
+                    "%s(gap=%.6f)" % (e["symbol"], e["gap"])
+                    for e in dust_exemptions
+                )[:300],
+            )
 
         # P2-④ promotion latch: notify once per clean cycle at the
         # threshold; a non-clean round re-arms the latch for the next
@@ -654,6 +713,7 @@ def shadow_diff(db=None, round_id: Optional[str] = None, emit: bool = True) -> D
             "bootstrap_ts": bootstrap_ts,
             "true_diffs": true_diffs,
             "pending": pending,
+            "dust_exemptions": dust_exemptions,
             "clean": clean,
             "consecutive_clean": consecutive_clean,
             "info": info,
@@ -748,8 +808,9 @@ def promote_status(db=None) -> Dict:
     return {
         "threshold_rounds": PROMOTE_ROUNDS,
         "threshold_desc": (
-            "432 = 3 consecutive fully-clean days at the 10-min scan "
-            "cadence (144 rounds/day)"
+            "216 = 3 consecutive fully-clean days at the effective "
+            "20-min gate cadence after the ded9128 clock fix "
+            "(72 rounds/day; was 432 @ 144/day pre-fix)"
         ),
         "current_streak": current,
         "remaining_rounds": max(0, PROMOTE_ROUNDS - current),
@@ -784,21 +845,28 @@ def shadow_report(db=None, days: int = 7) -> Dict:
     cutoff = time.time() - days * 86400
     rows = conn.execute(
         """SELECT ts, round, outcome, diff_count, pending_count,
-                  diff_kinds, consecutive_clean
+                  diff_kinds, consecutive_clean,
+                  COALESCE(dust_exempt_count, 0) AS dust_exempt_count
            FROM ledger_shadow_rounds WHERE ts >= ? ORDER BY ts""",
         (cutoff,),
     ).fetchall()
 
     daily: Dict[str, Dict] = {}
     kinds_total: Dict[str, int] = {}
+    dust_total = 0
     for r in rows:
         day = time.strftime("%Y-%m-%d", time.localtime(r["ts"]))
         d = daily.setdefault(day, {
             "date": day, "rounds": 0, "clean": 0, "diff": 0,
             "pending": 0, "error": 0, "diffs_by_kind": {},
+            # Travis A ①: per-day dust exemption count (own column in
+            # the weekly report — exemptions are never silent)
+            "dust_exempt": 0,
         })
         d["rounds"] += 1
         d[r["outcome"]] = d.get(r["outcome"], 0) + 1
+        d["dust_exempt"] += int(r["dust_exempt_count"] or 0)
+        dust_total += int(r["dust_exempt_count"] or 0)
         if r["diff_count"]:
             try:
                 kinds = json.loads(r["diff_kinds"] or "[]")
@@ -823,6 +891,7 @@ def shadow_report(db=None, days: int = 7) -> Dict:
         "diff_rounds": diff_n,
         "pending_rounds": pend_n,
         "error_rounds": err_n,
+        "dust_exempt_total": dust_total,
         "diffs_by_kind": kinds_total,
         "max_consecutive_clean": (
             max((r["consecutive_clean"] for r in rows), default=0)
