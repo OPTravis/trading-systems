@@ -135,13 +135,8 @@ class CVaRRiskManager:
                 "recommendations": [],
             }
 
-        # Collect returns from trade outcomes
-        conn = self._db._get_conn()
-        rows = conn.execute("""SELECT net_pnl_pct FROM trade_outcomes
-            WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
-            ORDER BY exit_time DESC LIMIT 100""").fetchall()
-
-        returns = [r["net_pnl_pct"] for r in rows] if rows else []
+        # Collect returns from trade outcomes (P6-B3: StateDB method)
+        returns = self._db.outcomes_recent_net_pnls(100)
 
         # If insufficient history, use position-level estimates
         if len(returns) < 10:

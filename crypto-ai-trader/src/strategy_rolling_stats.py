@@ -55,12 +55,10 @@ def refresh_rolling_stats(db=None) -> Dict[str, Dict]:
     now = time.time()
     stats: Dict[str, Dict] = {}
     try:
-        rows = db._get_conn().execute(
-            """SELECT strategy, exit_time, net_pnl_pct, is_win
-            FROM trade_outcomes
-            WHERE status = 'closed' AND strategy IS NOT NULL
-            ORDER BY exit_time DESC"""
-        ).fetchall()
+        # P6-B3: outcomes_get_closed() + python-side NULL-strategy filter
+        # (row-for-row equivalent to the old 4-column projection).
+        rows = [r for r in db.outcomes_get_closed()
+                if r["strategy"] is not None]
         by_strategy: Dict[str, List[Dict]] = {}
         for r in rows:
             by_strategy.setdefault(r["strategy"], []).append(dict(r))

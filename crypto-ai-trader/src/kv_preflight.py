@@ -55,17 +55,8 @@ ESCALATE_AFTER_S = 2 * 3600
 
 
 def _kv_age_s(db: Any, key: str) -> Optional[float]:
-    row = (
-        db._get_conn()
-        .execute("SELECT updated_at FROM kv WHERE key = ?", (key,))
-        .fetchone()
-    )
-    if row is None:
-        return None
-    try:
-        return max(0.0, time.time() - float(row["updated_at"]))
-    except (TypeError, ValueError, KeyError, IndexError):
-        return None
+    # P6-B3: StateDB.kv_age_seconds — same None-on-absent/unreadable contract.
+    return db.kv_age_seconds(key)
 
 
 def _db_is_transparent(db, log) -> bool:
@@ -154,13 +145,9 @@ def run(db: Any, log: Optional[logging.Logger] = None) -> Dict[str, Any]:
 
         # -- portfolio table: readable + fresh --
         try:
-            rows = (
-                db._get_conn()
-                .execute(
-                    "SELECT symbol, quantity, entry_price, "
-                    "updated_at FROM portfolio")
-                .fetchall()
-            )
+            # P6-B3: StateDB portfolio reader (dict rows keep the
+            # key-based consumption below unchanged)
+            rows = list(db.portfolio_get_all().values())
         except Exception as exc:  # noqa: BLE001
             _fail("portfolio_table", f"read failed: {exc}", {})
         else:

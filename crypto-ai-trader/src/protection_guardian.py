@@ -129,13 +129,12 @@ def _audit(action: str, details: dict) -> None:
     try:
         import json as _json
         from src.state_db import get_state_db
-        conn = get_state_db()._get_conn()
-        conn.execute(
-            "INSERT INTO audit_log (timestamp, action, details)"
-            " VALUES (?,?,?)",
-            (time.time(), action,
-             _json.dumps(details, ensure_ascii=False)))
-        conn.commit()
+        # P6-B3: StateDB.audit_log replaces the direct INSERT. details is
+        # pre-dumped with ensure_ascii=False so the stored row bytes match
+        # the legacy write; source now records the default 'system'
+        # instead of NULL (fallback-only path; readers grep by action).
+        get_state_db().audit_log(
+            action, _json.dumps(details, ensure_ascii=False))
     except Exception:
         logger.warning("protection_guardian: audit write failed (%s)",
                        action, exc_info=True)

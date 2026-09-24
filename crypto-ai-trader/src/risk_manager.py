@@ -1432,32 +1432,26 @@ class RiskManager:
         from src.state_db import get_state_db
 
         db = get_state_db()
-        # NOTE: Using _get_conn() directly because StateDB lacks a public method
-        # for querying trade_outcomes. Consider adding db.trade_outcomes_get_recent().
-        conn = db._get_conn()
+        # P6-B3: outcomes_recent_net_pnls replaces the direct trade_outcomes
+        # query (exit_time vs entry_time ordering is immaterial — the
+        # consumer only computes order-insensitive aggregates; the unused
+        # is_win column is dropped along with it).
+        pnls = db.outcomes_recent_net_pnls(lookback_trades)
 
-        # Get recent closed trades
-        rows = conn.execute(
-            """SELECT net_pnl_pct, is_win FROM trade_outcomes
-               WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
-               ORDER BY entry_time DESC LIMIT ?""",
-            (lookback_trades,),
-        ).fetchall()
-
-        if not rows or len(rows) < 5:
+        if not pnls or len(pnls) < 5:
             return {
                 "kelly_fraction": 0.10,  # conservative default
                 "win_rate": 0.5,
                 "profit_ratio": 1.0,
-                "trades_analyzed": len(rows) if rows else 0,
+                "trades_analyzed": len(pnls) if pnls else 0,
                 "recommendation": "交易數據不足，使用保守倉位 10%",
             }
 
         # Calculate statistics
-        wins = [r[0] for r in rows if r[0] > 0]
-        losses = [abs(r[0]) for r in rows if r[0] < 0]
+        wins = [v for v in pnls if v > 0]
+        losses = [abs(v) for v in pnls if v < 0]
 
-        p = len(wins) / len(rows)  # win rate
+        p = len(wins) / len(pnls)  # win rate
         q = 1 - p  # loss rate
 
         avg_win = sum(wins) / len(wins) if wins else 0
@@ -1485,7 +1479,7 @@ class RiskManager:
             "kelly_fraction": round(kelly_capped, 4),
             "win_rate": round(p, 4),
             "profit_ratio": round(b, 4),
-            "trades_analyzed": len(rows),
+            "trades_analyzed": len(pnls),
             "recommendation": recommendation,
         }
 

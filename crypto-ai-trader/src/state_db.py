@@ -444,6 +444,45 @@ class StateDB:
             );
             CREATE INDEX IF NOT EXISTS idx_bull_regime_log_ts ON bull_regime_log(ts);
 
+            -- P6-B3: paper trading store (DDL absorbed from paper_trader)
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id TEXT PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                order_type TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                fill_price REAL NOT NULL,
+                slippage_pct REAL,
+                fee_usdt REAL,
+                notional_usdt REAL,
+                status TEXT DEFAULT 'filled',
+                timestamp REAL NOT NULL,
+                details TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol);
+            CREATE INDEX IF NOT EXISTS idx_paper_trades_time ON paper_trades(timestamp);
+
+            CREATE TABLE IF NOT EXISTS paper_portfolio (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS paper_pending_orders (
+                id TEXT PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                order_type TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                price REAL NOT NULL,
+                stop_price REAL,
+                status TEXT DEFAULT 'open',
+                created_at REAL NOT NULL,
+                expires_at REAL,
+                details TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_paper_pending_symbol ON paper_pending_orders(symbol);
+
             -- WO-0924 P2: Ledger (single bookkeeping layer). Append-only
             -- fill event log + shadow book for the parallel-booking trial.
             -- Additive only: no existing table or column is touched.
@@ -667,6 +706,131 @@ class StateDB:
         symbol = symbol.replace("/", "")
         self._get_conn().execute("DELETE FROM portfolio WHERE symbol = ?", (symbol,))
         self._get_conn().commit()
+
+    def portfolio_set_stop_loss(self, symbol: str,
+                                stop_loss: Optional[float]):
+        """Update only stop_loss (touches updated_at). WO-0924-z2 P6-B3:
+        cmd_trailing_check sl_reconcile."""
+        symbol = symbol.replace("/", "")
+        self._get_conn().execute(
+            "UPDATE portfolio SET stop_loss=?, updated_at=? WHERE symbol=?",
+            (stop_loss, time.time(), symbol))
+        self._get_conn().commit()
+
+    # ==================== Paper Trading Store (P6-B3) ====================
+    # DDL lives in _init_db; methods below replace paper_trader's raw SQL.
+    # commit=False defers the commit — the P3-1 atomic fill pipeline
+    # (_begin/_commit/_rollback_transaction) batches all writes on the
+    # shared connection and commits/rolls them back as one unit.
+
+    def commit(self):
+        """Transaction boundary for deferred writers (P3-1 pipeline)."""
+        self._get_conn().commit()
+
+    def rollback(self):
+        """Transaction boundary for deferred writers (P3-1 pipeline)."""
+        self._get_conn().rollback()
+
+    def paper_sim_get(self, key: str, default: str = "0") -> str:
+        """Raw string kv on paper_portfolio (caller owns JSON encoding)."""
+        row = (
+            self._get_conn()
+            .execute("SELECT value FROM paper_portfolio WHERE key = ?",
+                     (key,))
+            .fetchone()
+        )
+        return row["value"] if row else default
+
+    def paper_sim_set(self, key: str, value: str, commit: bool = True):
+        self._get_conn().execute(
+            """INSERT INTO paper_portfolio (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET
+               value=excluded.value, updated_at=excluded.updated_at""",
+            (key, value, time.time()),
+        )
+        if commit:
+            self._get_conn().commit()
+
+    def paper_trades_recent(self, symbol: Optional[str] = None,
+                            limit: int = 50) -> List[Dict]:
+        """Newest-first paper_trades rows (optional symbol filter)."""
+        if symbol:
+            rows = self._get_conn().execute(
+                "SELECT * FROM paper_trades WHERE symbol = ?"
+                " ORDER BY timestamp DESC LIMIT ?",
+                (symbol, limit)).fetchall()
+        else:
+            rows = self._get_conn().execute(
+                "SELECT * FROM paper_trades"
+                " ORDER BY timestamp DESC LIMIT ?",
+                (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def paper_last_buy_price(self, symbol: str) -> Optional[float]:
+        """Most recent BUY fill_price for symbol.
+
+        P6-B3 fix: the legacy query selected a nonexistent entry_price
+        column, so it always raised and SELL realized-PnL silently
+        stayed 0. The BUY leg's fill price is the true entry."""
+        row = self._get_conn().execute(
+            "SELECT fill_price FROM paper_trades"
+            " WHERE symbol = ? AND side = 'BUY'"
+            " ORDER BY timestamp DESC LIMIT 1",
+            (symbol,)).fetchone()
+        return float(row["fill_price"]) if row else None
+
+    def paper_trade_add(self, trade_id: str, symbol: str, side: str,
+                        quantity: float, fill_price: float,
+                        slippage_pct: float, fee: float, notional: float,
+                        details: str, commit: bool = True):
+        """Insert a filled MARKET paper trade row."""
+        self._get_conn().execute(
+            """INSERT INTO paper_trades
+               (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
+                fee_usdt, notional_usdt, status, timestamp, details)
+               VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
+            (trade_id, symbol, side, quantity, fill_price, slippage_pct,
+             fee, notional, time.time(), details),
+        )
+        if commit:
+            self._get_conn().commit()
+
+    def paper_pending_add(self, order_id: str, symbol: str, side: str,
+                          order_type: str, quantity: float, price: float,
+                          stop_price: Optional[float], details: str,
+                          commit: bool = True):
+        """Insert an open pending (limit/stop) paper order."""
+        self._get_conn().execute(
+            """INSERT INTO paper_pending_orders
+               (id, symbol, side, order_type, quantity, price, stop_price, status, created_at, details)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+            (str(order_id), symbol, side, order_type, quantity, price,
+             stop_price, time.time(), details),
+        )
+        if commit:
+            self._get_conn().commit()
+
+    def paper_pending_open(self, symbol: Optional[str] = None) -> List[Dict]:
+        """Open pending paper orders (optional symbol filter)."""
+        if symbol:
+            rows = self._get_conn().execute(
+                "SELECT * FROM paper_pending_orders"
+                " WHERE symbol = ? AND status = 'open'",
+                (symbol,)).fetchall()
+        else:
+            rows = self._get_conn().execute(
+                "SELECT * FROM paper_pending_orders"
+                " WHERE status = 'open'").fetchall()
+        return [dict(r) for r in rows]
+
+    def paper_pending_get(self, order_id: str) -> Optional[Dict]:
+        """One OPEN pending order by id (None if absent/filled)."""
+        row = self._get_conn().execute(
+            "SELECT * FROM paper_pending_orders"
+            " WHERE id = ? AND status = 'open'",
+            (order_id,)).fetchone()
+        return dict(row) if row else None
 
     # ==================== Drawdown ====================
 
@@ -986,6 +1150,39 @@ class StateDB:
         self._get_conn().execute("DELETE FROM kv WHERE key = ?", (key,))
         self._get_conn().commit()
 
+    def kv_get_prefix(self, prefix: str) -> Dict[str, Any]:
+        """All kv entries whose key starts with prefix; values parsed with
+        kv_get semantics (json.loads, parse failure keeps the raw string).
+        WO-0924-z2 P6-B3: tp_sl_tracker.get_all_tracked prefix scan."""
+        rows = (
+            self._get_conn()
+            .execute("SELECT key, value FROM kv WHERE key LIKE ?",
+                     (prefix + "%",))
+            .fetchall()
+        )
+        out: Dict[str, Any] = {}
+        for r in rows:
+            try:
+                out[r["key"]] = json.loads(r["value"])
+            except json.JSONDecodeError:
+                out[r["key"]] = r["value"]
+        return out
+
+    def kv_age_seconds(self, key: str) -> Optional[float]:
+        """Seconds since kv[key] last updated (None if absent or unreadable).
+        WO-0924-z2 P6-B3: kv_preflight freshness checks."""
+        row = (
+            self._get_conn()
+            .execute("SELECT updated_at FROM kv WHERE key = ?", (key,))
+            .fetchone()
+        )
+        if row is None:
+            return None
+        try:
+            return max(0.0, time.time() - float(row["updated_at"]))
+        except (TypeError, ValueError, KeyError, IndexError):
+            return None
+
     # ==================== Audit Log ====================
 
     def audit_log(
@@ -1130,6 +1327,54 @@ class StateDB:
             params.append(limit)
         rows = self._get_conn().execute(sql, params).fetchall()
         return [dict(r) for r in rows]
+
+    def outcomes_recent_net_pnls(self, limit: int = 100) -> List[float]:
+        """Newest-first closed net_pnl_pct values (NULLs excluded).
+        WO-0924-z2 P6-B3: cvar_risk + strategy_adaptor CVaR overlay +
+        risk_manager kelly (order-insensitive aggregate consumers)."""
+        rows = self._get_conn().execute(
+            """SELECT net_pnl_pct FROM trade_outcomes
+               WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
+               ORDER BY exit_time DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [r["net_pnl_pct"] for r in rows]
+
+    def outcomes_get_closed_oldest(self) -> List[Dict]:
+        """All closed outcome rows oldest-first (exit_time ASC).
+        WO-0924-z2 P6-B3: concept_drift's 60/40 chronological split needs
+        a true ascending read — outcomes_get_closed(newest_first=False)
+        stays deliberately unsorted for order-insensitive callers."""
+        rows = self._get_conn().execute(
+            "SELECT * FROM trade_outcomes WHERE status = 'closed'"
+            " ORDER BY exit_time ASC").fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_history_rows(self, symbol: Optional[str] = None,
+                              limit: int = 50) -> List[Dict]:
+        """7-column trade-history projection, newest entry first.
+        WO-0924-z2 P6-B3: portfolio.get_trade_history."""
+        sql = ("SELECT symbol, entry_price, exit_price, net_pnl_pct,"
+               " strategy, exit_reason, status FROM trade_outcomes")
+        params: list = []
+        if symbol:
+            sql += " WHERE symbol = ?"
+            params.append(symbol)
+        sql += " ORDER BY entry_time DESC LIMIT ?"
+        params.append(limit)
+        rows = self._get_conn().execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def outcomes_symbol_counts(self, symbol: str) -> tuple:
+        """(known, open) trade_outcomes row counts for symbol — the bug#32
+        ghost-position guard. WO-0924-z2 P6-B3: cmd_trailing_check."""
+        row = self._get_conn().execute(
+            "SELECT (SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ?)"
+            " AS known, (SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ?"
+            " AND status = 'open') AS open_cnt",
+            (symbol, symbol),
+        ).fetchone()
+        return (row["known"], row["open_cnt"]) if row else (0, 0)
 
     def outcomes_count_closed(self) -> int:
         return self._get_conn().execute(

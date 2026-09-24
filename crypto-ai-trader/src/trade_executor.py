@@ -1548,11 +1548,10 @@ def execute_auto_trade(
         _bandit_fng = 50.0
         _bandit_btc_trend = "NEUTRAL"
         try:
-            conn = db._get_conn()
-            hmm_row = conn.execute("SELECT value FROM kv WHERE key = 'hmm_regime'").fetchone()
-            if hmm_row:
-                import json as _json_hmm
-                hmm_data = _json_hmm.loads(hmm_row["value"])
+            # P6-B3: kv_get (parsed; raw/absent keeps the default, matching
+            # the old loads-throws-into-except path)
+            hmm_data = db.kv_get("hmm_regime")
+            if isinstance(hmm_data, dict):
                 _bandit_hmm = hmm_data.get("regime", "sideways").lower()
         except Exception:
             logger.debug("ContextualBandit: HMM regime fetch failed", exc_info=True)
@@ -1567,10 +1566,11 @@ def execute_auto_trade(
             logger.debug("ContextualBandit: FearGreed fetch failed", exc_info=True)
 
         try:
-            conn = db._get_conn()
-            btc_row = conn.execute("SELECT value FROM kv WHERE key = 'btc_trend'").fetchone()
-            if btc_row:
-                _bandit_btc_trend = str(btc_row["value"]).upper()
+            # P6-B3: kv_get (no writer exists for this key today; absent ->
+            # NEUTRAL default, identical to the old row-miss path)
+            btc_val = db.kv_get("btc_trend")
+            if btc_val is not None:
+                _bandit_btc_trend = str(btc_val).upper()
         except Exception:
             logger.debug("ContextualBandit: BTC trend fetch failed", exc_info=True)
 

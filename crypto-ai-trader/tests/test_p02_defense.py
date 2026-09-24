@@ -43,6 +43,21 @@ class FakeDB:
         cb = self.kv.get("cash_balance")
         return float(cb) if cb is not None else 0.0
 
+    # P6-B3 seam: kv_preflight reads via StateDB methods now
+    def kv_age_seconds(self, key):
+        if key not in self.kv:
+            return None
+        age = self.kv_ages.get(key)
+        return max(0.0, age) if age is not None else 0.0
+
+    def portfolio_get_all(self):
+        now = time.time()
+        ts = (now - self.portfolio_age
+              if self.portfolio_age is not None else now)
+        return {r[0]: {"symbol": r[0], "quantity": r[1],
+                       "entry_price": r[2], "updated_at": ts}
+                for r in self.portfolio_rows}
+
     class _Row(dict):
         """sqlite3.Row-style: r["col"] access."""
 

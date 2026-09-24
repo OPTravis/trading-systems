@@ -263,14 +263,12 @@ def _fix_hmm_covars_shape() -> dict:
         from src.state_db import get_state_db
 
         db = get_state_db()
-        conn = db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'hmm_model_state'"
-        ).fetchone()
-        if not row:
+        # P6-B3: kv_get/kv_set replace the direct row read/write. `is None`
+        # (not falsy) preserves the original branch shape: an empty/garbage
+        # value still falls through to the fix-failed handler below.
+        state = db.kv_get("hmm_model_state")
+        if state is None:
             return {"fixed": False, "msg": "No HMM model state in DB"}
-
-        state = json.loads(row["value"])
         covars = np.array(state["covars"])
         if covars.ndim != 3:
             return {
@@ -280,11 +278,7 @@ def _fix_hmm_covars_shape() -> dict:
 
         covars_diag = np.array([np.diag(covars[i]) for i in range(covars.shape[0])])
         state["covars"] = covars_diag.tolist()
-        conn.execute(
-            "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES ('hmm_model_state', ?, ?)",
-            (json.dumps(state), time.time()),
-        )
-        conn.commit()
+        db.kv_set("hmm_model_state", state)
         return {
             "fixed": True,
             "msg": f"Fixed covars: {covars.shape} → {covars_diag.shape}",

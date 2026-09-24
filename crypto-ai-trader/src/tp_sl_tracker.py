@@ -104,15 +104,15 @@ def get_all_tracked() -> dict:
 
     db = get_state_db()
     try:
-        conn = db._get_conn()
-        rows = conn.execute(
-            f"SELECT key, value FROM kv WHERE key LIKE '{_PREFIX}:%'"
-        ).fetchall()
+        # P6-B3: StateDB.kv_get_prefix replaces the raw LIKE scan; values
+        # come back parsed with kv_get semantics (raw string on parse
+        # failure), so the legacy double-decode + skip semantics below are
+        # preserved verbatim.
+        raw = db.kv_get_prefix(f"{_PREFIX}:")
         result = {}
-        for row in rows:
-            sym = row["key"].replace(f"{_PREFIX}:", "")
+        for key, parsed in raw.items():
+            sym = key.replace(f"{_PREFIX}:", "")
             try:
-                parsed = json.loads(row["value"])
                 # Handle legacy double-encoded values
                 if isinstance(parsed, str):
                     parsed = json.loads(parsed)

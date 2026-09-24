@@ -68,10 +68,9 @@ class ConceptDriftDetector:
                 "recommendation": str,
             }
         """
-        conn = self._db._get_conn()
-        rows = conn.execute(
-            "SELECT * FROM trade_outcomes WHERE status = 'closed' ORDER BY exit_time ASC"
-        ).fetchall()
+        # P6-B3: true ascending read (outcomes_get_closed(newest_first=False)
+        # is deliberately unsorted and must not be used for the 60/40 split).
+        rows = self._db.outcomes_get_closed_oldest()
 
         if len(rows) < MIN_SAMPLES_FOR_DETECTION:
             return {
@@ -81,7 +80,6 @@ class ConceptDriftDetector:
                 "recommendation": f"數據不足（{len(rows)}/{MIN_SAMPLES_FOR_DETECTION}）",
             }
 
-        rows = [dict(r) for r in rows]
         n = len(rows)
 
         # Split: first 60% = historical, last 40% = recent
@@ -137,13 +135,8 @@ class ConceptDriftDetector:
             "timestamp": time.time(),
         }
 
-        # Store result
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('drift_detection', ?, ?)""",
-            (json.dumps(result), time.time()),
-        )
-        conn.commit()
+        # Store result (P6-B3: kv_set replaces the orphaned raw write)
+        self._db.kv_set("drift_detection", result)
 
         return result
 

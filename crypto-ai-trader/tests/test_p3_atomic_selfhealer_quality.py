@@ -73,17 +73,18 @@ class TestPaperTraderAtomicTransaction:
             mock_exchange.load_markets = MagicMock()
             mock_ccxt.binance = MagicMock(return_value=mock_exchange)
 
-            with patch("src.paper_trader.PaperTrader._get_db") as mock_get_db:
-                mock_db = MagicMock()
-                conn = sqlite3.connect(str(paper_db))
-                conn.row_factory = sqlite3.Row
-                mock_db._get_conn = MagicMock(return_value=conn)
-                mock_get_db.return_value = mock_db
+            # P6-B3 seam: paper_trader reads/writes via StateDB paper-store
+            # methods now, so back the trader with a real StateDB on the
+            # temp file (same connection for reads/writes/commits).
+            from src.state_db import StateDB
 
+            db = StateDB(str(paper_db))
+            with patch("src.paper_trader.PaperTrader._get_db",
+                       return_value=db):
                 pt = PaperTrader()
-                pt._db = mock_db
+                pt._db = db
                 pt._in_transaction = False
-                yield pt, conn
+                yield pt, db._get_conn()
 
     def test_transaction_mode_defers_commit(self, paper_trader):
         """When _in_transaction=True, _set_sim_value should NOT commit."""

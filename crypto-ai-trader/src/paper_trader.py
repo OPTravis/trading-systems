@@ -142,83 +142,26 @@ class PaperTrader:
     # ------------------------------------------------------------------ helpers
 
     def _get_db(self):
-        """Lazy StateDB import & singleton."""
+        """Lazy StateDB import & singleton.
+
+        P6-B3: the paper-store DDL now lives in StateDB._init_db, so
+        table creation is guaranteed by the StateDB singleton itself."""
         if self._db is None:
             from src.state_db import get_state_db
 
             self._db = get_state_db()
-            self._ensure_paper_tables()
         return self._db
 
-    def _conn(self):
-        """Get DB connection (ensures lazy init)."""
-        return self._get_db()._get_conn()
-
-    def _ensure_paper_tables(self):
-        """Create paper_trades and paper_portfolio tables if they don't exist."""
-        conn = self._conn()
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS paper_trades (
-                id TEXT PRIMARY KEY,
-                symbol TEXT NOT NULL,
-                side TEXT NOT NULL,
-                order_type TEXT NOT NULL,
-                quantity REAL NOT NULL,
-                fill_price REAL NOT NULL,
-                slippage_pct REAL,
-                fee_usdt REAL,
-                notional_usdt REAL,
-                status TEXT DEFAULT 'filled',
-                timestamp REAL NOT NULL,
-                details TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol);
-            CREATE INDEX IF NOT EXISTS idx_paper_trades_time ON paper_trades(timestamp);
-
-            CREATE TABLE IF NOT EXISTS paper_portfolio (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at REAL NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS paper_pending_orders (
-                id TEXT PRIMARY KEY,
-                symbol TEXT NOT NULL,
-                side TEXT NOT NULL,
-                order_type TEXT NOT NULL,
-                quantity REAL NOT NULL,
-                price REAL NOT NULL,
-                stop_price REAL,
-                status TEXT DEFAULT 'open',
-                created_at REAL NOT NULL,
-                expires_at REAL,
-                details TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_paper_pending_symbol ON paper_pending_orders(symbol);
-        """)
-        conn.commit()
 
     def _get_sim_value(self, key: str, default: str = "0") -> str:
-        db = self._get_db()  # ensure DB is initialized
-        row = (
-            db._get_conn()
-            .execute("SELECT value FROM paper_portfolio WHERE key = ?", (key,))
-            .fetchone()
-        )
-        return row["value"] if row else default
+        # P6-B3: StateDB paper-store reader
+        return self._get_db().paper_sim_get(key, default)
 
     def _set_sim_value(self, key: str, value: str):
-        now = time.time()
-        db = self._get_db()
-        db._get_conn().execute(
-            """INSERT INTO paper_portfolio (key, value, updated_at)
-               VALUES (?, ?, ?)
-               ON CONFLICT(key) DO UPDATE SET
-               value=excluded.value, updated_at=excluded.updated_at""",
-            (key, value, now),
-        )
-        if not self._in_transaction:
-            self._conn().commit()
+        # P6-B3: StateDB writer; commit deferred while inside the P3-1
+        # atomic fill pipeline (committed by _commit_transaction)
+        self._get_db().paper_sim_set(key, value,
+                                     commit=not self._in_transaction)
 
     def _begin_transaction(self):
         """P3-1: Start a transaction — defer all commits until _commit_transaction()."""
@@ -227,13 +170,13 @@ class PaperTrader:
     def _commit_transaction(self):
         """P3-1: Commit all deferred writes atomically."""
         self._in_transaction = False
-        self._conn().commit()
+        self._get_db().commit()
 
     def _rollback_transaction(self):
         """P3-1: Rollback deferred writes. Caller should restore state manually."""
         self._in_transaction = False
         try:
-            self._conn().rollback()
+            self._get_db().rollback()
         except Exception as e:
             logger.warning("paper_trader._rollback_transaction: " + str(e))
             pass  # SQLite auto-rollback on connection close
@@ -405,17 +348,8 @@ class PaperTrader:
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """Return simulated pending orders (limit orders awaiting fill)."""
-        conn = self._conn()
-        if symbol:
-            rows = conn.execute(
-                "SELECT * FROM paper_pending_orders WHERE symbol = ? AND status = 'open'",
-                (symbol,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM paper_pending_orders WHERE status = 'open'"
-            ).fetchall()
-        return [dict(r) for r in rows]
+        # P6-B3: StateDB paper-store reader
+        return self._get_db().paper_pending_open(symbol)
 
     # ============================================================ Order simulation
 
@@ -571,32 +505,25 @@ class PaperTrader:
     ) -> str:
         """Insert a record into paper_trades table. Returns trade_id."""
         trade_id = f"paper_{order_id}_{int(time.time())}"
-        now = time.time()
 
-        conn = self._conn()
-        conn.execute(
-            """INSERT INTO paper_trades
-               (id, symbol, side, order_type, quantity, fill_price, slippage_pct,
-                fee_usdt, notional_usdt, status, timestamp, details)
-               VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, 'filled', ?, ?)""",
-            (
-                trade_id,
-                symbol,
-                side,
-                quantity,
-                fill_price,
-                slippage_pct,
-                fee,
-                notional,
-                now,
-                json.dumps(
-                    {
-                        "current_price": fill_price / (1 + slippage_pct / 100) if side == "BUY" else fill_price / (1 - slippage_pct / 100),
-                        "slippage_pct": slippage_pct,
-                        "fee_rate": PAPER_FEE_RATE,
-                    }
-                ),
+        # P6-B3: StateDB writer; commit deferred inside the P3-1 pipeline
+        self._get_db().paper_trade_add(
+            trade_id,
+            symbol,
+            side,
+            quantity,
+            fill_price,
+            slippage_pct,
+            fee,
+            notional,
+            details=json.dumps(
+                {
+                    "current_price": fill_price / (1 + slippage_pct / 100) if side == "BUY" else fill_price / (1 - slippage_pct / 100),
+                    "slippage_pct": slippage_pct,
+                    "fee_rate": PAPER_FEE_RATE,
+                }
             ),
+            commit=not self._in_transaction,
         )
         return trade_id
 
@@ -607,13 +534,12 @@ class PaperTrader:
         pnl = 0.0
         try:
             db = self._get_db()
-            conn = db._get_conn()
-            row = conn.execute(
-                "SELECT entry_price FROM paper_trades WHERE symbol = ? AND side = 'BUY' ORDER BY timestamp DESC LIMIT 1",
-                (symbol,),
-            ).fetchone()
-            if row:
-                entry = float(row["entry_price"])
+            # P6-B3 fix (Travis-approved): the legacy query selected a
+            # nonexistent entry_price column, so it ALWAYS raised and SELL
+            # realized PnL silently stayed 0 (sim_pnl never updated).
+            # The BUY leg's fill_price is the true entry.
+            entry = db.paper_last_buy_price(symbol)
+            if entry is not None:
                 pnl = (fill_price - entry) * quantity - fee
                 self._set_sim_pnl(snap_pnl + pnl)
         except Exception:
@@ -803,30 +729,23 @@ class PaperTrader:
     ) -> Optional[Dict]:
         """Place a simulated limit / stop-loss-limit order (pending until price fills)."""
         order_id = self._increment_order_counter()
-        now = time.time()
 
-        conn = self._conn()
-        conn.execute(
-            """INSERT INTO paper_pending_orders
-               (id, symbol, side, order_type, quantity, price, stop_price, status, created_at, details)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
-            (
-                str(order_id),
-                symbol,
-                side,
-                "STOP_LOSS_LIMIT" if stop_price else "LIMIT",
-                quantity,
-                price,
-                stop_price,
-                now,
-                json.dumps(
-                    {
-                        "stop_price": stop_price,
-                    }
-                ),
+        # P6-B3: StateDB writer (committed immediately — pending placement
+        # is outside the P3-1 fill pipeline, matching the old conn.commit())
+        self._get_db().paper_pending_add(
+            order_id,
+            symbol,
+            side,
+            "STOP_LOSS_LIMIT" if stop_price else "LIMIT",
+            quantity,
+            price,
+            stop_price,
+            details=json.dumps(
+                {
+                    "stop_price": stop_price,
+                }
             ),
         )
-        conn.commit()
 
         logger.info(
             "📝 PAPER LIMIT ORDER: %s %s %.8f @ $%.6f (id=%s)",
@@ -862,15 +781,10 @@ class PaperTrader:
 
     def _fill_limit_order(self, order_id: str, trigger_price: float) -> Optional[Dict]:
         """Fill a pending limit order."""
-        conn = self._conn()
-        row = conn.execute(
-            "SELECT * FROM paper_pending_orders WHERE id = ? AND status = 'open'",
-            (order_id,),
-        ).fetchone()
-        if not row:
+        # P6-B3: StateDB paper-store reader
+        order = self._get_db().paper_pending_get(order_id)
+        if not order:
             return None
-
-        order = dict(row)
         symbol = order["symbol"]
         side = order["side"]
         quantity = order["quantity"]
@@ -977,18 +891,8 @@ class PaperTrader:
         self, symbol: Optional[str] = None, limit: int = 50
     ) -> List[Dict]:
         """Get paper trade history."""
-        conn = self._conn()
-        if symbol:
-            rows = conn.execute(
-                "SELECT * FROM paper_trades WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
-                (symbol, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM paper_trades ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [dict(r) for r in rows]
+        # P6-B3: StateDB paper-store reader
+        return self._get_db().paper_trades_recent(symbol, limit)
 
     def get_positions(self) -> Dict[str, Dict]:
         """Get all simulated positions."""
@@ -1011,13 +915,9 @@ class PaperTrader:
 
     def check_pending_orders(self):
         """Check and fill any pending limit orders that have been triggered."""
-        conn = self._conn()
-        rows = conn.execute(
-            "SELECT * FROM paper_pending_orders WHERE status = 'open'"
-        ).fetchall()
-
-        for row in rows:
-            order = dict(row)
+        # P6-B3: StateDB paper-store reader
+        for order in self._get_db().paper_pending_open():
+            order = dict(order)
             symbol = order["symbol"]
             side = order["side"]
             price = order["price"]

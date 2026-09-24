@@ -124,19 +124,19 @@ def tracker(monkeypatch):
 
 @pytest.fixture()
 def audit(monkeypatch):
+    """Captures guardian audit rows.
+
+    P6-B3 seam: the legacy fallback now writes via StateDB.audit_log()
+    instead of a raw INSERT, so the stub captures that call. Row shape
+    (now, action, details) matches the legacy INSERT params."""
     rows = []
-
-    class _Conn:
-        def execute(self, sql, params=()):
-            if sql.startswith("INSERT"):
-                rows.append(params)
-
-        def commit(self):
-            pass
+    import time as _time
 
     class _DB:
-        def _get_conn(self):
-            return _Conn()
+        # no kv_get -> repairs_enabled() raises inside the funnel's try,
+        # which is exactly how this suite always reached the fallback
+        def audit_log(self, action, details="", **kw):
+            rows.append((_time.time(), action, details))
 
     monkeypatch.setattr("src.state_db.get_state_db", lambda: _DB())
     return rows

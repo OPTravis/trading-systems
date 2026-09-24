@@ -77,20 +77,17 @@ class ParamOptimizer:
 
     def get_current_params(self) -> Dict[str, float]:
         """Get current optimized params (or defaults)."""
-        conn = self._db._get_conn()
-        row = conn.execute(
-            "SELECT value FROM kv WHERE key = 'optimized_params'"
-        ).fetchone()
-
-        if row:
-            try:
-                params = json.loads(row["value"])
-                if all(k in params for k in DEFAULT_PARAMS):
-                    return params
-            except (json.JSONDecodeError, TypeError):
-                logger.warning(
-                    "Failed to parse optimized params JSON from StateDB", exc_info=True
-                )
+        # P6-B3: kv_get with kv_get parse semantics (raw string on parse
+        # failure -> the warning branch, None -> silent defaults — the
+        # original branch shape preserved).
+        params = self._db.kv_get("optimized_params")
+        if isinstance(params, dict):
+            if all(k in params for k in DEFAULT_PARAMS):
+                return params
+        elif params is not None:
+            logger.warning(
+                "Failed to parse optimized params JSON from StateDB", exc_info=True
+            )
 
         return dict(DEFAULT_PARAMS)
 
@@ -356,14 +353,8 @@ class ParamOptimizer:
                 "old_params": old_params,
             }
 
-        # Step 3: Store
-        conn = self._db._get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO kv (key, value, updated_at)
-            VALUES ('optimized_params', ?, ?)""",
-            (json.dumps(best_params), time.time()),
-        )
-        conn.commit()
+        # Step 3: Store (P6-B3: kv_set)
+        self._db.kv_set("optimized_params", best_params)
 
         # Compute changes
         changes = []

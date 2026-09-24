@@ -806,13 +806,9 @@ class StrategyAdaptor:
             from src.cvar_risk import CVaRRiskManager
 
             cvar_mgr = CVaRRiskManager()
-            # Compute from trade outcomes
-            conn = cvar_mgr._db._get_conn()
-            rows = conn.execute(
-                "SELECT net_pnl_pct FROM trade_outcomes WHERE status = 'closed' AND net_pnl_pct IS NOT NULL ORDER BY exit_time DESC LIMIT 100"
-            ).fetchall()
-            if rows and len(rows) >= 10:
-                returns = [r["net_pnl_pct"] for r in rows]
+            # Compute from trade outcomes (P6-B3: StateDB method)
+            returns = cvar_mgr._db.outcomes_recent_net_pnls(100)
+            if len(returns) >= 10:
                 cvar_mgr.compute_cvar(returns, 0.05)
                 risk = cvar_mgr.compute_portfolio_risk([])
                 cvar_scale = risk.get("position_scale", 1.0)

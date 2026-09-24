@@ -569,29 +569,18 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         """Get trade history from StateDB trade_outcomes (has real PnL data)."""
         if self._db is not None:
             try:
-                conn = self._db._get_conn()
-                if symbol:
-                    rows = conn.execute(
-                        """SELECT symbol, entry_price, exit_price, net_pnl_pct, strategy, exit_reason, status
-                           FROM trade_outcomes WHERE symbol = ?
-                           ORDER BY entry_time DESC LIMIT ?""",
-                        (symbol, limit),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """SELECT symbol, entry_price, exit_price, net_pnl_pct, strategy, exit_reason, status
-                           FROM trade_outcomes ORDER BY entry_time DESC LIMIT ?""",
-                        (limit,),
-                    ).fetchall()
+                # P6-B3: StateDB projection method (symbol=None -> all rows)
+                rows = self._db.outcomes_history_rows(symbol=symbol,
+                                                      limit=limit)
                 trades = [
                     {
-                        "symbol": r[0],
-                        "entry_price": r[1],
-                        "exit_price": r[2],
-                        "pnl": r[3],
-                        "strategy": r[4],
-                        "exit_reason": r[5],
-                        "status": r[6],
+                        "symbol": r["symbol"],
+                        "entry_price": r["entry_price"],
+                        "exit_price": r["exit_price"],
+                        "pnl": r["net_pnl_pct"],
+                        "strategy": r["strategy"],
+                        "exit_reason": r["exit_reason"],
+                        "status": r["status"],
                     }
                     for r in rows
                 ]

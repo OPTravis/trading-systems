@@ -29,8 +29,10 @@ class FakeDB:
     def portfolio_get_all(self):
         return self.holdings
 
-    def _get_conn(self):
-        return _Conn(self)
+    # P6-B3 seam: sl_reconcile writes via StateDB method now
+    def portfolio_set_stop_loss(self, symbol, stop_loss):
+        self.updates.append((symbol, stop_loss))
+        self.holdings.setdefault(symbol, {})["stop_loss"] = stop_loss
 
 
 class _Conn:

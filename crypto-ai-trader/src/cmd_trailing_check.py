@@ -88,12 +88,9 @@ def _reconcile_sl_prices(client, positions, db=None):
             mode = 'dry-run' if dry else 'applied'
             if not dry:
                 try:
-                    with db._get_conn() as conn:
-                        conn.execute(
-                            "UPDATE portfolio SET stop_loss=?, updated_at=? "
-                            "WHERE symbol=?",
-                            (ex_sl, __import__('time').time(), symbol))
-                        conn.commit()
+                    # P6-B3: StateDB writer (symbols here are already
+                    # slash-free, matching portfolio table keys)
+                    db.portfolio_set_stop_loss(symbol, ex_sl)
                 except Exception as e:
                     logger.warning("sl_reconcile %s: db update failed "
                                    "(fail-open): %s", symbol, e)
@@ -805,18 +802,12 @@ def cmd_trailing_check():
         # trade_outcomes row is open for this symbol, the position is fully
         # exited -- skip ghost protection (fail-open on guard errors).
         try:
-            _row = get_state_db()._get_conn().execute(
-                "SELECT "
-                "(SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ?) AS known, "
-                "(SELECT COUNT(*) FROM trade_outcomes WHERE symbol = ? "
-                " AND status = 'open') AS open_cnt",
-                (symbol, symbol),
-            ).fetchone()
+            known, open_cnt = get_state_db().outcomes_symbol_counts(symbol)
             # Skip ONLY when the ledger knows this symbol and shows nothing
             # open: a history with no open entry == fully exited. A symbol the
             # ledger has never seen (external/manual balance) keeps the old
             # protection behavior.
-            if _row["known"] > 0 and _row["open_cnt"] == 0:
+            if known > 0 and open_cnt == 0:
                 logger.info(
                     "bug#32: skipping uncovered-SL protection for %s -- "
                     "ledger shows the position already exited (account "
