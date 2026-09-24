@@ -416,7 +416,7 @@ def _traces_diff(conn, bootstrap_ts: float) -> List[Dict]:
     diffs: List[Dict] = []
     events = conn.execute(
         """SELECT ts, type, symbol, qty, price, order_id FROM ledger_events
-           WHERE ts >= ? ORDER BY ts""",
+           WHERE ts >= ? AND type IN ('BUY', 'SELL') ORDER BY ts""",
         (bootstrap_ts,),
     ).fetchall()
     for ev in events:
@@ -907,6 +907,220 @@ def _apply_primary(db, ev: Dict, round_id: Optional[str]) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# Compensator repairs (P2 order item 2): guardian / reconciler become pure
+# DETECTORS — they no longer write state directly. Every state mutation they
+# used to make is expressed as a repair instruction and funneled through
+# record_repair() here, so the Ledger owns all compensator writes in one
+# place (invariant checks land here once, not in N callers).
+#
+# Semantics-preserving by construction: each kind applies EXACTLY the write
+# the compensator performed before (same keys, same values, same upsert
+# semantics). The additions are one LEDGER_REPAIR audit row + one REPAIR
+# ledger event (shadow visibility of state mutations that used to be
+# invisible to the shadow book).
+#
+# Rollback lever: kv 'ledger:repairs' -> 0 makes callers fall back to their
+# legacy direct writes (kept in place).
+# ---------------------------------------------------------------------------
+
+REPAIRS_KEY = "ledger:repairs"
+
+
+def repairs_enabled(db=None) -> bool:
+    """Compensator repairs funnel flag (default ON)."""
+    if db is None:
+        from src.state_db import get_state_db
+        db = get_state_db()
+    flag = db.kv_get(REPAIRS_KEY, 1)
+    return bool(flag)
+
+
+def _repair_tracker_state(conn, repair: Dict) -> Dict:
+    """tp_sl_tracker:{sym} kv — byte-identical to tp_sl_tracker.save_state."""
+    p = repair.get("payload") or {}
+    sym = repair["symbol"]
+    tp_orders = p.get("tp_orders") or []
+    now = time.time()
+    state = {
+        "entry_price": float(p.get("entry") or 0),
+        "total_qty": float(p.get("qty") or 0),
+        "tp_orders": tp_orders,
+        "sl_order": p.get("sl_order") or None,
+        "tp_filled": [False] * len(tp_orders),
+        "sl_moved_after_tp": 0,
+        "created_at": now,
+        "updated_at": now,
+    }
+    _kv_upsert_raw(conn, f"tp_sl_tracker:{sym}", state)
+    return {"action": "tracker_state", "tp_count": len(tp_orders)}
+
+
+def _repair_guard_audit(conn, repair: Dict) -> Dict:
+    """audit_log row carrying the ORIGINAL action name (downstream greps
+    and dashboards keep working) + REPAIR event for shadow visibility.
+    No extra LEDGER_REPAIR row — that would double-count the same action."""
+    p = repair.get("payload") or {}
+    details = p.get("details")
+    conn.execute(
+        "INSERT INTO audit_log (timestamp, action, details, source) "
+        "VALUES (?, ?, ?, ?)",
+        (
+            time.time(), str(p.get("action") or "GUARDIAN"),
+            json.dumps(details) if not isinstance(details, str) else details,
+            str(repair.get("source") or "protection_guardian"),
+        ),
+    )
+    return {"action": "audit", "audit_action": p.get("action")}
+
+
+def _repair_portfolio_fix(conn, repair: Dict) -> Dict:
+    """portfolio row remove/set — same upsert semantics as StateDB
+    (stop_loss/take_profit/invest_pct preserved via COALESCE)."""
+    p = repair.get("payload") or {}
+    sym = str(repair["symbol"]).replace("/", "")
+    act = p.get("action")
+    if act == "remove":
+        conn.execute("DELETE FROM portfolio WHERE symbol = ?", (sym,))
+        return {"action": "remove", "symbol": sym}
+    data = p.get("data") or {}
+    now = time.time()
+    conn.execute(
+        """INSERT INTO portfolio
+           (symbol, quantity, entry_price, strategy, opened_at, updated_at,
+            stop_loss, take_profit, invest_pct)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(symbol) DO UPDATE SET
+             quantity=excluded.quantity,
+             entry_price=excluded.entry_price,
+             strategy=excluded.strategy,
+             opened_at=excluded.opened_at,
+             updated_at=excluded.updated_at,
+             stop_loss=COALESCE(excluded.stop_loss, portfolio.stop_loss),
+             take_profit=COALESCE(excluded.take_profit, portfolio.take_profit),
+             invest_pct=COALESCE(excluded.invest_pct, portfolio.invest_pct)""",
+        (
+            sym, data.get("quantity", 0), data.get("entry_price", 0),
+            data.get("strategy", ""), data.get("opened_at", now), now,
+            data.get("stop_loss"), data.get("take_profit"),
+            data.get("invest_pct", 0),
+        ),
+    )
+    return {"action": "set", "symbol": sym, "quantity": data.get("quantity")}
+
+
+# kinds whose apply fn needs the full repair dict (kv-only kinds are
+# handled inline in record_repair)
+_REPAIR_KINDS = {
+    "tracker_state": _repair_tracker_state,
+    "portfolio_fix": _repair_portfolio_fix,
+    "guard_audit": _repair_guard_audit,
+}
+
+# audit/event routing (reconcile_report is payload-conditional):
+#   audit: state mutations worth an audit row (swap_ts included — a swap
+#     marks a healed position; breach_state excluded — throttle state,
+#     no audit pre-P2 either; snapshot excluded — routine every round)
+#   event: everything except the routine snapshot
+_REPAIR_AUDIT_KINDS = {"tracker_state", "portfolio_fix", "swap_ts"}
+_REPAIR_EVENT_KINDS = {"tracker_state", "portfolio_fix", "guard_audit",
+                       "swap_ts", "breach_state"}
+
+
+def record_repair(repair: Dict, db=None) -> Dict:
+    """Single ingress for compensator repair instructions.
+
+    repair = {
+      "kind": tracker_state | swap_ts | breach_state | guard_audit |
+              portfolio_fix | reconciler_snapshot | reconcile_report,
+      "symbol": optional str,
+      "source": "protection_guardian" | "portfolio_reconciler" | ...,
+      "order_id": optional (carried onto the REPAIR event),
+      "payload": kind-specific,
+    }
+
+    Routing table (per kind):
+      tracker_state      kv tp_sl_tracker:{sym}   +audit +event
+      swap_ts            kv gov:swap_ts:{sym}      +audit +event
+      breach_state       kv tp_breach_state:{sym}   -audit +event  (throttle
+                          state: high frequency, no audit today either)
+      guard_audit        audit_log (original action name) +event
+      portfolio_fix      portfolio row remove/set  +audit +event
+      reconciler_snapshot kv reconcile_prev_positions  -audit -event (routine)
+      reconcile_report   kv reconciler:report (+audit +event only when
+                          payload["audit"] — actionable rounds)
+
+    Atomic: kv/audit/event land in ONE transaction or not at all.
+    Never silently degrades — raises on failure so the caller's legacy
+    fallback (repairs flag off / funnel exception) takes over.
+    """
+    if db is None:
+        from src.state_db import get_state_db
+        db = get_state_db()
+    kind = str((repair or {}).get("kind") or "")
+    sym = (repair or {}).get("symbol")
+    payload = (repair or {}).get("payload") or {}
+    source = str((repair or {}).get("source") or "compensator")
+
+    applied: Optional[Dict] = None
+    with db.transaction() as conn:
+        if kind == "swap_ts":
+            _kv_upsert_raw(
+                conn, f"gov:swap_ts:{sym}",
+                payload.get("value") or {"ts": time.time()},
+            )
+            applied = {"action": "swap_ts", "symbol": sym}
+        elif kind == "breach_state":
+            _kv_upsert_raw(
+                conn, f"tp_breach_state:{sym}", payload.get("state") or {}
+            )
+            applied = {"action": "breach_state", "symbol": sym}
+        elif kind == "reconciler_snapshot":
+            _kv_upsert_raw(conn, "reconcile_prev_positions",
+                           payload.get("data") or {})
+            applied = {"action": "reconciler_snapshot"}
+        elif kind == "reconcile_report":
+            report = payload.get("report") or {}
+            _kv_upsert_raw(conn, "reconciler:report", report)
+            applied = {"action": "reconcile_report"}
+        elif kind in _REPAIR_KINDS:
+            applied = _REPAIR_KINDS[kind](conn, repair)
+        else:
+            raise ValueError(f"unknown repair kind {kind!r}")
+
+        if kind == "reconcile_report":
+            wants_audit = wants_event = bool(payload.get("audit"))
+        else:
+            wants_audit = kind in _REPAIR_AUDIT_KINDS
+            wants_event = kind in _REPAIR_EVENT_KINDS
+        if wants_audit:
+            conn.execute(
+                "INSERT INTO audit_log (timestamp, action, details, source) "
+                "VALUES (?, 'LEDGER_REPAIR', ?, 'ledger')",
+                (time.time(), json.dumps({
+                    "kind": kind, "symbol": sym, "source": source,
+                    "applied": applied,
+                })),
+            )
+        if wants_event:
+            conn.execute(
+                """INSERT INTO ledger_events
+                   (ts, type, symbol, qty, price, order_id, source, pnl,
+                    exit_reason, deduct_cash, payload_json, round_id)
+                   VALUES (?, 'REPAIR', ?, 0, 0, ?, ?, NULL, NULL, NULL, ?, NULL)""",
+                (
+                    time.time(), str(sym or ""), repair.get("order_id"),
+                    source, json.dumps({"kind": kind, "applied": applied,
+                                        "payload": payload}),
+                ),
+            )
+    logger.info(
+        "ledger repair applied: kind=%s symbol=%s source=%s -> %s",
+        kind, sym, source, applied,
+    )
+    return {"status": "ok", "kind": kind, "applied": applied}
+
+
+# ---------------------------------------------------------------------------
 # CLI: python -m src.ledger <bootstrap|report|stats|set-mode X|reset>
 # ---------------------------------------------------------------------------
 
@@ -928,9 +1142,13 @@ def _cli() -> None:  # pragma: no cover - manual ops entry
     elif cmd == "reset":
         reset_shadow(db)
         print("shadow book reset")
+    elif cmd == "set-repairs":
+        db.kv_set("ledger:repairs", 1 if sys.argv[2] == "1" else 0)
+        print("repairs flag ->", db.kv_get("ledger:repairs"))
     else:
         print("usage: python -m src.ledger "
-              "[bootstrap|report|stats|set-mode <off|shadow|primary>|reset]")
+              "[bootstrap|report|stats|set-mode <off|shadow|primary>|reset|"
+              "set-repairs <0|1>]")
 
 
 if __name__ == "__main__":  # pragma: no cover

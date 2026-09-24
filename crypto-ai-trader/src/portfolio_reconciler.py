@@ -43,6 +43,48 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 KV_PREV_POSITIONS = "reconcile_prev_positions"
+RECONCILE_REPORT_KEY = "reconciler:report"
+
+
+def _ledger_repair(db, repair: dict) -> bool:
+    """P2-③: compensator state writes funnel through ledger.record_repair.
+
+    Returns True ONLY when the ledger applied the repair — callers then
+    skip their legacy write. Returns False when the repairs flag is off or
+    the funnel raised; callers then do the legacy direct write, so a
+    broken (or disabled) ledger can never block a compensation."""
+    try:
+        from src.ledger import record_repair, repairs_enabled
+        if repairs_enabled(db):
+            record_repair(repair, db=db)
+            return True
+        return False  # flag off -> caller does the legacy direct write
+    except Exception:
+        return False  # funnel broken -> caller does the legacy direct write
+
+
+def _repair_portfolio_remove(db, sym: str) -> None:
+    if _ledger_repair(db, {"kind": "portfolio_fix", "symbol": sym,
+                           "source": "portfolio_reconciler",
+                           "payload": {"action": "remove"}}):
+        return
+    db.portfolio_remove(sym)
+
+
+def _repair_portfolio_set(db, sym: str, upd: dict) -> None:
+    if _ledger_repair(db, {"kind": "portfolio_fix", "symbol": sym,
+                           "source": "portfolio_reconciler",
+                           "payload": {"action": "set", "data": upd}}):
+        return
+    db.portfolio_set(sym, upd)
+
+
+def _repair_snapshot(db, data: dict) -> None:
+    if _ledger_repair(db, {"kind": "reconciler_snapshot",
+                           "source": "portfolio_reconciler",
+                           "payload": {"data": data}}):
+        return
+    db.kv_set(KV_PREV_POSITIONS, data)
 #: exchange balance below this fraction of the DB qty ⇒ drift
 DRIFT_QTY_FRACTION = 0.98
 #: absolute qty slack (dust-sized remainders are not drift)
@@ -441,12 +483,12 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
             drift = abs(db_qty - leftover)
             if drift > max(leftover * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
                 if leftover <= DRIFT_QTY_ABS:
-                    db.portfolio_remove(sym)
+                    _repair_portfolio_remove(db, sym)
                     log.info("reconcile: removed stale position %s (exchange flat)", sym)
                 else:
                     upd = dict(pos)
                     upd["quantity"] = leftover
-                    db.portfolio_set(sym, upd)
+                    _repair_portfolio_set(db, sym, upd)
                     log.info("reconcile: trimmed %s to exchange qty %.8g", sym, leftover)
 
     # --- Path C: 24h myTrades lookback (WO-017-2) ---
@@ -492,8 +534,8 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
     # snapshot for the next round's Path B (post-booking state, so cleaned
     # positions don't re-enter the suspect set next round)
     try:
-        db.kv_set(
-            KV_PREV_POSITIONS,
+        _repair_snapshot(
+            db,
             dict(
                 {s: float(p.get("quantity") or 0)
                  for s, p in db.portfolio_get_all().items()},
@@ -502,5 +544,23 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
         )
     except Exception:
         log.warning("reconcile: snapshot update failed", exc_info=True)
+
+    # --- structured round report (P2-③: reconciler = pure detector; the
+    # diff report IS its output — kv 'reconciler:report' + audit row only
+    # on actionable rounds). Non-fatal: a broken ledger or kv must never
+    # block the booking return value. ---
+    report = {
+        "ts": time.time(),
+        "suspects": {s: round(g, 8) for s, g in suspects.items()},
+        "booked": len(booked_total),
+        "actionable": bool(booked_total),
+    }
+    try:
+        _ledger_repair(db, {
+            "kind": "reconcile_report", "source": "portfolio_reconciler",
+            "payload": {"report": report, "audit": report["actionable"]},
+        })
+    except Exception:
+        pass
 
     return booked_total

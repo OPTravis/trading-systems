@@ -72,18 +72,15 @@ def _emit_breach_throttled(sym: str, payload: dict) -> None:
         first = float(st.get("first_ts") or now)
         if last <= 0 or now - last >= _BREACH_ALERT_INTERVAL_S:
             emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, payload)
-            db.kv_set(key, {"first_ts": first, "last_alert_ts": now})
+            _set_breach_state(sym, {"first_ts": first,
+                                    "last_alert_ts": now})
     except Exception:
         # opaque/unavailable db —宁可重复告警也不静默
         emit_alert("PROTECTION_TP_TARGET_BREACHED", sym, payload)
 
 
 def _clear_breach_state(sym: str) -> None:
-    try:
-        from src.state_db import get_state_db
-        get_state_db().kv_set(f"tp_breach_state:{sym}", {})
-    except Exception:
-        pass
+    _set_breach_state(sym, {})
 
 
 def _err_tag(exc) -> str:
@@ -109,7 +106,26 @@ def _err_tag(exc) -> str:
 
 
 def _audit(action: str, details: dict) -> None:
-    """Best-effort audit_log row (timestamp/action/details schema)."""
+    """Best-effort audit_log row (timestamp/action/details schema).
+
+    P2-③: routes through ledger.record_repair (adds a REPAIR event for
+    shadow visibility; the audit row keeps its ORIGINAL action name so
+    existing greps/dashboards are unaffected). Legacy direct write is
+    kept as the rollback fallback (kv 'ledger:repairs' = 0)."""
+    try:
+        from src.state_db import get_state_db
+        from src.ledger import record_repair, repairs_enabled
+        _db = get_state_db()
+        if repairs_enabled(_db):
+            record_repair({"kind": "guard_audit",
+                           "source": "protection_guardian",
+                           "payload": {"action": action, "details": details}},
+                          db=_db)
+            return
+    except Exception:
+        logger.warning("protection_guardian: ledger audit funnel failed "
+                       "(%s) — falling back to direct write", action,
+                       exc_info=True)
     try:
         import json as _json
         from src.state_db import get_state_db
@@ -127,13 +143,84 @@ def _audit(action: str, details: dict) -> None:
 
 def _track(symbol: str, entry: float, qty: float, tp_orders: list,
            sl_order: Optional[dict]) -> None:
-    """Persist tp_sl_tracker state after a heal (best-effort)."""
+    """Persist tp_sl_tracker state after a heal (best-effort).
+
+    P2-③: routes through ledger.record_repair — the ledger owns the kv
+    write (same key/value shape as tp_sl_tracker.save_state) plus one
+    LEDGER_REPAIR audit row and one REPAIR event. Legacy direct write is
+    kept as the rollback fallback (kv 'ledger:repairs' = 0)."""
+    try:
+        from src.state_db import get_state_db
+        from src.ledger import record_repair, repairs_enabled
+        _db = get_state_db()
+        if repairs_enabled(_db):
+            record_repair({"kind": "tracker_state", "symbol": symbol,
+                           "source": "protection_guardian",
+                           "payload": {"entry": entry, "qty": qty,
+                                       "tp_orders": tp_orders,
+                                       "sl_order": sl_order}}, db=_db)
+            return
+    except Exception:
+        logger.warning("protection_guardian: ledger tracker funnel failed "
+                       "for %s — falling back to direct write", symbol,
+                       exc_info=True)
     try:
         from src.tp_sl_tracker import save_state
         save_state(symbol, entry, qty, tp_orders, sl_order)
     except Exception:
         logger.warning("protection_guardian: tracker save failed for %s",
                        symbol, exc_info=True)
+
+
+def _set_swap_ts(sym: str, value: dict) -> None:
+    """gov:swap_ts debounce write (24h SL→OCO swap guard).
+
+    P2-③: funneled through ledger.record_repair; legacy direct kv write
+    kept as the rollback fallback (kv 'ledger:repairs' = 0)."""
+    try:
+        from src.state_db import get_state_db
+        from src.ledger import record_repair, repairs_enabled
+        _db = get_state_db()
+        if repairs_enabled(_db):
+            record_repair({"kind": "swap_ts", "symbol": sym,
+                           "source": "protection_guardian",
+                           "payload": {"value": value}}, db=_db)
+            return
+    except Exception:
+        logger.warning("protection_guardian: swap_ts ledger funnel failed "
+                       "for %s — falling back to direct write", sym,
+                       exc_info=True)
+    try:
+        from src.state_db import get_state_db
+        get_state_db().kv_set("gov:swap_ts:" + sym, value)
+    except Exception:
+        pass
+
+
+def _set_breach_state(sym: str, state: dict) -> None:
+    """tp_breach_state:{sym} throttle-state write (alert dedup window).
+
+    P2-③: funneled through ledger.record_repair (REPAIR event only —
+    no audit row, matching the pre-P2 behavior of writing no audit for
+    throttle state); legacy direct kv write kept as rollback fallback."""
+    try:
+        from src.state_db import get_state_db
+        from src.ledger import record_repair, repairs_enabled
+        _db = get_state_db()
+        if repairs_enabled(_db):
+            record_repair({"kind": "breach_state", "symbol": sym,
+                           "source": "protection_guardian",
+                           "payload": {"state": state}}, db=_db)
+            return
+    except Exception:
+        logger.warning("protection_guardian: breach_state ledger funnel "
+                       "failed for %s — falling back to direct write", sym,
+                       exc_info=True)
+    try:
+        from src.state_db import get_state_db
+        get_state_db().kv_set(f"tp_breach_state:{sym}", state)
+    except Exception:
+        pass
 
 
 def _step_floor(qty: float, step: float) -> float:
@@ -615,7 +702,7 @@ def run(client: Any, portfolio: Any,
                     if _mig is None:
                         _mig = _db.kv_get("guardian_swap_ts:" + sym)
                         if _mig is not None:
-                            _db.kv_set("gov:swap_ts:" + sym, _mig)
+                            _set_swap_ts(sym, _mig)
                             _db.kv_remove("guardian_swap_ts:" + sym)
                     _last_swap = float(((_mig or {}).get("ts")) or 0)
                 except Exception:
@@ -684,10 +771,7 @@ def run(client: Any, portfolio: Any,
                 if oco:
                     summary["healed"] += 1
                     try:
-                        from src.state_db import get_state_db
-                        get_state_db().kv_set(
-                            "gov:swap_ts:" + sym,
-                            {"ts": time.time()})
+                        _set_swap_ts(sym, {"ts": time.time()})
                     except Exception:
                         pass
                     emit_alert("PROTECTION_HEALED", sym, {
@@ -733,10 +817,7 @@ def run(client: Any, portfolio: Any,
                                 "order_id": "plain_sl_restored",
                                 "price": old_stop, "qty": qty,
                             })
-                        from src.state_db import get_state_db
-                        get_state_db().kv_set(
-                            "gov:swap_ts:" + sym,
-                            {"ts": time.time()})
+                        _set_swap_ts(sym, {"ts": time.time()})
                     except Exception:
                         log.warning("guardian: swap safety-net tracker "
                                     "sync failed for %s", sym, exc_info=True)
