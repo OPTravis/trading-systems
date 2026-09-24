@@ -1432,12 +1432,26 @@ def _cli() -> None:  # pragma: no cover - manual ops entry
         days = int(sys.argv[2]) if len(sys.argv) > 2 else 7
         print(json.dumps(shadow_report(db, days=days),
                          indent=2, ensure_ascii=False, default=str))
+    elif cmd == "shadow-round":
+        # WO-0924 P2 followup: cadence keeper for gate-skip scan rounds.
+        # run_cron.sh calls this when the dynamic gate parks the heavy
+        # scan, so the P2 observation clock keeps ticking (~43 skips/day
+        # at the 1h F&G cadence). One quiet line, never fails the caller.
+        r = shadow_diff(db, round_id=f"gate-{int(time.time())}")
+        if r.get("status") == "off":
+            print("ledger shadow: mode=off, round skipped")
+        else:
+            diffs = r.get("true_diffs") or []
+            print(f"ledger shadow round {r.get('round')}: "
+                  f"clean={r.get('clean')} true_diffs={len(diffs)}")
     else:
         print("usage: python -m src.ledger "
-              "[bootstrap|report|stats|weekly [days]|"
+              "[bootstrap|report|stats|weekly [days]|shadow-round|"
               "set-mode <off|shadow|primary>|set-repairs <0|1>|reset]\n"
               "  bootstrap   one-time shadow baseline snapshot\n"
               "  report      run ONE shadow diff round (prints the round)\n"
+              "  shadow-round  one quiet diff line for cron cadence "
+              "keeping (gate-skip rounds)\n"
               "  stats       current counters + mode\n"
               "  weekly      aggregate report: daily clean rate / diff "
               "kinds / pending lag / longest streak + promotion gate "

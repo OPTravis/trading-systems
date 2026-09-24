@@ -207,6 +207,13 @@ if [ "$CMD" = "cron-scan" ]; then
     set -e
     if [ $GATE_EXIT -ne 0 ]; then
         echo "========== $(date) - $CMD SKIPPED by dynamic gate ==========" >> "$LOGFILE"
+        # WO-0924 P2 followup (9/24): gate-skip rounds still owe a shadow
+        # diff. The dynamic gate parks the heavy scan ~43x/day at the 1h
+        # F&G cadence, which silently starved the P2 observation clock
+        # (stats stuck at round 3 while 9/24 kept skipping). The diff is
+        # pure-DB with zero API calls, so it cannot undermine the gate's
+        # waste-prevention role. Always || true: never blocks.
+        python3 -m src.ledger shadow-round >> "$LOGFILE" 2>&1 || true
         exit 0
     fi
 fi

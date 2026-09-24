@@ -128,11 +128,20 @@ def cmd_cron_scan():
         ctx = _step_scan_opportunities()
         if ctx is None:
             _append_scan_summary(None)
+            # WO-0924 P2 followup (9/24 22:36): no-op rounds still owe a
+            # shadow diff. The 1s "no opportunities" short rounds silently
+            # starved the P2 observation cadence — stats sat at round 3
+            # while gate-skip rounds kept ticking (21:50/22:20). shadow_diff
+            # is pure-DB (live tables vs shadow book, no exchange calls),
+            # so running it on starved rounds is safe and keeps the
+            # consecutive-clean clock meaningful.
+            _step_ledger_shadow_diff(None)
             return
 
         ctx = _step_research_top_n(ctx)
         if ctx is None:
             _append_scan_summary(ctx)
+            _step_ledger_shadow_diff(ctx)
             return
 
         _step_event_driven_adjustment(ctx)
@@ -184,6 +193,10 @@ def _step_ledger_shadow_diff(ctx):
     Runs AFTER execute/reconcile/defense so both books already reflect
     the round's fills. Fail-open and silent-skip in off/primary modes:
     shadow only observes; a reporting failure never blocks the scan.
+
+    WO-0924 P2 followup: every cmd_cron_scan exit path must call this
+    (including the no-op short rounds). ctx is unused here and may be
+    None — the diff reads DB state only.
     """
     try:
         from src.state_db import get_state_db
