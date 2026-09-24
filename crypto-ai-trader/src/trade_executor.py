@@ -1353,6 +1353,23 @@ def execute_auto_trade(
         )
         return {"success": False, "reason": "shutdown_in_progress"}
 
+    # WO-0924-x: entry frequency governor (pure risk layer) —
+    # loss-exit cooldown / daily cap / fallback-under-drawdown.
+    if not os.environ.get("TESTING"):
+        try:
+            from src.entry_governor import check_entry as _gov_check
+            _gov = _gov_check(symbol,
+                              size_mult=strategy_size_multiplier)
+            if not _gov.get("ok"):
+                logger.warning(
+                    f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
+                    f"{_gov.get('reason')}"
+                )
+                return {"success": False, "reason": _gov.get("reason"),
+                        "governor": _gov.get("gate")}
+        except Exception:
+            pass  # fail-open — governor must never break trading
+
     # Safety: Check if symbol is blacklisted (strategy degradation)
     # Skip during testing — conftest sets TESTING=1
     if not os.environ.get("TESTING"):
@@ -1982,6 +1999,14 @@ def execute_auto_trade(
         f"[trade_id={_trade_id}] execute_auto_trade SUCCESS symbol={symbol} "
         f"qty={executed_qty:.6f} invest_pct={invest_pct*100:.1f}% active_positions={active_positions + 1}"
     )
+
+    # WO-0924-x: count this filled fresh entry toward the daily cap
+    if not os.environ.get("TESTING"):
+        try:
+            from src.entry_governor import note_entry as _gov_note
+            _gov_note(symbol)
+        except Exception:
+            pass
 
     return {
         "success": True,

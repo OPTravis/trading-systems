@@ -336,6 +336,12 @@ def _select_best_candidate(research_results, client, dynamic_threshold):
         best_adj_score = held_adj_score
     elif best_sym and held_sym and held_adj_score > best_adj_score:
         fallback_used = True
+        try:  # WO-0924-x: flag for the entry governor's
+              # fallback-under-drawdown gate (30-min TTL)
+            from src.entry_governor import note_fallback
+            note_fallback(best_sym)
+        except Exception:
+            pass
         logger.info(
             "FRESH_ENTRY_FALLBACK: held %s (%d) outranks fresh %s (%d) but is "
             "duplicate-blocked — executing fresh entry instead",

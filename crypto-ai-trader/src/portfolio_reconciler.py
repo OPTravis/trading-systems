@@ -309,6 +309,12 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
             round(pnl, 6), client_order_id=str(oid),
         )
         if inserted:
+            if pnl < 0:  # WO-0924-x: loss exit → 24h re-entry cooldown
+                try:
+                    from src.entry_governor import note_loss_exit
+                    note_loss_exit(symbol, pnl)
+                except Exception:
+                    pass
             booked.append(
                 {"symbol": symbol, "qty": round(qty, 8), "price": round(avg_px, 8),
                  "pnl": round(pnl, 6), "order_id": str(oid), "source": "reconcile/oco_fill"}

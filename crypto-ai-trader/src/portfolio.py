@@ -387,6 +387,12 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                     pnl=pnl,
                     client_order_id=client_order_id,
                 )
+                if pnl < 0:  # WO-0924-x: loss exit → 24h cooldown
+                    try:
+                        from src.entry_governor import note_loss_exit
+                        note_loss_exit(symbol, pnl)
+                    except Exception:
+                        pass
                 logger.info(
                     f"Recorded trade: {symbol} SELL qty={pos['quantity']} price={price:.6f} PnL={pnl:.2f}"
                 )
