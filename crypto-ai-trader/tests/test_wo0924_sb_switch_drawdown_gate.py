@@ -18,7 +18,7 @@ import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -77,24 +77,50 @@ DECISION = {"from_symbol": "BCHUSDT", "to_symbol": "LTCUSDT",
             "from_value": 50.0}
 
 
+def _auth_dd(pct, level="severe", escalated=True):
+    """Patch the authoritative drawdown source (WO-0924-gatefix):
+    the gate reads state_db.drawdown_get() and evaluates read-only.
+    level_entry_time pinned to 'now' so time-escalation (2h in
+    moderate) does not fire unless the test asks for it."""
+    import time as _t
+    from unittest.mock import MagicMock
+    sdb = MagicMock()
+    sdb.drawdown_get.return_value = {
+        "high_watermark": 460.0, "current_drawdown_pct": pct,
+        "max_drawdown_pct": pct, "tripped_count": 0,
+        "tripped_at": None, "reset_at": None, "history": []}
+    sdb.kv_get.return_value = {
+        "current_level": level, "level_entry_time": _t.time(),
+        "time_in_current_level": 0.0, "escalated": escalated}
+    sdb.kv_set = MagicMock()
+    return patch("src.state_db.get_state_db", return_value=sdb), sdb
+
+
 def _audit_rows(action):
-    from src.state_db import get_state_db
-    conn = get_state_db()._get_conn()
-    return conn.execute(
-        "SELECT action, details FROM audit_log WHERE action = ? "
-        "ORDER BY timestamp DESC LIMIT 5", (action,)).fetchall()
+    """Read the conftest-isolated real DB (NOT the gate's mocked
+    get_state_db) — the audit write happens through whichever
+    get_state_db is live INSIDE the gate context, so we instead
+    record via the mock and assert the call itself."""
+    return []  # replaced by _audit_calls below
+
+
+def _audit_calls(mock_sdb, action):
+    """Collect audit_log(action, ...) invocations from the mock."""
+    calls = []
+    for c in mock_sdb.audit_log.call_args_list:
+        if c.args and c.args[0] == action:
+            calls.append(c)
+    return calls
 
 
 class TestSevereBlocksBuyLeg:
     def test_severe_sell_runs_buy_blocked_cash_back_audit_logged(self):
         sell_calls, buy_calls, close_calls = [], [], []
         opt = _mk_opt(sell_calls, buy_calls, close_calls)
-        # severe band (8-10%) — real get_drawdown_action levels:
-        # block_new_trades=True. Only the balance fetching is mocked.
-        with patch("src.drawdown_breaker.DrawdownBreaker") as ddb:
-            ddb.return_value.check_drawdown.return_value = {
-                "drawdown_pct": 9.0, "tripped": False,
-                "high_watermark": 460.0, "action": "HOLD", "reason": ""}
+        # severe band (8-10%) — authoritative table says 9.0%.
+        # The gate must evaluate READ-ONLY (no kv state writes).
+        gate, sdb = _auth_dd(9.0)
+        with gate:
             decision = dict(DECISION)
             assert opt._execute_switch(decision) is True
 
@@ -107,8 +133,9 @@ class TestSevereBlocksBuyLeg:
         assert close_calls[0]["symbol"] == "BCHUSDT"
         assert close_calls[0]["exit_reason"] == "switch"
         assert close_calls[0]["order_id"] == "77"
-        # (4) audit trail
-        rows = _audit_rows("SWITCH_BUY_BLOCKED_BY_DRAWDOWN")
+        # (4) audit trail — the SWITCH_BUY_BLOCKED_BY_DRAWDOWN call
+        # reached the state-db layer (recorded on the gate's mock)
+        rows = _audit_calls(sdb, "SWITCH_BUY_BLOCKED_BY_DRAWDOWN")
         assert rows, "SWITCH_BUY_BLOCKED_BY_DRAWDOWN must be audit-logged"
         assert decision.get("buy_blocked_by_drawdown") is True
 
@@ -118,10 +145,8 @@ class TestAutoRecovery:
         """Mild band (3-5%): block_new_trades=False -> full switch."""
         sell_calls, buy_calls, close_calls = [], [], []
         opt = _mk_opt(sell_calls, buy_calls, close_calls)
-        with patch("src.drawdown_breaker.DrawdownBreaker") as ddb:
-            ddb.return_value.check_drawdown.return_value = {
-                "drawdown_pct": 4.0, "tripped": False,
-                "high_watermark": 460.0, "action": "HOLD", "reason": ""}
+        gate, sdb = _auth_dd(4.0, level="mild", escalated=False)
+        with gate:
             decision = dict(DECISION)
             assert opt._execute_switch(decision) is True
         assert sell_calls, "sell leg must still run in mild"
@@ -132,10 +157,8 @@ class TestAutoRecovery:
         """Moderate band (5-8%) without time escalation: allowed."""
         sell_calls, buy_calls, close_calls = [], [], []
         opt = _mk_opt(sell_calls, buy_calls, close_calls)
-        with patch("src.drawdown_breaker.DrawdownBreaker") as ddb:
-            ddb.return_value.check_drawdown.return_value = {
-                "drawdown_pct": 6.0, "tripped": False,
-                "high_watermark": 460.0, "action": "HOLD", "reason": ""}
+        gate, sdb = _auth_dd(6.0, level="moderate", escalated=False)
+        with gate:
             assert opt._execute_switch(dict(DECISION)) is True
         assert buy_calls, "moderate (unescalated) must not block"
 
@@ -145,10 +168,56 @@ class TestFailClosed:
         """Gate check itself raises -> buy leg skipped (fail-closed)."""
         sell_calls, buy_calls, close_calls = [], [], []
         opt = _mk_opt(sell_calls, buy_calls, close_calls)
-        with patch("src.drawdown_breaker.DrawdownBreaker") as ddb:
-            ddb.side_effect = RuntimeError("breaker api down")
+        with patch("src.state_db.get_state_db",
+                   side_effect=RuntimeError("state db down")):
             decision = dict(DECISION)
             assert opt._execute_switch(decision) is True
         assert sell_calls, "loss-cut sell still runs"
         assert buy_calls == [], "buy leg must fail closed on gate error"
         assert decision.get("buy_blocked_by_drawdown") is True
+
+
+class TestDriftImmunity:
+    """WO-0924-gatefix core scenario: the 19:25 incident replay.
+
+    Sticky escalated=severe in state, but the caller's drawdown number
+    reads LOW (4.06% — the drifted self-computed equity of the old
+    gate). The gate must NOT downgrade, NOT allow the buy leg, and
+    NOT clear the sticky escalation."""
+
+    def test_drifted_low_pct_with_sticky_severe_still_blocks(self):
+        sell_calls, buy_calls, close_calls = [], [], []
+        opt = _mk_opt(sell_calls, buy_calls, close_calls)
+        # authoritative table still says severe territory would be
+        # 5.43%; simulate the drifted-input scenario directly at the
+        # action layer: sticky escalated severe state + low pct input
+        from src.stepwise_drawdown import get_drawdown_action
+        with patch("src.state_db.get_state_db") as sdb:
+            sdb.return_value.kv_get.return_value = {
+                "current_level": "severe",
+                "level_entry_time": 1790237019.79,
+                "time_in_current_level": 0.0,
+                "escalated": True}
+            sdb.return_value.kv_set = MagicMock()
+            action = get_drawdown_action(4.06, read_only=True)
+        # sticky honored: still severe, still blocking
+        assert action["level"] == "severe"
+        assert action["block_new_trades"] is True
+        # and the state was NOT written (no recovery clear, no transition)
+        sdb.return_value.kv_set.assert_not_called()
+
+    def test_read_only_never_writes_on_transition(self):
+        """Even when the input level differs from state (transition
+        would fire), read_only must not persist anything."""
+        from src.stepwise_drawdown import get_drawdown_action
+        with patch("src.state_db.get_state_db") as sdb:
+            sdb.return_value.kv_get.return_value = {
+                "current_level": "mild",
+                "level_entry_time": 1790237019.79,
+                "time_in_current_level": 0.0,
+                "escalated": False}
+            sdb.return_value.kv_set = MagicMock()
+            action = get_drawdown_action(9.0, read_only=True)
+        assert action["level"] == "severe"
+        assert action["block_new_trades"] is True
+        sdb.return_value.kv_set.assert_not_called()

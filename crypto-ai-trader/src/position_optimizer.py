@@ -823,32 +823,23 @@ class PositionOptimizer:
             _dd_reason = ""
             _dd_check: Dict = {}
             try:
-                from src.drawdown_breaker import DrawdownBreaker
+                # WO-0924-gatefix: read the AUTHORITATIVE drawdown from
+                # the drawdown table (same source as the HWM maintained
+                # by the DrawdownBreaker main path). The first version
+                # of this gate self-computed total account value from
+                # USDT free + per-asset live quotes; that drifted
+                # (4.06% vs authoritative 5.43%) and both misleveled
+                # the gate AND, via get_drawdown_action's state writes,
+                # cleared the sticky severe escalation mid-evaluation
+                # (19:25 DASH->LTC bought through severe, id145/146).
+                # Rule: one drawdown truth source, read-only use here.
+                from src.state_db import get_state_db
                 from src.stepwise_drawdown import get_drawdown_action
-                from src.trade_executor import NON_POSITION_ASSETS
 
-                _usdt_bal = float(self.bc.get_free_balance("USDT"))
-                _total_value = _usdt_bal
-                try:
-                    _acct = self.bc.get_account()
-                    for _b in _acct.get("balances", []):
-                        _asset = _b.get("asset")
-                        _q = float(_b.get("free", 0)) + float(_b.get("locked", 0))
-                        if _q > 0 and _asset not in NON_POSITION_ASSETS:
-                            try:
-                                _total_value += _q * float(
-                                    self.bc.get_ticker_price(f"{_asset}USDT"))
-                            except (ConnectionError, TimeoutError, ValueError,
-                                    KeyError, OSError):
-                                pass
-                except (ConnectionError, TimeoutError, ValueError, KeyError,
-                        OSError):
-                    logger.warning("drawdown gate: account fetch failed, "
-                                   "using USDT-only total for check")
-                _ddb = DrawdownBreaker(binance_client=self.bc)
-                _dd_check = _ddb.check_drawdown(_total_value)
-                _dd_pct = _dd_check.get("drawdown_pct", 0)
-                _dd_action = get_drawdown_action(_dd_pct)
+                _dd_pct = get_state_db().drawdown_get().get(
+                    "current_drawdown_pct", 0.0)
+                _dd_check = {"drawdown_pct": _dd_pct}
+                _dd_action = get_drawdown_action(_dd_pct, read_only=True)
                 if _dd_action.get("block_new_trades"):
                     _dd_reason = (
                         f"StepwiseDrawdown {_dd_action['level']} "

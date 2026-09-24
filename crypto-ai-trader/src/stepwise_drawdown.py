@@ -177,7 +177,8 @@ def _check_time_escalation(
 
 
 def get_drawdown_action(
-    drawdown_pct: float, db=None, now: Optional[float] = None
+    drawdown_pct: float, db=None, now: Optional[float] = None,
+    read_only: bool = False,
 ) -> Dict:
     """Get the action to take based on current drawdown percentage.
 
@@ -185,6 +186,12 @@ def get_drawdown_action(
         drawdown_pct: Current drawdown from high watermark (as percentage, e.g. 5.3 for 5.3%).
         db: StateDB instance (optional, will get singleton if None).
         now: Current timestamp (optional, for testing).
+        read_only: bool - PURE evaluation mode (WO-0924-gatefix):
+            no state writes at all. An existing sticky/escalated level
+            is HONORED (held at least), never cleared, and no level
+            transitions are persisted. Use from secondary/evaluation
+            call sites (e.g. the switch buy-leg gate); the main scan
+            path keeps read-write behavior.
 
     Returns:
         Dict with keys:
@@ -244,24 +251,37 @@ def get_drawdown_action(
                 detected_level = previous_level
                 level_config = LEVELS[detected_level]
         else:
-            # Drawdown dropped below moderate zone — allow recovery
-            state["escalated"] = False
-            _save_state(db, state)
+            # Drawdown dropped below moderate zone — allow recovery.
+            # In read_only mode the sticky level is HELD, not cleared:
+            # an evaluation caller with a drifted drawdown_pct must
+            # never release the main path's sticky escalation
+            # (WO-0924-gatefix: 19:25 DASH->LTC bought through severe
+            # because the gate's drifted 4.06% computation cleared
+            # escalated=true mid-evaluation). Recovery is owned by
+            # the main scan path, under the authoritative equity only.
+            if read_only:
+                detected_level = previous_level
+                level_config = LEVELS[detected_level]
+            else:
+                state["escalated"] = False
+                _save_state(db, state)
 
     # Log level transitions
     if detected_level != previous_level:
         logger.warning(
             "StepwiseDrawdown: LEVEL TRANSITION %s → %s "
-            "(drawdown=%.1f%%, escalating=%s)",
+            "(drawdown=%.1f%%, escalating=%s%s)",
             previous_level,
             detected_level,
             drawdown_pct,
             escalated,
+            " [read-only evaluation, not persisted]" if read_only else "",
         )
-        state["current_level"] = detected_level
-        state["level_entry_time"] = now
-        state["escalated"] = escalated
-        _save_state(db, state)
+        if not read_only:
+            state["current_level"] = detected_level
+            state["level_entry_time"] = now
+            state["escalated"] = escalated
+            _save_state(db, state)
 
     # Calculate time in current level
     time_in_level = now - state.get("level_entry_time", now)
