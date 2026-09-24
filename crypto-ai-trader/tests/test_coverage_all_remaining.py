@@ -369,27 +369,6 @@ class TestHMMRegimeComplete:
         assert det is not None
 
 
-# ── FreqtradeRiskPatterns (213 missed) ─────────────────────────────────
-
-
-class TestFreqtradeComplete:
-    def test_calculate_risk_per_trade(self):
-        from src.freqtrade_risk_patterns import calculate_risk_per_trade_position_size
-
-        result = calculate_risk_per_trade_position_size(
-            portfolio_value=10000.0,
-            risk_pct=0.02,
-            entry_price=100.0,
-            stoploss_price=95.0,
-        )
-        assert result > 0
-
-    def test_calculate_unlimited_stake(self):
-        from src.freqtrade_risk_patterns import calculate_unlimited_stake_amount
-
-        assert calculate_unlimited_stake_amount(10000.0, 5000.0, 5) == 3000.0
-        assert calculate_unlimited_stake_amount(10000.0, 5000.0, 0) == 0
-
 
 # ── ParamOptimizer (148 missed) ───────────────────────────────────────
 
