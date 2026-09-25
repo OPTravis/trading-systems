@@ -857,17 +857,41 @@ class StateDB:
     # keeps its original text so semantics are bit-identical.
 
     def trades_buy_avg(self, symbol: str) -> Optional[float]:
-        """Weighted-average entry of all booked BUYs (None if no qty).
+        """Weighted-average entry of the CURRENT OPEN lifecycle's BUYs.
 
-        P4: from portfolio_reconciler._db_buy_avg; python-side
-        weighted aggregation preserved (row order = table order)."""
+        Walks booked rows in time order; each SELL relieves the open cost
+        proportionally and a fully-flat reset clears accumulated cost, so
+        BUYs from an earlier CLOSED lifecycle never contaminate the current
+        entry average (WO-0926: 9/26 WLD auto-booked pnl came out +0.3927
+        because the closed 9/21 lifecycle 13.5@0.4471 leaked into the
+        all-history average; correct lifecycle pnl was +0.237).
+        Returns None when no open lifecycle remains.
+        P4: from portfolio_reconciler._db_buy_avg; semantic upgraded."""
         rows = self._get_conn().execute(
-            "SELECT qty, price FROM trades WHERE symbol = ? AND UPPER(side) = 'BUY'",
+            "SELECT side, qty, price FROM trades WHERE symbol = ? "
+            "ORDER BY timestamp ASC, id ASC",
             (symbol,),
         ).fetchall()
-        from src.pnl_calculator import weighted_entry
-        return weighted_entry(
-            (float(r["qty"] or 0), float(r["price"] or 0)) for r in rows)
+        open_qty = 0.0
+        open_cost = 0.0
+        for r in rows:
+            qty = float(r["qty"] or 0)
+            if qty <= 0:
+                continue
+            if str(r["side"] or "").upper() == "BUY":
+                open_qty += qty
+                open_cost += qty * float(r["price"] or 0)
+            else:
+                if open_qty > 0:
+                    sold = min(qty, open_qty)
+                    open_cost -= open_cost * (sold / open_qty)
+                    open_qty -= sold
+                    if open_qty <= 1e-12:
+                        open_qty = 0.0
+                        open_cost = 0.0
+        if open_qty <= 0:
+            return None
+        return open_cost / open_qty
 
     def trades_net_qty(self, symbol: str) -> float:
         """booked BUY qty − booked SELL qty (P4: reconciler._db_net_qty)."""

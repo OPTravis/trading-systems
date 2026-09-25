@@ -380,3 +380,42 @@ class TestSOLQtyDisplay:
         joined = "\n".join(b for _, b in n.bodies) + "\n".join(results)
         assert "買入: 0.3 @" in joined, f"qty<1 mangled: {joined!r}"
         assert "買入: 0 @" not in joined
+
+
+# ==================== WO-0926 follow-up: lifecycle-aware buy average ====================
+
+class TestTradesBuyAvgLifecycle:
+    def test_closed_lifecycle_does_not_contaminate_current(self, tmp_path):
+        """9/26 WLD case: closed lifecycle (13.5@0.4471) must not leak into
+        the current open lifecycle's entry average (12.7@0.4711)."""
+        from src.state_db import StateDB
+
+        db = StateDB(str(tmp_path / "avg.db"))
+        # closed lifecycle (9/21-9/22): BUY fully matched by SELL
+        _seed_buy(db, "WLDUSDT", 13.5, 0.4471, time.time() - 400000)
+        db.trade_add("WLDUSDT", "SELL", 13.5, 0.4405)
+        db._get_conn().execute(
+            "UPDATE trades SET timestamp = ? WHERE symbol = 'WLDUSDT' "
+            "AND side = 'SELL'", (time.time() - 390000,))
+        db._get_conn().commit()
+        # current open lifecycle (9/26)
+        _seed_buy(db, "WLDUSDT", 12.7, 0.4711, time.time() - 3600)
+        assert db.trades_buy_avg("WLDUSDT") == pytest.approx(0.4711)
+
+    def test_flat_ledger_returns_none(self, tmp_path):
+        from src.state_db import StateDB
+
+        db = StateDB(str(tmp_path / "flat.db"))
+        db.trade_add("AUSDT", "BUY", 10.0, 2.0)
+        db.trade_add("AUSDT", "SELL", 10.0, 2.2)
+        assert db.trades_buy_avg("AUSDT") is None
+
+    def test_partial_sell_keeps_proportional_avg(self, tmp_path):
+        from src.state_db import StateDB
+
+        db = StateDB(str(tmp_path / "part.db"))
+        db.trade_add("BUSDT", "BUY", 100.0, 1.0)
+        db.trade_add("BUSDT", "BUY", 100.0, 2.0)
+        db.trade_add("BUSDT", "SELL", 100.0, 1.5)
+        # 100 @1.0 + 100 @2.0 -> proportional relief halves the cost
+        assert db.trades_buy_avg("BUSDT") == pytest.approx(1.5)
