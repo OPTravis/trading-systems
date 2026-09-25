@@ -89,10 +89,8 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
             _day0 = _dt.datetime.fromtimestamp(
                 now).replace(hour=0, minute=0, second=0,
                              microsecond=0).timestamp()
-            _row = db._get_conn().execute(
-                "SELECT COUNT(*) FROM trades WHERE side = 'BUY' "
-                "AND timestamp >= ?", (_day0,)).fetchone()
-            count = max(count, int(_row[0] if _row else 0))
+            # P4: StateDB trades-store reader (SQL moved verbatim)
+            count = max(count, db.trades_count_buys_since(_day0))
         except Exception:
             pass  # trades unreadable — fall back to kv counter
         if count >= DAILY_ENTRY_CAP:

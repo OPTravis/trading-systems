@@ -252,24 +252,14 @@ def _exchange_holdings(account: Dict) -> Dict[str, float]:
 
 def _db_buy_avg(db, symbol: str) -> Optional[float]:
     """Weighted-average entry of all booked BUYs for *symbol* (or None)."""
-    rows = db._get_conn().execute(
-        "SELECT qty, price FROM trades WHERE symbol = ? AND UPPER(side) = 'BUY'",
-        (symbol,),
-    ).fetchall()
-    q = sum(float(r["qty"] or 0) for r in rows)
-    if q <= 0:
-        return None
-    return sum(float(r["qty"] or 0) * float(r["price"] or 0) for r in rows) / q
+    # P4: StateDB trades-store reader (SQL moved verbatim)
+    return db.trades_buy_avg(symbol)
 
 
 def _db_net_qty(db, symbol: str) -> float:
     """booked BUY qty − booked SELL qty"""
-    row = db._get_conn().execute(
-        "SELECT COALESCE(SUM(CASE WHEN UPPER(side)='BUY' THEN qty ELSE -qty END), 0) "
-        "AS net FROM trades WHERE symbol = ?",
-        (symbol,),
-    ).fetchone()
-    return float(row["net"] or 0) if row else 0.0
+    # P4: StateDB trades-store reader (SQL moved verbatim)
+    return db.trades_net_qty(symbol)
 
 
 def _order_booked(db, order_id) -> bool:
@@ -278,13 +268,8 @@ def _order_booked(db, order_id) -> bool:
     ``oco_tp_<oid>``, ``oco_fill_<oid>``); a plain equality check misses
     them and reconcile re-books the same physical fill (FET 9/22: id79
     wo-prefixed + id86 re-booked under the bare orderId)."""
-    oid = str(order_id)
-    row = db._get_conn().execute(
-        "SELECT 1 FROM trades WHERE client_order_id = ? "
-        "OR client_order_id LIKE '%\\_' || ? ESCAPE '\\' LIMIT 1",
-        (oid, oid),
-    ).fetchone()
-    return row is not None
+    # P4: StateDB trades-store reader (LIKE ESCAPE semantics intact)
+    return db.trades_order_booked(order_id)
 
 
 from src.live_alerts import emit as emit_alert
@@ -300,12 +285,9 @@ def _fuzzy_booked(db, symbol: str, qty: float, price: float) -> bool:
     orderId — the id=36/id=38 double-count bug.
     """
     cutoff = time.time() - FUZZY_WINDOW_S
-    rows = db._get_conn().execute(
-        "SELECT qty, price FROM trades "
-        "WHERE symbol=? AND side='SELL' AND client_order_id IS NULL "
-        "AND timestamp >= ? ORDER BY timestamp DESC LIMIT 50",
-        (symbol, cutoff),
-    ).fetchall()
+    # P4: StateDB trades-store reader (SQL moved verbatim; fuzzy
+    # tolerance match stays here — it is python logic, not SQL)
+    rows = db.trades_recent_sells_no_oid(symbol, cutoff)
     for r in rows:
         q, p = float(r["qty"]), float(r["price"])
         if q <= 0 or p <= 0:
@@ -322,11 +304,8 @@ def _last_buy_ts_ms(db, symbol: str) -> int:
     closed position and must never book against the current gap (INJ 9/20:
     fills from 5/13, 9/15, 9/16, 9/19 all predate the 07:31 BUY and were
     still booked). Returns 0 when no BUY exists."""
-    row = db._get_conn().execute(
-        "SELECT MAX(timestamp) FROM trades WHERE symbol = ? AND side = 'BUY'",
-        (symbol,),
-    ).fetchone()
-    ts = row[0] if row else None
+    # P4: StateDB trades-store reader (SQL moved verbatim)
+    ts = db.trades_last_buy_ts(symbol)
     return int(float(ts) * 1000) if ts else 0
 
 
@@ -464,7 +443,10 @@ def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
                 symbol, oid, FUZZY_QTY_REL_TOL * 100,
             )
             continue
-        pnl = qty * (avg_px - entry_avg) if entry_avg else 0.0
+        # P4: gross formula via the single implementation (same
+        # expression, operands swapped — float-identical)
+        from src.pnl_calculator import gross_pnl
+        pnl = gross_pnl(entry_avg, avg_px, qty) if entry_avg else 0.0
         inserted = db.trade_add(
             symbol, "SELL", round(qty, 8), round(avg_px, 8),
             round(pnl, 6), client_order_id=str(oid),
@@ -631,11 +613,8 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
     # ledger net gap (orderId idempotency + gap cap prevent double-booking).
     cutoff_s = time.time() - FILL_LOOKBACK_S
     try:
-        rows = db._get_conn().execute(
-            "SELECT DISTINCT symbol FROM trades WHERE timestamp >= ?",
-            (cutoff_s,),
-        ).fetchall()
-        recent_syms = {r["symbol"] for r in rows if r["symbol"]}
+        # P4: StateDB trades-store reader (SQL moved verbatim)
+        recent_syms = set(db.trades_recent_symbols(cutoff_s))
     except Exception:
         recent_syms = set()
         log.warning("reconcile: Path C symbol query failed", exc_info=True)

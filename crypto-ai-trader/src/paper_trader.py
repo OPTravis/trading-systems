@@ -540,7 +540,8 @@ class PaperTrader:
             # The BUY leg's fill_price is the true entry.
             entry = db.paper_last_buy_price(symbol)
             if entry is not None:
-                pnl = (fill_price - entry) * quantity - fee
+                from src.pnl_calculator import net_pnl
+                pnl = net_pnl(entry, fill_price, quantity, fee)
                 self._set_sim_pnl(snap_pnl + pnl)
         except Exception:
             logger.error(

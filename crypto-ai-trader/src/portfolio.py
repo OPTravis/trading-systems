@@ -395,7 +395,9 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         pos["close_price"] = price
 
         # Credit sale proceeds to cash balance
-        pnl = (price - pos["entry_price"]) * pos["quantity"]
+        # P4: gross price-diff formula via the single implementation
+        from src.pnl_calculator import gross_pnl
+        pnl = gross_pnl(pos["entry_price"], price, pos["quantity"])
         with self._lock:
             self.cash_balance += pos["quantity"] * price
         pos["pnl"] = pnl

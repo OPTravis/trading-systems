@@ -201,9 +201,11 @@ class BullPaperPortfolio:
 
             notional = close_qty * exit_price
             fee = notional * fee_rate
-            proceeds = notional - fee
-            cost_basis = close_qty * pos.entry_price
-            pnl = proceeds - cost_basis
+            # P4: net formulas via the single implementation
+            # (float-identical expressions)
+            from src.pnl_calculator import net_pnl, proceeds_net
+            proceeds = proceeds_net(exit_price, close_qty, fee)
+            pnl = net_pnl(pos.entry_price, exit_price, close_qty, fee)
 
             remaining = pos.quantity - close_qty
 

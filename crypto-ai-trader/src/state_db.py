@@ -832,6 +832,94 @@ class StateDB:
             (order_id,)).fetchone()
         return dict(row) if row else None
 
+    # ==================== Trades-store readers (P4) ====================
+    # SQL moved verbatim from portfolio_reconciler (6 sites),
+    # entry_price (1) and entry_governor (1) during P4 — every query
+    # keeps its original text so semantics are bit-identical.
+
+    def trades_buy_avg(self, symbol: str) -> Optional[float]:
+        """Weighted-average entry of all booked BUYs (None if no qty).
+
+        P4: from portfolio_reconciler._db_buy_avg; python-side
+        weighted aggregation preserved (row order = table order)."""
+        rows = self._get_conn().execute(
+            "SELECT qty, price FROM trades WHERE symbol = ? AND UPPER(side) = 'BUY'",
+            (symbol,),
+        ).fetchall()
+        from src.pnl_calculator import weighted_entry
+        return weighted_entry(
+            (float(r["qty"] or 0), float(r["price"] or 0)) for r in rows)
+
+    def trades_net_qty(self, symbol: str) -> float:
+        """booked BUY qty − booked SELL qty (P4: reconciler._db_net_qty)."""
+        row = self._get_conn().execute(
+            "SELECT COALESCE(SUM(CASE WHEN UPPER(side)='BUY' THEN qty ELSE -qty END), 0) "
+            "AS net FROM trades WHERE symbol = ?",
+            (symbol,),
+        ).fetchone()
+        return float(row["net"] or 0) if row else 0.0
+
+    def trades_order_booked(self, order_id) -> bool:
+        """WO-017-2: exact key OR ``<prefix>_<oid>`` suffix match
+        (P4: reconciler._order_booked — LIKE ESCAPE text verbatim)."""
+        oid = str(order_id)
+        row = self._get_conn().execute(
+            "SELECT 1 FROM trades WHERE client_order_id = ? "
+            "OR client_order_id LIKE '%\\_' || ? ESCAPE '\\' LIMIT 1",
+            (oid, oid),
+        ).fetchone()
+        return row is not None
+
+    def trades_recent_sells_no_oid(self, symbol: str, cutoff_s: float,
+                                   limit: int = 50) -> List[Dict]:
+        """Recent NULL-id SELL rows for the fuzzy-booked check
+        (P4: reconciler._fuzzy_booked SQL half; the fuzzy qty/price
+        tolerance match itself stays in the caller)."""
+        rows = self._get_conn().execute(
+            "SELECT qty, price FROM trades "
+            "WHERE symbol=? AND side='SELL' AND client_order_id IS NULL "
+            "AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
+            (symbol, cutoff_s, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def trades_last_buy_ts(self, symbol: str) -> Optional[float]:
+        """Latest BUY timestamp for the symbol, None if never bought
+        (P0-2 anchor; P4: reconciler._last_buy_ts_ms SQL half)."""
+        row = self._get_conn().execute(
+            "SELECT MAX(timestamp) FROM trades WHERE symbol = ? AND side = 'BUY'",
+            (symbol,),
+        ).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def trades_recent_symbols(self, cutoff_s: float) -> List[str]:
+        """DISTINCT symbols with a ledger row since the cutoff
+        (P4: reconciler Path C symbol sweep)."""
+        rows = self._get_conn().execute(
+            "SELECT DISTINCT symbol FROM trades WHERE timestamp >= ?",
+            (cutoff_s,),
+        ).fetchall()
+        return [r["symbol"] for r in rows if r["symbol"]]
+
+    def trades_rows_asc(self, symbol: str) -> List[Dict]:
+        """All rows for the symbol, oldest first (side/qty/price/ts)
+        (P4: entry_price.get_avg_entry_price_from_db — the FIFO lot
+        walk stays in the caller)."""
+        rows = self._get_conn().execute(
+            "SELECT side, qty, price, timestamp FROM trades "
+            "WHERE symbol = ? ORDER BY timestamp ASC",
+            (symbol,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def trades_count_buys_since(self, ts: float) -> int:
+        """COUNT of BUY rows since ts (P1-② realtime daily-entry floor;
+        P4: entry_governor.check_entry SQL half)."""
+        row = self._get_conn().execute(
+            "SELECT COUNT(*) FROM trades WHERE side = 'BUY' "
+            "AND timestamp >= ?", (ts,)).fetchone()
+        return int(row[0]) if row else 0
+
     def paper_pending_mark_filled(self, order_id: str) -> bool:
         """Mark a pending order filled (idempotent; True if a row moved).
 

@@ -29,8 +29,10 @@ class PnlMixin:
         )
         qty = pos["quantity"]
 
-        pnl_value = (current - entry) * qty
-        pnl_pct = ((current - entry) / entry) * 100 if entry > 0 else 0
+        # P4: single-implementation formulas (float-identical)
+        from src.pnl_calculator import gross_pnl, pnl_pct as _pct
+        pnl_value = gross_pnl(entry, current, qty)
+        pnl_pct = _pct(entry, current)
         position_value = current * qty
 
         return {

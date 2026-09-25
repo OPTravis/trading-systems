@@ -127,12 +127,9 @@ def get_avg_entry_price_from_db(
         Weighted average entry price, or None if cannot determine.
     """
     try:
-        conn = db._get_conn()
-        rows = conn.execute(
-            "SELECT side, qty, price, timestamp FROM trades "
-            "WHERE symbol = ? ORDER BY timestamp ASC",
-            (symbol,),
-        ).fetchall()
+        # P4: StateDB trades-store reader (SQL moved verbatim; the
+        # FIFO lot walk below is python logic and stays here)
+        rows = db.trades_rows_asc(symbol)
     except Exception as e:
         logger.warning(f"Cannot read DB trades for {symbol}: {e}")
         return None

@@ -206,7 +206,11 @@ class Backtester:
                 effective_price = current_price * (1 - slippage)
                 qty = position["total"]
                 fee = qty * effective_price * fee_rate
-                proceeds = qty * effective_price - fee
+                # P4: net-proceeds formula via the single
+                # implementation; the round-trip cost-basis
+                # combination stays here (backtest-specific method)
+                from src.pnl_calculator import proceeds_net
+                proceeds = proceeds_net(effective_price, qty, fee)
                 pnl = proceeds - position["entry_cost"]
                 capital += proceeds
                 trades.append(

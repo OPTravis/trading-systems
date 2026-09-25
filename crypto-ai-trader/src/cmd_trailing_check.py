@@ -572,7 +572,8 @@ def cmd_trailing_check():
             try:
                 entry_price = update.get("entry_price", 0)
                 if entry_price > 0 and (sell_ok or qty_to_sell == 0):
-                    pnl = (current_price - entry_price) * (qty_to_sell if qty_to_sell > 0 else pos['total'])
+                    from src.pnl_calculator import gross_pnl
+                    pnl = gross_pnl(entry_price, current_price, (qty_to_sell if qty_to_sell > 0 else pos['total']))
                     risk_mgr.post_trade_update(asset, pnl)
                     logger.info(f"Post-trade update: {asset} PnL={pnl:.4f} USDT")
             except Exception as e:
@@ -1036,7 +1037,8 @@ def cmd_trailing_check():
                         if qty <= 0:
                             logger.warning(f"Cannot compute PnL for {sym}: no qty available (position gone, not tracked)")
                         else:
-                            pnl = (exit_price - entry_price) * qty
+                            from src.pnl_calculator import gross_pnl
+                            pnl = gross_pnl(entry_price, exit_price, qty)
                             risk_mgr.post_trade_update(sym, pnl)
                             logger.info(f"Detected SL/TP fill: {sym} entry={entry_price} exit={exit_price} qty={qty} PnL={pnl:.4f}")
                         results.append({

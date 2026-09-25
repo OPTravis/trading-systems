@@ -47,6 +47,66 @@ class FakeDB:
     def portfolio_get_all(self):
         return {}
 
+    # ---- P4 seam: trades-store readers moved SQL-side into StateDB;
+    # the stand-in mirrors the same SQL against its in-memory trades.
+    def trades_buy_avg(self, symbol):
+        from src.pnl_calculator import weighted_entry
+        rows = self.conn.execute(
+            "SELECT qty, price FROM trades"
+            " WHERE symbol = ? AND UPPER(side) = 'BUY'",
+            (symbol,)).fetchall()
+        return weighted_entry(
+            (float(r["qty"] or 0), float(r["price"] or 0)) for r in rows)
+
+    def trades_net_qty(self, symbol):
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(CASE WHEN UPPER(side)='BUY'"
+            " THEN qty ELSE -qty END), 0) AS net FROM trades"
+            " WHERE symbol = ?", (symbol,)).fetchone()
+        return float(row["net"] or 0) if row else 0.0
+
+    def trades_order_booked(self, order_id):
+        oid = str(order_id)
+        row = self.conn.execute(
+            "SELECT 1 FROM trades WHERE client_order_id = ?"
+            " OR client_order_id LIKE '%\\_' || ? ESCAPE '\\' LIMIT 1",
+            (oid, oid)).fetchone()
+        return row is not None
+
+    def trades_recent_sells_no_oid(self, symbol, cutoff_s, limit=50):
+        rows = self.conn.execute(
+            "SELECT qty, price FROM trades"
+            " WHERE symbol=? AND side='SELL'"
+            " AND client_order_id IS NULL"
+            " AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
+            (symbol, cutoff_s, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def trades_last_buy_ts(self, symbol):
+        row = self.conn.execute(
+            "SELECT MAX(timestamp) FROM trades"
+            " WHERE symbol = ? AND side = 'BUY'", (symbol,)).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def trades_recent_symbols(self, cutoff_s):
+        rows = self.conn.execute(
+            "SELECT DISTINCT symbol FROM trades"
+            " WHERE timestamp >= ?", (cutoff_s,)).fetchall()
+        return [r["symbol"] for r in rows if r["symbol"]]
+
+    def trades_rows_asc(self, symbol):
+        rows = self.conn.execute(
+            "SELECT side, qty, price, timestamp FROM trades"
+            " WHERE symbol = ? ORDER BY timestamp ASC",
+            (symbol,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def trades_count_buys_since(self, ts):
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE side = 'BUY'"
+            " AND timestamp >= ?", (ts,)).fetchone()
+        return int(row[0]) if row else 0
+
 
 class FakeClient:
     def __init__(self, balances=None, fills=None, live=None):
