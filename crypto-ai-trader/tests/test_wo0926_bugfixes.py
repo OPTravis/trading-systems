@@ -419,3 +419,57 @@ class TestTradesBuyAvgLifecycle:
         db.trade_add("BUSDT", "SELL", 100.0, 1.5)
         # 100 @1.0 + 100 @2.0 -> proportional relief halves the cost
         assert db.trades_buy_avg("BUSDT") == pytest.approx(1.5)
+
+
+# ===== WO-0926 tail: oco_fill booked path persists an outbox notification =====
+# Travis 06:59 merged order, part 2: the booked path (reconciler) only
+# emit_alert'ed — the real 06:43 WLD TP (+0.237) left zero trace in the
+# outbox. A booked fill must now persist a durable oco_fill notification
+# (order-id-keyed) that the consumer CLI can redeliver.
+
+class TestOcoFillOutboxNotification:
+    def test_booked_fill_persists_outbox_and_cli_consumes(self, tmp_path):
+        """Acceptance: oco_fill 通知进 outbox 且可被 notify_outbox.py 消费；
+        retry 轮不重复入账也不重复通知。"""
+        from src.portfolio_reconciler import reconcile_portfolio_drift
+
+        db = StateDB(str(tmp_path / "oco.db"))
+        now = time.time()
+        _seed_buy(db, "WLDUSDT", 12.7, 0.4711, now - 7000)
+        db.portfolio_set("WLDUSDT", {"quantity": 12.7, "entry_price": 0.4711})
+        fills = [_fill("WLDUSDT", 4189066134, 12.6, 0.4899, now - 2000,
+                       commission="0.0126", commission_asset="WLD")]
+        client = FakeClient([_bal("WLD", 0.1), _bal("USDT", 400)],
+                            {"WLDUSDT": fills})
+
+        booked = reconcile_portfolio_drift(client, db)
+        assert len(booked) == 1 and booked[0]["order_id"] == "4189066134"
+
+        # retry round: order-id idempotent — no re-book, no duplicate notify
+        assert reconcile_portfolio_drift(client, db) == []
+        db.close()
+
+        odb = get_state_db()  # conftest per-test STATE_DB_PATH
+        rows = [r for r in odb.notification_outbox_pending()
+                if r["notif_id"] == "notif_oco_fill_WLDUSDT_4189066134"]
+        assert len(rows) == 1, rows
+        r = rows[0]
+        assert r["type"] == "oco_fill"
+        assert "OCO" in r["title"] and "WLDUSDT" in r["title"]
+        assert "0.4899" in (r.get("body") or "")
+        assert "4189066134" in (r.get("body") or "")
+        odb.close()
+
+        # consumer side: the redelivery CLI must surface it (subprocess
+        # inherits STATE_DB_PATH -> same per-test DB)
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cp = subprocess.run(
+            [sys.executable, "scripts/notify_outbox.py", "--pending", "--json"],
+            cwd=repo, env=dict(os.environ), capture_output=True, text=True,
+            timeout=60,
+        )
+        assert cp.returncode == 0, cp.stderr
+        cli_rows = json.loads(cp.stdout)
+        match = [x for x in cli_rows
+                 if x["notif_id"] == "notif_oco_fill_WLDUSDT_4189066134"]
+        assert match and match[0]["type"] == "oco_fill"

@@ -549,6 +549,28 @@ def _book_sell_legs(db, symbol: str, sells: List[Dict], gap_qty: float,
                 {"side": "SELL", "qty": round(qty, 8),
                  "price": round(avg_px, 8), "pnl": round(pnl, 6),
                  "order_id": str(oid), "source": "reconcile"})
+            # WO-0926 tail (Travis 06:59 order): a booked OCO fill is a real
+            # money movement, but this path only emitted an ephemeral alert —
+            # the 06:43 WLD TP (+0.237) left zero trace in the outbox, same
+            # failure mode as the switch path fixed in 127daba. Persist a
+            # durable notification (order-id-keyed, INSERT OR IGNORE keeps it
+            # idempotent on retries) so the cross-round re-push chain
+            # (reside_scan pending_notifications / notify_outbox.py) covers
+            # it. Bystander contract: booking is already committed, a
+            # notification failure must never fail the booking.
+            try:
+                from src.state_db import get_state_db as _get_outbox_db
+                _get_outbox_db().notification_outbox_add(
+                    f"notif_oco_fill_{symbol}_{oid}", "oco_fill",
+                    f"OCO 成交自动入账: {symbol}",
+                    f"SELL {qty:.6g} @ ${avg_px:.6f} pnl {pnl:+.4f} USDT "
+                    f"(orderId {oid}, source reconciler.oco_fill)",
+                )
+            except Exception:
+                logger.warning(
+                    "reconcile: outbox persist failed for %s oco_fill %s",
+                    symbol, oid, exc_info=True,
+                )
         remaining_gap -= qty
     return booked
 
