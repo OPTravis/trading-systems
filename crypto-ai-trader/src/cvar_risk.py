@@ -18,7 +18,7 @@ Key metrics:
 
 import logging
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,14 @@ CVAR_95_CRITICAL = -15.0  # Critical if CVaR_95 < -15%
 MAX_PORTFOLIO_CVAR = -12.0  # Max allowed portfolio CVaR
 POSITION_SCALE_LOW_RISK = 1.2  # Scale up when risk is low
 POSITION_SCALE_HIGH_RISK = 0.5  # Scale down when risk is high
+
+# CVaR overlay activation — stage-1 shadow log (P7 tail batch,
+# Travis 9/25 go-ahead). Pure observation: records what
+# position_scale WOULD be if the overlay were activated. Stage 2
+# (kv cvar:overlay_enabled switch) is deliberately NOT built here
+# — it awaits Leo's ruling on the shadow data.
+SHADOW_LOG_KEY = "cvar:shadow_log"
+SHADOW_LOG_MAX_ENTRIES = 2000  # rolling window, bounds kv row size
 
 
 class CVaRRiskManager:
@@ -202,6 +210,46 @@ class CVaRRiskManager:
             "n_samples": len(returns),
             "timestamp": time.time(),
         }
+
+    def log_shadow_observation(self, positions: List[Dict]) -> Optional[Dict]:
+        """Stage-1 shadow observation for CVaR overlay activation.
+
+        Computes compute_portfolio_risk(positions) — what the overlay
+        would report if activated — and appends
+        {ts, scale_if_active, risk_level, cvar_95, n_positions,
+        n_samples} to the kv rolling log cvar:shadow_log (latest
+        SHADOW_LOG_MAX_ENTRIES entries kept).
+
+        Zero mainline impact: nothing here feeds sizing; the mainline
+        keeps the PINNED empty-list path (scale 1.0). Stage 2 (the
+        cvar:overlay_enabled activation switch) awaits Leo's ruling.
+        Failures are swallowed — observation must never break the
+        caller's path.
+        """
+        try:
+            risk = self.compute_portfolio_risk(positions)
+            entry = {
+                "ts": time.time(),
+                "scale_if_active": risk.get("position_scale", 1.0),
+                "risk_level": risk.get("risk_level"),
+                "cvar_95": risk.get("portfolio_cvar_95"),
+                "n_positions": len(positions),
+                "n_samples": risk.get("n_samples", 0),
+            }
+            log = self._db.kv_get(SHADOW_LOG_KEY, [])
+            if not isinstance(log, list):
+                log = []  # corrupted / non-list value: reset, don't crash
+            log.append(entry)
+            if len(log) > SHADOW_LOG_MAX_ENTRIES:
+                log = log[-SHADOW_LOG_MAX_ENTRIES:]
+            self._db.kv_set(SHADOW_LOG_KEY, log)
+            return entry
+        except Exception:
+            logger.error(
+                "CVaR shadow log failed (observation only)",
+                exc_info=True,
+            )
+            return None
 
     def _estimate_returns_from_positions(self, positions: List[Dict]) -> List[float]:
         """Estimate return series from current position PnL."""

@@ -821,6 +821,34 @@ class StrategyAdaptor:
                 risk = cvar_mgr.compute_portfolio_risk([])
                 cvar_scale = risk.get("position_scale", 1.0)
                 cvar_risk_level = risk.get("risk_level")
+            # CVaR overlay activation stage-1 shadow (P7 tail,
+            # Travis 9/25 go-ahead): pure observation — what
+            # position_scale WOULD be given the real position
+            # snapshot. Goes to kv cvar:shadow_log only; the
+            # mainline cvar_scale above stays on the PINNED
+            # empty-list path (1.0). Stage 2 (activation switch)
+            # awaits Leo's ruling — deliberately not built here.
+            # portfolio rows carry entry_price but no current_price;
+            # cost basis approximates it (affects the concentration
+            # display only — risk_level / scale are driven by the
+            # outcomes returns series).
+            try:
+                _pf = cvar_mgr._db.portfolio_get_all() or {}
+                _positions = [
+                    {
+                        "symbol": _sym,
+                        "quantity": _row.get("quantity", 0),
+                        "entry_price": _row.get("entry_price", 0),
+                        "current_price": _row.get("entry_price", 0),
+                    }
+                    for _sym, _row in _pf.items()
+                ]
+                cvar_mgr.log_shadow_observation(_positions)
+            except Exception:
+                logger.error(
+                    "CVaR shadow snapshot failed (observation only)",
+                    exc_info=True,
+                )
         except Exception:
             logger.error(
                 "CVaR risk overlay calculation failed, defaulting to scale=1.0",
