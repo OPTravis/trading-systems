@@ -690,9 +690,23 @@ class PaperTrader:
             )
             return None
 
-        # Also record in standard trades table for backward compat
+        # Also record in standard trades table for backward compat.
+        # Travis 9/25 ruling A (behaviour change, P4 follow-up batch):
+        # the trades ledger is a GROSS ledger — portfolio close and the
+        # reconciler both book gross price-diff pnl. The sim keeps its
+        # internal NET pnl (paper_trades/sim keys, fee included), but
+        # the dual-write row now books gross so the ledger has one
+        # pnl convention. BUY rows stay 0 (they always were).
         try:
-            self._get_db().trade_add(symbol, side, quantity, fill_price, pnl)
+            from src.pnl_calculator import gross_pnl
+            if side == "SELL":
+                _entry = self._get_db().paper_last_buy_price(symbol)
+                _ledger_pnl = (gross_pnl(_entry, fill_price, quantity)
+                               if _entry is not None else 0.0)
+            else:
+                _ledger_pnl = 0.0
+            self._get_db().trade_add(
+                symbol, side, quantity, fill_price, _ledger_pnl)
         except Exception:
             logger.error(
                 "Failed to record trade in trades table for %s %s",

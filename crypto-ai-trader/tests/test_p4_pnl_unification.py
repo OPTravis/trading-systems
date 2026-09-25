@@ -267,6 +267,72 @@ class TestBullCloseLegNet:
         assert leg == (exit_ - entry) * qty - fee
 
 
+# ==================================== Travis 9/25 rulings A + B
+class TestRulingA_DualWriteRowGross:
+    """Ruling A: trades ledger row is GROSS; sim internals stay NET."""
+
+    def test_sell_books_gross_in_trades_net_in_sim(self, db):
+        from src.paper_trader import (PaperTrader, PAPER_SLIPPAGE_PCT,
+                                      PAPER_FEE_RATE)
+        from src.pnl_calculator import gross_pnl
+        pt = object.__new__(PaperTrader)
+        pt._db = db
+        pt._in_transaction = False
+        buy = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
+        assert buy is not None
+        res = pt._fill_market("BTCUSDT", "SELL", 1.0, 110.0)
+        assert res is not None
+        sell_fill = 110.0 * (1 - PAPER_SLIPPAGE_PCT / 100)
+        buy_fill = 100.0 * (1 + PAPER_SLIPPAGE_PCT / 100)
+        fee = 1.0 * sell_fill * PAPER_FEE_RATE
+        # ledger row: GROSS (no fee)
+        rows = db.trade_get_recent("BTCUSDT", limit=10)
+        sell_rows = [r for r in rows if r["side"] == "SELL"]
+        assert len(sell_rows) == 1
+        assert sell_rows[0]["pnl"] == pytest.approx(
+            gross_pnl(buy_fill, sell_fill, 1.0))
+        # sim internal: NET (fee included) — unchanged by the ruling
+        assert res["_paper"]["pnl"] == pytest.approx(
+            gross_pnl(buy_fill, sell_fill, 1.0) - fee)
+
+    def test_buy_row_still_zero(self, db):
+        from src.paper_trader import PaperTrader
+        pt = object.__new__(PaperTrader)
+        pt._db = db
+        pt._in_transaction = False
+        pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
+        rows = db.trade_get_recent("BTCUSDT", limit=10)
+        buy_rows = [r for r in rows if r["side"] == "BUY"]
+        assert len(buy_rows) == 1 and buy_rows[0]["pnl"] == 0
+
+
+class TestRulingB_BacktesterFeeAligned:
+    """Ruling B: default fee_rate 0.001 (was 0.00075) — the backtest
+    no longer underestimates cost vs the live 0.1% Binance fee."""
+
+    def test_default_fee_rate_is_live(self):
+        import inspect
+        from src.backtester import Backtester
+        for fn in (Backtester.__init__,
+                   getattr(Backtester, "run", None)
+                   or Backtester.backtest_strategy):
+            sig = inspect.signature(fn)
+            if "fee_rate" in sig.parameters:
+                assert sig.parameters["fee_rate"].default == 0.001
+
+    def test_round_trip_uses_live_fee(self):
+        from src.pnl_calculator import proceeds_net
+        fee_rate, slippage = 0.001, 0.001
+        buy_px, sell_px, qty = 100.0, 110.0, 2.0
+        eff_buy = buy_px * (1 + slippage)
+        eff_sell = sell_px * (1 - slippage)
+        sell_fee = qty * eff_sell * fee_rate
+        pnl = proceeds_net(eff_sell, qty, sell_fee) - (
+            qty * eff_buy + qty * eff_buy * fee_rate)
+        assert pnl == pytest.approx((eff_sell - eff_buy) * qty
+                                    - sell_fee - qty * eff_buy * fee_rate)
+
+
 # ================================================== 4. guard
 class TestNoRawTradesSQL:
     @pytest.mark.parametrize("path", [
