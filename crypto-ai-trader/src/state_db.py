@@ -534,6 +534,15 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_ledger_shadow_rounds_ts
                 ON ledger_shadow_rounds(ts);
             """)
+
+        # P7(1): flag column for pre-existing DBs (CREATE TABLE IF
+        # NOT EXISTS cannot add columns to an existing table).
+        try:
+            conn.execute(
+                "ALTER TABLE trade_outcomes"
+                " ADD COLUMN contaminated INTEGER DEFAULT 0")
+        except Exception:
+            pass  # column already present
         conn.commit()
 
         # Migration: add invest_pct column if missing (for existing databases)
@@ -1407,6 +1416,32 @@ class StateDB:
         )
         self._get_conn().commit()
 
+    def outcomes_mark_contaminated(self, start_ts: float,
+                                   end_ts: float) -> int:
+        """P7(1): flag closed rows whose exit_time falls in the dirty
+        window [start_ts, end_ts) — the 9/16-9/24 contamination period
+        (unclosed-stop booking gap + unmerged entries, P1-3 boundary
+        97bdcda 2026-09-24 15:41:50 +0800). Flag only; values are never
+        touched, the flag is reversible (set back to 0). Returns the
+        number of rows flagged."""
+        cur = self._get_conn().execute(
+            "UPDATE trade_outcomes SET contaminated = 1"
+            " WHERE status = 'closed' AND exit_time IS NOT NULL"
+            " AND exit_time >= ? AND exit_time < ?"
+            " AND (contaminated IS NULL OR contaminated = 0)",
+            (start_ts, end_ts))
+        self._get_conn().commit()
+        return cur.rowcount
+
+    def outcomes_contamination_summary(self) -> Dict:
+        """P7(1): counts for the parity report (clean vs flagged)."""
+        row = self._get_conn().execute(
+            "SELECT COUNT(*) AS total,"
+            " SUM(CASE WHEN contaminated = 1 THEN 1 ELSE 0 END) AS dirty"
+            " FROM trade_outcomes WHERE status = 'closed'").fetchone()
+        return {"closed_total": int(row["total"]),
+                "contaminated": int(row["dirty"] or 0)}
+
     def outcomes_get_open(self) -> List[Dict]:
         rows = self._get_conn().execute(
             "SELECT * FROM trade_outcomes WHERE status = 'open'"
@@ -1420,7 +1455,8 @@ class StateDB:
         """Closed outcome rows. limit=None returns all (factor-stats and
         summary callers iterate order-insensitively; newest_first controls
         the ORDER BY exit_time clause)."""
-        sql = "SELECT * FROM trade_outcomes WHERE status = 'closed'"
+        sql = ("SELECT * FROM trade_outcomes WHERE status = 'closed'"
+               " AND (contaminated IS NULL OR contaminated = 0)")
         params: list = []
         if strategy:
             sql += " AND strategy = ?"
@@ -1440,6 +1476,7 @@ class StateDB:
         rows = self._get_conn().execute(
             """SELECT net_pnl_pct FROM trade_outcomes
                WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
+                 AND (contaminated IS NULL OR contaminated = 0)
                ORDER BY exit_time DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -1502,6 +1539,7 @@ class StateDB:
             """SELECT symbol, net_pnl_pct, is_win, strategy
                FROM trade_outcomes
                WHERE status = 'closed' AND net_pnl_pct IS NOT NULL
+                 AND (contaminated IS NULL OR contaminated = 0)
                ORDER BY entry_time DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -1515,6 +1553,7 @@ class StateDB:
                       AVG(net_pnl_pct) as avg_pnl
             FROM trade_outcomes
             WHERE status = 'closed' AND strategy IS NOT NULL
+              AND (contaminated IS NULL OR contaminated = 0)
             GROUP BY strategy""").fetchall()
         return [dict(r) for r in rows]
 
@@ -1524,6 +1563,7 @@ class StateDB:
             """SELECT strategy, net_pnl_pct
             FROM trade_outcomes
             WHERE status = 'closed' AND strategy IS NOT NULL AND net_pnl_pct IS NOT NULL
+              AND (contaminated IS NULL OR contaminated = 0)
             ORDER BY exit_time DESC""").fetchall()
         return [dict(r) for r in rows]
 
@@ -1539,6 +1579,7 @@ class StateDB:
                    FROM trade_outcomes
                    WHERE status = 'closed' AND strategy IS NOT NULL
                      AND net_pnl_pct IS NOT NULL
+                     AND (contaminated IS NULL OR contaminated = 0)
                ) WHERE rn <= ?""",
             (n,),
         ).fetchall()
