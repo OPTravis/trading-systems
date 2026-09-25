@@ -57,8 +57,9 @@ def _append_notification(msg_type: str, title: str, body: str, max_retries: int 
                             pass
                         notifications = []
 
+                notif_id = f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
                 notifications.append({
-                    "id": f"notif_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                    "id": notif_id,
                     "timestamp": datetime.now().isoformat(),
                     "type": msg_type,
                     "title": title,
@@ -89,6 +90,21 @@ def _append_notification(msg_type: str, title: str, body: str, max_retries: int 
                     except Exception as e:
                         logger.warning("notifier._append_notification: " + str(e))
                         pass
+            # WO-0926 bug1: durable DB outbox mirror (cross-round
+            # redelivery source of truth; JSON file stays compatibility
+            # path). Own try/except: outbox failure must never break the
+            # legacy JSON path.
+            try:
+                from src.state_db import get_state_db
+
+                get_state_db().notification_outbox_add(
+                    notif_id, msg_type, title, body,
+                    created_ts=_time_module.time(),
+                )
+            except Exception as db_err:
+                logger.warning(
+                    "notifier: DB outbox write failed (non-fatal): %s" % db_err
+                )
             return  # success
         except (OSError, IOError) as e:
             if attempt < max_retries - 1:

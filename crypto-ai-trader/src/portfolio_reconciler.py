@@ -348,25 +348,58 @@ def _is_own_fill(order_id, legs) -> bool:
 
 
 def _book_missing_sells(db, symbol: str, fills: List[Dict], gap_qty: float,
-                        client=None) -> List[Dict]:
+                        client=None, include_pre_buy: bool = False) -> List[Dict]:
     """Aggregate SELL fills by orderId and book the unrecorded ones.
 
     Booking stops once the accumulated qty reaches the drift gap — the gap
     guard makes legacy NULL-id rows unable to cause over-booking.
     Returns the booked entries.
+
+    WO-0926 bug2: include_pre_buy=True adds a SECOND phase that considers
+    SELL fills predating the latest BUY row — but only for the residual gap
+    left after the strict lifecycle pass. When the ledger gap itself proves
+    an older position exited unbooked, that exit necessarily predates any
+    same-symbol re-buy (00:13 ENA TP fill vs 00:23 re-buy); the lifecycle
+    anchor alone would filter it out and the gap could never close. Phase
+    ordering keeps the P0-2 protection intact (INJ 9/20: post-buy legs fill
+    the gap first, so a foreign pre-buy leg from an older closed position
+    never gets a look-in). The gap cap, orderId idempotency and
+    stale/foreign-leg tolerance still guard against over-booking.
     """
     booked: List[Dict] = []
     cutoff = int((time.time() - FILL_LOOKBACK_S) * 1000)  # fills are ms
+    in_window = [
+        f for f in fills
+        if not f.get("isBuyer")
+        and int(f.get("orderId") or 0) > 0
+        and int(f.get("time") or 0) >= cutoff  # 24h window (P0-1.5)
+    ]
+    if not in_window:
+        return booked
     # P0-2: candidates must postdate BOTH the 24h window and the latest
     # BUY row — the stricter of the two anchors the current position
     # lifecycle and excludes fills from any earlier closed position.
     lifecycle = max(cutoff, _last_buy_ts_ms(db, symbol))
-    sells = [
-        f for f in fills
-        if not f.get("isBuyer")
-        and int(f.get("orderId") or 0) > 0
-        and int(f.get("time") or 0) >= lifecycle  # P0-1.5/P0-2: stale legs excluded
-    ]
+    # Phase 1: strict lifecycle anchor (unchanged behaviour)
+    sells = [f for f in in_window if int(f.get("time") or 0) >= lifecycle]
+    booked = _book_sell_legs(db, symbol, sells, gap_qty, client=client)
+    # Phase 2 (WO-0926 bug2): residual gap only, pre-buy fills, opt-in
+    if include_pre_buy:
+        residual = gap_qty - sum(float(b.get("qty") or 0) for b in booked)
+        if residual > DRIFT_QTY_ABS:
+            pre = [f for f in in_window if int(f.get("time") or 0) < lifecycle]
+            booked += _book_sell_legs(db, symbol, pre, residual, client=client)
+    return booked
+
+
+def _book_sell_legs(db, symbol: str, sells: List[Dict], gap_qty: float,
+                    client=None) -> List[Dict]:
+    """Book unrecorded SELL legs (already window/lifecycle filtered).
+
+    Booking stops once the accumulated qty reaches gap_qty — the gap
+    guard makes legacy NULL-id rows unable to cause over-booking.
+    Returns the booked entries."""
+    booked: List[Dict] = []
     if not sells:
         return booked
     by_order: Dict[int, List[Dict]] = {}
@@ -544,13 +577,24 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
     # fills the ledger never booked (partial TP ladders / SL closes that
     # sync_from_binance silently absorbed into the portfolio row).
     suspects: Dict[str, float] = {}
+    # WO-0926 bug2: main-axis symbols whose gap comes from an unbooked
+    # exit of an OLDER same-symbol lifecycle (exit between rounds, then a
+    # re-buy). Their SELL fills predate the latest BUY row, so booking
+    # needs include_pre_buy — the gap itself proves the older position
+    # exited unbooked (00:13 ENA TP fill vs 00:23 re-buy).
+    pre_buy_ok: set = set()
     for sym in positions:
         net = _db_net_qty(db, sym)
         ex_qty = ex.get(_base_of(sym), 0.0)
         gap = net - ex_qty
-        tol = max(net * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS)
+        # WO-0926 bug2: anchor the tolerance to the exchange residue, not
+        # ledger net — a same-symbol re-buy inflates net while the real
+        # unbooked exit stays at gap (24.1 vs net*0.98=46.6 skipped a
+        # genuine gap on 9/26 00:13).
+        tol = max(ex_qty * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS)
         if gap > tol:
             suspects[sym] = gap
+            pre_buy_ok.add(sym)
         elif gap < -tol:
             # exchange holds more than the ledger explains: unbooked BUYs
             # — out of scope for the SELL booker, log for diagnosis only
@@ -583,7 +627,9 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
             continue
         # the gap doubles as the booking cap — a balanced ledger can never
         # be over-booked, and legacy NULL-id rows cannot inflate it
-        booked_total.extend(_book_missing_sells(db, sym, fills, suspects[sym], client=client))
+        booked_total.extend(_book_missing_sells(
+            db, sym, fills, suspects[sym], client=client,
+            include_pre_buy=sym in pre_buy_ok))
 
         # keep the portfolio row aligned with the exchange (belt and
         # braces; sync normally handles this at Step 0)
@@ -623,7 +669,12 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
         if net <= DRIFT_QTY_ABS:
             continue  # ledger already balanced for this symbol
         gap = net - ex.get(_base_of(sym), 0.0)
-        if gap <= max(net * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
+        ex_qty = ex.get(_base_of(sym), 0.0)
+        # WO-0926 bug2: anchor the significance gate to the exchange
+        # residue, not ledger net. A same-symbol re-buy inflates net while
+        # the real unbooked exit stays at gap (00:13 ENA TP: gap 24.1 vs
+        # net 47.56 -> old net-anchored gate skipped a genuine 100% gap).
+        if gap <= max(ex_qty * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
             continue  # no meaningful SELL-side gap
         try:
             fills = client.get_my_trades(sym, limit=100)
@@ -637,7 +688,8 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
                 sym, net, gap,
             )
             booked_total.extend(
-                _book_missing_sells(db, sym, fills, gap, client=client))
+                _book_missing_sells(db, sym, fills, gap, client=client,
+                                    include_pre_buy=True))
 
     # --- tracker zombie sweep (root cause ①): re-read positions after
     # drift fixes so removed rows count as flat ---

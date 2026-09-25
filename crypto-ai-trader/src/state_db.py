@@ -315,6 +315,16 @@ class StateDB:
                 pnl REAL,
                 timestamp REAL
             );
+            CREATE TABLE IF NOT EXISTS notification_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notif_id TEXT UNIQUE,
+                created_ts REAL NOT NULL,
+                msg_type TEXT NOT NULL,
+                title TEXT,
+                body TEXT,
+                delivered INTEGER NOT NULL DEFAULT 0,
+                delivered_ts REAL
+            );
             CREATE TABLE IF NOT EXISTS kv (
                 key TEXT PRIMARY KEY,
                 value TEXT,
@@ -1296,6 +1306,81 @@ class StateDB:
             return max(0.0, time.time() - float(row["updated_at"]))
         except (TypeError, ValueError, KeyError, IndexError):
             return None
+
+    # ==================== Notification Outbox ====================
+    # WO-0926 bug1: durable notification queue. JSON pending file stays the
+    # compatibility path; the DB outbox is the source of truth for
+    # cross-round redelivery (a "pushed" flag on a stdout line proves
+    # printing, not delivery — 9/26 03:41 INJ case: 3 notifications marked
+    # pushed=true, never reached the chat).
+
+    def notification_outbox_add(
+        self, notif_id: str, msg_type: str, title: str, body: str,
+        created_ts: Optional[float] = None,
+    ) -> bool:
+        """Idempotent insert (notif_id UNIQUE). Returns True if inserted."""
+        try:
+            self._get_conn().execute(
+                "INSERT OR IGNORE INTO notification_outbox "
+                "(notif_id, created_ts, msg_type, title, body) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (notif_id, created_ts or time.time(), msg_type, title, body),
+            )
+            self._get_conn().commit()
+            return True
+        except Exception:
+            return False
+
+    def notification_outbox_pending(
+        self, limit: int = 20, max_age_s: Optional[float] = 7 * 86400,
+    ) -> list:
+        """Undelivered notifications, oldest first (redelivery order)."""
+        sql = (
+            "SELECT notif_id, created_ts, msg_type, title, body "
+            "FROM notification_outbox WHERE delivered = 0"
+        )
+        params: list = []
+        if max_age_s is not None:
+            sql += " AND created_ts >= ?"
+            params.append(time.time() - max_age_s)
+        sql += " ORDER BY created_ts ASC LIMIT ?"
+        params.append(limit)
+        try:
+            rows = self._get_conn().execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "notif_id": r["notif_id"],
+                "created_ts": r["created_ts"],
+                "type": r["msg_type"],
+                "title": r["title"],
+                "body": r["body"],
+            }
+            for r in rows
+        ]
+
+    def notification_outbox_mark_delivered(self, notif_ids) -> int:
+        """Mark notifications delivered; accepts str or iterable of str."""
+        if isinstance(notif_ids, str):
+            notif_ids = [notif_ids]
+        ids = [str(n) for n in notif_ids if n]
+        if not ids:
+            return 0
+        now = time.time()
+        marks = 0
+        try:
+            for nid in ids:
+                cur = self._get_conn().execute(
+                    "UPDATE notification_outbox SET delivered = 1, "
+                    "delivered_ts = ? WHERE notif_id = ? AND delivered = 0",
+                    (now, nid),
+                )
+                marks += cur.rowcount
+            self._get_conn().commit()
+        except Exception:
+            return marks
+        return marks
 
     # ==================== Audit Log ====================
 

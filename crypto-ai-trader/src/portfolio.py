@@ -157,8 +157,15 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         _dry_run: bool = False,
         _skip_validation: bool = False,
         _from_sync: bool = False,
+        on_conflict: str = "merge",
     ):
-        """Add or merge a position with validation.
+        """Add a position with validation and explicit same-symbol policy.
+
+        WO-0926 bug3: a same-symbol row used to be silently merged (weighted
+        average). Correct for genuine add-ons; wrong when a stale row from an
+        already-closed lifecycle survives (00:13 ENA TP filled between
+        rounds — a re-buy would merge a ghost 24.1 into a fresh 23.46).
+        Callers must now state their intent:
 
         Args:
             symbol: Trading pair symbol.
@@ -170,7 +177,17 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
             deduct_cash: If True, deduct qty*entry_price from cash_balance.
             _dry_run: If True, only run validation without modifying state.
             _skip_validation: If True, skip size/risk validation (used by sync_from_binance).
+            on_conflict: same-symbol policy —
+                "merge": weighted-average merge (explicit add-on intent);
+                "replace": drop the stale row, open fresh (authoritative
+                           rebuild, e.g. exchange-sync truth);
+                "reject": raise ValueError (conflict is a bug upstream).
         """
+        if on_conflict not in ("merge", "replace", "reject"):
+            raise ValueError(
+                f"add_position: invalid on_conflict={on_conflict!r} "
+                "(expected merge/replace/reject)"
+            )
         # Dust filter: skip positions worth less than threshold
         position_value = quantity * entry_price
         if position_value < self.DUST_THRESHOLD_USD:
@@ -237,9 +254,26 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         now = datetime.now().isoformat()
 
         with self._lock:
-            if symbol in self.positions:
+            _existing = self.positions.get(symbol)
+            if _existing is not None and on_conflict == "reject":
+                raise ValueError(
+                    f"add_position: {symbol} already tracked "
+                    f"(qty={_existing.get('quantity')} @ "
+                    f"{_existing.get('entry_price')}) and on_conflict='reject' "
+                    "— refusing to merge or replace"
+                )
+            if _existing is not None and on_conflict == "replace":
+                logger.warning(
+                    f"Position replaced: {symbol} dropped stale row "
+                    f"qty={_existing.get('quantity')} "
+                    f"entry={_existing.get('entry_price')} "
+                    f"strategy={_existing.get('strategy')} -> "
+                    f"fresh {quantity} @ {entry_price}"
+                )
+                _existing = None  # authoritative rebuild: stale row is gone
+            if _existing is not None:
                 # Merge: weighted average entry price
-                old = self.positions[symbol]
+                old = _existing
                 old_qty = old["quantity"]
                 old_entry = old["entry_price"]
                 new_qty = old_qty + quantity

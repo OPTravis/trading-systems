@@ -390,7 +390,7 @@ def _send_execution_notification(
         f"策略: {strategy.upper()} | 倉位級別: {tier_label} (Score: {score})",
         f"Kelly: {invest_pct*100:.1f}% of ${usdt_bal:.2f} = ${invest_amount:.2f}",
         f"勝率: {kelly_result.get('win_rate',0):.1%} | 信心: {kelly_result.get('confidence','N/A')}",
-        f"買入: {executed_qty:.0f} @ ${price:.6f}",
+        f"買入: {executed_qty:.6g} @ ${price:.6f}",
         f"信號: {reason}",
         f"活躍持倉: {active_positions + 1}/{max_positions}",
         "",
@@ -1783,7 +1783,7 @@ def execute_auto_trade(
             if executed_qty > 0
             else price
         )
-        results.append(f"BUY: {executed_qty:.0f} @ ${avg_price:.6f}")
+        results.append(f"BUY: {executed_qty:.6g} @ ${avg_price:.6f}")
 
         # ── P1 #1: 滑點追蹤 (fill vs expected price) ──
         slippage_pct = (avg_price - price) / price * 100 if price > 0 else 0

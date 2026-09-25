@@ -148,6 +148,23 @@ def event_tick():
         return None
 
 
+def _attach_outbox(verdict):
+    """WO-0926 bug1 (03:41 INJ case): notifications reach the chat through a
+    stdout-tail chain truncated at [-6000:]/[-3500:] — a notification printed
+    in one round is gone the next. Attach the durable DB outbox (undelivered
+    rows) to every round so redelivery happens until the consumer marks them
+    delivered. Best-effort: a DB hiccup must not fail the scan round."""
+    try:
+        from src.state_db import get_state_db
+
+        pending = get_state_db().notification_outbox_pending(
+            limit=20, max_age_s=7 * 86400)
+        if pending:
+            verdict["pending_notifications"] = pending
+    except Exception as e:
+        log(f"outbox pending read failed (non-fatal): {e}")
+
+
 def main():
     pathlib.Path(LIVE_DIR).mkdir(parents=True, exist_ok=True)
     ev_reason = event_tick()
@@ -203,6 +220,7 @@ def main():
         "db_backup": bak,
         "stdout_tail": report,
     }
+    _attach_outbox(verdict)
     tmp = LATEST + ".tmp"
     with open(tmp, "w") as f:
         json.dump(verdict, f, ensure_ascii=False, indent=1)

@@ -1137,6 +1137,19 @@ class PositionOptimizer:
                      "sell_order_id": sell_order.get("orderId"),
                      "buy_order_id": buy_order.get("orderId"),
                      "reason": decision.get("reason", "")})
+                # WO-0926 bug1 (9/25 22:43 LTC->ENA case): the switch path
+                # only emitted a structured alert — no notifier call, so no
+                # chat notification was ever generated. Notify here; own
+                # try/except so a notify failure never breaks the switch.
+                from src.notifier import send_signal as _notify_switch
+
+                _notify_switch(
+                    "SWITCH", to_symbol, "SWITCH", float(to_price),
+                    quantity=float(buy_qty),
+                    reason=f"{from_symbol} -> {to_symbol}: "
+                           f"{decision.get('reason', '')}",
+                    strategy="switch",
+                )
             except Exception as db_err:
                 logger.warning(f"State DB persistence failed (non-critical): {db_err}")
 
