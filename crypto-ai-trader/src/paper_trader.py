@@ -792,7 +792,20 @@ class PaperTrader:
         order.get("order_type", "LIMIT")
 
         # Fill at the limit price (with slippage)
-        return self._fill_market(symbol, side, quantity, limit_price)
+        res = self._fill_market(symbol, side, quantity, limit_price)
+        # P3 fix (Travis 9/25 ruling ②): a committed fill must retire
+        # the pending row, or check_pending_orders re-fills it forever.
+        # _fill_market returns None on every failure path (invalid qty /
+        # min-notional / insufficient funds / rollback), so truthiness
+        # is exactly "the fill committed atomically".
+        if res:
+            try:
+                self._get_db().paper_pending_mark_filled(order_id)
+            except Exception:
+                logger.error(
+                    "PaperTrader: mark_filled failed for %s — pending "
+                    "row may be re-filled", order_id, exc_info=True)
+        return res
 
     # ---- Position management ----
 

@@ -234,48 +234,19 @@ def _tick_round(px: float, tick: float) -> float:
     return round(px, 8)
 
 
-def _order_qty(o: Dict[str, Any]) -> float:
-    for k in ("origQty", "quantity", "qty"):
-        try:
-            v = float(o.get(k) or 0)
-            if v > 0:
-                return v
-        except (TypeError, ValueError):
-            continue
-    return 0.0
-
-
-def _is_oco_leg(o: Dict[str, Any]) -> bool:
-    """Only a genuine OCO member order counts here. Production Binance
-    get_open_orders marks OCO legs via orderListId (> 0; -1 for
-    independent orders) — the 'listId' key does not exist there. A bare
-    STOP_LOSS_LIMIT with orderListId == -1 is an INDEPENDENT stop order:
-    it still locks the balance and must be treated as a plain SL leg."""
-    try:
-        olid = float(o.get("orderListId") or -1)
-        if olid > 0:
-            return True
-    except (TypeError, ValueError):
-        pass
-    return bool(o.get("listId") or o.get("contingencyType"))
-
-
-def _is_plain_tp(o: Dict[str, Any]) -> bool:
-    if _is_oco_leg(o):
-        return False
-    if str(o.get("side") or "").upper() != "SELL":
-        return False
-    otype = str(o.get("type") or o.get("orderType") or "").upper()
-    # plain TP limit sell, or an independent TAKE_PROFIT stop order
-    return otype in ("LIMIT", "LIMIT_MAKER") or otype.startswith(
-        "TAKE_PROFIT")
-
-
-def _is_plain_sl(o: Dict[str, Any]) -> bool:
-    if _is_oco_leg(o):
-        return False
-    return str(o.get("type") or o.get("orderType") or "").upper().startswith(
-        "STOP_LOSS")
+# P3: order-shape classification is now a single implementation in
+# src/protection_shape.py. The private names are kept as re-exports so
+# existing greps/tests (pg._is_oco_leg ...) stay valid; behaviour is
+# byte-equal (same field semantics, same formulas).
+from src.protection_shape import (  # noqa: E402
+    Shape,
+    audit_transition,
+    classify,
+)
+from src.protection_shape import is_oco_leg as _is_oco_leg  # noqa: E402
+from src.protection_shape import is_plain_sl as _is_plain_sl  # noqa: E402
+from src.protection_shape import is_plain_tp as _is_plain_tp  # noqa: E402
+from src.protection_shape import order_qty as _order_qty  # noqa: E402
 
 
 def run(client: Any, portfolio: Any,
@@ -327,17 +298,22 @@ def run(client: Any, portfolio: Any,
                 summary["failed"] += 1
                 continue
 
-            oco_qty = sum(_order_qty(o) for o in orders if _is_oco_leg(o))
-            tp_qty = sum(_order_qty(o) for o in orders if _is_plain_tp(o))
-            sl_orders = [o for o in orders if _is_plain_sl(o)]
-            sl_qty = sum(_order_qty(o) for o in sl_orders)
+            # P3: one classify() call replaces the four inline
+            # aggregations; the numeric fields below are the SAME
+            # formulas the inline code used, so every branch below
+            # consumes identical values.
+            info = classify(orders)
+            oco_qty = info.oco_qty
+            tp_qty = info.tp_qty
+            sl_orders = info.sl_orders
+            sl_qty = info.sl_qty
 
             # WO-017-4a: pair check — BOTH sides must be covered. The
             # old single-axis check treated a TP-only state as protected
             # and never looked at the SL side (TRUMP 9/22 14:31: stuck
             # cancel killed the OCO, heal re-placed only the TP leg).
-            tp_covered = oco_qty + tp_qty
-            sl_covered = oco_qty + sl_qty
+            tp_covered = info.tp_covered
+            sl_covered = info.sl_covered
             # SL side uses an existence check (not a fraction): partial
             # SL ladders are a legitimate strategy end-state (Strategy-C
             # 70/30 split), but ZERO SL means the downside is naked.
@@ -380,6 +356,7 @@ def run(client: Any, portfolio: Any,
                         ret = None
                     if ret:
                         summary["healed"] += 1
+                        audit_transition("emergency_sl", info)
                         emit_alert("PROTECTION_HEALED", sym, {
                             "mode": "emergency_sl", "qty": qty,
                             "sl_px": em_stop, "urgent": True,
@@ -416,6 +393,7 @@ def run(client: Any, portfolio: Any,
                     res = None
                 if res:
                     summary["healed"] += 1
+                    audit_transition("free_slice_tp", info)
                     emit_alert("PROTECTION_HEALED", sym, {
                         "mode": "free_slice_tp", "qty": free_qty,
                         "tp_px": tp_px, "ts": time.time(),
@@ -449,6 +427,7 @@ def run(client: Any, portfolio: Any,
                     ret = None
                 if ret:
                     summary["healed"] += 1
+                    audit_transition("emergency_sl", info)
                     emit_alert("PROTECTION_HEALED", sym, {
                         "mode": "emergency_sl", "qty": qty,
                         "sl_px": em_stop, "urgent": True,
@@ -560,6 +539,7 @@ def run(client: Any, portfolio: Any,
                         break
                 if oco:
                     summary["healed"] += 1
+                    audit_transition("tp_oco_rebuild", info)
                     emit_alert("PROTECTION_HEALED", sym, {
                         "mode": "tp_oco_rebuild", "qty": rebuild_qty,
                         "tp_px": tp_px_live, "sl_px": sl_px_new,
@@ -623,6 +603,7 @@ def run(client: Any, portfolio: Any,
                         sl_ret = None
                     if sl_ret:
                         summary["healed"] += 1
+                        audit_transition("sl_demote", info)
                         sl_id = (sl_ret.get("orderId")
                                  if isinstance(sl_ret, dict) else None)
                         _track(sym, entry, qty, kept_orders, {
@@ -664,6 +645,7 @@ def run(client: Any, portfolio: Any,
                                          "restore also FAILED for %s", sym,
                                          exc_info=True)
                         summary["failed"] += 1
+                        audit_transition("sl_rescue_failed", info)
                         emit_alert("PROTECTION_HEAL_FAILED", sym, {
                             "mode": "sl_rescue_failed",
                             "urgent": True,
@@ -769,6 +751,7 @@ def run(client: Any, portfolio: Any,
                     oco = None
                 if oco:
                     summary["healed"] += 1
+                    audit_transition("oco_swap", info)
                     try:
                         _set_swap_ts(sym, {"ts": time.time()})
                     except Exception:
@@ -807,6 +790,7 @@ def run(client: Any, portfolio: Any,
                                          "FAILED for %s leg %s", sym,
                                          leg["id"], exc_info=True)
                     summary["failed"] += 1
+                    audit_transition("oco_swap_failed_sl_restored", info)
                     # WO-0924-ix fix ②: keep tp_sl_tracker in sync with
                     # the restored plain-SL reality (was left stale →
                     # every sweep re-visited the symbol).

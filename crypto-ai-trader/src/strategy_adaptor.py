@@ -810,6 +810,14 @@ class StrategyAdaptor:
             returns = cvar_mgr._db.outcomes_recent_net_pnls(100)
             if len(returns) >= 10:
                 cvar_mgr.compute_cvar(returns, 0.05)
+                # PINNED (Travis 9/25 ruling ①, P7 follow-up): the
+                # empty positions list below drives compute_portfolio_
+                # risk into its `if not positions` zero-default branch,
+                # so this overlay has NEVER been live — position_scale
+                # is always the 1.0 default and risk_level stays None.
+                # Behaviour-keep red line during the refactor; whether
+                # to activate the overlay (position rescaling = a risk
+                # behaviour change) is a P7 special topic for Leo.
                 risk = cvar_mgr.compute_portfolio_risk([])
                 cvar_scale = risk.get("position_scale", 1.0)
                 cvar_risk_level = risk.get("risk_level")

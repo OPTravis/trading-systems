@@ -832,6 +832,23 @@ class StateDB:
             (order_id,)).fetchone()
         return dict(row) if row else None
 
+    def paper_pending_mark_filled(self, order_id: str) -> bool:
+        """Mark a pending order filled (idempotent; True if a row moved).
+
+        P3 fix (Travis 9/25 ruling ②): paper_pending_orders previously
+        had no UPDATE/DELETE site — status stayed 'open' after a fill,
+        so check_pending_orders re-filled the same order every sweep.
+        Called by PaperTrader._fill_limit_order once the fill commits;
+        paper_pending_get/paper_pending_open filter on status='open',
+        so a filled row naturally drops out of every reader."""
+        cur = self._get_conn().execute(
+            "UPDATE paper_pending_orders"
+            " SET status = 'filled'"
+            " WHERE id = ? AND status = 'open'",
+            (order_id,))
+        self._get_conn().commit()
+        return cur.rowcount > 0
+
     # ==================== Drawdown ====================
 
     def drawdown_get(self) -> Dict:

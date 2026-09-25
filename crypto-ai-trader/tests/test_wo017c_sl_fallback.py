@@ -176,7 +176,10 @@ class TestRescueLadder:
         # tracker: 1 kept TP + sl_order for the demoted slice
         assert tracker and tracker[0][3] and len(tracker[0][3]) == 1
         assert tracker[0][4]["stop_price"] == pytest.approx(9.112, abs=1e-3)
-        # audit trail
+        # audit trail (P3: filter out the GUARDIAN_SHAPE_TRANSITION
+        # observation rows the action points now also emit)
+        audit = [r for r in audit
+                 if r[1] != "GUARDIAN_SHAPE_TRANSITION"]
         assert audit and audit[0][1] == "GUARDIAN_SL_DEMOTE"
         import json as _j
         assert "UNIUSDT" in _j.loads(audit[0][2])["symbol"]
