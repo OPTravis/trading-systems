@@ -617,10 +617,15 @@ class TestSlOnlyPercentPriceFallback:
     (market-on-trigger, no limit price) instead of leaving the position
     naked / force-closing it."""
 
-    # Small position: 0.04 × $581.29 ≈ $23.25 < 6 × $5 min notional
+    # Small position: 0.01 × $581.29 ≈ $5.81 < _tiered_threshold
+    # (_min_notional * 2 = $10) → SL-only path. WO-0926 archaeology:
+    # the original 0.04 ($23.25) was written believing the tiered
+    # threshold was 6 × $5 ($30); the implementation has been
+    # _min_notional * 2 since this class landed, so the fixture
+    # never actually exercised the SL-only path (born-failing).
     PARAMS = dict(
         symbol="ZECUSDT",
-        executed_qty=0.04,
+        executed_qty=0.01,
         price=581.29,
         p_prec=2,
         stop_loss_pct=5.0,
@@ -643,7 +648,7 @@ class TestSlOnlyPercentPriceFallback:
         client.place_order.return_value = {"orderId": 111}
         out = self._run(client, notifier)
         assert any(r.startswith("SL-only") for r in out["results"])
-        assert out["sl_placed_qty"] == 0.04
+        assert out["sl_placed_qty"] == 0.01
         assert client.place_order.call_count == 1
         assert client.place_order.call_args.args[2] == "STOP_LOSS_LIMIT"
 
@@ -668,7 +673,7 @@ class TestSlOnlyPercentPriceFallback:
         assert "price" not in kw
         assert kw["stop_price"] == round(581.29 * 0.95, 2)
         assert any("SL-fallback (market trigger)" in r for r in out["results"])
-        assert out["sl_placed_qty"] == 0.04
+        assert out["sl_placed_qty"] == 0.01
 
     def test_all_paths_failed_urgent_alert(self):
         client, notifier = MagicMock(), MagicMock()
@@ -677,10 +682,15 @@ class TestSlOnlyPercentPriceFallback:
         out = self._run(client, notifier)
         assert any("SL: FAILED" in r for r in out["results"])
         assert out["sl_placed_qty"] == 0.0
-        # two alerts expected: "URGENT: SL failed" + naked-position escalation
+        # WO-0926 考古: SL-only 区 notional 必然 <$10, 而裸露升级预警在
+        # uncovered ≥ $10 的 emergency 块; <$10 有 XPL 滑点教训留下的 carve-out
+        # (small_pos_accepted, 不发裸露告警/不 panic 卖). 裸露升级的正确覆盖在
+        # TestTieredAndStrategyCFallback::test_strategy_c_total_failure_alerts.
         msgs = [c.args[0] for c in notifier.send_text.call_args_list]
         assert any("URGENT" in m for m in msgs)
-        assert any("裸露" in m for m in msgs)
+        assert not any("裸露" in m for m in msgs)
+        assert any("No SL (small pos" in r for r in out["results"])
+        assert not any("未保護" in r for r in out["results"])
 
 
 # ────────────────────────────────────────────────────────────

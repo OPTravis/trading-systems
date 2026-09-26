@@ -5,11 +5,20 @@ test runs against tmp paths only (bug#36 lesson: never touch production logs).
 import json
 import os
 import sys
+from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
 from scripts import self_heal as sh
+
+
+def _ts() -> str:
+    """Fresh in-window timestamp (scan window is 24h — WO-0926
+    archaeology: hardcoded 2026-08-31 literals fell out of the window
+    and rotted 6 tests; the out-of-window test keeps its stale literal
+    BY DESIGN)."""
+    return datetime.now().isoformat(timespec="seconds")
 
 
 @pytest.fixture
@@ -47,7 +56,7 @@ def test_classifier_categories():
 
 # ── 扫描 → 工单 → safe_mode ──
 def test_threshold_trips_ticket_and_safe_mode(env, capsys):
-    rows = [{"timestamp": "2026-08-31T15:09:00", "job": "report_validator",
+    rows = [{"timestamp": _ts(), "job": "report_validator",
              "exit_code": 1, "detail": "blocked notif n1: position-claim-mismatch"}
             for _ in range(3)]
     _cron(env, rows)
@@ -62,7 +71,7 @@ def test_threshold_trips_ticket_and_safe_mode(env, capsys):
 
 
 def test_rescan_no_duplicate_tickets(env):
-    _cron(env, [{"timestamp": "2026-08-31T15:09:00", "job": "report_validator",
+    _cron(env, [{"timestamp": _ts(), "job": "report_validator",
                  "exit_code": 1, "detail": "blocked notif"}] * 5)
     sh.scan(window_s=86400, threshold=3)
     sh.scan(window_s=86400, threshold=3)
@@ -72,7 +81,7 @@ def test_rescan_no_duplicate_tickets(env):
 
 
 def test_critical_single_hit_trips(env):
-    _cron(env, [{"timestamp": "2026-08-31T15:09:00",
+    _cron(env, [{"timestamp": _ts(),
                  "detail": "balance mismatch: DB 398.0 vs exchange 399.26"}])
     sh.scan(window_s=86400, threshold=3)
     assert sh.is_safe_mode() is not None
@@ -93,7 +102,7 @@ def test_unparsable_lines_do_not_crash(env):
 
 # ── 显式解除 ──
 def test_lift_requires_reason(env):
-    _cron(env, [{"timestamp": "2026-08-31T15:09:00", "exit_code": 1,
+    _cron(env, [{"timestamp": _ts(), "exit_code": 1,
                  "detail": "x"}] * 3)
     sh.scan(window_s=86400, threshold=3)
     ok, _ = sh.lift_safe_mode("")
@@ -101,7 +110,7 @@ def test_lift_requires_reason(env):
 
 
 def test_lift_with_reason_audited(env):
-    _cron(env, [{"timestamp": "2026-08-31T15:09:00", "exit_code": 1,
+    _cron(env, [{"timestamp": _ts(), "exit_code": 1,
                  "detail": "x"}] * 3)
     sh.scan(window_s=86400, threshold=3)
     ok, _ = sh.lift_safe_mode("人工核对：balance 实际一致，误报")
@@ -125,7 +134,7 @@ def test_corrupt_safe_mode_file_reads_as_engaged(env):
 
 
 def test_scan_internal_error_never_touches_switch(env, monkeypatch, capsys):
-    _cron(env, [{"timestamp": "2026-08-31T15:09:00", "exit_code": 1,
+    _cron(env, [{"timestamp": _ts(), "exit_code": 1,
                  "detail": "x"}] * 3)
     sh.scan(window_s=86400, threshold=3)  # engage
     before = (env / "safe_mode.json").read_text()
