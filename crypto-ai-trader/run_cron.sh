@@ -252,6 +252,11 @@ fi
 # Rotate log if > 1MB (prevents stale breaker/notification messages from persisting)
 if [ -f "$LOGFILE" ] && [ $(stat -c%s "$LOGFILE" 2>/dev/null || echo 0) -gt 1048576 ]; then
     mv "$LOGFILE" "$LOGFILE.old"
+    # WO-0926 order ②: keep the path alive. Between this mv and the next
+    # invocation's first append (up to one cron interval) the log was
+    # ABSENT — the 9/26 11:01→11:20 rotation void broke tail -f / file
+    # monitors. Recreate immediately so the path always exists.
+    touch "$LOGFILE"
 fi
 
 exit $EXIT_CODE

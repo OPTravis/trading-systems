@@ -473,3 +473,64 @@ class TestOcoFillOutboxNotification:
         match = [x for x in cli_rows
                  if x["notif_id"] == "notif_oco_fill_WLDUSDT_4189066134"]
         assert match and match[0]["type"] == "oco_fill"
+
+
+# ===== WO-0926 orders ①②: shadow dust value alignment / log rotation =====
+
+class TestLedgerDustValueAlignment:
+    """Order ①: legacy portfolio drops dust rows entirely (live 0.0) while
+    the ledger keeps them by fill arithmetic (WLD 0.1 ~ $0.05). The qty
+    tier (DRIFT_QTY_ABS) misses cheap-coin dust — a VALUE tier must exempt
+    it in the info layer; real-dollar gaps and unknown-price gaps still
+    report as true diffs."""
+
+    def _seed_shadow(self, db, sym, net, avg_entry):
+        db._get_conn().execute(
+            "INSERT INTO ledger_shadow_positions "
+            "(symbol, net_qty, avg_entry_price, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (sym, net, avg_entry, time.time()),
+        )
+
+    def test_wld_dust_gap_value_exempt(self, tmp_path):
+        from src.ledger import _positions_diff
+
+        db = StateDB(str(tmp_path / "dv1.db"))
+        self._seed_shadow(db, "WLDUSDT", 0.1, 0.4711)
+        db.trade_add("WLDUSDT", "SELL", 12.6, 0.4899, 0.23)  # ref price
+        # no portfolio WLD row -> live 0.0 (the 9/26 production state)
+
+        true_diffs, pending, dust = _positions_diff(db, db._get_conn(), {})
+        assert true_diffs == [] and pending == []
+        assert len(dust) == 1
+        d = dust[0]
+        assert d["kind"] == "position_qty_dust_value"
+        assert d["symbol"] == "WLDUSDT"
+        assert d["value_usd"] == pytest.approx(0.1 * 0.4899, abs=1e-6)
+        db.close()
+
+    def test_real_value_gap_still_true_diff(self, tmp_path):
+        from src.ledger import _positions_diff
+
+        db = StateDB(str(tmp_path / "dv2.db"))
+        self._seed_shadow(db, "SOLUSDT", 0.05, 121.93)
+        db.trade_add("SOLUSDT", "BUY", 0.05, 121.93, 0.0)
+        # no portfolio SOL row -> gap 0.05 x $121.93 ~ $6.1 >= $1 floor
+
+        true_diffs, pending, dust = _positions_diff(db, db._get_conn(), {})
+        assert dust == [] and pending == []
+        assert len(true_diffs) == 1
+        assert true_diffs[0]["kind"] == "position_qty"
+        assert true_diffs[0]["symbol"] == "SOLUSDT"
+        db.close()
+
+    def test_unknown_price_conservative_no_exempt(self, tmp_path):
+        from src.ledger import _positions_diff
+
+        db = StateDB(str(tmp_path / "dv3.db"))
+        self._seed_shadow(db, "XYZUSDT", 0.5, 0.0)  # no price anywhere
+
+        true_diffs, pending, dust = _positions_diff(db, db._get_conn(), {})
+        assert dust == []
+        assert len(true_diffs) == 1 and true_diffs[0]["symbol"] == "XYZUSDT"
+        db.close()

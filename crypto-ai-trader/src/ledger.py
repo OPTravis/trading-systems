@@ -74,6 +74,19 @@ EPS_QTY = 1e-9
 #: row and counts in the weekly report's exemption column (never
 #: silent). Gaps >= this value still report as true diffs.
 DRIFT_QTY_ABS = 0.001
+#: value-based dust tier for position_qty shadow gaps (WO-0926 order ①,
+#: 2026-09-26): legacy portfolio drops dust rows entirely (live 0.0)
+#: while the ledger keeps them by fill arithmetic — e.g. WLD 0.1
+#: (~$0.05) after the 9/26 06:43 OCO exit sold 12.6 of 12.7. dust_reaper
+#: would classify it as dust (notional < minNotional x NOTIONAL_BUFFER)
+#: but can NEVER see it: the reaper scans portfolio rows, which no longer
+#: exist — so neither side converges and the diff recurs every round.
+#: A gap valued below this USD floor is exempt like the qty tier: info
+#: layer + LEDGER_DUST_EXEMPT audit, streak unaffected. Conservative:
+#: below the smallest Binance SPOT minNotional ($1); gaps >= $1 still
+#: report as true diffs. Reference price = last trades price, falling
+#: back to the shadow avg entry; no price known -> no exemption.
+DUST_GAP_VALUE_USD = 1.0
 #: fuzzy trade-row matching tolerances (BUY rows have no client_order_id)
 FUZZY_TS_WINDOW_S = 300.0
 FUZZY_QTY_REL = 0.01
@@ -407,6 +420,19 @@ def _fuzzy_trade_row(conn, ev: Dict) -> bool:
     return row is not None
 
 
+def _last_trade_price(conn, symbol: str) -> float:
+    """Last booked trade price for a symbol (0.0 when none)."""
+    try:
+        row = conn.execute(
+            "SELECT price FROM trades WHERE symbol = ? "
+            "ORDER BY timestamp DESC LIMIT 1",
+            (symbol,),
+        ).fetchone()
+        return float(row["price"] or 0) if row else 0.0
+    except Exception:
+        return 0.0
+
+
 def _positions_diff(db, conn, pending_ages: Dict[str, int]) -> tuple:
     """Compare shadow net qty vs live portfolio rows.
 
@@ -444,6 +470,29 @@ def _positions_diff(db, conn, pending_ages: Dict[str, int]) -> tuple:
             dust_exemptions.append({
                 "kind": "position_qty_dust", "symbol": sym,
                 "shadow_qty": sh_qty, "live_qty": lv_qty, "gap": gap,
+            })
+            pending_ages.pop(sym, None)
+            continue
+        # WO-0926 order ① (Travis 9/26 11:21): value-based dust tier —
+        # the qty tier above misses "small qty, cheap coin" dust (WLD
+        # gap 0.1 >= DRIFT_QTY_ABS 0.001 but only ~$0.05). Value the gap
+        # with the last known trade price (fallback: shadow avg entry)
+        # and exempt it under the same info-layer contract when below
+        # DUST_GAP_VALUE_USD. No price known -> conservative: keep
+        # reporting (fall through to the pending/true-diff flow).
+        ref_px = _last_trade_price(conn, sym)
+        if not ref_px or ref_px <= 0:
+            _row = conn.execute(
+                "SELECT avg_entry_price FROM ledger_shadow_positions "
+                "WHERE symbol = ?", (sym,),
+            ).fetchone()
+            ref_px = float(_row["avg_entry_price"] or 0) if _row else 0.0
+        if ref_px > 0 and gap * ref_px < DUST_GAP_VALUE_USD:
+            dust_exemptions.append({
+                "kind": "position_qty_dust_value", "symbol": sym,
+                "shadow_qty": sh_qty, "live_qty": lv_qty, "gap": gap,
+                "value_usd": round(gap * ref_px, 6),
+                "ref_price": ref_px,
             })
             pending_ages.pop(sym, None)
             continue
