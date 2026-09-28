@@ -757,3 +757,245 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
         pass
 
     return booked_total
+
+
+# ---------------------------------------------------------------------------
+# WO-0928: OCO server-side fill reconciliation (event-anchored)
+#
+# Two production blind spots proved the net-gap axes are not enough:
+#   - ENA 9/28 06:35: another trades writer landed the SELL row (fill ts,
+#     client_order_id) within minutes but never told the ledger — the
+#     net gap collapsed to ~0, so no axis ever queued the symbol again
+#     while events/shadow stayed 37.43 vs live 0 until manual repair.
+#   - ADA 9/28 12:05: poll-gap fill with NO writer at all; sync then
+#     dropped the portfolio row (main axis blind), Path B demands an
+#     exchange-flat balance (0.0581 dust residue blocks it), leaving the
+#     shadow book wrong until the manual SOP.
+# Anchor on ledger_events.order_id instead: every 24h-touched symbol gets
+# a myTrades sweep and any SELL fill whose orderId is absent from
+# ledger_events gets booked — shadow backfill (ENA mode, trades already
+# there) or the full chain (ADA mode, nothing there) — plus stale-row
+# cleanup and an OCO_RECON_AUTO audit row. Bystander contract applies at
+# every level: warnings only, never raises into the pipeline.
+# ---------------------------------------------------------------------------
+
+OCO_RECON_AUDIT_ACTION = "OCO_RECON_AUTO"
+
+
+def _ledger_events_recent_symbols(db, cutoff_s: float) -> set:
+    """DISTINCT symbols with a ledger_events row since the cutoff."""
+    try:
+        rows = db._get_conn().execute(
+            "SELECT DISTINCT symbol FROM ledger_events WHERE ts >= ?",
+            (cutoff_s,),
+        ).fetchall()
+        return {r["symbol"] for r in rows if r["symbol"]}
+    except Exception:
+        return set()
+
+
+def _event_order_ids_booked(db) -> set:
+    """order_ids already present in ledger_events (any age — ingress
+    idempotency mirrors record_fill's full-table order_id check)."""
+    try:
+        rows = db._get_conn().execute(
+            "SELECT DISTINCT order_id FROM ledger_events "
+            "WHERE order_id IS NOT NULL",
+        ).fetchall()
+        return {str(r["order_id"]) for r in rows}
+    except Exception:
+        return set()
+
+
+def _oco_recon_portfolio_fix(db, symbol: str, ex: Dict[str, float],
+                             log) -> None:
+    """Drop/trim a stale portfolio row after a booked server-side exit.
+
+    The hourly sync rebuild also handles this, but the books should agree
+    within the same round (the audit SOP did it by hand). Dust residue on
+    the exchange is fine — the row only goes when the exchange is flat;
+    otherwise the row trims to the residue, matching the belt-and-braces
+    behaviour of the main reconciler loop.
+    """
+    try:
+        pos = db.portfolio_get_all().get(symbol)
+        if not pos:
+            return
+        leftover = ex.get(_base_of(symbol), 0.0)
+        if leftover <= DRIFT_QTY_ABS:
+            _repair_portfolio_remove(db, symbol)
+            log.info("oco-recon: removed stale position %s (exchange flat)",
+                     symbol)
+            return
+        db_qty = float(pos.get("quantity") or 0)
+        if abs(db_qty - leftover) > max(
+                leftover * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
+            upd = dict(pos)
+            upd["quantity"] = leftover
+            _repair_portfolio_set(db, symbol, upd)
+            log.info("oco-recon: trimmed %s to exchange qty %.8g",
+                     symbol, leftover)
+    except Exception:
+        log.warning("oco-recon: portfolio fix failed for %s", symbol,
+                    exc_info=True)
+
+
+def _recon_one_order(db, client, symbol: str, oid: int, legs: List[Dict],
+                     ex: Dict[str, float], log) -> Optional[Dict]:
+    """Book one unrecorded server-side SELL order (orderId-aggregated).
+
+    Returns the booked entry, or None when guards reject the order."""
+    base = _base_of(symbol)
+    leg_qty_raw = sum(float(f["qty"]) for f in legs)
+    if leg_qty_raw <= 0:
+        return None
+    avg_px = sum(float(f["qty"]) * float(f["price"]) for f in legs) / leg_qty_raw
+    comm = sum(
+        float(f.get("commission") or 0) for f in legs
+        if f.get("commissionAsset") == base
+    )
+    qty = max(leg_qty_raw - comm, 0.0)
+    if qty <= DRIFT_QTY_ABS:
+        return None
+    fill_ts = min(float(f["time"]) for f in legs) / 1000.0
+    # lifecycle anchor (same as Path C): a fill predating the symbol's
+    # latest BUY is a foreign leg from an older/foreign position.
+    if fill_ts * 1000 < _last_buy_ts_ms(db, symbol):
+        log.info(
+            "oco-recon: %s orderId=%s predates latest BUY — foreign leg, "
+            "skipped", symbol, oid)
+        return None
+    trades_has = _order_booked(db, oid)
+    if trades_has:
+        # ENA mode: the trades row already exists (another writer, fill
+        # ts + client_order_id) but the ledger never learned — book the
+        # event + shadow decrement directly (observe_only: shadow mode
+        # unchanged, no four-source writes).
+        entry_avg = _db_buy_avg(db, symbol)
+        from src.pnl_calculator import gross_pnl
+        pnl = gross_pnl(entry_avg, avg_px, qty) if entry_avg else 0.0
+        from src.ledger import record_fill
+        st = record_fill(
+            {
+                "type": "SELL", "symbol": symbol,
+                "qty": float(round(qty, 8)), "price": float(round(avg_px, 8)),
+                "pnl": float(round(pnl, 6)), "ts": fill_ts,
+                "order_id": str(oid),
+                "exit_reason": "reconciled" if pnl >= 0 else "sl",
+                "source": "oco_recon.shadow_backfill",
+            },
+            observe_only=True,
+        )
+        if st.get("status") != "ok":
+            log.warning(
+                "oco-recon: shadow backfill %s orderId=%s -> %s",
+                symbol, oid, st)
+            return None
+        log.info(
+            "🔁 OCO-RECON SHADOW: %s SELL %.8g @ %.6g "
+            "(events+shadow backfilled, orderId=%s)",
+            symbol, qty, avg_px, oid)
+        entry = {"symbol": symbol, "qty": round(qty, 8),
+                 "price": round(avg_px, 8), "pnl": round(pnl, 6),
+                 "order_id": str(oid), "source": "oco_recon/shadow_backfill"}
+    else:
+        # ADA mode: the local books are empty for this fill — run the
+        # full booking chain (trades + event + shadow + tracker + outbox)
+        # with the ledger net as the gap cap: the same per-order guards
+        # as the main reconciler (gap cap, sanity, fuzzy dedup).
+        gap = _db_net_qty(db, symbol)
+        if gap <= DRIFT_QTY_ABS:
+            log.info(
+                "oco-recon: %s orderId=%s exchange fill but ledger net "
+                "%.8g — foreign, skipped", symbol, oid, gap)
+            return None
+        booked = _book_sell_legs(db, symbol, legs, gap, client=client)
+        if not booked:
+            return None
+        entry = booked[0]
+        entry["source"] = "oco_recon/full_chain"
+    _oco_recon_portfolio_fix(db, symbol, ex, log)
+    try:
+        db.audit_log(
+            action=OCO_RECON_AUDIT_ACTION,
+            details={
+                "symbol": symbol, "order_id": str(oid),
+                "qty": round(qty, 8), "price": round(avg_px, 8),
+                "mode": "shadow_backfill" if trades_has else "full_chain",
+                "cash": "left to next sync_from_binance (authoritative)",
+            },
+            source="portfolio_reconciler.oco_recon",
+        )
+    except Exception:
+        log.warning("oco-recon: audit write failed for %s", symbol,
+                    exc_info=True)
+    return entry
+
+
+def reconcile_exchange_fills(client, db, log: Optional[logging.Logger] = None) -> List[Dict]:
+    """WO-0928: OCO server-side fill reconciliation (event-anchored).
+
+    Sweeps every symbol the local books touched in the last 24h (live
+    portfolio rows ∪ prev snapshot ∪ trades ∪ ledger_events) against
+    exchange myTrades and books SELL fills whose orderId is missing from
+    ledger_events — restoring ENA-mode (shadow backfill) and ADA-mode
+    (full chain) gaps automatically. Fail-open at every level.
+    Returns the list of repaired fills (empty on a clean round).
+    """
+    log = log or logger
+    try:
+        account = client.get_account()
+        ex = _exchange_holdings(account)
+    except Exception:
+        log.warning("oco-recon: get_account failed — skipping this round",
+                    exc_info=True)
+        return []
+    cutoff_s = time.time() - FILL_LOOKBACK_S
+    symbols: set = set(db.portfolio_get_all().keys())
+    try:
+        prev = db.kv_get(KV_PREV_POSITIONS) or {}
+        symbols |= {s for s in prev if not s.startswith("_")}
+    except Exception:
+        pass
+    symbols |= set(db.trades_recent_symbols(cutoff_s))
+    symbols |= _ledger_events_recent_symbols(db, cutoff_s)
+    symbols = {s for s in symbols if s and s.endswith("USDT")}
+    if not symbols:
+        return []
+    booked_ids = _event_order_ids_booked(db)
+
+    repaired: List[Dict] = []
+    for sym in sorted(symbols):
+        try:
+            fills = client.get_my_trades(sym, limit=100)
+        except Exception:
+            log.warning("oco-recon: get_my_trades(%s) failed", sym,
+                        exc_info=True)
+            continue
+        sells = [
+            f for f in (fills or [])
+            if not f.get("isBuyer")
+            and int(f.get("orderId") or 0) > 0
+            and int(f.get("time") or 0) >= cutoff_s * 1000
+        ]
+        if not sells:
+            continue
+        pending = [f for f in sells if str(f["orderId"]) not in booked_ids]
+        if not pending:
+            continue  # GRAM-style round: OCO still resting, books agree
+        by_order: Dict[int, List[Dict]] = {}
+        for f in pending:
+            by_order.setdefault(int(f["orderId"]), []).append(f)
+        for oid in sorted(by_order,
+                          key=lambda o: min(int(f["time"]) for f in by_order[o])):
+            try:
+                entry = _recon_one_order(db, client, sym, oid,
+                                         by_order[oid], ex, log)
+            except Exception:
+                log.warning("oco-recon: order %s %s failed", sym, oid,
+                            exc_info=True)
+                continue
+            if entry:
+                repaired.append(entry)
+                booked_ids.add(str(oid))
+    return repaired

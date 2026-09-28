@@ -244,6 +244,23 @@ def _step_reconcile_portfolio(ctx):
                 ", ".join(f"{b['symbol']} {b['qty']}@{b['price']}" for b in booked),
             )
 
+        # WO-0928: OCO server-side fill reconciliation — event-anchored
+        # pass that catches what the net-gap axes miss (a foreign trades
+        # writer collapses the net gap ENA-style; sync drops closed rows
+        # ADA-style). Non-fatal by contract.
+        try:
+            from src.portfolio_reconciler import reconcile_exchange_fills
+            oco_fixed = reconcile_exchange_fills(client, db)
+            if oco_fixed:
+                logger.info(
+                    "oco-recon: repaired %d server-side OCO fill(s): %s",
+                    len(oco_fixed),
+                    ", ".join(f"{b['symbol']} {b['qty']}@{b['price']}"
+                              for b in oco_fixed),
+                )
+        except Exception:
+            logger.warning("oco-recon step failed (non-fatal)", exc_info=True)
+
         # P0-1 (設計 v1.1 §四/§五): dust reaper + health self-report.
         # dust_reaper defaults to report-only (kv DUST_REAPER_MODE); never
         # raises into the pipeline.
