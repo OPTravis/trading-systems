@@ -100,6 +100,42 @@ def cmd_scan(send_notification: bool = False):
         print("=" * 50)
 
 
+def _run_protection_sweep(ctx):
+    """WO-0930: reconcile + defense sweep on every pipeline path.
+
+    Starved rounds (no opportunities / research short-circuit) used to
+    skip reconcile and the defense sweep entirely — an OCO fill or a
+    lost SL between rounds then waited for the next lucky-signal round
+    (AVAX 9/30 00:49: SL fill sat unbooked for 4+ shadow rounds, and
+    the guardian never ran on quiet markets). On starved rounds a
+    minimal client/portfolio ctx is built here; execute-type steps stay
+    exclusive to full rounds by design.
+    Fail-open: any construction error logs and skips this round.
+    """
+    if (ctx is None or ctx.get("client") is None
+            or ctx.get("portfolio") is None):
+        try:
+            client = get_trading_client()
+            portfolio = PortfolioManager()
+            ctx = {"client": client, "portfolio": portfolio}
+        except Exception:
+            logger.warning(
+                "protection sweep: minimal ctx build failed — skipped",
+                exc_info=True,
+            )
+            return
+    try:
+        _step_reconcile_portfolio(ctx)
+    except Exception:
+        logger.warning("protection sweep: reconcile failed (non-fatal)",
+                       exc_info=True)
+    try:
+        _step_defense_sweep(ctx)
+    except Exception:
+        logger.warning("protection sweep: defense failed (non-fatal)",
+                       exc_info=True)
+
+
 def cmd_cron_scan():
     """Phase 3: Scan → Score → Research → Adapt → Execute.
 
@@ -136,12 +172,19 @@ def cmd_cron_scan():
             # so running it on starved rounds is safe and keeps the
             # consecutive-clean clock meaningful.
             _step_ledger_shadow_diff(None)
+            # WO-0930 (9/30): starved rounds still owe reconcile + the
+            # defense sweep. WO-0924 only rescued the shadow diff; an OCO
+            # fill between rounds then sat unbooked for 4+ rounds (AVAX
+            # 9/30 00:49) and the guardian never ran on quiet markets.
+            _run_protection_sweep(None)
             return
 
+        scan_ctx = ctx
         ctx = _step_research_top_n(ctx)
         if ctx is None:
-            _append_scan_summary(ctx)
-            _step_ledger_shadow_diff(ctx)
+            _append_scan_summary(None)
+            _step_ledger_shadow_diff(None)
+            _run_protection_sweep(scan_ctx)
             return
 
         _step_event_driven_adjustment(ctx)
@@ -232,9 +275,18 @@ def _step_reconcile_portfolio(ctx):
         client = ctx.get("client")
         portfolio = ctx.get("portfolio")
         if client is None or portfolio is None:
+            # WO-0930: never skip silently — this exact silent return hid
+            # the reconcile starvation behind the 9/30 AVAX OCO fill for
+            # 4 shadow rounds.
+            logger.warning(
+                "reconcile: ctx missing client/portfolio — step skipped"
+            )
             return
         db = getattr(portfolio, "_db", None)
         if db is None:
+            logger.warning(
+                "reconcile: portfolio has no _db handle — step skipped"
+            )
             return
         booked = reconcile_portfolio_drift(client, db)
         if booked:
@@ -314,6 +366,12 @@ def _step_defense_sweep(ctx):
     client = ctx.get("client")
     portfolio = ctx.get("portfolio")
     if client is None or portfolio is None:
+        # WO-0930: silent starvation of the defense sweep is how the
+        # guardian blind-spot survived 4 rounds unnoticed (AVAX OCO fill
+        # 9/30 00:49). Never skip silently.
+        logger.warning(
+            "defense_sweep: ctx missing client/portfolio — sweep skipped"
+        )
         return
     try:
         from src.stuck_order_monitor import run as stuck_order_run
