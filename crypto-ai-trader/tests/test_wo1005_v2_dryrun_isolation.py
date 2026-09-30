@@ -115,6 +115,34 @@ def test_paper_trader_has_ccxt_shaped_get_my_trades(db):
     assert f["fee"]["cost"] == pytest.approx(0.075)
 
 
+def test_audit_source_tagged_paper_sim_under_dryrun(tmp_path):
+    """WO-1005 followup: DRYRUN audit rows carry a paper_sim: prefix so
+    simulated actions stay distinguishable in forensics; live rows and
+    travis_ops markers pass through untouched."""
+    code = (
+        "import sys, tempfile; sys.path.insert(0,'.')\n"
+        "from src.state_db import StateDB\n"
+        "db = StateDB(tempfile.mktemp(suffix='.db'))\n"
+        "db.audit_log('T','d',source='binance_api')\n"
+        "db.audit_log('T','d',source='travis_ops')\n"
+        "print([r[0] for r in db._get_conn().execute("
+        "'SELECT source FROM audit_log').fetchall()])")
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DRYRUN", "STATE_DB_PATH", "TESTING")}
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO,
+                       capture_output=True, text=True, timeout=60,
+                       env={**env, "DRYRUN": "1"})
+    assert r.returncode == 0, r.stderr
+    assert "paper_sim:binance_api" in r.stdout
+    assert "'travis_ops'" in r.stdout
+    # live semantics untouched
+    r2 = subprocess.run([sys.executable, "-c", code], cwd=REPO,
+                        capture_output=True, text=True, timeout=60,
+                        env=env)
+    assert r2.returncode == 0, r2.stderr
+    assert "paper_sim" not in r2.stdout
+
+
 def test_sync_branch_source_pins_dryrun_guard():
     """Structure lock: scan_phases sync gate checks _is_dryrun()."""
     src = (REPO / "src" / "scan_phases.py").read_text()

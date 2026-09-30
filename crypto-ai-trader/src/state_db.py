@@ -1506,8 +1506,20 @@ class StateDB:
         new_value: str = "",
         source: str = "system",
     ):
-        """Log an audit event."""
+        """Log an audit event.
+
+        WO-1005 followup: under DRYRUN every audit row is tagged with a
+        paper_sim: source prefix so simulated actions stay
+        distinguishable from real exchange/system actions during later
+        audit forensics (Travis 18:39 note — the 18:11 write-through
+        produced 'PORTFOLIO_SYNC ... source=binance_api' rows that were
+        actually PaperTrader sim actions).
+        """
         now = time.time()
+        if (os.environ.get("DRYRUN") == "1"
+                and source != "travis_ops"
+                and not source.startswith("paper_sim")):
+            source = f"paper_sim:{source}"
         details_str = json.dumps(details) if not isinstance(details, str) else details
         self._get_conn().execute(
             "INSERT INTO audit_log (timestamp, action, details, old_value, new_value, source) VALUES (?, ?, ?, ?, ?, ?)",
