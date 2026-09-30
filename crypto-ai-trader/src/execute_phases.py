@@ -96,7 +96,10 @@ def _step_execute_trades(ctx):
         ]
     )
 
-    auto_execute = os.environ.get("AUTO_EXECUTE", "false").lower() == "true"
+    # WO-1001-4: SSOT resolver (kv > env > yaml > default) — env keeps
+    # working during the migration window; behaviour unchanged today.
+    from src.config_store import cfg_get_bool
+    auto_execute = cfg_get_bool("AUTO_EXECUTE", False)
 
     # Output opportunity data BEFORE auto-execution so AI can parse all fields
     # (moved outside execution block so data is always available even on failure)

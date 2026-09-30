@@ -1,0 +1,14 @@
+# WO-1001-4: settings SSOT — file layer (default < this file < env < kv).
+# Behaviour switches and tuning ONLY — secrets (API keys/tokens) stay env-only.
+# kv runtime overrides: cfg:KEY (see src/config_store.set_override).
+settings:
+  AUTO_EXECUTE: "false"
+  NEW_POSITIONS_HALTED: "1"
+  SL_RECONCILE_DRYRUN: "1"
+  TRADING_MODE: "spot"
+  ENABLE_FUTURES: "false"
+  USE_TESTNET: "false"
+  PAPER_INITIAL_BALANCE: "1000"
+  PAPER_FEE_RATE: "0.001"
+  PAPER_SLIPPAGE_PCT: "0.0005"
+  PAPER_MIN_ORDER_USDT: "5"

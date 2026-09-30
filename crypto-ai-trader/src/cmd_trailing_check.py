@@ -53,7 +53,9 @@ def _reconcile_sl_prices(client, positions, db=None):
     approves live correction).
     """
     results = []
-    dry = os.environ.get('SL_RECONCILE_DRYRUN', '1') != '0'
+    # WO-1001-4: SSOT resolver (kv > env > yaml > default).
+    from src.config_store import cfg_get
+    dry = str(cfg_get('SL_RECONCILE_DRYRUN', '1')) != '0'
     try:
         if db is None:
             from src.state_db import StateDB

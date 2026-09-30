@@ -71,9 +71,9 @@ from src.btc_trend_gate import _check_btc_trend  # noqa: E402,F401
 # EXCEPTION: Kelly exploration probes ($5-8, is_exploration=True) still run so
 # the learning loop keeps refreshing and a bull run isn't entirely missed.
 def _new_positions_halted() -> bool:
-    return os.environ.get("NEW_POSITIONS_HALTED", "1").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
+    # WO-1001-4: SSOT resolver (kv > env > yaml > default).
+    from src.config_store import cfg_get_bool
+    return cfg_get_bool("NEW_POSITIONS_HALTED", True)
 
 
 # P2-6: Graceful shutdown flag — SIGTERM handler sets this to prevent new trades
