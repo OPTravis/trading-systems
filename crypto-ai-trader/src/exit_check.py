@@ -146,6 +146,52 @@ def _band_position(client, symbol: str) -> Optional[float]:
         return None
 
 
+# ---- decision core (pure, shared with backtest — WO-1003-7) ------------------
+def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
+                 band_position=None, band_pos_max=MOMENTUM_BAND_POS_MAX,
+                 include_momentum=True, now=0.0):
+    """Single-position exit decision — THE one place exit semantics live.
+
+    Pure: no db, no client, no clock. Live evaluate_exits() feeds it
+    kv params / trades anchors / ticker prices; the backtest replay
+    (BacktestEngine, WO-1003-7) feeds it bar closes and in-memory hold
+    hours — so live and backtest exits can never drift apart again
+    (P1-4 two-codebases gap closed).
+
+    Priority order mirrors the live chain: hold > tp > sl > momentum.
+    Returns a decision dict (same shape as live) or None.
+    """
+    qty = float(pos.get("quantity") or 0)
+    sym = pos.get("symbol")
+    if not sym or qty <= 0 or price <= 0:
+        return None
+    pnl_pct = _pnl_pct(pos, price)
+    base = {
+        "symbol": sym, "qty": qty,
+        "entry_price": float(pos.get("entry_price") or 0),
+        "price": price, "pnl_pct": round(pnl_pct, 2),
+        "held_hours": round(held_hours, 1), "ts": now,
+    }
+    if held_hours >= hold_hours:
+        return {**base, "kind": "hold_expiry", "auto": True, "sell_pct": 100,
+                "reason": f"hold expiry {held_hours:.1f}h >= {hold_hours:.0f}h"}
+    if pnl_pct >= tp_pct:
+        return {**base, "kind": "take_profit", "auto": True, "sell_pct": 100,
+                "reason": f"take profit {pnl_pct:.2f}% >= {tp_pct:.1f}%"}
+    if pnl_pct <= -sl_pct:
+        return {**base, "kind": "stop_loss", "auto": True, "sell_pct": 100,
+                "reason": f"stop loss {pnl_pct:.2f}% <= -{sl_pct:.1f}%"}
+    if include_momentum and pnl_pct > 0 and band_position is not None \
+            and band_position < band_pos_max:
+        sell_pct = 100 if band_position < 0.15 else 50  # bollinger tiers
+        return {**base, "kind": "momentum_reversal", "auto": True,
+                "sell_pct": sell_pct,
+                "reason": (f"momentum reversal band_position="
+                           f"{band_position:.2f} (< {band_pos_max}) "
+                           f"pnl {pnl_pct:+.2f}%")}
+    return None
+
+
 # ---- evaluate (pure read) ---------------------------------------------------
 def evaluate_exits(
     client, db, *, holdings: Optional[List[Dict]] = None,
@@ -182,38 +228,19 @@ def evaluate_exits(
                 price = 0.0
         if price <= 0:
             continue
-        pnl_pct = _pnl_pct(pos, price)
+        # WO-1003-7: shell collects inputs; the pure core decides — the
+        # exact same evaluate_one() the backtest replay calls.
         held_h = _held_hours(db, pos, now)
-        tp = _param(db, "tp_pct", sym)
-        sl = _param(db, "sl_pct", sym)
-        hold_h = _param(db, "hold_hours", sym)
-        base = {
-            "symbol": sym, "qty": qty, "entry_price": float(pos.get("entry_price") or 0),
-            "price": price, "pnl_pct": round(pnl_pct, 2),
-            "held_hours": round(held_h, 1), "ts": now,
-        }
-        if held_h >= hold_h:
-            decisions.append({**base, "kind": "hold_expiry", "auto": True,
-                              "sell_pct": 100,
-                              "reason": f"hold expiry {held_h:.1f}h >= {hold_h:.0f}h"})
-        elif pnl_pct >= tp:
-            decisions.append({**base, "kind": "take_profit", "auto": True,
-                              "sell_pct": 100,
-                              "reason": f"take profit {pnl_pct:.2f}% >= {tp:.1f}%"})
-        elif pnl_pct <= -sl:
-            decisions.append({**base, "kind": "stop_loss", "auto": True,
-                              "sell_pct": 100,
-                              "reason": f"stop loss {pnl_pct:.2f}% <= -{sl:.1f}%"})
-        elif include_momentum and pnl_pct > 0:
-            bp = _band_position(client, sym)
-            if bp is not None and bp < MOMENTUM_BAND_POS_MAX:
-                sell_pct = 100 if bp < 0.15 else 50  # bollinger tiers
-                decisions.append({
-                    **base, "kind": "momentum_reversal", "auto": True,
-                    "sell_pct": sell_pct,
-                    "reason": (f"momentum reversal band_position={bp:.2f} "
-                               f"(< {MOMENTUM_BAND_POS_MAX}) pnl {pnl_pct:+.2f}%"),
-                })
+        dec = evaluate_one(
+            pos, price, held_h,
+            tp_pct=_param(db, "tp_pct", sym),
+            sl_pct=_param(db, "sl_pct", sym),
+            hold_hours=_param(db, "hold_hours", sym),
+            band_position=_band_position(client, sym) if include_momentum else None,
+            include_momentum=include_momentum, now=now,
+        )
+        if dec is not None:
+            decisions.append(dec)
     return decisions
 
 

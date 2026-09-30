@@ -13,6 +13,27 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.indicators import Indicators
+from src.exit_check import (
+    EXIT_DEFAULTS,
+    evaluate_one,
+)
+
+
+def _band_position_from_klines(klines: List[Dict], idx: int) -> Optional[float]:
+    """Bollinger(20,2) band position on klines[:idx+1] — same math as
+    exit_check._band_position but fed from backtest bars instead of the
+    live client (WO-1003-7 parity)."""
+    lo = max(0, idx - 19)
+    closes = [float(k["close"]) for k in klines[lo:idx + 1]]
+    if len(closes) < 20:
+        return None
+    mid = sum(closes) / len(closes)
+    var = sum((c - mid) ** 2 for c in closes) / len(closes)
+    sd = var ** 0.5
+    upper, lower = mid + 2 * sd, mid - 2 * sd
+    if upper <= lower:
+        return None
+    return (closes[-1] - lower) / (upper - lower)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +69,9 @@ class Position:
     tp1_hit: bool = False
     tp2_hit: bool = False
     tp3_hit: bool = False
+    # WO-1003-7: momentum 50% tier already trimmed once (P2 semantics —
+    # one partial de-risk per position, remainder rides the breakeven SL)
+    momentum_trimmed: bool = False
 
 
 @dataclass
@@ -199,6 +223,14 @@ class BacktestEngine:
 
     # 評分閾值
     SCORE_THRESHOLD = 50
+
+    # WO-1003-7: exit_check parity thresholds — single-sourced from
+    # EXIT_DEFAULTS so backtest and live share the same exit semantics
+    # (P1-4: the backtest used to know nothing about hold-expiry /
+    # pct-TP / pct-SL / momentum reversal — only the ATR OCO lines).
+    EXIT_TP_PCT = EXIT_DEFAULTS["tp_pct"]
+    EXIT_SL_PCT = EXIT_DEFAULTS["sl_pct"]
+    EXIT_HOLD_HOURS = EXIT_DEFAULTS["hold_hours"]
 
     # 最少需要的 K 線數量（用於指標計算 warm-up）
     WARMUP_BARS = 100
@@ -627,6 +659,78 @@ class BacktestEngine:
     # 核心模擬邏輯
     # ------------------------------------------------------------------
 
+    def _eval_exit_check_parity(
+        self, pos: Position, kline: Dict, klines: List[Dict], bar_idx: int
+    ) -> Optional[Dict]:
+        """WO-1003-7: run the LIVE exit core (exit_check.evaluate_one) on a
+        backtest position at bar close. Same thresholds (EXIT_DEFAULTS-
+        sourced), same priority (hold > tp > sl > momentum), same decision
+        shape as the live scan chain. Returns decision or None."""
+        close_px = float(kline["close"])
+        held_hours = max(0.0, (kline["open_time"] - pos.entry_time) / 3_600_000.0)
+        if pos.momentum_trimmed:
+            include_momentum = False  # one partial de-risk per position (P2)
+        else:
+            include_momentum = True
+        return evaluate_one(
+            {"symbol": pos.symbol, "quantity": pos.quantity,
+             "entry_price": pos.entry_price},
+            close_px, held_hours,
+            tp_pct=self.EXIT_TP_PCT, sl_pct=self.EXIT_SL_PCT,
+            hold_hours=self.EXIT_HOLD_HOURS,
+            band_position=_band_position_from_klines(klines, bar_idx),
+            include_momentum=include_momentum,
+            now=kline["open_time"] / 1000.0,
+        )
+
+    def _apply_exit_check_exit(
+        self, pos: Position, dec: Dict, current_time: int, bar_idx: int,
+        closed_trades: List["ClosedTrade"],
+    ) -> None:
+        """Apply a parity decision: 100% tiers close at bar close (same
+        ClosedTrade bookkeeping as the ATR paths); the momentum 50% tier
+        trims half and re-lists the P2 breakeven SL on the remainder."""
+        close_px = dec["price"]
+        if dec["sell_pct"] >= 100:
+            qty = pos.quantity
+            pnl_pct = dec["pnl_pct"]
+            pnl_usdt = qty * close_px - qty * pos.entry_price
+            pnl_usdt -= qty * close_px * self.TAKER_FEE
+            closed_trades.append(
+                ClosedTrade(
+                    symbol=pos.symbol, entry_price=pos.entry_price,
+                    exit_price=close_px, pnl_pct=pnl_pct, pnl_usdt=pnl_usdt,
+                    reason=dec["kind"],
+                    holding_bars=bar_idx - pos.entry_bar,
+                    entry_time=pos.entry_time, exit_time=current_time,
+                    score=0,
+                )
+            )
+            pos.quantity = 0
+            return
+        # momentum partial (sell_pct == 50) — P2 semantics
+        sell_qty = pos.quantity * dec["sell_pct"] / 100.0
+        pnl_usdt = sell_qty * close_px - sell_qty * pos.entry_price
+        pnl_usdt -= sell_qty * close_px * self.TAKER_FEE
+        closed_trades.append(
+            ClosedTrade(
+                symbol=pos.symbol, entry_price=pos.entry_price,
+                exit_price=close_px, pnl_pct=dec["pnl_pct"],
+                pnl_usdt=pnl_usdt, reason=dec["kind"],
+                holding_bars=bar_idx - pos.entry_bar,
+                entry_time=pos.entry_time, exit_time=current_time,
+                score=0,
+            )
+        )
+        pos.quantity -= sell_qty
+        pos.usdt_cost *= 1 - dec["sell_pct"] / 100.0
+        pos.momentum_trimmed = True
+        # re-list breakeven SL for the remainder (P2 execute_exit formula)
+        cand = pos.entry_price * 0.995 if pos.entry_price > 0 else 0.0
+        if cand <= 0 or cand >= close_px * 0.98:
+            cand = close_px * 0.95
+        pos.sl_price = cand
+
     def _simulate(
         self,
         symbol: str,
@@ -1023,6 +1127,20 @@ class BacktestEngine:
                                 )
                                 pos.quantity = 0
                                 trades_to_close.append((pos_idx, pos, "trailing", 0))
+
+                # ---- WO-1003-7: exit_check 同構判定（bar close）----
+                # 實盤時序: OCO(ATR 線) bar 內先成交 → exit_check 輪詢在
+                # bar 收後; 回測同構: 上方 ATR SL/TP/trailing 未平掉的
+                # 倉位, 以當根 close 走 live 同一個 evaluate_one 核心
+                # (hold_expiry / pct-TP / pct-SL / momentum 全量+半量分檔)
+                if exit_reason is None and pos.quantity > 0:
+                    dec = self._eval_exit_check_parity(
+                        pos, kline, klines, bar_idx)
+                    if dec is not None:
+                        self._apply_exit_check_exit(
+                            pos, dec, current_time, bar_idx, closed_trades)
+                        if pos.quantity <= 1e-10:
+                            trades_to_close.append((pos_idx, pos, "closed", 0))
 
             # 移除已平倉的倉位（逆序）
             for pos_idx, pos, reason, price in reversed(trades_to_close):
