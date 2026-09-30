@@ -152,6 +152,59 @@ def _step_trailing_check(ctx):
         logger.warning("trailing check step failed (non-fatal)", exc_info=True)
 
 
+def _step_config_guard(ctx=None):
+    """WO-1004 (2): safety-switch drift fingerprint.
+
+    The 12:39 heredoc accident rewrote kv exit:mode to 'off' and nothing
+    noticed for 70 minutes — shadow reconciliation only audits positions,
+    never configuration. This step fingerprints the safety-class knobs
+    each scan; any drift since the last round warns + outbox-notifies
+    (dedup'd per fingerprint change). Pure-read + one kv write-back.
+    Fail-open, never blocks the pipeline.
+    """
+    try:
+        from src.state_db import get_state_db
+
+        db = get_state_db()
+        fingerprint = {}
+
+        # safety-class knobs — value changes are decision-relevant events
+        fingerprint["exit:mode"] = db.kv_get("exit:mode") or "auto"
+        fingerprint["ledger:mode"] = db.kv_get("ledger:mode") or "shadow"
+        try:
+            from src.config_store import cfg_get
+            fingerprint["NEW_POSITIONS_HALTED"] = str(
+                cfg_get("NEW_POSITIONS_HALTED",
+                        os.environ.get("NEW_POSITIONS_HALTED", "1")))
+            fingerprint["AUTO_EXECUTE"] = str(
+                cfg_get("AUTO_EXECUTE", os.environ.get("AUTO_EXECUTE", "0")))
+        except Exception:
+            logger.warning("config guard: config_store read failed",
+                           exc_info=True)
+
+        prev = db.kv_get("config_guard:fingerprint") or {}
+        if isinstance(prev, dict) and prev != fingerprint:
+            drift = {k: (prev.get(k, "<unset>"), v)
+                     for k, v in fingerprint.items() if prev.get(k, "<unset>") != v}
+            body = "; ".join(f"{k}: {a} -> {b}" for k, (a, b) in drift.items())
+            logger.warning("config guard: SAFETY-SWITCH DRIFT — %s", body)
+            try:
+                db.notification_outbox_add(
+                    f"config_guard:{hash(body) & 0xffffffff:x}",
+                    "config_drift",
+                    "⚠️ Safety-switch drift detected",
+                    f"Fingerprint change on safety-class config: {body}. "
+                    f"If this was NOT an operator action, audit "
+                    f"exit:mode / NEW_POSITIONS_HALTED immediately.")
+            except Exception:
+                logger.warning("config guard: outbox insert failed",
+                               exc_info=True)
+        db.kv_set("config_guard:fingerprint", fingerprint)
+    except Exception:
+        logger.warning("config guard step failed (non-fatal)",
+                       exc_info=True)
+
+
 def _step_exit_positions(ctx):
     """WO-0931 (9/30): consume strategy exit signals (P1).
 
@@ -232,6 +285,7 @@ def cmd_cron_scan():
             logger.warning(
                 "kv_preflight: FAIL — skipping new entries this scan")
         _step_reconcile_portfolio(ctx)
+        _step_config_guard(ctx)
         _step_exit_positions(ctx)
         _step_defense_sweep(ctx)
         _step_trailing_check(ctx)

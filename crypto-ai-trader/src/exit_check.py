@@ -248,13 +248,33 @@ def scan_exit_triggers(db, holdings: List[str], prices: Dict[str, float],
                        *, now: Optional[float] = None) -> Optional[str]:
     """Read-only fast check for reside_scan event_tick (hold/tp/sl only —
     momentum needs klines and stays in the scan step). Returns a trigger
-    reason string or None. Pure DB reads + caller-provided prices."""
+    reason string or None. Pure DB reads + caller-provided prices.
+
+    WO-1004 (3) contract: `db` may be a raw sqlite3 connection (what
+    reside_scan passes today — has .execute) OR a StateDB instance (the
+    .execute AttributeError it used to raise was swallowed by the bare
+    except, silently disabling the trigger path — the 13:20 0G miss
+    lesson: silent excepts on the exit chain are observability holes).
+    Both call shapes now work; anything else logs once and returns None.
+    """
     now = now or time.time()
+    conn = db
+    if not callable(getattr(conn, "execute", None)):
+        get_conn = getattr(db, "_get_conn", None)
+        conn = get_conn() if callable(get_conn) else None
+    if conn is None:
+        logger.warning(
+            "scan_exit_triggers: db param is neither a sqlite connection "
+            "nor a StateDB (type=%s) — trigger check skipped",
+            type(db).__name__)
+        return None
     try:
-        rows = db.execute(
+        rows = conn.execute(
             "SELECT symbol, quantity, entry_price, opened_at FROM portfolio "
             "WHERE quantity > 0").fetchall()
     except Exception:
+        logger.warning("scan_exit_triggers: portfolio read failed",
+                       exc_info=True)
         return None
     for sym, qty, entry, opened_at in rows:
         if sym not in holdings or not sym.endswith("USDT"):
@@ -452,7 +472,24 @@ def run_exit_step(client, db, *, now: Optional[float] = None) -> List[Dict]:
     now = now or time.time()
     mode = _mode(db)
     if mode == "off":
-        logger.info("exit step: mode=off — skipped")
+        # WO-1004 (1): a silent skip here cost the 13:20 0G TP (+11.35% ->
+        # +6.8% by the time a human found it). The kill-switch is honoured
+        # — but never silently: warn every round, and surface WHAT the
+        # switch is holding back (read-only evaluate, fail-open).
+        logger.warning(
+            "exit step: KILL-SWITCH exit:mode=%r — auto exits SKIPPED", mode)
+        try:
+            held_back = evaluate_exits(client, db, now=now)
+            for d in held_back:
+                logger.warning(
+                    "exit step: would-exit BLOCKED by kill-switch: %s %s "
+                    "pnl=%+.2f%% held=%.1fh — %s",
+                    d["symbol"], d["kind"], d.get("pnl_pct", 0.0),
+                    d.get("held_hours", 0.0), d.get("reason", ""))
+        except Exception:
+            logger.warning(
+                "exit step: would-exit probe failed while mode=off "
+                "(non-fatal)", exc_info=True)
         return []
     try:
         decisions = evaluate_exits(client, db, now=now)
@@ -465,6 +502,14 @@ def run_exit_step(client, db, *, now: Optional[float] = None) -> List[Dict]:
             r = execute_exit(client, db, d, now=now)
             results.append(r)
         else:
+            if d["auto"] and mode == "notify":
+                # WO-1004 (1): notify mode holding back an auto-kind exit
+                # is decision-relevant state — warn, then notify as before.
+                logger.warning(
+                    "exit step: exit:mode=notify — auto kind %s %s held "
+                    "back (pnl=%+.2f%% held=%.1fh)",
+                    d["kind"], d["symbol"], d.get("pnl_pct", 0.0),
+                    d.get("held_hours", 0.0))
             _notify(db, f"exit:{d['symbol']}:{d['kind']}:{int(now)}",
                     f"🔔 Exit signal ({'notify-only' if mode == 'notify' else d['kind']}) — {d['symbol']}",
                     f"{d['reason']} — pnl {d['pnl_pct']:+.2f}%, held {d['held_hours']}h. "

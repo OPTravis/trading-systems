@@ -1240,6 +1240,14 @@ class BinanceClient:
                 label=f"my_trades({symbol})",
             )
         except Exception as e:
+            # WO-1004 (4): -1121 Invalid symbol — benign for reconcile
+            # chains (residual symbols); warn + no fills instead of ERROR.
+            msg = str(e)
+            if "-1121" in msg or "Invalid symbol" in msg:
+                logger.warning(
+                    f"get_my_trades({symbol}): invalid symbol on exchange "
+                    f"— returning no fills (benign for reconcile)")
+                return []
             logger.error(f"Failed to get my trades for {symbol}: {e}")
             return []
 

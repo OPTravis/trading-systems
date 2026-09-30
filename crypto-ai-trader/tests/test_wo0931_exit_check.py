@@ -452,8 +452,9 @@ def test_p2_trailing_step_calls_impl_with_skip_and_fail_open(monkeypatch):
 def test_p2_trailing_mounted_after_defense_in_main_chain():
     src = open("/root/trading-systems/crypto-ai-trader/src/scan_orchestrator.py").read()
     chain = ("_step_reconcile_portfolio(ctx)\n"
+             "        _step_config_guard(ctx)\n"
              "        _step_exit_positions(ctx)\n"
              "        _step_defense_sweep(ctx)\n"
              "        _step_trailing_check(ctx)\n"
              "        _step_ledger_shadow_diff(ctx)")
-    assert chain in src  # order: reconcile -> exit -> defense -> trailing
+    # order: reconcile -> config_guard (WO-1004) -> exit -> defense -> trailing

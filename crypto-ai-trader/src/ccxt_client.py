@@ -1300,6 +1300,16 @@ class BinanceClient:
                 )
             return result
         except Exception as e:
+            # WO-1004 (4): -1121 Invalid symbol is a known-benign case for
+            # reconcile chains (residual symbols from ledger_events, e.g.
+            # test/audit rows) — ERROR spam made the 12:39 residue look
+            # like an exchange fault. Degrade to warning + empty fills.
+            msg = str(e)
+            if "-1121" in msg or "Invalid symbol" in msg:
+                logger.warning(
+                    "get_my_trades(%s): invalid symbol on exchange — "
+                    "returning no fills (benign for reconcile)", symbol)
+                return []
             logger.error("Failed to get my trades for %s: %s", symbol, e)
             return []
 
