@@ -46,6 +46,7 @@ Shadow bookkeeping notes:
     shadow mode, post-success, never raising into the host path.
 """
 
+from src.state_db import audit_source_tagged
 import json
 import logging
 import time
@@ -139,7 +140,7 @@ class LedgerError(Exception):
 def get_mode(db=None) -> str:
     """Current Ledger mode. Defaults to 'shadow' (safe observer)."""
     if db is None:
-        from src.state_db import get_state_db
+        from src.state_db import audit_source_tagged, get_state_db
         db = get_state_db()
     mode = db.kv_get(MODE_KEY, DEFAULT_MODE)
     if mode not in VALID_MODES:
@@ -1205,7 +1206,7 @@ def _apply_primary(db, ev: Dict, round_id: Optional[str]) -> Dict:
             tracker = _primary_write_tracker(conn, ev)
             conn.execute(
                 "INSERT INTO audit_log (timestamp, action, details, source) "
-                "VALUES (?, 'LEDGER_FILL', ?, 'ledger')",
+                "VALUES (?, 'LEDGER_FILL', ?, ?)",
                 (time.time(), json.dumps({
                     "type": ev["type"], "symbol": ev["symbol"],
                     "qty": ev["qty"], "price": ev["price"],
@@ -1217,7 +1218,7 @@ def _apply_primary(db, ev: Dict, round_id: Optional[str]) -> Dict:
                         "outcome": outcome,
                         "tracker": tracker,
                     },
-                })),
+                }), audit_source_tagged('ledger')),
             )
             # Primary mode keeps its own event log too (audit trail of
             # exactly which fills the Ledger owns once cut over).
@@ -1324,7 +1325,10 @@ def _repair_guard_audit(conn, repair: Dict) -> Dict:
         (
             time.time(), str(p.get("action") or "GUARDIAN"),
             json.dumps(details) if not isinstance(details, str) else details,
-            str(repair.get("source") or "protection_guardian"),
+            # WO-1005: raw-conn insert keeps tx atomicity; shared helper
+            # preserves the paper_sim: prefix semantics under DRYRUN.
+            audit_source_tagged(
+                str(repair.get("source") or "protection_guardian")),
         ),
     )
     return {"action": "audit", "audit_action": p.get("action")}
@@ -1461,11 +1465,11 @@ def record_repair(repair: Dict, db=None) -> Dict:
         if wants_audit:
             conn.execute(
                 "INSERT INTO audit_log (timestamp, action, details, source) "
-                "VALUES (?, 'LEDGER_REPAIR', ?, 'ledger')",
+                "VALUES (?, 'LEDGER_REPAIR', ?, ?)",
                 (time.time(), json.dumps({
                     "kind": kind, "symbol": sym, "source": source,
                     "applied": applied,
-                })),
+                }), audit_source_tagged('ledger')),
             )
         if wants_event:
             conn.execute(

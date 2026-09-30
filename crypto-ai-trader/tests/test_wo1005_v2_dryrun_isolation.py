@@ -153,3 +153,81 @@ def test_sync_branch_source_pins_dryrun_guard():
 def db():
     from src.state_db import get_state_db
     yield get_state_db()
+
+
+# ── WO-1005 v2 addenda ──────────────────────────────────────────────
+
+def test_hotswap_zero_rebuild_under_dryrun():
+    """Addendum 1: raw env (live, from .env) vs resolved singleton
+    (dryrun) mismatched on every call, rebuilding the singleton 5x per
+    round. The swap check must compare the RESOLVED target."""
+    code = (
+        "import os, logging, io; os.environ['DRYRUN']='1'\n"
+        "os.environ['STATE_DB_PATH']='/root/trading-state/state.db'\n"
+        "import sys; sys.path.insert(0,'.')\n"
+        "buf = io.StringIO(); h = logging.StreamHandler(buf)\n"
+        "logging.getLogger('src.state_db').addHandler(h)\n"
+        "from src.state_db import get_state_db\n"
+        "a = get_state_db(); b = get_state_db(); c = get_state_db()\n"
+        "print(a is b and b is c, buf.getvalue().count('hot-swap'),"
+        " str(a.db_path))")
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DRYRUN", "STATE_DB_PATH", "TESTING")}
+    env.update({"DRYRUN": "1",
+                "STATE_DB_PATH": "/root/trading-state/state.db"})
+    r = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
+                       text=True, timeout=60, env=env)
+    assert r.returncode == 0, r.stderr
+    identity_ok, swaps, path = r.stdout.strip().split(" ", 2)
+    assert identity_ok == "True"
+    assert swaps == "0", f"hot-swap fired {swaps}x: {r.stdout}"
+    assert "dryrun.db" in path
+
+
+def test_ledger_repair_audit_tagged_under_dryrun(tmp_path, monkeypatch):
+    """Addendum 2: raw-conn audit INSERTs inside ledger.py must carry
+    the paper_sim: prefix like StateDB.audit_log does."""
+    import os as _os
+    code = (
+        "import sys, tempfile; sys.path.insert(0,'.')\n"
+        "from src.state_db import StateDB, get_state_db\n"
+        "import src.ledger as L\n"
+        "db = StateDB(tempfile.mktemp(suffix='.db'))\n"
+        "L.record_repair({'kind':'tracker_cleanup','symbol':'BTCUSDT',"
+        " 'source':'portfolio_reconciler',"
+        " 'payload':{'action':'tracker_cleanup'}}, db=db)\n"
+        "rows = db._get_conn().execute("
+        "'SELECT action, source FROM audit_log').fetchall()\n"
+        "print([tuple(r) for r in rows])")
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DRYRUN", "STATE_DB_PATH", "TESTING")}
+    r = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
+                       text=True, timeout=60, env={**env, "DRYRUN": "1"})
+    assert r.returncode == 0, r.stderr
+    assert "paper_sim:ledger" in r.stdout, r.stdout
+    # live semantics unchanged
+    r2 = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
+                        text=True, timeout=60, env=env)
+    assert r2.returncode == 0, r2.stderr
+    assert "paper_sim" not in r2.stdout
+
+
+def test_sizing_balance_source_is_paper_trader_under_dryrun():
+    """Addendum 3: position sizing reads client.get_free_balance() —
+    under DRYRUN that is the PaperTrader sim account (400), NOT the
+    StateDB cash_balance (0 until first execute calibrates it)."""
+    code = (
+        "import sys, os; os.environ['DRYRUN']='1'\n"
+        "os.environ.pop('STATE_DB_PATH', None)\n"
+        "sys.path.insert(0,'.')\n"
+        "from src.paper_trader import get_trading_client, PaperTrader\n"
+        "cli = get_trading_client()\n"
+        "assert isinstance(cli, PaperTrader), type(cli)\n"
+        "bal = cli.get_free_balance('USDT')\n"
+        "print(bal)")
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DRYRUN", "STATE_DB_PATH", "TESTING")}
+    r = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
+                       text=True, timeout=60, env={**env, "DRYRUN": "1"})
+    assert r.returncode == 0, r.stderr
+    assert float(r.stdout.strip()) == 400.0

@@ -41,6 +41,38 @@ DEFAULT_DB_PATH = _ROOT_DB if _ROOT_DB.exists() else _LEGACY_DB
 # production state.db; WO-1002's prod-write guard never applies to it).
 DRYRUN_DB_PATH = Path("/root/trading-state/dryrun.db")
 
+
+def resolve_dryrun_candidate(candidate):
+    """WO-1005 addendum: the ONE resolution rule shared by
+    StateDB.__init__ and get_state_db's hot-swap check. Under DRYRUN=1
+    an empty or live-default candidate resolves to the dry-run twin;
+    any other explicit path (test-isolation tmp files) passes through.
+    Centralising this fixed the hot-swap misfire where the RAW env
+    value (live, from repo .env) was compared against the
+    constructor-resolved singleton (dryrun.db) and mismatched on every
+    call — rebuilding the singleton each time."""
+    if os.environ.get("DRYRUN") == "1":
+        if (not candidate
+                or Path(candidate).resolve()
+                == DEFAULT_DB_PATH.resolve()):
+            return str(DRYRUN_DB_PATH)
+    return candidate
+
+
+def audit_source_tagged(source: str) -> str:
+    """WO-1005 followup: DRYRUN audit rows carry a paper_sim: prefix so
+    simulated actions stay distinguishable from real exchange/system
+    actions during audit forensics. travis_ops markers and already
+    tagged values pass through untouched. Used by StateDB.audit_log AND
+    the raw-conn audit INSERTs inside ledger.py (same-transaction
+    atomicity means those cannot call the method)."""
+    s = str(source or "system")
+    if (os.environ.get("DRYRUN") == "1"
+            and s != "travis_ops"
+            and not s.startswith("paper_sim")):
+        return f"paper_sim:{s}"
+    return s
+
 # ── WO-1002: fail-closed production write guard (connection layer) ─────────
 # Incident 2026-09-30 12:39: a heredoc verification script (python3 - <<EOF,
 # no pytest conftest, no TESTING/STATE_DB_PATH env) resolved get_state_db()
@@ -122,12 +154,10 @@ class StateDB:
         # files) is respected. This fixed the 18:11 write-through where
         # .env STATE_DB_PATH=live short-circuited the get_state_db-level
         # guard and the whole dry-run chain landed on state.db.
-        if os.environ.get("DRYRUN") == "1":
-            candidate = db_path or os.environ.get("STATE_DB_PATH")
-            if (not candidate
-                    or Path(candidate).resolve()
-                    == DEFAULT_DB_PATH.resolve()):
-                db_path = str(DRYRUN_DB_PATH)
+        candidate = db_path or os.environ.get("STATE_DB_PATH")
+        resolved = resolve_dryrun_candidate(candidate)
+        if resolved is not None:
+            db_path = resolved
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
@@ -1516,10 +1546,7 @@ class StateDB:
         actually PaperTrader sim actions).
         """
         now = time.time()
-        if (os.environ.get("DRYRUN") == "1"
-                and source != "travis_ops"
-                and not source.startswith("paper_sim")):
-            source = f"paper_sim:{source}"
+        source = audit_source_tagged(source)
         details_str = json.dumps(details) if not isinstance(details, str) else details
         self._get_conn().execute(
             "INSERT INTO audit_log (timestamp, action, details, old_value, new_value, source) VALUES (?, ?, ?, ?, ?, ?)",
@@ -2004,10 +2031,14 @@ def get_state_db(db_path: Optional[str] = None) -> StateDB:
                 f"Set STATE_DB_PATH to a temp file in conftest."
             )
 
-    # Layer 2: Hot-swap — if env var changed, recreate singleton
-    if _state_db_instance is not None and env_path:
+    # Layer 2: Hot-swap — if env var changed, recreate singleton.
+    # WO-1005 addendum: compare the RESOLVED target (env may carry the
+    # live path from repo .env while DRYRUN resolves to the twin) —
+    # comparing raw values rebuilt the singleton on every call.
+    resolved_env = resolve_dryrun_candidate(env_path)
+    if _state_db_instance is not None and resolved_env:
         current_path = str(_state_db_instance.db_path)
-        if current_path != env_path:
+        if current_path != resolved_env:
             logger.info(
                 "StateDB hot-swap: %s -> %s (STATE_DB_PATH changed)",
                 current_path, env_path,
