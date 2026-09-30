@@ -44,7 +44,14 @@ FREQ_MAP = {
 # regimes (FEAR 2h / EXTREME_FEAR 4h waste-prevention) are unaffected.
 GATE_MIN_INTERVAL_HOURS = 1.0
 
-LAST_SCAN_FILE = "data/last_scan_ts.json"
+# WO-1005: dry-run scans must not be collaterally throttled by the
+# live cadence (and vice versa). DRYRUN=1 reads/writes a twin file so
+# the dry-run chain owns its own gate clock. F&G intervals themselves
+# still apply — dry-run pulls real market data, so the waste-prevention
+# role stays; only the shared-file coupling is severed.
+LAST_SCAN_FILE = ("data/last_scan_ts_dryrun.json"
+                  if os.environ.get("DRYRUN") == "1"
+                  else "data/last_scan_ts.json")
 
 # 2026-08-21: hourly calendar fires land on the 1h boundary measured from
 # last gate pass (saved at scan start). Without grace, elapsed=59m59s
