@@ -33,6 +33,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.binance_client import BinanceClient
 from src.market_scanner import MarketScanner
 from src.portfolio import PortfolioManager
+
+def _dryrun_env() -> bool:
+    """WO-1005: True when this process runs with DRYRUN=1."""
+    import os
+    return os.environ.get("DRYRUN") == "1"
 from src.position_optimizer import PositionOptimizer
 from src.sentiment import SentimentAnalyzer
 from src.backtester import Backtester
@@ -208,7 +213,9 @@ def cmd_status():
     client = BinanceClient(testnet=False)
 
     # Sync positions from Binance API (source of truth)
-    _sync_from_binance(portfolio, client)
+    # WO-1005: never sync the live exchange into a DRYRUN process.
+    if not _dryrun_env():
+        _sync_from_binance(portfolio, client)
 
     # Update balances
     for symbol, pos in list(portfolio.positions.items()):
@@ -264,7 +271,9 @@ def cmd_trade():
     portfolio = PortfolioManager()
 
     # Sync with Binance before trading
-    _sync_from_binance(portfolio, client)
+    # WO-1005: never sync the live exchange into a DRYRUN process.
+    if not _dryrun_env():
+        _sync_from_binance(portfolio, client)
 
     print("Scanning market...")
     opportunities = scanner.scan_all()

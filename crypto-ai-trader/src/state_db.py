@@ -113,6 +113,21 @@ class StateDB:
     """Thread-safe SQLite state persistence with connection pooling."""
 
     def __init__(self, db_path: Optional[str] = None):
+        # WO-1005: DRYRUN fail-safe lives HERE, at the constructor — the
+        # single choke point every construction path must pass through
+        # (explicit param, STATE_DB_PATH env, repo .env injected by
+        # reside_scan._load_repo_env, bare StateDB()). A DRYRUN process
+        # may never resolve to the live db no matter how a live path
+        # arrives; only a non-default explicit path (test isolation tmp
+        # files) is respected. This fixed the 18:11 write-through where
+        # .env STATE_DB_PATH=live short-circuited the get_state_db-level
+        # guard and the whole dry-run chain landed on state.db.
+        if os.environ.get("DRYRUN") == "1":
+            candidate = db_path or os.environ.get("STATE_DB_PATH")
+            if (not candidate
+                    or Path(candidate).resolve()
+                    == DEFAULT_DB_PATH.resolve()):
+                db_path = str(DRYRUN_DB_PATH)
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
@@ -1958,13 +1973,10 @@ def get_state_db(db_path: Optional[str] = None) -> StateDB:
     """
     global _state_db_instance
 
-    # WO-1003-5: DRYRUN processes resolve to the physically-separated
-    # dry-run DB unless an explicit path/env was given. Fail-safe by
-    # default — a bare `DRYRUN=1 python ...` can never touch production.
-    if (os.environ.get("DRYRUN") == "1" and not db_path
-            and not os.environ.get("STATE_DB_PATH")):
-        db_path = str(DRYRUN_DB_PATH)
-
+    # WO-1005: DRYRUN resolution moved into StateDB.__init__ (single
+    # choke point — see the constructor comment). This layer no longer
+    # branches on DRYRUN: whatever path it hands to StateDB() is guarded
+    # there, including STATE_DB_PATH=live injected from repo .env.
     env_path = os.environ.get("STATE_DB_PATH")
     if env_path:
         db_path = env_path

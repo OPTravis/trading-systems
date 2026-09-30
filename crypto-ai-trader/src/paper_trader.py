@@ -115,6 +115,38 @@ class PaperTrader:
             client = BinanceClient()         # live mode
     """
 
+    def get_my_trades(self, symbol: str, limit: int = 100):
+        """WO-1005: ccxt-shaped adapter over the paper_trades table.
+
+        portfolio_reconciler duck-types the trading client with
+        get_my_trades(symbol, limit=...) and consumes ccxt dicts
+        (isBuyer / orderId / time / price / qty). Without this adapter
+        the reconciler raised AttributeError 4x per DRYRUN scan round.
+        Paper orders are one-fill: orderId derives from the row id,
+        timestamps are ms like ccxt.
+        """
+        from src.state_db import get_state_db
+        rows = get_state_db().paper_trades_recent(symbol=symbol,
+                                                  limit=limit)
+        out = []
+        for r in rows:
+            ts_ms = int(float(r.get("timestamp") or 0) * 1000)
+            try:
+                oid = int(str(r.get("id") or "0").split("-")[0])
+            except ValueError:
+                oid = ts_ms
+            out.append({
+                "id": str(r.get("id") or ""),
+                "orderId": oid,
+                "symbol": r.get("symbol"),
+                "isBuyer": (r.get("side") == "BUY"),
+                "price": float(r.get("fill_price") or 0.0),
+                "qty": float(r.get("quantity") or 0.0),
+                "time": ts_ms,
+                "fee": {"cost": float(r.get("fee_usdt") or 0.0)},
+            })
+        return out
+
     def __init__(self):
         # ── Read-only ccxt instance for price data (no API keys needed) ──
         self._price_exchange = ccxt.binance(

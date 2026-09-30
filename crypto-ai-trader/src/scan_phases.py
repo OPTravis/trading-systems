@@ -11,7 +11,8 @@ from src.bear_analyst import BearAnalyst
 from src.binance_client import BinanceClient  # noqa: F401 — needed for test mocking
 from src.market_scanner import MarketScanner
 from src.notifier import FeishuNotifier, _append_notification
-from src.paper_trader import get_trading_client, is_paper_mode
+from src.paper_trader import (get_trading_client, is_paper_mode,
+                             _is_dryrun)
 from src.pending_confirmation import clear_pending, save_pending  # noqa: F401
 from src.portfolio import PortfolioManager
 from src.position_optimizer import PositionOptimizer
@@ -584,7 +585,11 @@ def _step_scan_opportunities():
 
     # ===== Step 0: Sync with Binance (source of truth) =====
     portfolio = PortfolioManager()
-    if not is_paper_mode():
+    # WO-1005: DRYRUN skips the exchange-portfolio sync too — the paper
+    # sim account is owned by PaperTrader (paper_portfolio/kv), so a sync
+    # would write a second, meaningless truth into the dry-run db's
+    # portfolio table (and, pre-WO-1005, into LIVE state.db).
+    if not is_paper_mode() and not _is_dryrun():
         _sync_from_binance(portfolio, client)
     else:
         logger.info("Paper mode: skipping Binance portfolio sync")
