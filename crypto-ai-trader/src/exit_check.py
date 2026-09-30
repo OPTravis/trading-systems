@@ -292,25 +292,31 @@ def _cancel_sell_legs(client, symbol: str) -> Dict:
     return {"ok": True, "aborted": None, "cancelled": len(legs)}
 
 
-def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None) -> Dict:
+def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,
+                  bypass_cooldown: bool = False) -> Dict:
     """Auto-exit chain: cooldown gate -> cancel SELL legs -> market sell ->
     WO-0928 reconciler books the fill (orderId-anchored, governor cooldown +
     outcome included) -> kv cooldown + outbox notice. Any failure keeps the
-    resting OCO floor (or re-lists an emergency SL) and alerts."""
+    resting OCO floor (or re-lists an emergency SL) and alerts.
+
+    bypass_cooldown=True is reserved for explicit human commands
+    (control-panel forceexit): an operator staring at a crashing chart must
+    not be told to wait 10 minutes."""
     now = now or time.time()
     sym = decision["symbol"]
     kind = decision["kind"]
     out = {"symbol": sym, "kind": kind, "status": "skipped"}
 
     # kv cooldown guard (double-trigger window across event/scan rounds)
-    last = 0.0
-    try:
-        last = float(db.kv_get(f"exit:{sym}:last_exit_ts") or 0)
-    except Exception:
-        pass
-    if now - last < EXIT_COOLDOWN_S:
-        out["status"] = "cooldown"
-        return out
+    if not bypass_cooldown:
+        last = 0.0
+        try:
+            last = float(db.kv_get(f"exit:{sym}:last_exit_ts") or 0)
+        except Exception:
+            pass
+        if now - last < EXIT_COOLDOWN_S:
+            out["status"] = "cooldown"
+            return out
 
     # 1) cancel resting SELL legs (abort keeps the OCO floor)
     cancel = _cancel_sell_legs(client, sym)
@@ -407,8 +413,8 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None) -> 
     _notify(db, f"exit:{sym}:{kind}:{int(now)}",
             f"✅ Auto exit — {sym} ({kind})",
             f"{decision['reason']} — market sold {qty:.6f} @ ~{decision['price']}"
-            f"{relist_note}. PnL {decision['pnl_pct']:+.2f}% after "
-            f"{decision['held_hours']}h.")
+            f"{relist_note}. PnL {decision.get('pnl_pct', 0.0):+.2f}% after "
+            f"{decision.get('held_hours', 0.0):.1f}h.")
     return out
 
 
