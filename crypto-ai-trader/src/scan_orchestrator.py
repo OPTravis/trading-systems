@@ -160,6 +160,7 @@ def cmd_cron_scan():
             _lock_fd.close()
         return
 
+    ctx = None
     try:
         ctx = _step_scan_opportunities()
         if ctx is None:
@@ -172,19 +173,19 @@ def cmd_cron_scan():
             # so running it on starved rounds is safe and keeps the
             # consecutive-clean clock meaningful.
             _step_ledger_shadow_diff(None)
-            # WO-0930 (9/30): starved rounds still owe reconcile + the
-            # defense sweep. WO-0924 only rescued the shadow diff; an OCO
-            # fill between rounds then sat unbooked for 4+ rounds (AVAX
-            # 9/30 00:49) and the guardian never ran on quiet markets.
-            _run_protection_sweep(None)
+            # WO-0930 -> WO-0930b (9/30): starved/exception rounds still
+            # owe reconcile + the defense sweep (WO-0924 only rescued the
+            # shadow diff; an OCO fill between rounds sat unbooked for 4+
+            # rounds — AVAX 9/30 00:49). The sweep itself moved to the
+            # finally block below: short-circuit, mid-pipeline exception
+            # and full rounds all exit through that single protection
+            # exit.
             return
 
-        scan_ctx = ctx
         ctx = _step_research_top_n(ctx)
         if ctx is None:
             _append_scan_summary(None)
             _step_ledger_shadow_diff(None)
-            _run_protection_sweep(scan_ctx)
             return
 
         _step_event_driven_adjustment(ctx)
@@ -199,6 +200,19 @@ def cmd_cron_scan():
         _step_evolve_strategies(ctx)
         _append_scan_summary(ctx)
     finally:
+        # WO-0930b (9/30): single protection exit. Normal, short-circuit
+        # and mid-pipeline exception paths all reach this finally — the
+        # sweep here guarantees reconcile + defense coverage even when a
+        # step above raises (research had no whole-function try, so one
+        # mid-round exception used to skip reconcile/guardian for the
+        # entire round). Idempotent by design (orderId-booked reconcile,
+        # dedup'd guardian) so the full-round second pass is write-free.
+        try:
+            _run_protection_sweep(ctx)
+        except Exception:
+            logger.warning(
+                "protection sweep (finally) failed (non-fatal)",
+                exc_info=True)
         if _lock_fd:
             try:
                 fcntl.flock(_lock_fd, fcntl.LOCK_UN)
