@@ -12,6 +12,12 @@ shift
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOGFILE="$LOGDIR/${CMD}.log"
+# WO-1005 addendum-4: DRYRUN rounds log to a twin so live cron-scan.log
+# stays pure-live for tail consumers (health_check freshness, bridge).
+# Same convention as the reside_scan gate/live-dir/db twins (WO-1003-5).
+if [ "${DRYRUN:-0}" = "1" ]; then
+    LOGFILE="$LOGDIR/${CMD}_dryrun.log"
+fi
 
 # === Proxy Auto-Failover ===
 PROXY_PORT=17890
@@ -232,17 +238,28 @@ set -e
 echo "========== Exit: $EXIT_CODE ==========" >> "$LOGFILE"
 
 # Record failure for monitoring
-if [ $EXIT_CODE -ne 0 ]; then
+# WO-1005 addendum-4: dry-run failures are visible via latest_dryrun.json
+# (exit_code) — keep them OUT of live cron_failures.jsonl so the bug#35
+# self-heal pipeline never reacts to simulator noise.
+if [ $EXIT_CODE -ne 0 ] && [ "${DRYRUN:-0}" != "1" ]; then
     echo "{\"timestamp\":\"$(date -Iseconds)\",\"job\":\"$CMD\",\"exit_code\":$EXIT_CODE}" >> "$LOGDIR/cron_failures.jsonl"
 fi
 
 # Auto-push notifications after scan to prevent backlog
-if [ "$CMD" = "cron-scan" ] && [ $EXIT_CODE -eq 0 ]; then
+# WO-1005 addendum-4: never drain live pending_notifications.json on a
+# DRYRUN round — push_notifications.py has no DRYRUN guard and would mark
+# live queue items pushed (WO-1003-⑤ muted notifier.send only). New-signal
+# muting lives in src/notifier.py; queue draining is muted here.
+if [ "$CMD" = "cron-scan" ] && [ $EXIT_CODE -eq 0 ] && [ "${DRYRUN:-0}" != "1" ]; then
     python3 scripts/push_notifications.py >> "$LOGFILE" 2>&1 || true
 fi
 
 # bug#15: backup local state.db to fuse-side rolling copy (survives sandbox restarts)
-if [ -n "$STATE_DB_PATH" ] && [ -f "$STATE_DB_PATH" ]; then
+# WO-1005 addendum-4: skip on DRYRUN — .env still points STATE_DB_PATH at
+# the live db, so a dry-run round would refresh the live autobak (and a
+# future env flip would overwrite it with dryrun bytes). The dryrun twin
+# is already backed up by reside_scan.backup_db (state_backup_dryrun/).
+if [ "${DRYRUN:-0}" != "1" ] && [ -n "$STATE_DB_PATH" ] && [ -f "$STATE_DB_PATH" ]; then
     cp -f "$STATE_DB_PATH" "$BASEDIR/data/state.db.autobak" 2>/dev/null || true
 fi
 

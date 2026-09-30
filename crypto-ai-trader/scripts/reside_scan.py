@@ -26,7 +26,10 @@ BACKUP_DIR = ("/Coze/Drive/Crypto_Trading_Monitor/state_backup_dryrun"
 REPO = str(pathlib.Path(__file__).resolve().parent.parent)
 DB = ("/root/trading-state/dryrun.db" if DRYRUN
         else "/root/trading-state/state.db")  # data stays outside repo
-LOG = os.path.join(REPO, "logs", "reside_scan.log")
+# WO-1005 addendum-4: the wrapper's own run log gets a twin too, so
+# dry-run gate/round chatter never interleaves into live reside_scan.log.
+LOG = os.path.join(REPO, "logs",
+                   "reside_scan_dryrun.log" if DRYRUN else "reside_scan.log")
 
 def log(msg):
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -56,6 +59,13 @@ def gate_open():
 
 def touch_gate():
     pathlib.Path(GATE_FILE).touch()
+
+def _scan_log_path() -> str:
+    """WO-1005 addendum-4: DRYRUN verdicts tail the wrapper's twin log —
+    live cron-scan.log must never feed a dry-run report body, and the
+    twin is skipped entirely on live rounds."""
+    return os.path.join(REPO, "logs",
+                        "cron-scan_dryrun.log" if DRYRUN else "cron-scan.log")
 
 def backup_db():
     try:
@@ -220,9 +230,9 @@ def main():
         stdout, rc, elapsed = f"SCAN LAUNCH FAIL: {e}", 125, time.time() - t0
 
     bak = backup_db()
-    # scan output lands in logs/cron-scan.log — read tail as the report body
+    # scan output lands in the wrapper's scan log — read tail as the report body
     try:
-        log_path = os.path.join(REPO, "logs", "cron-scan.log")
+        log_path = _scan_log_path()
         with open(log_path, errors="replace") as f:
             report = f.read()[-6000:]
     except Exception:

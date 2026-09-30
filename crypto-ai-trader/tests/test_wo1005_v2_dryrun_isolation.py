@@ -186,30 +186,43 @@ def test_hotswap_zero_rebuild_under_dryrun():
 
 def test_ledger_repair_audit_tagged_under_dryrun(tmp_path, monkeypatch):
     """Addendum 2: raw-conn audit INSERTs inside ledger.py must carry
-    the paper_sim: prefix like StateDB.audit_log does."""
+    the paper_sim: prefix like StateDB.audit_log does. Addendum-4
+    followup: the audit row COUNT must also grow by exactly one —
+    proof the write actually lands in (and only in) the target db's
+    audit_log table, not just that existing rows carry the prefix."""
     import os as _os
     code = (
         "import sys, tempfile; sys.path.insert(0,'.')\n"
         "from src.state_db import StateDB, get_state_db\n"
         "import src.ledger as L\n"
         "db = StateDB(tempfile.mktemp(suffix='.db'))\n"
+        "c = lambda: db._get_conn().execute("
+        "'SELECT COUNT(*) FROM audit_log').fetchone()[0]\n"
+        "n0 = c()\n"
         "L.record_repair({'kind':'tracker_cleanup','symbol':'BTCUSDT',"
         " 'source':'portfolio_reconciler',"
         " 'payload':{'action':'tracker_cleanup'}}, db=db)\n"
+        "n1 = c()\n"
         "rows = db._get_conn().execute("
         "'SELECT action, source FROM audit_log').fetchall()\n"
-        "print([tuple(r) for r in rows])")
+        "print(n0, n1); print([tuple(r) for r in rows])")
     env = {k: v for k, v in os.environ.items()
            if k not in ("DRYRUN", "STATE_DB_PATH", "TESTING")}
     r = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
                        text=True, timeout=60, env={**env, "DRYRUN": "1"})
     assert r.returncode == 0, r.stderr
-    assert "paper_sim:ledger" in r.stdout, r.stdout
+    first, rows = r.stdout.strip().splitlines()
+    n0, n1 = (int(x) for x in first.split())
+    assert (n1 - n0) == 1, f"audit_log rows {n0}->{n1}, expected exactly +1"
+    assert "paper_sim:ledger" in rows, rows
     # live semantics unchanged
     r2 = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
                         text=True, timeout=60, env=env)
     assert r2.returncode == 0, r2.stderr
-    assert "paper_sim" not in r2.stdout
+    first2, rows2 = r2.stdout.strip().splitlines()
+    n02, n12 = (int(x) for x in first2.split())
+    assert (n12 - n02) == 1, f"live audit_log rows {n02}->{n12}, expected +1"
+    assert "paper_sim" not in rows2, rows2
 
 
 def test_sizing_balance_source_is_paper_trader_under_dryrun():
