@@ -1275,6 +1275,27 @@ def execute_auto_trade(
         except Exception:
             pass  # fail-open — governor must never break trading
 
+    # WO-1001-2: declarative pair-level protections (StoplossGuard /
+    # MaxDrawdown / LowProfitPairs / CooldownPeriod + pairlock) — single
+    # gate for every buy path (scan chain, event-driven, manual). Same
+    # TESTING skip + fail-open contract as the governor above.
+    if not os.environ.get("TESTING"):
+        try:
+            from src.protections import check_entry_allowed as _prot_check
+            from src.state_db import get_state_db as _get_db
+            _ok, _lock = _prot_check(_get_db(), symbol)
+            if not _ok:
+                logger.warning(
+                    f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
+                    f"protections {getattr(_lock, 'reason', '?')} "
+                    f"until {getattr(_lock, 'until_ts', 0)}: "
+                    f"{getattr(_lock, 'detail', '')}"
+                )
+                return _fail("protections_locked",
+                             protections=getattr(_lock, "as_dict", lambda: {})())
+        except Exception:
+            pass  # fail-open — protections must never break trading
+
     # Safety: Check if symbol is blacklisted (strategy degradation)
     # Skip during testing — conftest sets TESTING=1
     if not os.environ.get("TESTING"):

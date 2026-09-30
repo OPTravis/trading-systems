@@ -203,9 +203,13 @@ class BacktestEngine:
     # 最少需要的 K 線數量（用於指標計算 warm-up）
     WARMUP_BARS = 100
 
-    def __init__(self, binance_client, initial_capital: float = 10000):
+    def __init__(self, binance_client, initial_capital: float = 10000,
+                 apply_protections: bool = False):
         self.client = binance_client
         self.initial_capital = initial_capital
+        # WO-1001-2: replay the live pair-protection gate inside backtests
+        # (pure evaluate_locks — same code the executor pretrade hook runs).
+        self.apply_protections = apply_protections
         self._klines_cache: dict = {}  # Cache: key → klines list
 
     # ------------------------------------------------------------------
@@ -699,6 +703,27 @@ class BacktestEngine:
                 can_enter = True
                 if len(positions) >= self.MAX_POSITIONS:
                     can_enter = False
+
+                # WO-1001-2: optional protections replay — same pure
+                # evaluate_locks() the live executor gate uses.
+                if can_enter and getattr(self, "apply_protections", False):
+                    from src.protections import evaluate_locks as _ev_locks
+                    _evs = [
+                        {
+                            "symbol": symbol,
+                            "ts": float(ct.exit_time),
+                            "type": "SELL",
+                            "exit_reason": getattr(ct, "reason", None),
+                            "pnl": getattr(ct, "pnl_usdt", 0.0),
+                        }
+                        for ct in closed_trades
+                    ]
+                    for _lk in _ev_locks(_evs, symbol, float(current_time)):
+                        can_enter = False
+                        logger.info(
+                            "backtest protections lock %s: %s", symbol, _lk.detail
+                        )
+                        break
 
                 # 計算總敞口
                 if can_enter:

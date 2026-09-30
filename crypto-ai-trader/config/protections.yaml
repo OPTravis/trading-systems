@@ -1,0 +1,24 @@
+# WO-1001-2: Declarative pair-level protections.
+# Missing keys fall through to DEFAULTS in src/protections.py.
+# Locks only block NEW entries — never exits. Fail-open on internal error.
+enabled: true
+
+stoploss_guard:            # consecutive loss-exits of the same pair
+  lookback_hours: 168      # 7d window
+  max_consecutive_sl: 3    # trailing run of loss-exits needed to lock
+  lock_hours: 48
+  sl_reasons: [sl, reconciled, switch]
+
+max_drawdown:              # per-pair peak-to-trough realized pnl drop
+  lookback_hours: 336      # 14d
+  max_dd_usdt: 10.0
+  lock_hours: 72
+
+low_profit_pairs:          # enough closes, still no profit -> demote to lock
+  lookback_hours: 336
+  min_trades: 3
+  min_profit_usdt: 0.0
+  lock_hours: 96
+
+cooldown_period:           # min spacing between BUYs of the same pair
+  minutes: 240
