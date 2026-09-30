@@ -136,6 +136,27 @@ def _run_protection_sweep(ctx):
                        exc_info=True)
 
 
+def _step_exit_positions(ctx):
+    """WO-0931 (9/30): consume strategy exit signals (P1).
+
+    Deterministic kinds (hold_expiry / take_profit / stop_loss) auto-exit
+    through the single-source engine in src/exit_check.py — mode gate
+    (kv exit:mode) + per-symbol cooldown + OCO-aware cancel-then-sell +
+    WO-0928 event-anchored booking (governor cooldown + outcome included).
+    momentum reversal stays notify-only in P1. Runs after reconcile (fresh
+    books) and before defense (guardian then sees the post-exit state).
+    Fail-open: never blocks the pipeline."""
+    try:
+        from src.paper_trader import get_trading_client
+        from src.state_db import get_state_db
+        from src.exit_check import run_exit_step
+
+        client = (ctx or {}).get("client") or get_trading_client()
+        run_exit_step(client, get_state_db())
+    except Exception:
+        logger.warning("exit positions step failed (non-fatal)", exc_info=True)
+
+
 def cmd_cron_scan():
     """Phase 3: Scan → Score → Research → Adapt → Execute.
 
@@ -195,6 +216,7 @@ def cmd_cron_scan():
             logger.warning(
                 "kv_preflight: FAIL — skipping new entries this scan")
         _step_reconcile_portfolio(ctx)
+        _step_exit_positions(ctx)
         _step_defense_sweep(ctx)
         _step_ledger_shadow_diff(ctx)
         _step_evolve_strategies(ctx)

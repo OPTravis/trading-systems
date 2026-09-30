@@ -135,6 +135,23 @@ def event_tick():
             except Exception:
                 pass
 
+        # (e) WO-0931 (9/30): read-only exit-signal check — deterministic
+        # exit conditions (hold expiry / TP / SL) on holdings trigger an
+        # immediate full scan so the exit step consumes them at 10-min
+        # granularity instead of the 60-min baseline (QNT 9/30 lesson).
+        # Momentum reversal needs klines and stays in the scan step.
+        # Pure reads (ro conn + caller prices); trigger only, never executes.
+        try:
+            from src.exit_check import scan_exit_triggers
+            conn2 = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+            hit = scan_exit_triggers(conn2, holdings, prices)
+            conn2.close()
+            if hit:
+                log(f"EXIT_TRIGGER: {hit}")
+                return f"exit:{hit}"
+        except Exception as e:
+            log(f"exit trigger check fail (non-fatal): {e}")
+
         eng = EventTriggerEngine()
         trig = eng.record_and_check(time.time(), prices, holdings,
                                     regime_now=regime, trade_ids_now=trades)
