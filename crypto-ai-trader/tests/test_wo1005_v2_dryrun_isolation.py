@@ -9,6 +9,7 @@ The fix moves the fail-safe into StateDB.__init__ — the single choke
 point every path passes through.
 """
 import os
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -244,3 +245,44 @@ def test_sizing_balance_source_is_paper_trader_under_dryrun():
                        text=True, timeout=60, env={**env, "DRYRUN": "1"})
     assert r.returncode == 0, r.stderr
     assert float(r.stdout.strip()) == 400.0
+
+
+def test_repair_audit_lands_in_dryrun_twin_live_zero(tmp_path):
+    """Addendum-2 (Travis 19:24 refinement): with the constructor-layer
+    fail-safe actually routing (get_state_db, no explicit path), a DRYRUN
+    repair round must land its audit row in the dryrun twin carrying the
+    paper_sim:ledger prefix, while the live-side audit_log gets ZERO new
+    rows (live db file never even touched)."""
+    dry = tmp_path / "dryrun.db"
+    live = tmp_path / "state.db"
+    code = (
+        "import sys; sys.path.insert(0, '.')\n"
+        "from pathlib import Path\n"
+        "import src.state_db as sd\n"
+        "sd.DRYRUN_DB_PATH = Path(%r)\n"
+        "sd.DEFAULT_DB_PATH = Path(%r)\n"
+        "import src.ledger as L\n"
+        "L.record_repair({'kind': 'tracker_cleanup', 'symbol': 'BTCUSDT',"
+        " 'source': 'portfolio_reconciler',"
+        " 'payload': {'action': 'tracker_cleanup'}}, db=None)\n"
+        "import sqlite3, json\n"
+        "out = {}\n"
+        "for tag, p in (('dry', %r), ('live', %r)):\n"
+        "    c = sqlite3.connect(p)\n"
+        "    has = c.execute(\"SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name='audit_log'\").fetchone()\n"
+        "    out[tag] = [0, []] if not has else [\n"
+        "        c.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0],\n"
+        "        [r[0] for r in c.execute('SELECT source FROM audit_log')]]\n"
+        "    c.close()\n"
+        "print(json.dumps(out))\n") % (str(dry), str(live), str(dry), str(live))
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("STATE_DB_PATH", "TESTING")}
+    env["DRYRUN"] = "1"
+    r = subprocess.run([PY, "-c", code], cwd=REPO, capture_output=True,
+                       text=True, timeout=60, env=env)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["dry"][0] == 1, f"dryrun audit rows: {out['dry']}"
+    assert out["dry"][1] == ["paper_sim:ledger"], out["dry"]
+    assert out["live"] == [0, []], f"live audit must stay zero: {out['live']}"
