@@ -37,9 +37,22 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 PAPER_SLIPPAGE_PCT = float(os.environ.get("PAPER_SLIPPAGE_PCT", "0.05"))  # 0.05%
+# WO-1003-5 fee parity: TAKER_FEE (backtest/live BNB-discount rate,
+# 0.00075) is the default — the old 0.001 default made dry-run results
+# systematically pessimistic vs live. Explicit PAPER_FEE_RATE env wins.
+from src.backtest import TAKER_FEE_RATE as _LIVE_TAKER_FEE  # noqa: E402
 PAPER_FEE_RATE = float(
-    os.environ.get("PAPER_FEE_RATE", "0.001")
-)  # 0.1% (Binance standard)
+    os.environ.get("PAPER_FEE_RATE", str(_LIVE_TAKER_FEE))
+)
+DRYRUN_INITIAL_BALANCE = float(
+    os.environ.get("DRYRUN_INITIAL_BALANCE", "400")
+)  # WO-1003-5: seed scale matches live account magnitude
+
+
+def _is_dryrun() -> bool:
+    """WO-1003-5: this process runs the dry-run scan (kv staged params,
+    dryrun.db writes, muted notifications)."""
+    return os.environ.get("DRYRUN") == "1"
 PAPER_MIN_ORDER_USDT = float(
     os.environ.get("PAPER_MIN_ORDER_USDT", "10")
 )  # $10 USDT minimum
@@ -187,7 +200,11 @@ class PaperTrader:
         pass  # _get_sim_value handles defaults
 
     def _get_sim_balance(self) -> float:
-        return float(self._get_sim_value("cash_balance", str(PAPER_INITIAL_BALANCE)))
+        # WO-1003-5: dry-run seeds at live-scale (400 USDT), plain paper
+        # keeps its 10k sandbox default.
+        default = (str(DRYRUN_INITIAL_BALANCE) if _is_dryrun()
+                   else str(PAPER_INITIAL_BALANCE))
+        return float(self._get_sim_value("cash_balance", default))
 
     def _set_sim_balance(self, bal: float):
         self._set_sim_value("cash_balance", str(bal))
@@ -1002,7 +1019,10 @@ def get_trading_client():
         from src.paper_trader import get_trading_client
         client = get_trading_client()
     """
-    if is_paper_mode():
+    if is_paper_mode() or _is_dryrun():
+        # WO-1003-5: DRYRUN forces the simulated client even if
+        # TRADING_MODE was misconfigured live — a dry-run process must
+        # never place a real order.
         return get_paper_trader()
     else:
         from src.binance_client import BinanceClient

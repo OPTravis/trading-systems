@@ -456,6 +456,9 @@ class TestPaperStoreStateDB:
 
 # ============ paper store (PaperTrader behaviour, fix semantics) ============
 
+from src.paper_trader import PAPER_FEE_RATE  # WO-1003-5 single source
+
+
 def _make_trader(db):
     """PaperTrader without the ccxt __init__ (no network)."""
     from src.paper_trader import PaperTrader
@@ -470,8 +473,10 @@ class TestPaperTraderFillPipeline:
         pt = _make_trader(db)
         res = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
         assert res is not None and res["status"] == "FILLED"
-        # balance: 10000 - (100.05 notional + 0.10005 fee)
-        assert pt._get_sim_balance() == pytest.approx(10000 - 100.15005)
+        # balance: 10000 - (100.05 notional + fee @ TAKER 0.00075)
+        # WO-1003-5: paper fee single-sourced to backtest TAKER_FEE_RATE
+        assert pt._get_sim_balance() == pytest.approx(
+            10000 - 100.05 - 100.05 * PAPER_FEE_RATE)
         pos = pt._get_sim_positions()["BTC"]
         assert pos["qty"] == pytest.approx(1.0)
         assert pos["entry_price"] == pytest.approx(100.05)
@@ -486,8 +491,8 @@ class TestPaperTraderFillPipeline:
         assert pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
         res = pt._fill_market("BTCUSDT", "SELL", 1.0, 100.0)
         assert res is not None
-        # BUY fill 100.05, SELL fill 99.95, fee on sell 0.09995
-        expected = (99.95 - 100.05) * 1.0 - 0.09995
+        # BUY fill 100.05, SELL fill 99.95; fee on sell @ TAKER 0.00075
+        expected = (99.95 - 100.05) * 1.0 - 99.95 * PAPER_FEE_RATE
         assert res["_paper"]["pnl"] == pytest.approx(expected)  # legacy: always 0.0
         assert pt._get_sim_pnl() == pytest.approx(expected)  # legacy: never updated
         # position closed

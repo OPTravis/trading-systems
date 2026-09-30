@@ -6,15 +6,26 @@ Writes scan result -> cloud-drive live_scan/latest.json for the bridge.
 """
 import json, os, pathlib, subprocess, sys, time
 
-GATE_FILE = "/Coze/Drive/Crypto_Trading_Monitor/.last_scan_gate"
+# WO-1003-5: DRYRUN=1 switches every shared artefact to a dry-run twin —
+# gate file (else dry-run touches would starve live cadence), live dir
+# (the bridge must never pick up dry-run verdicts) and DB backups.
+DRYRUN = os.environ.get("DRYRUN") == "1"
+GATE_FILE = ("/Coze/Drive/Crypto_Trading_Monitor/.dryrun_scan_gate"
+             if DRYRUN else
+             "/Coze/Drive/Crypto_Trading_Monitor/.last_scan_gate")
 GATE_SEC = 20 * 60            # reside cadence: 20 min
-LIVE_DIR = "/Coze/Drive/Crypto_Trading_Monitor/live_scan"
+LIVE_DIR = ("/Coze/Drive/Crypto_Trading_Monitor/live_scan_dryrun"
+            if DRYRUN else
+            "/Coze/Drive/Crypto_Trading_Monitor/live_scan")
 LATEST = os.path.join(LIVE_DIR, "latest.json")
-BACKUP_DIR = "/Coze/Drive/Crypto_Trading_Monitor/state_backup"
+BACKUP_DIR = ("/Coze/Drive/Crypto_Trading_Monitor/state_backup_dryrun"
+              if DRYRUN else
+              "/Coze/Drive/Crypto_Trading_Monitor/state_backup")
 # self-locating: script lives in <repo>/scripts/, repo root is parent.
 # Survives reclone/rename; crontab points here, zero edits after pull.
 REPO = str(pathlib.Path(__file__).resolve().parent.parent)
-DB = "/root/trading-state/state.db"          # data stays outside repo
+DB = ("/root/trading-state/dryrun.db" if DRYRUN
+        else "/root/trading-state/state.db")  # data stays outside repo
 LOG = os.path.join(REPO, "logs", "reside_scan.log")
 
 def log(msg):
@@ -50,9 +61,10 @@ def backup_db():
     try:
         pathlib.Path(BACKUP_DIR).mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M")
-        dst = os.path.join(BACKUP_DIR, f"state.db.{ts}")
+        base = "dryrun.db" if DRYRUN else "state.db"
+        dst = os.path.join(BACKUP_DIR, f"{base}.{ts}")
         subprocess.run(["cp", DB, dst], check=True, timeout=30)
-        baks = sorted(pathlib.Path(BACKUP_DIR).glob("state.db.*"))
+        baks = sorted(pathlib.Path(BACKUP_DIR).glob(f"{base}.*"))
         for old in baks[:-3]:
             old.unlink(missing_ok=True)
         log(f"db backup -> {os.path.basename(dst)}")

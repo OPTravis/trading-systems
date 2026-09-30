@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 _ROOT_DB = Path("/root/trading-state/state.db")
 _LEGACY_DB = Path(__file__).parent.parent / "data" / "state.db"
 DEFAULT_DB_PATH = _ROOT_DB if _ROOT_DB.exists() else _LEGACY_DB
+# WO-1003-5: dry-run processes write here (physically separate from the
+# production state.db; WO-1002's prod-write guard never applies to it).
+DRYRUN_DB_PATH = Path("/root/trading-state/dryrun.db")
 
 # ── WO-1002: fail-closed production write guard (connection layer) ─────────
 # Incident 2026-09-30 12:39: a heredoc verification script (python3 - <<EOF,
@@ -1954,6 +1957,13 @@ def get_state_db(db_path: Optional[str] = None) -> StateDB:
     3. Hard guard: if TESTING env is set and path looks like production, raise.
     """
     global _state_db_instance
+
+    # WO-1003-5: DRYRUN processes resolve to the physically-separated
+    # dry-run DB unless an explicit path/env was given. Fail-safe by
+    # default — a bare `DRYRUN=1 python ...` can never touch production.
+    if (os.environ.get("DRYRUN") == "1" and not db_path
+            and not os.environ.get("STATE_DB_PATH")):
+        db_path = str(DRYRUN_DB_PATH)
 
     env_path = os.environ.get("STATE_DB_PATH")
     if env_path:

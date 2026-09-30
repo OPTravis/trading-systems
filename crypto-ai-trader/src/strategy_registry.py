@@ -12,6 +12,7 @@ Replaces the brittle keyword-based strategy selection in scan_orchestrator.
 
 import json
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -100,9 +101,19 @@ class StrategyRegistry:
         }
 
     def _get_optimized_params(self) -> Dict:
-        """Read optimized params from DB."""
+        """Read optimized params from DB.
+
+        WO-1003-5: a DRYRUN process reads the STAGED candidate first
+        (fallback: live params) — that is the whole point of dry-run:
+        validating staged optimization results against real market
+        data before promotion. Live processes keep reading the live key
+        only."""
         try:
             # WO-0924-z2 P6-B2: kv reads via StateDB.kv_get
+            if os.environ.get("DRYRUN") == "1":
+                staged = self._db.kv_get("optimized_params_staged")
+                if isinstance(staged, dict) and staged.get("params"):
+                    return staged["params"]
             val = self._db.kv_get("optimized_params")
             if isinstance(val, dict):
                 return val

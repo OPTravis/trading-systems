@@ -19,6 +19,11 @@ from src.exit_check import (
 )
 
 
+# WO-1003-5: live taker fee (BNB discount) — single source shared by the
+# backtest engine, paper/dry-run simulation and the exit parity tests.
+TAKER_FEE_RATE = 0.00075
+
+
 def _band_position_from_klines(klines: List[Dict], idx: int) -> Optional[float]:
     """Bollinger(20,2) band position on klines[:idx+1] — same math as
     exit_check._band_position but fed from backtest bars instead of the
@@ -215,7 +220,9 @@ class BacktestEngine:
     MAX_TP_PCT = 25.0
 
     # 手續費
-    TAKER_FEE = 0.00075  # Binance Spot 0.075% (BNB discount, matching live FeeOptimizer)
+    # module-level single source (WO-1003-5 fee parity): paper/dry-run
+    # fee fallback reads the same constant below
+    TAKER_FEE = TAKER_FEE_RATE
 
     # 追蹤止損參數 (與 TrailingStop 一致)
     TRAILING_ACTIVATION_ATR = 1.5

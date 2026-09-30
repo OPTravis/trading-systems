@@ -22,6 +22,13 @@ def _ensure_signals_dir():
     SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _dryrun_muted() -> bool:
+    """WO-1003-5: dry-run processes never emit user-facing notifications —
+    fake signals must stay silent. The DB outbox (dryrun.db) still records
+    everything for audit."""
+    return os.environ.get("DRYRUN") == "1"
+
+
 def _append_notification(msg_type: str, title: str, body: str, max_retries: int = 3):
     """Append to pending notifications file for WorkBuddy automation to pick up.
 
@@ -31,6 +38,19 @@ def _append_notification(msg_type: str, title: str, body: str, max_retries: int 
     P0-fix: Uses atomic write (temp file + os.replace) to prevent JSON corruption
     from concurrent writers (scan + trailing-check + ensure-tp-sl).
     """
+    if _dryrun_muted():
+        # WO-1003-5: record to the dry-run DB outbox only — the shared
+        # signals/pending_notifications.json pipe feeds the real push
+        # chain and must never carry dry-run traffic.
+        try:
+            from src.state_db import get_state_db
+            get_state_db().notification_outbox_add(
+                f"dryrun_{int(_time_module.time()*1000)}",
+                msg_type, title, body)
+        except Exception:
+            logger.warning("dryrun outbox write failed (non-fatal)")
+        logger.info("dryrun muted notification: [%s] %s", msg_type, title)
+        return
     _ensure_signals_dir()
     for attempt in range(max_retries):
         try:
@@ -135,6 +155,9 @@ def send_signal(signal_type: str, symbol: str, action: str, price: float,
         reason: signal trigger reason
         strategy: strategy name
     """
+    if _dryrun_muted():
+        logger.info("dryrun muted send_signal: %s %s", symbol, action)
+        return
     _ensure_signals_dir()
 
     signal = {
@@ -197,6 +220,9 @@ def send_signal(signal_type: str, symbol: str, action: str, price: float,
 
 
 def send_message(title: str, body: str):
+    if _dryrun_muted():
+        logger.info("dryrun muted send_message: %s", title)
+        return
     """Send a text message — logged + queued for WorkBuddy push.
 
     P2-5: Retries file writes up to 3 times with exponential backoff

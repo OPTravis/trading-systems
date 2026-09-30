@@ -44,7 +44,11 @@ DEFAULTS: Dict[str, Any] = {
     "ENABLE_FUTURES": "false",
     "USE_TESTNET": "false",
     "PAPER_INITIAL_BALANCE": "1000",
-    "PAPER_FEE_RATE": "0.001",
+    # PAPER_FEE_RATE removed WO-1003-5: the old 0.001 default diverged
+    # from live TAKER_FEE (0.00075, BNB discount) and made dry-run
+    # systematically pessimistic. src/paper_trader.py now falls back to
+    # the backtest single-source TAKER_FEE_RATE; set the env var only
+    # for deliberate what-if runs.
     "PAPER_SLIPPAGE_PCT": "0.0005",
     "PAPER_MIN_ORDER_USDT": "5",
 }
