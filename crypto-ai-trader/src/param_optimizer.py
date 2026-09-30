@@ -11,6 +11,13 @@ Parameters optimized:
 - Trailing stop activation/distance
 
 Storage: state.db kv key='optimized_params'
+
+WO-1003-6 (2026-09-30): Bayesian (TPE) optimisation + robust loss functions
++ staged promotion. The old grid path wrote kv directly on success; the new
+path always lands results in kv 'optimized_params_staged' first and requires
+an explicit promote (walk-forward gate + dry-run gate) before the live scan
+chain (StrategyRegistry rebuilds per scan and reads 'optimized_params')
+picks them up. Full history in kv 'hyperopt:history' (last 20 entries).
 """
 
 import json
@@ -40,6 +47,24 @@ SEARCH_SPACE = {
     "take_profit_pct": [5.0, 8.0, 10.0, 12.0],
     "score_threshold": [40, 50, 60, 75],
 }
+
+# WO-1003-6: continuous Bayesian search space (TPE shines on continuous
+# ranges where the grid above only samples a few discrete points).
+# spec: param -> (kind, low, high); kind in {"int", "float"}
+BAYES_SEARCH_SPACE = {
+    "rsi_oversold": ("int", 20, 35),
+    "rsi_overbought": ("int", 55, 80),
+    "stop_loss_pct": ("float", 2.0, 8.0),
+    "take_profit_pct": ("float", 4.0, 15.0),
+    "score_threshold": ("int", 35, 80),
+}
+
+# staged/promoted kv keys + history retention
+KV_STAGED = "optimized_params_staged"
+KV_LIVE = "optimized_params"
+KV_HISTORY = "hyperopt:history"
+HISTORY_KEEP = 20
+_NO_TRIALS_GUARD = 1e5  # all-failed / degenerate guard for best_trial.value
 
 # Validation thresholds
 MIN_SHARPE = 0.5  # Minimum Sharpe ratio to accept
@@ -376,6 +401,164 @@ class ParamOptimizer:
             "grid_results_count": len(grid_results),
             "timestamp": time.time(),
         }
+
+    # ------------------------------------------------------------------
+    # WO-1003-6: Bayesian (TPE) optimisation + staged promotion
+    # ------------------------------------------------------------------
+
+    def _append_history(self, entry: Dict) -> None:
+        """Append to kv 'hyperopt:history' (bounded to HISTORY_KEEP)."""
+        try:
+            hist = self._db.kv_get(KV_HISTORY)
+            hist = hist if isinstance(hist, list) else []
+        except Exception:
+            hist = []
+        hist.append(entry)
+        self._db.kv_set(KV_HISTORY, hist[-HISTORY_KEEP:])
+
+    def bayesian_optimize(
+        self,
+        symbols: Optional[List[str]] = None,
+        loss: str = "sharpe_daily",
+        n_trials: int = 40,
+        days: int = BACKTEST_DAYS,
+        seed: int = 42,
+        search_space: Optional[Dict] = None,
+    ) -> Dict:
+        """TPE (Bayesian) parameter search with a robust loss function.
+
+        Results are ALWAYS staged (kv 'optimized_params_staged') — never
+        written straight to the live key. Promotion is a separate, gated
+        step (see promote_staged_params). Returns the staged record.
+        """
+        import optuna
+
+        from src.hyperopt_loss import get_loss
+
+        if symbols is None:
+            symbols = DEFAULT_SYMBOLS
+        space = search_space or BAYES_SEARCH_SPACE
+        loss_fn = get_loss(loss)
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        study = optuna.create_study(
+            direction="minimize",
+            sampler=optuna.samplers.TPESampler(seed=seed),
+        )
+
+        def _objective(trial):
+            params = {}
+            for k, (kind, lo, hi) in space.items():
+                if kind == "int":
+                    params[k] = trial.suggest_int(k, lo, hi)
+                else:
+                    params[k] = trial.suggest_float(k, lo, hi)
+            full = {**DEFAULT_PARAMS, **params}
+            metrics = self._run_backtest_with_params(full, symbols, days)
+            trial.set_user_attr("metrics", metrics)
+            trial.set_user_attr("full_params", full)
+            return loss_fn(metrics)
+
+        # Backtest failures degrade a trial instead of killing the study.
+        study.optimize(_objective, n_trials=n_trials, catch=(Exception,))
+
+        completed = [
+            t for t in study.trials
+            if t.state == optuna.trial.TrialState.COMPLETE
+        ]
+        if not completed:
+            return {"status": "no_result",
+                    "reason": "all trials failed"}
+        best = study.best_trial
+        if best.value >= _NO_TRIALS_GUARD:
+            return {"status": "no_result",
+                    "reason": "degenerate best (under-trading penalty)"}
+
+        best_params = best.user_attrs["full_params"]
+        best_metrics = best.user_attrs.get("metrics", {})
+
+        # Walk-forward OOS gate — same validator as the grid path (no
+        # separate pipeline; validation thresholds unchanged).
+        validation = self.validate_best(best_params, symbols)
+
+        staged = {
+            "status": "staged",
+            "params": best_params,
+            "metrics": best_metrics,
+            "loss_name": loss,
+            "loss_value": best.value,
+            "n_trials": len(study.trials),
+            "validation": validation,
+            "dry_run_verified": False,
+            "staged_at": time.time(),
+        }
+        self._db.kv_set(KV_STAGED, staged)
+        self._append_history({
+            "event": "staged", "at": staged["staged_at"],
+            "loss": loss, "loss_value": best.value,
+            "n_trials": len(study.trials),
+            "validated": validation.get("validated", False),
+            "params": best_params,
+        })
+        logger.info(
+            "Bayesian optimize: staged (loss=%s %.4f, %d trials, "
+            "wf_validated=%s)", loss, best.value, len(study.trials),
+            validation.get("validated"),
+        )
+        return staged
+
+    def promote_staged_params(
+        self, force: bool = False, require_wf: bool = True
+    ) -> Dict:
+        """Promote staged params to the live key (hot-reload next scan).
+
+        Gates (WO-1003-6):
+          1. walk-forward validation must pass (require_wf, default True);
+          2. dry-run verification must be flagged on the staged record
+             (the WO-1003-5 dry-run harness sets it). force=True skips
+             gate 2 ONLY for explicit human-approved emergencies —
+             gate 1 is never forceable.
+        """
+        staged = self._db.kv_get(KV_STAGED)
+        if not isinstance(staged, dict) or "params" not in staged:
+            return {"status": "no_staged",
+                    "reason": "nothing staged (run bayesian_optimize first)"}
+
+        validation = staged.get("validation", {})
+        if require_wf and not validation.get("validated", False):
+            return {"status": "rejected",
+                    "reason": f"walk-forward validation failed: "
+                              f"{validation.get('reason', 'unknown')}"}
+
+        if not staged.get("dry_run_verified", False) and not force:
+            return {"status": "rejected",
+                    "reason": "dry-run gate: staged params not dry-run "
+                              "verified (WO-1003-5); use force=True only "
+                              "with explicit approval"}
+
+        old_params = self.get_current_params()
+        self._db.kv_set(KV_LIVE, staged["params"])
+        self._append_history({
+            "event": "promoted", "at": time.time(),
+            "old_params": old_params, "new_params": staged["params"],
+            "forced": force,
+        })
+        self._db.kv_remove(KV_STAGED)
+        logger.info("Promoted staged params (forced=%s)", force)
+        return {"status": "promoted", "old_params": old_params,
+                "new_params": staged["params"], "forced": force}
+
+    def mark_dry_run_verified(self, note: str = "") -> Dict:
+        """Flag the staged record as dry-run verified (called by the
+        WO-1003-5 dry-run harness once deviation checks pass)."""
+        staged = self._db.kv_get(KV_STAGED)
+        if not isinstance(staged, dict) or "params" not in staged:
+            return {"status": "no_staged"}
+        staged["dry_run_verified"] = True
+        staged["dry_run_note"] = note
+        staged["dry_run_verified_at"] = time.time()
+        self._db.kv_set(KV_STAGED, staged)
+        return {"status": "ok"}
 
     def format_report(self, result: Dict) -> str:
         """Format optimization result as human-readable report."""
