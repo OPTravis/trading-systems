@@ -38,6 +38,73 @@ _ROOT_DB = Path("/root/trading-state/state.db")
 _LEGACY_DB = Path(__file__).parent.parent / "data" / "state.db"
 DEFAULT_DB_PATH = _ROOT_DB if _ROOT_DB.exists() else _LEGACY_DB
 
+# ── WO-1002: fail-closed production write guard (connection layer) ─────────
+# Incident 2026-09-30 12:39: a heredoc verification script (python3 - <<EOF,
+# no pytest conftest, no TESTING/STATE_DB_PATH env) resolved get_state_db()
+# straight to the production DB and INSERTed a fake "XUSDT / strategy='test'"
+# position that leaked through four conftest-only opt-in guards. Structural
+# lesson: environment-activated guards only protect processes that opt in.
+# This guard lives on the sqlite Connection factory itself, so EVERY write
+# path (StateDB methods, raw conn.execute, scripts, interactive shells) is
+# covered regardless of how the connection was obtained.
+#
+# Policy — a DML statement (INSERT/UPDATE/DELETE/REPLACE) against the
+# production path (== DEFAULT_DB_PATH at connect time) is allowed ONLY if:
+#   * TESTING is NOT set, and
+#   * PROD_WRITES_ALLOWED=1 (repo .env supplies it for production wrappers:
+#     reside_scan.py _load_repo_env, run_cron.sh `source .env`).
+# Reads and DDL (CREATE TABLE IF NOT EXISTS ...) always pass — StateDB
+# __init__ on an unauthorised read-only inspection must not crash.
+
+_WRITE_PREFIXES = ("INSERT", "UPDATE", "DELETE", "REPLACE")
+
+
+class _GuardedConnection(sqlite3.Connection):
+    """sqlite3 Connection with fail-closed production-DML guard (WO-1002)."""
+
+    _db_is_prod = False
+
+    def _guard_write(self, sql_head: str) -> None:
+        if not self._db_is_prod:
+            return
+        if os.environ.get("TESTING"):
+            raise RuntimeError(
+                "BLOCKED (WO-1002): DML against production DB while TESTING=1. "
+                "Tests must never write production; point STATE_DB_PATH at a "
+                "temp file (conftest does this)."
+            )
+        if os.environ.get("PROD_WRITES_ALLOWED") != "1":
+            raise RuntimeError(
+                "BLOCKED (WO-1002): write to production DB requires "
+                "PROD_WRITES_ALLOWED=1 (repo .env authorises production "
+                "wrappers). Read-only inspection stays allowed; for an "
+                "explicit one-off write prefix the command with "
+                "PROD_WRITES_ALLOWED=1."
+            )
+
+    @staticmethod
+    def _is_dml(sql) -> bool:
+        return isinstance(sql, str) and sql.lstrip().upper().startswith(
+            _WRITE_PREFIXES
+        )
+
+    def execute(self, sql, params=()):
+        if self._is_dml(sql):
+            self._guard_write(sql.lstrip().upper())
+        return super().execute(sql, params)
+
+    def executemany(self, sql, seq_of_parameters):
+        if self._is_dml(sql):
+            self._guard_write(sql.lstrip().upper())
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, script):
+        for stmt in script.split(";"):
+            if self._is_dml(stmt):
+                self._guard_write(stmt.strip().upper())
+        return super().executescript(script)
+
+
 
 class StateDB:
     """Thread-safe SQLite state persistence with connection pooling."""
@@ -82,7 +149,12 @@ class StateDB:
 
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(
-                str(self.db_path), check_same_thread=False, timeout=30
+                str(self.db_path), check_same_thread=False, timeout=30,
+                factory=_GuardedConnection,
+            )
+            # WO-1002: snapshot production-path flag at connect time.
+            self._local.conn._db_is_prod = (
+                str(Path(self.db_path)) == str(DEFAULT_DB_PATH)
             )
             self._local.conn.row_factory = sqlite3.Row
             # FIX 2026-08-20 (bug#8): busy_timeout FIRST (so the journal-mode
