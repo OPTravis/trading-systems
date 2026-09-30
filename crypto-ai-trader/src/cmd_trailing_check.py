@@ -377,7 +377,7 @@ def _check_tp_fills(client, notifier, positions):
     return results
 
 
-def cmd_trailing_check():
+def cmd_trailing_check(skip_legacy_recon: bool = False):
     """Check open positions and update trailing stop-loss orders.
 
     For each held position:
@@ -421,17 +421,22 @@ def cmd_trailing_check():
     # (bug family: SL firing leaves outcome 'open' and no SELL trade row;
     #  must run BEFORE the no-positions early return — a fully closed
     #  position has no positions entry to trigger it later)
+    # WO-0931 P2: skip_legacy_recon=True when called from the scan pipeline —
+    # the WO-0928 event-anchored reconcile earlier in the same chain is
+    # strictly stronger, and this legacy net-gap writer is the ENA-style
+    # trades-pollution family (a foreign trades row kills its own gap axis).
     try:
-        from scripts.reconcile_fills import reconcile_fills
+        if not skip_legacy_recon:
+            from scripts.reconcile_fills import reconcile_fills
 
-        recon = reconcile_fills(client=client)
-        recon_summary = []
-        recon_summary.extend(recon.get("patched", []))
-        recon_summary.extend(recon.get("closed_only", []))
-        recon_summary.extend(recon.get("errors", []))
-        recon_summary.extend(recon.get("anomalies", []))
-        if recon_summary:
-            print(_json.dumps({"reconcile_fills": recon_summary}, default=str))
+            recon = reconcile_fills(client=client)
+            recon_summary = []
+            recon_summary.extend(recon.get("patched", []))
+            recon_summary.extend(recon.get("closed_only", []))
+            recon_summary.extend(recon.get("errors", []))
+            recon_summary.extend(recon.get("anomalies", []))
+            if recon_summary:
+                print(_json.dumps({"reconcile_fills": recon_summary}, default=str))
     except Exception as e:
         logger.warning("reconcile_fills failed (non-fatal): %s", e)
 

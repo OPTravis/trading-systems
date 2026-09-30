@@ -1,15 +1,21 @@
 {
   "pipeline": "weekly_backtest",
-  "timestamp": "2026-08-17T09:30:34",
-  "total_return_pct": -17.31,
-  "total_trades": 1187,
-  "degradation": [
-    "SOL: -13.7% (DD 25.1%)",
-    "ETH: -15.6% (DD 25.4%)",
-    "AVAX: -23.8% (DD 35.8%)",
-    "BNB: -10.2% (DD 16.1%)",
-    "LINK: -23.3% (DD 26.4%)"
+  "timestamp": "2026-09-27T09:18:19",
+  "mode": "trend_on_live",
+  "total_return_pct": 0.0,
+  "total_trades": 0,
+  "degradation": [],
+  "low_sample": [
+    "SOL: 0 trades\uff08\u8da8\u52e2\u904e\u6ffe\u671f\uff0c\u8c41\u514d\u5224\u5b9a\uff09",
+    "ETH: 0 trades\uff08\u8da8\u52e2\u904e\u6ffe\u671f\uff0c\u8c41\u514d\u5224\u5b9a\uff09",
+    "AVAX: 0 trades\uff08\u8da8\u52e2\u904e\u6ffe\u671f\uff0c\u8c41\u514d\u5224\u5b9a\uff09",
+    "BNB: 0 trades\uff08\u8da8\u52e2\u904e\u6ffe\u671f\uff0c\u8c41\u514d\u5224\u5b9a\uff09",
+    "LINK: 0 trades\uff08\u8da8\u52e2\u904e\u6ffe\u671f\uff0c\u8c41\u514d\u5224\u5b9a\uff09"
   ],
-  "has_degradation": true,
-  "all_ok": false
+  "has_degradation": false,
+  "all_ok": true,
+  "alpha_reference": {
+    "total_return_pct": 2.62,
+    "note": "trend OFF, reference only, not used for alerts"
+  }
 }

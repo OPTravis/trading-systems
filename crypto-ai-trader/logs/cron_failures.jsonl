@@ -1,0 +1,2 @@
+{"timestamp":"2026-09-24T14:11:29+08:00","job":"cron-scan","exit_code":1}
+{"timestamp": "2026-09-26T05:51:29.540057", "job": "report_validator", "exit_code": 1, "detail": "blocked notif notif_20260926055108122988: balance-claim-mismatch: body claims $0.4702, DB cash = 396.97351643999997"}

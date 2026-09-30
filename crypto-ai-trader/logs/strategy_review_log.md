@@ -139,3 +139,23 @@
 - 结论：组合级 OOS PF>1.0 达标，趋势过滤无需解除；BNB 单标的负 PF 记入下轮观察
 
 **结论**：本周两项变更（10% 帽钳制 + 周管线复活）均已验证；参数自动优化被 OOS 守门正确拒绝（0 笔交易不足以支撑变更）——系统按 walk-forward 约束运行正常。
+
+### 2026-09-24 11:25 — Weekly strategy review #4 (NO param/code change)
+
+**Data**: no_signal_tracker(0d no-signal, filled today), trade_outcomes last 20, cron-scan live 10:51/11:10, weekly_learning+weekly_backtest(9/20), portfolio/kv, BTC 200SMA computed live.
+
+**Step 2/3 rule evaluations**:
+1. Time-decay: consecutive_no_signal_days=0 (fresh 9/24 fills) -> floor cut 65->60 NOT triggered; floor stays 65.
+2. Grid: OFF (disabled by HMM BULL_TREND), grid_state empty, zero grid loss -> nothing to tighten; FEAR+ADX<25+LOW/NORMAL spec unchanged.
+3. F&G 50->71 (GREED) + CONFIRMED_BULL + HMM BULL_TREND p=0.994 -> regime-mapping re-check per rule 3c: GREED threshold 65 (eff 67), trend ON x1.56 (drawdown 0.7 -> eff 0.56), rsi_reversion OFF in GREED, bollinger ON, DCA OFF — all per design; mapping correct, no change.
+4. BTC 84,256 vs 200SMA 70,886 = +18.9% (>>5% proximity) -> no trend-filter-removal prep (rule 3d).
+
+**Findings**:
+- [DATA-INTEGRITY -> dispatched to coding agent as reconciler-batch addendum] trade_outcomes has ~21 stale open rows vs 1 actual holding (ZAMA 223). Sells exist in trades table but reconcile never closes outcome rows (evidence: LTC #49 0.178 = SELL@64.4 10:51; NEAR #46 4.9 = SELL@4.666 04:11; UNI #43 partial 0.77/2.34; MARSCOIN #48 sold 10:01). Pollutes Kelly (win_rate 35% MEDIUM), strategy_rolling_stats, weekly weight_learning (all 10 factor correlations negative on n=14 — likely artifact). Fix owned by coding agent; backfill from trades-table SELL fills.
+- [WATCH - boundary] walk-forward alpha (trend OFF) portfolio PF 1.17 -> 1.00 in one week (SOL 1.01 / ETH 1.28 / AVAX 0.94 / BNB 0.74 / LINK 1.02) — exactly AT the OOS PF>1.0 hard line; BNB negative 2nd week (0.84->0.74). No new-strategy adoption while at boundary. Re-judge 10/1.
+- [DEFERRED x2, rationale updated] param_optimizer rejected again 9/20 (trades 0<5). Mechanical trigger "still 0 -> widen search space" FIRED, but OVERRIDDEN: alpha edge decayed to 1.00 same week — loosening optimizer while edge sits at boundary is pro-cyclical. Re-evaluate only after (a) outcomes data cleaned, (b) portfolio alpha PF back >1.05.
+- [WATCH] switch/rotation churn on low-caps: MARSCOIN 0.1384 in -> 0.1288 out same morning (-7% ~4h); DASH switch exit -9.6% exceeds SL 5-7% band (switch sells not SL-bound by design, but record it); rolling_stats switch pf 3.36 untrustworthy until outcomes fixed. Revisit $6-min-notional fee drag after data clean.
+- [minor] tp_breach_state:ENAUSDT stale (position exited 9/22) -> include in dispatch cleanup.
+- Ops: proxy failover cn02 OK 11:10; DynamicGate GREED 1h respected (Leo 8/28 ruling; EXTREME_GREED 0.5h still dormant, unfired); daily-loss breaker 9/23 tier2 released 9/24; stepwise drawdown mild 3.5% x0.7 active.
+
+**Decision**: NO parameter change / NO code change / NO new strategy. Commit: none; pytest n/a (no diff). Leo notify: not required (no major change per rule 5; fix runs under 9/22 standing order "发现就修、立刻派单").

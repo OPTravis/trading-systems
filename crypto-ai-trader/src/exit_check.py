@@ -40,8 +40,10 @@ EXIT_DEFAULTS = {
     "hold_hours": 48.0,               # bollinger-family default max hold
 }
 MOMENTUM_BAND_POS_MAX = 0.35          # bollinger P1-fix reversal threshold
-AUTO_KINDS = ("hold_expiry", "take_profit", "stop_loss")
-NOTIFY_KINDS = ("momentum_reversal",)
+# P2 (Leo 2026-09-30 11:18): momentum reversal promoted to auto — same
+# tier as the deterministic kinds, observation week waived.
+AUTO_KINDS = ("hold_expiry", "take_profit", "stop_loss",
+              "momentum_reversal")
 
 
 def _mode(db) -> str:
@@ -205,9 +207,9 @@ def evaluate_exits(
         elif include_momentum and pnl_pct > 0:
             bp = _band_position(client, sym)
             if bp is not None and bp < MOMENTUM_BAND_POS_MAX:
-                sell_pct = 100 if bp < 0.15 else 50
+                sell_pct = 100 if bp < 0.15 else 50  # bollinger tiers
                 decisions.append({
-                    **base, "kind": "momentum_reversal", "auto": False,
+                    **base, "kind": "momentum_reversal", "auto": True,
                     "sell_pct": sell_pct,
                     "reason": (f"momentum reversal band_position={bp:.2f} "
                                f"(< {MOMENTUM_BAND_POS_MAX}) pnl {pnl_pct:+.2f}%"),
@@ -358,7 +360,35 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None) -> 
                 f"{decision['reason']} — market sell failed ({e}); {note}.")
         return out
 
-    # 3) book via the WO-0928 event-anchored reconciler (idempotent, full
+    # 3) PARTIAL sells (sell_pct < 100, momentum tier < 0.15..0.35) cancelled
+    #    an OCO that covered the FULL qty — re-list a breakeven floor SL for
+    #    the remainder or it sits naked until the next guardian pass (60 min).
+    #    Breakeven (entry * 0.995) is safe because momentum fires pnl > 0;
+    #    if that sits too close to the last price, fall back to -5%.
+    relist_note = ""
+    if sell_pct < 100:
+        import math as _m2
+        step2 = float((client.get_symbol_filters(sym) or {}).get("stepSize") or 0)
+        rem_qty = max(float(decision["qty"]) - qty, 0.0)
+        if step2 > 0:
+            rem_qty = _m2.floor(rem_qty / step2) * step2
+        if rem_qty * decision["price"] >= max(min_notional, 0):
+            try:
+                entry = float(decision.get("entry_price") or 0)
+                cand = entry * 0.995 if entry > 0 else 0.0
+                if cand <= 0 or cand >= decision["price"] * 0.98:
+                    cand = round(decision["price"] * 0.95, 6)
+                if client.place_stop_loss_market(sym, rem_qty, round(cand, 6)):
+                    relist_note = (f"; remainder {rem_qty:.6f} protected by "
+                                   f"breakeven SL @ {cand:.6f}")
+                else:
+                    relist_note = "; CRITICAL: remainder SL re-list returned None"
+            except Exception as e:
+                relist_note = f"; CRITICAL: remainder SL re-list FAILED ({e})"
+        else:
+            relist_note = f"; remainder {rem_qty:.6f} below minNotional (dust)"
+
+    # 4) book via the WO-0928 event-anchored reconciler (idempotent, full
     #    chain: trades + ledger_events + shadow + portfolio trim + governor
     #    loss-exit cooldown + outcome + outbox)
     try:
@@ -368,7 +398,7 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None) -> 
         logger.warning("exit post-sell reconcile failed (next round heals)",
                        exc_info=True)
 
-    # 4) stamp cooldown + strong notice
+    # 5) stamp cooldown + strong notice
     try:
         db.kv_set(f"exit:{sym}:last_exit_ts", now)
     except Exception:
@@ -376,8 +406,9 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None) -> 
     out.update(status="ok", qty=qty)
     _notify(db, f"exit:{sym}:{kind}:{int(now)}",
             f"✅ Auto exit — {sym} ({kind})",
-            f"{decision['reason']} — market sold {qty:.6f} @ ~{decision['price']}. "
-            f"PnL {decision['pnl_pct']:+.2f}% after {decision['held_hours']}h.")
+            f"{decision['reason']} — market sold {qty:.6f} @ ~{decision['price']}"
+            f"{relist_note}. PnL {decision['pnl_pct']:+.2f}% after "
+            f"{decision['held_hours']}h.")
     return out
 
 

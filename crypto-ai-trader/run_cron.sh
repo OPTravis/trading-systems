@@ -18,26 +18,22 @@ PROXY_PORT=17890
 CONFIG_FILE="/etc/sing-box/config.json"
 
 # 节点列表：server:port (旧 shadowsocks 节点)
-NODES=(
-    "cn02.somethingstranges.com:8101"
-    "cn01.somethingstranges.com:8101"
-    "23.186.200.164:8101"
-)
+# 旧 SS 节点 2026-09-29 全部下线（cn02/cn01/164 端口不通），清空待机场恢复
+NODES=()
 
 NODE_PASSWORD="${SINGBOX_PASSWORD:-passwd}"
 NODE_METHOD="chacha20-ietf"
 NODE_OBFS_OPTS="obfs=http;obfs-host=28760-8mLb0x2l.download.microsoft.com"
 
-# Hysteria2 备用节点（日本/新加坡/台湾，避免美国 IP 被 Binance 限制）
-HY2_PASSWORD="d27c8d67-d4e0-4bf7-9e59-495b862ee71c"
-HY2_NODES=(
-    "f111.f2nas.com:12040"
-    "f112.f2nas.com:16939"
-    "f113.f2nas.com:12071"
-    "f116.f2nas.com:15884"
-    "f117.f2nas.com:15210"
-    "f126.f2nas.com:11288"
-    "f127.f2nas.com:18293"
+# AnyTLS 备用节点（2026-09-29 从 9/26 Leo 后备订阅启用；f2nas.com 机场域名已 NXDOMAIN 报废）
+# 顺序: 香港0.5倍率 → 香港11 → 新加坡06 → 台湾01（cnx2 日本/美国端口 refused 未入列）
+ANYTLS_PASSWORD="8mLb0x2l"
+ANYTLS_SNI="download.mihoyo.yuanshen.com"
+ANYTLS_NODES=(
+    "cnx1.somethingstranges.com:12001"
+    "cn03.somethingstranges.com:12111"
+    "cn07.somethingstranges.com:12206"
+    "cn10.somethingstranges.com:12301"
 )
 
 test_proxy() {
@@ -121,13 +117,13 @@ EOF
     done
 
     # All SS nodes failed, try Hysteria2 fallback nodes
-    echo "[$(date)] [PROXY] All SS nodes failed, trying Hysteria2 nodes..." >> "$LOGFILE"
+    echo "[$(date)] [PROXY] All SS nodes failed, trying AnyTLS nodes..." >> "$LOGFILE"
 
-    for node in "${HY2_NODES[@]}"; do
+    for node in "${ANYTLS_NODES[@]}"; do
         local server="${node%%:*}"
         local port="${node##*:}"
         
-        echo "[$(date)] [PROXY] Testing HY2 node: $node" >> "$LOGFILE"
+        echo "[$(date)] [PROXY] Testing AnyTLS node: $node" >> "$LOGFILE"
         
         # Write Hysteria2 config
         cat > "$CONFIG_FILE" << EOF
@@ -142,13 +138,14 @@ EOF
   ],
   "outbounds": [
     {
-      "type": "hysteria2",
+      "type": "anytls",
       "server": "$server",
       "server_port": $port,
-      "password": "$HY2_PASSWORD",
+      "password": "$ANYTLS_PASSWORD",
       "tls": {
         "enabled": true,
-        "server_name": "$server"
+        "server_name": "$ANYTLS_SNI",
+        "insecure": true
       }
     }
   ]
@@ -159,16 +156,16 @@ EOF
         sleep 3
         
         if test_proxy; then
-            echo "[$(date)] [PROXY] ✅ Switched to HY2 $node, proxy working." >> "$LOGFILE"
+            echo "[$(date)] [PROXY] ✅ Switched to AnyTLS $node, proxy working." >> "$LOGFILE"
             return 0
         else
-            echo "[$(date)] [PROXY] ❌ HY2 node $node proxy test failed." >> "$LOGFILE"
+            echo "[$(date)] [PROXY] ❌ AnyTLS node $node proxy test failed." >> "$LOGFILE"
             pkill sing-box 2>/dev/null || true
             sleep 1
         fi
     done
 
-    echo "[$(date)] [PROXY] ⚠️ All nodes (SS + HY2) failed! Proxy not available." >> "$LOGFILE"
+    echo "[$(date)] [PROXY] ⚠️ All nodes (SS + AnyTLS) failed! Proxy not available." >> "$LOGFILE"
     return 1
 }
 

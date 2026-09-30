@@ -153,14 +153,16 @@ def test_take_profit_and_stop_loss_trigger_auto(db):
     assert [d["kind"] for d in dec2] == ["stop_loss"]
 
 
-def test_momentum_reversal_is_notify_only(db):
-    # closes drift around 100, last close 99 → band position < 0.15
+def test_momentum_reversal_evaluates_as_auto_since_p2(db):
+    # closes drift around 100, last close 99 → band position < 0.15.
+    # P1 shipped this notify-only; P2 (Leo 2026-09-30 11:18, observation
+    # week waived) promoted it to the same auto tier as hold/TP/SL.
     klines = [{"close": 100.0 + (0.2 if i % 2 else -0.2)} for i in range(19)]
     klines.append({"close": 99.0})
     cli = ExitFakeClient(price=104.0, klines=klines)  # +4% (no TP), pnl>0
     dec = evaluate_exits(cli, db, holdings=[_pos()], now=NOW)
     assert [d["kind"] for d in dec] == ["momentum_reversal"]
-    assert dec[0]["auto"] is False  # P1 notify-only
+    assert dec[0]["auto"] is True and dec[0]["sell_pct"] == 100  # deep tier
 
 
 def test_no_trigger_on_quiet_position(db):
@@ -342,3 +344,116 @@ def test_band_position_math():
     bp = _band_position(type("C", (), {"get_klines": staticmethod(
         lambda s, interval="1h", limit=40: klines)})(), "XUSDT")
     assert bp is not None and bp < 0.15
+
+
+# ==================== P2 (Leo 2026-09-30 11:18): momentum auto + trailing ====
+
+def _klines_with_close(last):
+    # 19 alternating 99.8/100.2 closes (sd=0.2, band 99.6..100.4) + `last`
+    ks = [{"close": 99.8 if i % 2 == 0 else 100.2} for i in range(19)]
+    ks.append({"close": last})
+    return ks
+
+
+def _seed_for_momentum(db):
+    _seed_portfolio_row(db)
+    db.trade_add("XUSDT", "BUY", 10, 100.0)
+    conn = db._get_conn()
+    conn.execute("UPDATE trades SET timestamp = ? WHERE symbol = ? "
+                 "AND side = 'BUY'", (time.time() - 3600, "XUSDT"))
+    conn.commit()
+
+
+def test_p2_momentum_deep_tier_sells_100_pct(db):
+    _seed_for_momentum(db)
+    # last close 99.0 -> band_position < 0.15 -> full exit
+    cli = ExitFakeClient(price=104.0, klines=_klines_with_close(99.0),
+                         balances={"X": 10.0, "USDT": 1100.0})
+    res = run_exit_step(cli, db, now=time.time())
+    assert res and res[0]["kind"] == "momentum_reversal"
+    assert res[0]["status"] == "ok"
+    assert cli.sell_calls and cli.sell_calls[0][1] == 10.0  # full qty
+
+
+def test_p2_momentum_mid_tier_sells_50_and_relists_breakeven(db):
+    _seed_for_momentum(db)
+    # last close 99.75 -> band_position ~0.19 -> 50% tier
+    cli = ExitFakeClient(price=104.0, klines=_klines_with_close(99.75),
+                         balances={"X": 10.0, "USDT": 1100.0})
+    res = run_exit_step(cli, db, now=time.time())
+    assert res and res[0]["kind"] == "momentum_reversal"
+    assert res[0]["status"] == "ok"
+    assert cli.sell_calls and cli.sell_calls[0][1] == 5.0  # 50% of 10
+    # remainder protected: one breakeven SL re-list, qty 5.0 @ entry*0.995
+    assert len(cli.emergency_sl_calls) == 1
+    sym, rq, rpx = cli.emergency_sl_calls[0]
+    assert rq == 5.0 and rpx == pytest.approx(99.5, abs=1e-6)
+    # notice mentions the protection
+    assert any("protected" in (p.get("body") or "")
+               for p in db.notification_outbox_pending(limit=10))
+
+
+def test_p2_partial_relist_failure_flags_critical(db):
+    class NoRelistClient(ExitFakeClient):
+        def place_stop_loss_market(self, symbol, quantity, stop_price):
+            self.emergency_sl_calls.append((symbol, quantity, stop_price))
+            return None  # exchange refused the re-list
+
+    _seed_for_momentum(db)
+    cli = NoRelistClient(price=104.0, klines=_klines_with_close(99.75),
+                         balances={"X": 10.0, "USDT": 1100.0})
+    res = run_exit_step(cli, db, now=time.time())
+    assert res[0]["status"] == "ok"  # the sell itself succeeded
+    assert any("CRITICAL" in (p.get("body") or "")
+               for p in db.notification_outbox_pending(limit=10))
+
+
+def test_p2_priority_hold_beats_momentum(db):
+    # BUY 49h ago (hold) AND a deep reversal band -> only hold fires (elif)
+    _seed_portfolio_row(db)
+    db.trade_add("XUSDT", "BUY", 10, 100.0)
+    conn = db._get_conn()
+    conn.execute("UPDATE trades SET timestamp = ? WHERE symbol = ? "
+                 "AND side = 'BUY'", (NOW - 49 * 3600, "XUSDT"))
+    conn.commit()
+    cli = ExitFakeClient(price=104.0, klines=_klines_with_close(99.0))
+    dec = evaluate_exits(cli, db, holdings=[_pos()], now=NOW)
+    assert [d["kind"] for d in dec] == ["hold_expiry"]
+
+
+def test_p2_mode_notify_still_gates_momentum(db):
+    db.kv_set("exit:mode", "notify")
+    _seed_for_momentum(db)
+    cli = ExitFakeClient(price=104.0, klines=_klines_with_close(99.0),
+                         balances={"X": 10.0, "USDT": 1100.0})
+    res = run_exit_step(cli, db, now=time.time())
+    assert res and res[0]["status"] == "notified"
+    assert cli.sell_calls == []  # kill-switch beats the P2 promotion
+
+
+def test_p2_trailing_step_calls_impl_with_skip_and_fail_open(monkeypatch):
+    import src.cmd_trailing_check as ctc
+    import src.scan_orchestrator as so
+
+    seen = {}
+
+    def fake_impl(skip_legacy_recon=False):
+        seen["skip"] = skip_legacy_recon
+        raise RuntimeError("boom inside trailing")
+
+    monkeypatch.setattr(ctc, "cmd_trailing_check", fake_impl)
+    # the step imports the symbol at call time from the module — patch there
+    monkeypatch.setattr(
+        "src.cmd_trailing_check.cmd_trailing_check", fake_impl)
+    so._step_trailing_check({})  # must not raise (fail-open)
+    assert seen["skip"] is True
+
+
+def test_p2_trailing_mounted_after_defense_in_main_chain():
+    src = open("/root/trading-systems/crypto-ai-trader/src/scan_orchestrator.py").read()
+    chain = ("_step_reconcile_portfolio(ctx)\n"
+             "        _step_exit_positions(ctx)\n"
+             "        _step_defense_sweep(ctx)\n"
+             "        _step_trailing_check(ctx)\n"
+             "        _step_ledger_shadow_diff(ctx)")
+    assert chain in src  # order: reconcile -> exit -> defense -> trailing

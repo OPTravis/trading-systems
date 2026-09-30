@@ -136,6 +136,22 @@ def _run_protection_sweep(ctx):
                        exc_info=True)
 
 
+def _step_trailing_check(ctx):
+    """WO-0931 P2 (9/30): ATR trailing-stop maintenance inside the scan
+    pipeline — cmd_trailing_check was fully implemented (SL trail + bug#35
+    SL-price reconcile + breakeven/TP1 SL moves) but had ZERO schedule.
+    Leo approved live integration. Runs after defense (last SL word wins,
+    both only ever move stops UP). skip_legacy_recon=True: the WO-0928
+    event-anchored reconcile earlier in this chain is strictly stronger and
+    the legacy net-gap writer is the ENA-style trades-pollution source.
+    Fail-open."""
+    try:
+        from src.cmd_trailing_check import cmd_trailing_check as _impl
+        _impl(skip_legacy_recon=True)
+    except Exception:
+        logger.warning("trailing check step failed (non-fatal)", exc_info=True)
+
+
 def _step_exit_positions(ctx):
     """WO-0931 (9/30): consume strategy exit signals (P1).
 
@@ -218,6 +234,7 @@ def cmd_cron_scan():
         _step_reconcile_portfolio(ctx)
         _step_exit_positions(ctx)
         _step_defense_sweep(ctx)
+        _step_trailing_check(ctx)
         _step_ledger_shadow_diff(ctx)
         _step_evolve_strategies(ctx)
         _append_scan_summary(ctx)

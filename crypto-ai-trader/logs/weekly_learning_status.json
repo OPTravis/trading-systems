@@ -1,40 +1,40 @@
 {
   "pipeline": "weekly_learning",
-  "timestamp": "2026-08-16T09:14:09",
+  "timestamp": "2026-09-27T09:17:16",
   "steps": [
     {
       "step": "weight_learning",
       "status": "ok",
       "returncode": 0,
-      "elapsed_sec": 4.0,
-      "output": "\u6b63\u5728\u5b78\u7fd2\u56e0\u5b50\u6b0a\u91cd...\n## \u56e0\u5b50\u6b0a\u91cd\u5b78\u7fd2\u5831\u544a\n\n**\u4ea4\u6613\u6578**: 17 (\u52dd\u7387 52.9%)\n**\u5e73\u5747 PnL**: -0.73%\n\n**\u56e0\u5b50\u76f8\u95dc\u6027**:\n- \u26aa technical: r=+0.011 (\u8d0f\u5bb6\u5747\u5206=64, \u8f38\u5bb6\u5747\u5206=62)\n- \ud83d\udfe2 trend: r=+0.343 (\u8d0f\u5bb6\u5747\u5206=68, \u8f38\u5bb6\u5747\u5206=56)\n- \u26aa volume: r=-0.096 (\u8d0f\u5bb6\u5747\u5206=73, \u8f38\u5bb6\u5747\u5206=70)\n- \ud83d\udd34 sentiment: r=-0.378 (\u8d0f\u5bb6\u5747\u5206=66, \u8f38\u5bb6\u5747\u5206=76)\n- \ud83d\udd34 price_action: r=-0.403 (\u8d0f\u5bb6\u5747\u5206=78, \u8f38\u5bb6\u5747\u5206=94)\n- \u26aa obv_divergence: r=-0.078 (\u8d0f\u5bb6\u5747\u5206=53, \u8f38\u5bb6\u5747\u5206=56)\n- \ud83d\udfe2 consolidation: r=+0.220 (\u8d0f\u5bb6\u5747\u5206=84, \u8f38\u5bb6\u5747\u5206=77)\n- \u26aa bb_squeeze: r=-0.043 (\u8d0f\u5bb6\u5747\u5206=38, \u8f38\u5bb6\u5747\u5206=36)\n- \u26aa rsi_divergence: r=+0.000 (\u8d0f\u5bb6\u5747\u5206=30, \u8f38\u5bb6\u5747\u5206=30)\n- \ud83d\udd34 onchain: r=-0.408 (",
+      "elapsed_sec": 3.6,
+      "output": "\u6b63\u5728\u5b78\u7fd2\u56e0\u5b50\u6b0a\u91cd...\n## \u56e0\u5b50\u6b0a\u91cd\u5b78\u7fd2\u5831\u544a\n\n**\u4ea4\u6613\u6578**: 22 (\u52dd\u7387 40.9%)\n**\u5e73\u5747 PnL**: -0.25%\n\n**\u56e0\u5b50\u76f8\u95dc\u6027**:\n- \ud83d\udd34 technical: r=-0.321 (\u8d0f\u5bb6\u5747\u5206=21, \u8f38\u5bb6\u5747\u5206=44)\n- \ud83d\udd34 trend: r=-0.314 (\u8d0f\u5bb6\u5747\u5206=22, \u8f38\u5bb6\u5747\u5206=51)\n- \ud83d\udd34 volume: r=-0.103 (\u8d0f\u5bb6\u5747\u5206=19, \u8f38\u5bb6\u5747\u5206=30)\n- \ud83d\udd34 sentiment: r=-0.340 (\u8d0f\u5bb6\u5747\u5206=20, \u8f38\u5bb6\u5747\u5206=46)\n- \ud83d\udd34 price_action: r=-0.334 (\u8d0f\u5bb6\u5747\u5206=33, \u8f38\u5bb6\u5747\u5206=69)\n- \ud83d\udd34 obv_divergence: r=-0.331 (\u8d0f\u5bb6\u5747\u5206=17, \u8f38\u5bb6\u5747\u5206=46)\n- \ud83d\udd34 consolidation: r=-0.232 (\u8d0f\u5bb6\u5747\u5206=28, \u8f38\u5bb6\u5747\u5206=52)\n- \ud83d\udd34 bb_squeeze: r=-0.360 (\u8d0f\u5bb6\u5747\u5206=10, \u8f38\u5bb6\u5747\u5206=34)\n- \ud83d\udd34 rsi_divergence: r=-0.277 (\u8d0f\u5bb6\u5747\u5206=10, \u8f38\u5bb6\u5747\u5206=26)\n- \ud83d\udd34 onchain: r=-0.388 (",
       "error": ""
     },
     {
       "step": "concept_drift",
       "status": "ok",
       "returncode": 0,
-      "elapsed_sec": 0.9,
-      "output": "drift_severity=none\n## \u6982\u5ff5\u6f02\u79fb\u6aa2\u6e2c\n\n**\u72c0\u614b**: \u2705 \u7121\u6f02\u79fb\n**\u4fe1\u865f**: 0/0\n**\u6a23\u672c**: \u6b77\u53f2 0 + \u8fd1\u671f 0\n**\u5efa\u8b70**: \u6578\u64da\u4e0d\u8db3\uff0817/30\uff09",
+      "elapsed_sec": 0.1,
+      "output": "drift_severity=low\n## \u6982\u5ff5\u6f02\u79fb\u6aa2\u6e2c\n\n**\u72c0\u614b**: \ud83d\udfe1 \u8f15\u5fae\u6f02\u79fb\n**\u4fe1\u865f**: 1/3\n**\u6a23\u672c**: \u6b77\u53f2 31 + \u8fd1\u671f 21\n**\u5efa\u8b70**: \u8f15\u5fae\u6f02\u79fb\uff0c\u5efa\u8b70\u89c0\u5bdf\n\n**\u56e0\u5b50\u76f8\u95dc\u6027\u6f02\u79fb**:\n- \u6700\u5927\u504f\u79fb: 0.215 (\u95be\u503c 0.3)\n\n**\u52dd\u7387\u8da8\u52e2**:\n- \u6b77\u53f2: 38.7%\n- \u8fd1\u671f: 42.9%\n- \u4e0b\u964d: -4.1%\n\n**PnL \u5206\u4f48**:\n- \u6b77\u53f2\u5747\u503c: +0.03%\n- \u8fd1\u671f\u5747\u503c: -0.23%\n- \u65b9\u5dee\u6bd4: 0.40x",
       "error": ""
     },
     {
       "step": "sector_clustering",
       "status": "ok",
       "returncode": 0,
-      "elapsed_sec": 29.3,
-      "output": "=== Sector Clustering Report (2026-08-16 09:00:36) ===\nSymbols analyzed: 39\n\nAI Sector Analysis:\n  INFRA symbols: ['AGIX', 'FET', 'GRT', 'OCEAN', 'RNDR', 'TAO']\n  AGENT symbols: ['AIXBT', 'IO', 'VANA', 'VIRTUAL']\n  Cross-correlation: 0.227\n\nPotentially misclassified:\n  ADA: CORE -> RWA (corr=0.725)\n\nFull report: /app/data/\u6240\u6709\u5bf9\u8bdd/\u4e3b\u5bf9\u8bdd/trading-systems/crypto-ai-trader/data/sector_clustering_report.json",
+      "elapsed_sec": 28.3,
+      "output": "=== Sector Clustering Report (2026-09-27 09:00:33) ===\nSymbols analyzed: 39\n\nAI Sector Analysis:\n  INFRA symbols: ['AGIX', 'FET', 'GRT', 'OCEAN', 'RNDR', 'TAO']\n  AGENT symbols: ['AIXBT', 'IO', 'VANA', 'VIRTUAL']\n  Cross-correlation: 0.428\n\nPotentially misclassified:\n  AAVE: L2DEFI -> MEME (corr=0.785)\n  ADA: CORE -> MEME (corr=0.861)\n  AIXBT: AI_AGENT -> MEME (corr=0.822)\n  AVAX: CORE -> RWA (corr=0.738)\n  BTC: CORE -> MEME (corr=0.797)\n  ETH: CORE -> MEME (corr=0.778)\n  FET: AI_INFRA -> MEME (",
       "error": ""
     },
     {
       "step": "param_optimization",
       "status": "ok",
       "returncode": 0,
-      "elapsed_sec": 812.8,
-      "output": "============================================================\n\u53c3\u6578\u81ea\u52d5\u512a\u5316\n============================================================\n## \u53c3\u6578\u81ea\u52d5\u512a\u5316\u5831\u544a\n\n**\u72c0\u614b**: \u274c \u9a57\u8b49\u5931\u6557\n**\u539f\u56e0**: OOS Sharpe 0.00 < 0.5; OOS robustness 0% < 33.0%; Too few trades: 0 < 5\n\n**\u6700\u4f73\u53c3\u6578**:\n- rsi_oversold: 25 \u2190 \u5df2\u8abf\u6574\n- rsi_overbought: 75 \u2190 \u5df2\u8abf\u6574\n- stop_loss_pct: 5.0\n- take_profit_pct: 8.0\n- score_threshold: 40 \u2190 \u5df2\u8abf\u6574\n- trailing_activation_atr: 1.5\n- trailing_distance_atr: 0.5\n\n**\u56de\u6e2c\u6307\u6a19**:\n- Sharpe: 0.00\n- \u52dd\u7387: 0%\n- \u6536\u76ca: +0.0%\n- \u6700\u5927\u56de\u64a4: 0.0%\n- \u4ea4\u6613\u6578: 0",
+      "elapsed_sec": 1003.2,
+      "output": "============================================================\n\u53c3\u6578\u81ea\u52d5\u512a\u5316\n============================================================\n## \u53c3\u6578\u81ea\u52d5\u512a\u5316\u5831\u544a\n\n**\u72c0\u614b**: \u274c \u9a57\u8b49\u5931\u6557\n**\u539f\u56e0**: Too few trades: 0 < 5\n\n**\u6700\u4f73\u53c3\u6578**:\n- rsi_oversold: 25 \u2190 \u5df2\u8abf\u6574\n- rsi_overbought: 75 \u2190 \u5df2\u8abf\u6574\n- stop_loss_pct: 5.0\n- take_profit_pct: 8.0\n- score_threshold: 40 \u2190 \u5df2\u8abf\u6574\n- trailing_activation_atr: 1.5\n- trailing_distance_atr: 0.5\n\n**\u56de\u6e2c\u6307\u6a19**:\n- Sharpe: 0.00\n- \u52dd\u7387: 0%\n- \u6536\u76ca: +0.0%\n- \u6700\u5927\u56de\u64a4: 0.0%\n- \u4ea4\u6613\u6578: 0\n\n**OOS \u9a57\u8b49**:\n- \u5e73\u5747 OOS Sharpe: 1.903\n- \u5e73\u5747\u7a69\u5065\u6027: 33%\n",
       "error": ""
     }
   ],
-  "total_elapsed_sec": 847.0,
+  "total_elapsed_sec": 1035.2,
   "all_ok": true
 }
