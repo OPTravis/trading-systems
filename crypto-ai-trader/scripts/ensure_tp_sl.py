@@ -176,6 +176,25 @@ def round_price(price, tick_size):
     return float(d_price.quantize(d_tick, rounding=ROUND_DOWN))
 
 
+# WO-1006: STOP_LOSS sell legs must sit strictly below the current price;
+# a db stop the market has already fallen through is -2010-rejected on
+# every attempt (guardian PENGU PENGUUSDT 10/1 cancel->reject->restore
+# loop). Same clamp the guardian uses
+# (src/protection_guardian.py::_legalize_sl_price) in script form.
+def _legal_sl(sl_px, price, tick, sym=""):
+    if not sl_px or not price or sl_px <= 0 or price <= 0:
+        return sl_px
+    if sl_px < price * 0.995:
+        return sl_px  # already placeable
+    adapted = round_price(price * 0.93, tick)
+    band_floor = round_price(price * 0.87, tick)
+    if adapted < band_floor:
+        adapted = band_floor
+    print(f"[WO-1006] {sym}: planned SL {sl_px} at/above px {price} — "
+          f"adapted to {adapted} (placeable band)")
+    return adapted
+
+
 def _required_filters(client, symbol):
     """Return complete filters dict, or None when exchange info is missing.
 
@@ -633,6 +652,7 @@ def main():
 
                 tp_price = round_price(tp_target, tick_size) if tp_target and tp_target >= current_price else round_price(current_price * 1.05, tick_size)
                 sl_price_r = round_price(sl_target, tick_size) if sl_target else round_price(float(sl_orders[0].get("stopPrice", 0) or sl_orders[0].get("info", {}).get("stopPrice", 0)), tick_size)
+                sl_price_r = _legal_sl(sl_price_r, current_price, tick_size, sym)  # WO-1006
                 sl_limit = round_price(sl_price_r * 0.995, tick_size)
 
                 try:
@@ -703,6 +723,7 @@ def main():
                     continue
 
                 sl_price_r = round_price(sl_target, tick_size) if sl_target else round_price(sl_price, tick_size)
+                sl_price_r = _legal_sl(sl_price_r, current_price, tick_size, sym)  # WO-1006
                 sl_limit = round_price(sl_price_r * 0.995, tick_size)
 
                 oco_result = None
@@ -774,7 +795,7 @@ def main():
             # capped at free — fee/lag residue must not be mistaken for an
             # undersized SL, topped up, and then rejected with -2010.
             _uncov = floor_qty(max(min(qty - sl_covered, free_qty), 0.0), step_size)
-            _sl_px = round_price(sl_target, tick_size)
+            _sl_px = _legal_sl(round_price(sl_target, tick_size), current_price, tick_size, sym)  # WO-1006
             _sl_lim = round_price(_sl_px * 0.995, tick_size)
             if _uncov > 0 and _uncov * current_price >= min_notional:
                 try:
@@ -811,7 +832,7 @@ def main():
 
         # ── Case 2: Missing SL, has TP ──
         elif not has_sl and has_tp and sl_target:
-            sl_price = round_price(sl_target, tick_size)
+            sl_price = _legal_sl(round_price(sl_target, tick_size), current_price, tick_size, sym)  # WO-1006
             sl_limit = round_price(sl_price * 0.995, tick_size)
             # Use uncovered qty, but cap at free balance
             uncovered = min(qty - tp_covered, free_qty)

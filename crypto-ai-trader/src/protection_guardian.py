@@ -234,6 +234,49 @@ def _tick_round(px: float, tick: float) -> float:
     return round(px, 8)
 
 
+# WO-1006: closest placeable stop for an intended SL that the market has
+# already fallen through. Aligned with the 0.93 fallback the oco_swap
+# branch already used and switch-protection's fill-based default; the
+# 0.87 floor matches the PERCENT_PRICE band check below.
+SL_ADAPTIVE_DROP = 0.93
+SL_PLACE_HEADROOM = 0.995   # stop must sit >= 0.5% below market
+SL_BAND_FLOOR = 0.87
+
+
+def _legalize_sl_price(sl_px: float, price: float, tick: float,
+                       *, sym: str = "", context: str = "") -> float:
+    """WO-1006: STOP_LOSS sell legs must sit strictly BELOW the current
+    price. A planned stop the market has already fallen through (PENGU
+    10/1: db 0.009725 vs px 0.0096) can never be placed — every attempt
+    returns -2010 ("Stop price would trigger immediately" / "relationship
+    of the prices"), and the TP-only rebuild degenerates into an endless
+    cancel->reject->restore loop (3+ rounds/hour, API weight 1423/1200).
+    Keep an intended stop that is already placeable; otherwise drop to
+    the closest sensible placeable stop (price * SL_ADAPTIVE_DROP),
+    floored by the PERCENT_PRICE band. Adapting is audited."""
+    if sl_px <= 0 or price <= 0:
+        return sl_px
+    if sl_px < price * SL_PLACE_HEADROOM:
+        return sl_px  # already placeable — nothing to fix
+    adapted = _tick_round(price * SL_ADAPTIVE_DROP, tick)
+    band_floor = _tick_round(price * SL_BAND_FLOOR, tick)
+    if adapted < band_floor:
+        adapted = band_floor
+    if sym:
+        _audit("GUARDIAN_SL_ADAPTED", {
+            "symbol": sym, "context": context,
+            "planned_stop": sl_px, "price": price,
+            "adapted_stop": adapted,
+            "reason": "planned stop at/above market — would be -2010 "
+                      "rejected; clamped to placeable band",
+        })
+        logger.warning(
+            "protection_guardian: %s planned SL %.8g at/above px %.8g "
+            "— adapted to %.8g (%s, -2010 loop guard)",
+            sym, sl_px, price, adapted, context)
+    return adapted
+
+
 # P3: order-shape classification is now a single implementation in
 # src/protection_shape.py. The private names are kept as re-exports so
 # existing greps/tests (pg._is_oco_leg ...) stay valid; behaviour is
@@ -478,6 +521,13 @@ def run(client: Any, portfolio: Any,
                         (entry or price) * (1 - DEFAULT_SL_PCT), tick)
                 else:
                     sl_px_new = _tick_round(sl_px_new, tick)
+                # WO-1006: clamp BEFORE cancelling anything — a db stop
+                # the market has fallen through would reject every OCO
+                # AND every demoted plain SL (-2010), burning the cancel
+                # window for nothing and looping forever.
+                sl_px_new = _legalize_sl_price(
+                    sl_px_new, price, tick, sym=sym,
+                    context="tp_oco_rebuild")
                 # never cancel a leg whose replacement would be rejected:
                 # Binance PERCENT_PRICE_BY_SIDE refuses stops >~13% away
                 if sl_px_new < price * 0.87:
@@ -744,6 +794,13 @@ def run(client: Any, portfolio: Any,
                 old_stop = max((l["stop"] for l in cancelled
                                 if l["stop"] > 0), default=0.0) or \
                     _tick_round(price * 0.93, tick)
+                # WO-1006: the cancelled stop was placeable when it stood,
+                # but the market may have fallen through it inside the
+                # cancel/re-place window — re-placing it unclamped would
+                # be -2010 and the safety-net restore below would fail
+                # the same way, leaving the position with NO SL.
+                old_stop = _legalize_sl_price(
+                    old_stop, price, tick, sym=sym, context="oco_swap")
                 try:
                     oco = client.place_oco(sym, oco_qty_step, tp_px,
                                            old_stop)
