@@ -1101,8 +1101,40 @@ class PositionOptimizer:
             # 8b. bug#41a (2026-09-15): protective orders NOW, not on the next
             # protection_guardian sweep — a crash/cron gap in between left the
             # fresh position with NO stop at all (ETHFI 9/12: naked for hours).
+            # WO-1009-② (10/2): on a DCA-add switch (target already held)
+            # the OCO must cover the MERGED position. 10/1 14:20 ICP->NEAR
+            # merged the book to 2.1988 but the OCO covered only the fresh
+            # 1.0: the old slice kept a stale OCO on a different price
+            # ladder, and had it been NAKED at switch time it would have
+            # stayed naked until the next guardian sweep. Cancel the
+            # symbol's stale sell legs first (a live LIMIT_MAKER leg locks
+            # balance and would reject a full-qty OCO with -2010), then
+            # protect the whole merged quantity in one order.
             try:
-                self._place_switch_protections(to_symbol, buy_qty, buy_order, to_price)
+                prot_qty = buy_qty
+                for _p in positions:
+                    if _p.get("symbol") == to_symbol:
+                        _old_qty = float(_p.get("quantity", 0) or 0)
+                        if _old_qty > 0:
+                            prot_qty = buy_qty + _old_qty
+                        break
+                if prot_qty > buy_qty:
+                    logger.info(
+                        "switch 8b: %s DCA add — protecting merged qty %.8f "
+                        "(fresh buy %.8f + held %.8f); cancelling stale legs",
+                        to_symbol, prot_qty, buy_qty, prot_qty - buy_qty)
+                    try:
+                        self.bc.cancel_all_orders(to_symbol)
+                    except Exception as _cancel_err:
+                        # paper trader has no cancel_all_orders — orders
+                        # there don't lock balance, so a skipped cancel is
+                        # harmless; live failures fall through to the
+                        # OCO attempt below and its PROTECTION_FAILED
+                        # fallback / guardian backstop.
+                        logger.warning(
+                            "switch 8b: cancel stale legs failed for %s: %s",
+                            to_symbol, _cancel_err)
+                self._place_switch_protections(to_symbol, prot_qty, buy_order, to_price)
             except Exception as prot_err:
                 logger.warning(
                     "switch 8b: protection step failed (non-fatal) for %s: %s",

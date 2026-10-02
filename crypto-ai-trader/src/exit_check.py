@@ -365,6 +365,42 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,
             out["status"] = "cooldown"
             return out
 
+    # 0) dust pre-flight (WO-1009-③, 10/2): if the position's notional
+    #    cannot clear minNotional, a market sell is impossible — and the
+    #    legacy order (cancel legs first, then hit the dust guard) strips
+    #    the position naked, the next guardian sweep rebuilds the OCO,
+    #    and the next exit event tears it down again. 10/2 03:40-08:41
+    #    PENGU ran that NAKED→TP_ONLY→OCO loop ~15 rounds while every
+    #    sell aborted on "below tradable". Decision qty (not free
+    #    balance) is the yardstick here: free is ~0 while a full-qty
+    #    OCO locks the base; the post-cancel min(qty, free) check below
+    #    still guards slice mismatches for tradable positions.
+    try:
+        _pf_filters = client.get_symbol_filters(sym) or {}
+        _pf_min_notional = float(_pf_filters.get("minNotional") or 0)
+        _pf_qty = float(decision["qty"])
+        if (_pf_min_notional
+                and _pf_qty * float(decision["price"]) < _pf_min_notional):
+            out.update(
+                status="aborted",
+                detail=(f"dust pre-flight: qty {_pf_qty:.6f} × px "
+                        f"{float(decision['price']):.6g} = "
+                        f"{_pf_qty * float(decision['price']):.2f} < "
+                        f"minNotional {_pf_min_notional:g} — resting legs "
+                        f"kept, nothing cancelled"))
+            # stable id (no timestamp): every round of a permanently
+            # dust-locked exit produces the same notice, so the outbox
+            # dedupes instead of paging once per loop iteration
+            _notify(db, f"exit:{sym}:{kind}:dust_preflight",
+                    f"⚠️ Exit skipped (dust) — {sym}",
+                    f"{decision['reason']} — position notional below "
+                    f"minNotional, cannot market-sell. Resting OCO kept "
+                    f"as floor; resolution left to the dust reaper.")
+            return out
+    except Exception:
+        logger.warning("exit dust pre-flight errored for %s (legacy "
+                       "order: cancel first)", sym, exc_info=True)
+
     # 1) cancel resting SELL legs (abort keeps the OCO floor)
     cancel = _cancel_sell_legs(client, sym)
     if not cancel["ok"]:

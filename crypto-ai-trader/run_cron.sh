@@ -61,8 +61,14 @@ test_node_direct() {
 }
 
 ensure_proxy() {
-    # 如果代理正常，直接返回
-    if pgrep -x sing-box > /dev/null && test_proxy; then
+    # WO-1009-④ (10/2): the host now injects a resident proxy on 17890;
+    # the local sing-box client is no longer a persistent process, so the
+    # old `pgrep -x sing-box` fast-path never matched and EVERY run fell
+    # into the failover branch (config rewrites + nohup churn). Judge
+    # proxy health by test_proxy alone. The failover loop below stays as
+    # the host-proxy-outage takeover (10/2 03:20 it really bound 17890
+    # and kept the scans alive for an hour).
+    if test_proxy; then
         return 0
     fi
 
