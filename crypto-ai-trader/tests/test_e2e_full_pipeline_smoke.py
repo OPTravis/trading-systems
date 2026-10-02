@@ -124,15 +124,6 @@ def _make_sentiment(fng=50, label="Neutral"):
 
 def _make_notifier():
     n = MagicMock()
-    n.get_strategy_config.return_value = {
-        "stop_loss_pct": 2.0,
-        "take_profit_levels": [
-            {"pct": 2.0, "size_pct": 33},
-            {"pct": 3.0, "size_pct": 33},
-            {"pct": 5.0, "size_pct": 34},
-        ],
-        "max_hold_hours": 24,
-    }
     n.send_text.return_value = True
     return n
 
@@ -692,7 +683,14 @@ class TestE2EPipeline:
                     "max_position_pct": 15,
                     "max_total_exposure_pct": 70,
                 },
-                "strategies": {},
+                "strategies": {
+                    # WO-1007: real pipelines always carry at
+                    # least one strategy cfg; an empty map now
+                    # means "all disabled" and blocks the trade
+                    "trend": {"enabled": True, "sl_pct": 2.0,
+                              "tp_levels": [], "max_hold_hours": 24,
+                              "size_multiplier": 1.0},
+                },
             }
             mock_dim.return_value.score_all.return_value = {
                 "resonance": "NEUTRAL",

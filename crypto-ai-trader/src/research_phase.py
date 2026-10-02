@@ -5,12 +5,15 @@ Extracted from scan_orchestrator for maintainability.
 
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.bear_analyst import BearAnalyst
 from src.paper_trader import get_trading_client, is_paper_mode
 from src.pending_confirmation import clear_pending, save_pending
 from src.position_optimizer import PositionOptimizer
+# noqa: F401 — FeishuNotifier stays imported as the e2e test
+# patch anchor (tests/test_e2e_*.py patch src.research_phase.
+# FeishuNotifier to inject a fake notifier).
 from src.notifier import FeishuNotifier, _append_notification
 from src.trade_executor import count_active_positions, get_position_tier
 from src.trade_journal import TradeJournal
@@ -456,6 +459,26 @@ def _bollinger_atr_sl(klines: List[Dict], price: float) -> Optional[float]:
         return None
 
 
+def _any_strategy_enabled(adapted: Dict[str, Any]) -> bool:
+    """WO-1007: True when at least one adapted strategy is enabled.
+
+    The 10/2 09:10 crash chain: evolver vetoed the last ON strategy
+    (bollinger, dual-window PF<1) -> enabled list empty -> registry
+    block skipped -> strategy stayed the literal "score_based" default
+    -> adapted["strategies"].get() returned None -> the dead
+    notifier.get_strategy_config branch raised AttributeError and
+    killed the whole scan (rc=1)."""
+    for cfg in (adapted.get("strategies") or {}).values():
+        try:
+            # same default as the enabled-list build above (L671):
+            # a strategy without an explicit enabled flag counts as ON
+            if cfg and cfg.get("enabled", True):
+                return True
+        except (TypeError, AttributeError):
+            continue
+    return False
+
+
 def _step_research_top_n(ctx):
     """Step 2: Risk checks, deep research on top candidates, and bear analysis.
 
@@ -752,15 +775,41 @@ def _step_research_top_n(ctx):
         tp_levels = strategy_cfg["tp_levels"]
         max_hold = strategy_cfg["max_hold_hours"]
         size_multiplier = strategy_cfg["size_multiplier"]
-    else:
-        # Fallback to notifier config
-        cfg = notifier.get_strategy_config(strategy)
-        stop_loss_pct = cfg.get(
-            "stop_loss_pct", 4.0
-        )  # FIX-11: Widened from 2.0→4.0% (was triggering 71.4% of the time)
-        tp_levels = cfg.get("take_profit_levels", [])
-        max_hold = cfg.get("max_hold_hours", 48)
+    elif _any_strategy_enabled(adapted):
+        # WO-1007: strategy name not present in adapted config (naming
+        # drift between registry/STRATEGY_CLASSES "rsi" and YAML
+        # "rsi_reversion", or a registry pick the adaptor never heard
+        # of) while other strategies remain enabled — proceed with the
+        # safe FIX-11 defaults. The previous branch called
+        # notifier.get_strategy_config, a method that NEVER existed
+        # anywhere in the codebase (sole reference, dead fallback) and
+        # raised AttributeError here.
+        stop_loss_pct = 4.0  # FIX-11: widened 2.0→4.0 (was triggering 71.4% of the time)
+        tp_levels = []
+        max_hold = 48
         size_multiplier = 1.0
+        logger.warning(
+            "research_phase: no adapted cfg for strategy '%s' — "
+            "using safe defaults (sl=4.0%%, max_hold=48h)", strategy)
+    else:
+        # WO-1007: every adapted strategy is disabled (adaptor flags +
+        # evolver dual-window veto). A SELECTED candidate must not crash
+        # the scan — respect the veto, block the trade, let the scan
+        # finish rc=0 (graceful NO_OPPORTUNITIES degradation).
+        print(
+            f"ALL_STRATEGIES_DISABLED: {symbol} SKIP TRADE "
+            f"(strategy '{strategy}' has no cfg and no strategy is enabled)"
+        )
+        logger.warning(
+            "research_phase: %s SELECTED but all strategies disabled "
+            "(strategy '%s' unconfigured) — blocking trade, scan "
+            "continues", symbol, strategy)
+        journal = TradeJournal()
+        journal.record_decision(
+            symbol=symbol, decision="BLOCKED",
+            score=adjusted_score, research=research)
+        clear_pending()
+        return None
 
     # ── WO-016-3: bollinger SL anchored to per-symbol ATR ──
     # The adapted sl_pct is BTC-GARCH based (or a fixed 7.0/8.0 when

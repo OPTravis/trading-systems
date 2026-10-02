@@ -51,6 +51,26 @@ from src.execute_phases import (
 logger = logging.getLogger(__name__)
 
 
+def _fmt_market_scan_msg(opportunities, gainers, losers):
+    """WO-1007: human-readable market-scan notification body.
+
+    Replaces the dead notifier.send_market_scan call (method never
+    existed) — formats the same three lists into a single Feishu text
+    message using the real send() API."""
+    lines = []
+    for g in gainers[:3]:
+        lines.append(f"📈 {g['symbol']} +{g['change_pct']:.2f}%")
+    for l in losers[:3]:
+        lines.append(f"📉 {l['symbol']} {l['change_pct']:.2f}%")
+    for opp in opportunities[:5]:
+        lines.append(
+            f"🎯 {opp['symbol']} score {opp['score']:.0f} "
+            f"({', '.join(opp.get('signals', [])[:2])})"
+        )
+    title = f"Market scan: {len(opportunities)} opportunities"
+    return title, "\n".join(lines)
+
+
 def cmd_scan(send_notification: bool = False):
     """Scan market for opportunities (interactive/manual mode)."""
     logger.info("=== Market Scanner ===")
@@ -94,7 +114,13 @@ def cmd_scan(send_notification: bool = False):
         notifier = FeishuNotifier()
         gainers = [m for m in movers if m["direction"] == "gainer"]
         losers = [m for m in movers if m["direction"] == "loser"]
-        notifier.send_market_scan(opportunities, gainers, losers)
+        # WO-1007: send_market_scan never existed on FeishuNotifier
+        # (dead reference — same class of bug as the research_phase
+        # get_strategy_config crash; this manual --notify path was
+        # never taken, so it survived). Compose the message with the
+        # real send() API instead.
+        title, body = _fmt_market_scan_msg(opportunities, gainers, losers)
+        notifier.send(title, body)
         logger.info("Feishu notification sent")
 
         print("=" * 50)

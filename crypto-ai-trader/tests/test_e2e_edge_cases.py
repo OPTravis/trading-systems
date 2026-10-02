@@ -206,14 +206,6 @@ class TestExecuteAutoTradeEdgeCases:
             "status": "FILLED",
         }
         notifier = MagicMock()
-        notifier.get_strategy_config.return_value = {
-            "stop_loss_pct": 3.0,
-            "max_hold_hours": 24,
-            "take_profit_levels": [
-                {"pct": 5.0, "size_pct": 50},
-                {"pct": 8.0, "size_pct": 50},
-            ],
-        }
         so = MagicMock()
         so.get_symbol_filters.return_value = filters or {
             "stepSize": 1.0,
@@ -309,11 +301,6 @@ class TestExecuteAutoTradeEdgeCases:
             "status": "NEW",
         }
         notifier = MagicMock()
-        notifier.get_strategy_config.return_value = {
-            "stop_loss_pct": 3.0,
-            "max_hold_hours": 24,
-            "take_profit_levels": [{"pct": 5.0, "size_pct": 50}],
-        }
         so = MagicMock()
         so.get_symbol_filters.return_value = {
             "stepSize": 1.0,
@@ -453,15 +440,6 @@ class TestSLTPOrderInteraction:
 
         bc.place_order.side_effect = mock_place
         notifier = MagicMock()
-        notifier.get_strategy_config.return_value = {
-            "stop_loss_pct": 3.0,
-            "max_hold_hours": 24,
-            "take_profit_levels": [
-                {"pct": 5.0, "size_pct": 33},
-                {"pct": 8.0, "size_pct": 33},
-                {"pct": 12.0, "size_pct": 34},
-            ],
-        }
         so = MagicMock()
         so.get_symbol_filters.return_value = {
             "stepSize": 1.0,
@@ -599,11 +577,6 @@ class TestCronScanIntegration:
             "factors": {},
         }
         notifier = MagicMock()
-        notifier.get_strategy_config.return_value = {
-            "stop_loss_pct": 3.0,
-            "take_profit_levels": [{"pct": 2.0, "size_pct": 50}],
-            "max_hold_hours": 24,
-        }
         from contextlib import ExitStack
         patches = [
             ("src.scan_orchestrator.BinanceClient", {"return_value": bc}),
@@ -657,7 +630,14 @@ class TestCronScanIntegration:
                     "max_position_pct": 15,
                     "max_total_exposure_pct": 70,
                 },
-                "strategies": {},
+                "strategies": {
+                    # WO-1007: real pipelines always carry at
+                    # least one strategy cfg; an empty map now
+                    # means "all disabled" and blocks the trade
+                    "trend": {"enabled": True, "sl_pct": 2.0,
+                              "tp_levels": [], "max_hold_hours": 24,
+                              "size_multiplier": 1.0},
+                },
             }
             mock_opt.return_value.analyze_and_switch.return_value = []
             mock_exec.return_value = {
