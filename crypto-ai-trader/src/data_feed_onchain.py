@@ -89,20 +89,46 @@ class DeFiLlamaOnChain:
         Returns cached data if all fetches fail and cache is valid.
         """
         results: Dict[str, float] = {}
+        fetched: set = set()
 
+        # WO-1010 (10/3): a single slow/failing chain must not discard the
+        # chains that already finished. The worst-case single-chain time is
+        # (MAX_RETRIES+1) * REQUEST_TIMEOUT + backoff = 33s, which the old
+        # as_completed timeout=30 could not cover -- the resulting
+        # TimeoutError propagated past the partial `results` and left the
+        # whole on-chain dimension (25% weight) empty for 5h+ on 10/2-10/3
+        # while 6 of 7 chains had actually answered.
         with ThreadPoolExecutor(max_workers=len(self.MAJOR_CHAINS)) as pool:
             futures = {
                 pool.submit(self._fetch_chain_tvl_change, chain): chain
                 for chain in self.MAJOR_CHAINS
             }
-            for future in as_completed(futures, timeout=30):
-                chain = futures[future]
-                try:
-                    chg = future.result()
-                    if chg is not None:
-                        results[chain] = chg
-                except Exception:
-                    logger.warning("Unexpected error fetching %s TVL", chain)
+            try:
+                for future in as_completed(futures, timeout=45):
+                    chain = futures[future]
+                    fetched.add(chain)
+                    try:
+                        chg = future.result()
+                        if chg is not None:
+                            results[chain] = chg
+                    except Exception:
+                        logger.warning("Unexpected error fetching %s TVL", chain)
+            except TimeoutError:
+                # keep whatever finished; name what did not (WARN, not silent)
+                missing = sorted(set(self.MAJOR_CHAINS) - fetched)
+                logger.warning(
+                    "DeFiLlama chain TVL partial: %d/%d chains fetched "
+                    "before pool timeout; missing: %s",
+                    len(results), len(self.MAJOR_CHAINS), ", ".join(missing),
+                )
+
+        missing_after = sorted(set(self.MAJOR_CHAINS) - set(results))
+        if missing_after:
+            logger.warning(
+                "DeFiLlama chain TVL degraded: no data for %d chain(s): %s "
+                "(scoring on the remaining %d)",
+                len(missing_after), ", ".join(missing_after), len(results),
+            )
 
         if results:
             self._cache = results

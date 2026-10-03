@@ -322,6 +322,16 @@ class LlamaDataFeed:
             return result if result else None
 
         except Exception as e:
+            # WO-1010 (10/3): a pool-level error must not discard chains
+            # that already resolved — degrade to the partial result and
+            # name it (WARN), instead of dropping the whole feed.
+            if result:
+                logger.warning(
+                    "Llama chain TVL degraded: %d/%d chains fetched, "
+                    "pool error on the rest (%s)",
+                    len(result), len(MAJOR_CHAINS), e)
+                self._set_cache("chain_tvl", result)
+                return result
             logger.warning("Failed to fetch chain TVL data: %s", e)
             return None
 

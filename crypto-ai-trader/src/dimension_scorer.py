@@ -252,6 +252,12 @@ class DimensionScorer:
                     old_changes = onchain.get_chain_tvl_changes()
                     if old_changes:
                         data["chain_tvl_changes_fallback"] = old_changes
+                        # WO-1010: make partial-chain degradation visible in
+                        # the Data-health signal line (7 = DeFiLlamaOnChain
+                        # MAJOR_CHAINS; keep in sync with data_feed_onchain)
+                        if len(old_changes) < 7:
+                            signals.append(
+                                f"tvl_fallback_partial_{len(old_changes)}/7")
                         avg_chg = sum(old_changes.values()) / len(old_changes)
                         if avg_chg > 1:
                             score += 0.2
