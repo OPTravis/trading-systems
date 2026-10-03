@@ -178,6 +178,21 @@ def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
     if pnl_pct >= tp_pct:
         return {**base, "kind": "take_profit", "auto": True, "sell_pct": 100,
                 "reason": f"take profit {pnl_pct:.2f}% >= {tp_pct:.1f}%"}
+    # WO-1011 (10/3 PENGU lesson): the StateDB trailing target (raised by
+    # _step_trailing_check) is the tightest floor the strategy promised —
+    # enforce it BEFORE the looser fixed -sl_pct line. PENGU 10/3: target
+    # had trailed to 0.009725 (-5%) while price slid to 0.0088; the exit
+    # chain never read the column, so the position settled at -14% through
+    # the guardian-clamped OCO floor 0.008808 instead. Breach semantics:
+    # price <= stop_loss, sign of pnl irrelevant (a trailed floor above
+    # entry locks profit). Absent key (backtest replays, tests) -> None,
+    # zero behavior change.
+    t_sl = pos.get("stop_loss")
+    if t_sl and price <= float(t_sl):
+        return {**base, "kind": "stop_loss", "auto": True, "sell_pct": 100,
+                "reason": (f"trailing stop breach {price:.6g} <= "
+                           f"stop_loss {float(t_sl):.6g} "
+                           f"(pnl {pnl_pct:+.2f}%)")}
     if pnl_pct <= -sl_pct:
         return {**base, "kind": "stop_loss", "auto": True, "sell_pct": 100,
                 "reason": f"stop loss {pnl_pct:.2f}% <= -{sl_pct:.1f}%"}
@@ -208,11 +223,15 @@ def evaluate_exits(
         # for a decision pass that re-fetches price per symbol anyway)
         try:
             rows = db._get_conn().execute(
-                "SELECT symbol, quantity, entry_price, strategy, opened_at "
-                "FROM portfolio WHERE quantity > 0").fetchall()
+                "SELECT symbol, quantity, entry_price, strategy, opened_at, "
+                "stop_loss FROM portfolio WHERE quantity > 0").fetchall()
             holdings = [
                 {"symbol": r[0], "quantity": r[1], "entry_price": r[2],
-                 "strategy": r[3], "opened_at": r[4]} for r in rows]
+                 "strategy": r[3], "opened_at": r[4],
+                 # WO-1011: carry the trailing target so evaluate_one can
+                 # enforce the StateDB floor (None/0 = no trailing state)
+                 "stop_loss": r[5] if r[5] and float(r[5]) > 0 else None}
+                for r in rows]
         except Exception:
             holdings = []
     for pos in holdings or []:
@@ -270,13 +289,13 @@ def scan_exit_triggers(db, holdings: List[str], prices: Dict[str, float],
         return None
     try:
         rows = conn.execute(
-            "SELECT symbol, quantity, entry_price, opened_at FROM portfolio "
-            "WHERE quantity > 0").fetchall()
+            "SELECT symbol, quantity, entry_price, opened_at, stop_loss "
+            "FROM portfolio WHERE quantity > 0").fetchall()
     except Exception:
         logger.warning("scan_exit_triggers: portfolio read failed",
                        exc_info=True)
         return None
-    for sym, qty, entry, opened_at in rows:
+    for sym, qty, entry, opened_at, stop_loss in rows:
         if sym not in holdings or not sym.endswith("USDT"):
             continue
         price = prices.get(sym)
@@ -290,6 +309,12 @@ def scan_exit_triggers(db, holdings: List[str], prices: Dict[str, float],
             return f"{sym} hold_expiry {held_h:.1f}h"
         if pnl_pct >= _param(db, "tp_pct", sym):
             return f"{sym} take_profit {pnl_pct:+.2f}%"
+        # WO-1011: the event tick must see the StateDB trailing target too
+        # — a pure floor breach (hold not expired, pnl above the fixed
+        # -sl_pct line) used to leave the 10-min trigger path blind and
+        # wait for a full gate-open round. Mirrors evaluate_one exactly.
+        if stop_loss and float(stop_loss) > 0 and price <= float(stop_loss):
+            return f"{sym} trailing_stop_breach {price:.6g} <= {float(stop_loss):.6g}"
         if pnl_pct <= -_param(db, "sl_pct", sym):
             return f"{sym} stop_loss {pnl_pct:+.2f}%"
     return None

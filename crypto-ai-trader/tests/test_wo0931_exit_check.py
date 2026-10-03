@@ -304,10 +304,11 @@ def test_scan_exit_triggers_with_raw_ro_conn(tmp_path):
     p = str(tmp_path / "ro.db")
     c = sqlite3.connect(p)
     c.execute("CREATE TABLE portfolio (symbol TEXT, quantity REAL, "
-              "entry_price REAL, opened_at TEXT)")
+              "entry_price REAL, opened_at TEXT, stop_loss REAL)")
     c.execute("CREATE TABLE trades (symbol TEXT, side TEXT, qty REAL, "
               "price REAL, pnl REAL, timestamp REAL, client_order_id TEXT)")
-    c.execute("INSERT INTO portfolio VALUES ('XUSDT', 10, 100.0, ?)",
+    c.execute("INSERT INTO portfolio (symbol, quantity, entry_price, "
+              "opened_at) VALUES ('XUSDT', 10, 100.0, ?)",
               ("2026-09-30T10:30:07",))
     c.execute("INSERT INTO trades VALUES ('XUSDT','BUY',10,100,0,?,NULL)",
               (NOW - 49 * 3600,))

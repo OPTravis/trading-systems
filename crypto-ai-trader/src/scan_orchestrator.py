@@ -289,6 +289,16 @@ def cmd_cron_scan():
             # so running it on starved rounds is safe and keeps the
             # consecutive-clean clock meaningful.
             _step_ledger_shadow_diff(None)
+            # WO-1011 (10/3 PENGU lesson): starved/exception rounds still
+            # owe the EXIT step — position management must not starve with
+            # research. PENGU hit hold_expiry+SL conditions every 10-min
+            # event tick for 100+ min while every NO_OPPORTUNITIES round
+            # skipped _step_exit_positions entirely (exit settled at -14%
+            # via the guardian-clamped OCO floor instead of the -5%
+            # StateDB trailing target). The step itself is None-safe,
+            # fail-open and cooldown-gated; it runs once per round (this
+            # branch or the normal chain below, never both).
+            _step_exit_positions(ctx)
             # WO-0930 -> WO-0930b (9/30): starved/exception rounds still
             # owe reconcile + the defense sweep (WO-0924 only rescued the
             # shadow diff; an OCO fill between rounds sat unbooked for 4+
@@ -302,6 +312,13 @@ def cmd_cron_scan():
         if ctx is None:
             _append_scan_summary(None)
             _step_ledger_shadow_diff(None)
+            # WO-1011 (10/3 PENGU lesson): no-opportunity rounds still owe
+            # the EXIT step — exit conditions on holdings must be consumed
+            # at scan granularity even when research returns nothing (the
+            # reside_scan event tick triggers the full scan precisely so
+            # "the exit step consumes them"; the early return used to
+            # defeat that design). Runs before return, once per round.
+            _step_exit_positions(ctx)
             return
 
         _step_event_driven_adjustment(ctx)
