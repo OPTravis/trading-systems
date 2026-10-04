@@ -16,6 +16,21 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 load_dotenv(Path.home() / ".hermes" / ".env", override=False)  # Shared API keys
 
+# WO-1014 (10/4): isolate ALL state writes from production. Loading .env
+# above also pulls in PROD_WRITES_ALLOWED=1 (production wrappers need it),
+# which let test_trade_executor's PaperTrader.place_order write REAL rows
+# into the production state.db paper_trades table — the DRYRUN sibling
+# suite (test_wo1005_v2 asserts the sim seed of 400) then read a polluted
+# balance: whoever ran e2e last broke the full suite (order-dependent
+# flake; 10/4 residue paper_1~4 BTC + an AXS dryrun pair). Point
+# STATE_DB_PATH at a per-process throwaway twin BEFORE any src import:
+# StateDB resolves the explicit env path, auto-creates the schema, the
+# WO-1002 prod write guard never engages (path != DEFAULT_DB_PATH), and
+# the REAL PaperTrader / trade_executor code paths stay fully covered.
+import tempfile
+_ISO_DB = Path(tempfile.mkdtemp(prefix="e2e_stages_")) / "state_twin.db"
+os.environ["STATE_DB_PATH"] = str(_ISO_DB)
+
 results = {}
 
 def run_test(name, fn):
