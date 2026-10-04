@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
+from src.coin_names import symbol_to_coin_name
+
 # Load .env from project root
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -45,7 +47,10 @@ class SentimentAnalyzer:
 
     def analyze_coin(self, symbol: str) -> Dict:
         """Analyze sentiment for a specific coin"""
-        coin_name = symbol.replace("USDT", "")
+        # WO-1015: search on the human project name ("Axie Infinity"), not
+        # the bare ticker ("AXS") — ticker queries drag in price pages and
+        # read neutral. Unknown tickers degrade to the stripped base.
+        coin_name = symbol_to_coin_name(symbol)
 
         # Get news
         news = self._get_news(coin_name)

@@ -26,9 +26,64 @@ from typing import Any, Dict, List
 
 import requests
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 from requests.adapters import HTTPAdapter
 
+from src.coin_names import symbol_to_coin_name
 from src.llm_client import get_llm_client
+
+# WO-1015: Jina's general search floods the top-10 for big-cap coins with
+# aggregator / price / verification pages (TradingView tickers, exchange
+# pages, "Just a moment...", bare site names). These markers were derived
+# from observed junk titles; misses only degrade to extra neutral items.
+_JUNK_TITLE_MARKERS = (
+    "human verification",
+    "just a moment",
+    "access denied",
+    "are you a robot",
+    "price:",
+    "price today",
+    "live price",
+    "price chart",
+    "price usd",
+    "usd price",
+    "btc-usd",
+    "price and chart",
+    "price history",
+    "price data",
+    "market cap",
+    "marketcap",
+    "buy and sell",
+    "live updates",
+    "live charts",
+    "pricing",
+    "news today |",
+    "on x",  # x.com account pages: "... (@account) on X"
+)
+_JUNK_HOSTS = ("youtube.com",)  # crypto YouTube is clickbait noise
+_JUNK_TITLE_MAX_LEN = 10  # bare site names: "The Block", "reuters.com"
+
+
+def _looks_like_junk(article: Dict) -> bool:
+    title = (article.get("title") or "").strip().lower()
+    url = (article.get("url") or "").lower()
+    if not title or len(title) <= _JUNK_TITLE_MAX_LEN:
+        return True
+    # bare domain titles: "reuters.com"
+    if " " not in title and title.endswith((".com", ".net", ".org", ".io")):
+        return True
+    # category pages: "Latest {coin} News - (SYM) Future Outlook..."
+    # or "Latest {coin} News | crypto.news" — the coin name separates
+    # "latest" from "news", so plain substring markers cannot catch them.
+    if title.startswith("latest ") and ("news -" in title or "news |" in title):
+        return True
+    for marker in _JUNK_TITLE_MARKERS:
+        if marker in title:
+            return True
+    for host in _JUNK_HOSTS:
+        if host in url:
+            return True
+    return False
 
 
 class _IPv4HTTPAdapter(HTTPAdapter):
@@ -275,6 +330,14 @@ class MarketResearcher:
         # without touching the pool timeout. DDGS fallback still behind.
         import time as _time
 
+        # WO-1015: ticker-based queries ("AXS+crypto+latest+news") surface
+        # price/aggregator pages (TradingView, exchange pages, CoinDesk
+        # fronts) — sentiment parsed non-news content and read neutral with
+        # LOW confidence. Search on the human project name instead:
+        # "Axie Infinity crypto news today". Unknown tickers degrade to the
+        # stripped base (still better than a full pair symbol).
+        coin_name = symbol_to_coin_name(coin)
+
         for attempt in range(2):
             try:
                 if attempt > 0:
@@ -282,7 +345,7 @@ class MarketResearcher:
                         min(2**attempt, 30)
                     )  # exponential: 2s, 4s, 8s, 16s (cap 30s)
                 resp = _jina_session.get(
-                    f"https://s.jina.ai/{coin}+crypto+latest+news",
+                    f"https://s.jina.ai/{quote_plus(coin_name + ' news')}",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Accept": "application/json",
@@ -291,10 +354,12 @@ class MarketResearcher:
                 )
                 data = resp.json()
 
-                articles = []
-                for r in data.get("data", [])[:5]:  # Cap at 5 articles
+                # WO-1015: pull 10, drop price/aggregator/verification pages,
+                # keep the top 5 REAL articles (see _looks_like_junk).
+                raw_articles = []
+                for r in data.get("data", [])[:10]:
                     text = r.get("description", "") or r.get("content", "")
-                    articles.append(
+                    raw_articles.append(
                         {
                             "title": r.get("title", ""),
                             "summary": text[:300],
@@ -307,6 +372,18 @@ class MarketResearcher:
                             "url": r.get("url", ""),
                         }
                     )
+                articles = [a for a in raw_articles if not _looks_like_junk(a)][:5]
+
+                # WO-1015: big-cap coins (BTC) filter down to ZERO real articles
+                # in Jina's top-10 — top up from DDGS's news vertical, which
+                # reliably returns actual articles. Fail-open afterwards:
+                # unfiltered results still beat an empty news list.
+                if len(articles) < 3:
+                    articles.extend(
+                        self._ddgs_news_supplement(coin_name, 5 - len(articles))
+                    )
+                if not articles:
+                    articles = raw_articles[:5]
 
                 # Batch sentiment: one LLM call for all articles instead of per-article
                 if articles:
@@ -348,29 +425,59 @@ class MarketResearcher:
         )
         return self._research_news_ddgs(coin)
 
-    def _research_news_ddgs(self, coin: str) -> List[Dict]:
-        """Fallback news search using DuckDuckGo when Jina is unavailable."""
+    def _ddgs_news_supplement(self, coin_name: str, need: int) -> List[Dict]:
+        """WO-1015: top up a thin Jina result set from DDGS's news vertical.
+
+        The news vertical returns actual articles (source, date, body);
+        general web search returns the same price/aggregator pages the
+        Jina query fix is fighting, so it is not used here.
+        """
+        if need <= 0:
+            return []
         try:
             from ddgs import DDGS
 
-            ddgs = DDGS()
-            raw = list(ddgs.text(f"{coin} crypto news", max_results=5))
+            raw = list(DDGS().news(coin_name, max_results=need))
+        except Exception as e:
+            logger.warning(f"MarketResearcher: DDGS news top-up failed: {e}")
+            return []
+        articles = []
+        for r in raw:
+            articles.append(
+                {
+                    "title": r.get("title", ""),
+                    "summary": (r.get("body", "") or "")[:300],
+                    "sentiment": 0.0,
+                    "source": r.get("source", ""),
+                    "url": r.get("url", ""),
+                }
+            )
+        return articles
+
+    def _research_news_ddgs(self, coin: str) -> List[Dict]:
+        """Fallback news search using DuckDuckGo when Jina is unavailable.
+
+        WO-1015: uses the news vertical (ddgs.news) — it returns real
+        articles, not the price/aggregator pages general search surfaces.
+        """
+        try:
+            from ddgs import DDGS
+
+            coin_name = symbol_to_coin_name(coin)
+            raw = list(DDGS().news(coin_name, max_results=5))
             if not raw:
                 return []
 
             articles = []
             for r in raw:
+                # news rows: title/body/source(url) url/date — no href field
                 articles.append(
                     {
                         "title": r.get("title", ""),
                         "summary": (r.get("body", "") or "")[:300],
                         "sentiment": 0.0,
-                        "source": (
-                            r.get("href", "").split("/")[2]
-                            if "/" in r.get("href", "")
-                            else ""
-                        ),
-                        "url": r.get("href", ""),
+                        "source": r.get("source", ""),
+                        "url": r.get("url", ""),
                     }
                 )
 
