@@ -155,6 +155,22 @@ class PaperTrader:
                 "options": {"defaultType": "spot"},
             }
         )
+        # WO-1013 (bug#34 recurrence): this bare read-only instance never
+        # got the proxy pin the auth'd client got (ccxt_client.py bug#34).
+        # A default ccxt session ignores HTTP(S)_PROXY in cron shells, so
+        # load_markets/fetch_ticker went direct and died on the GFW ->
+        # place_order returned None -> test_e2e_stages test_trade_executor
+        # stable failure (10/4). Same helper, same BINANCE_PROXY=off /
+        # <url> override semantics; never blocks construction.
+        try:
+            from scripts.report_validator import apply_session_proxy
+            if apply_session_proxy(self._price_exchange):
+                logger.info(
+                    "PaperTrader: price-exchange proxy pinned (%s)",
+                    os.environ.get(
+                        "BINANCE_PROXY", "http://127.0.0.1:17890"))
+        except Exception as _e:
+            logger.warning("PaperTrader: proxy pin skipped: %s", _e)
         try:
             self._price_exchange.load_markets()
         except Exception as e:
