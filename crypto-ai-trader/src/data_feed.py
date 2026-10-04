@@ -227,7 +227,7 @@ class DataFeedManager:
         try:
             resp = requests.get(
                 "https://api.coingecko.com/api/v3/global",
-                timeout=10,
+                timeout=20,  # WO-1012: free-tier latency
             )
             resp.raise_for_status()
             data = resp.json().get("data", {})

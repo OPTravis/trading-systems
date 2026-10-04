@@ -135,7 +135,7 @@ class NewsFeed:
             url += f"&api_key={self._api_key}"
 
         try:
-            resp = requests.get(url, params=params, timeout=15)
+            resp = requests.get(url, params=params, timeout=25)  # WO-1012
             resp.raise_for_status()
             data = resp.json()
             raw_articles = data.get("Data", [])

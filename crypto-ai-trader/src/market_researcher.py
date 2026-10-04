@@ -266,11 +266,16 @@ class MarketResearcher:
             logger.warning("MarketResearcher: JINA_API_KEY not set, skipping news")
             return []
 
-        # FIX-10: Retry up to 3 times with exponential backoff (2s, 4s, 8s = 14s total)
-        # Reduced from 5 retries (60s worst-case) — 3 retries fits within RESEARCH_TIMEOUT
+        # FIX-10 / WO-1012: 3 consecutive 12s timeouts observed on
+        # s.jina.ai (curl-side latency spikes to 8-21s are real; in-proc
+        # timeout=12 failed 3/3 while timeout=45 passed 3/3). A slow
+        # window outlasts quick retries, so ONE long attempt beats
+        # several short ones: timeout 12->25s, attempts 3->2.
+        # Worst case 25+2+25 = 52s < RESEARCH_TIMEOUT(60) — budget holds
+        # without touching the pool timeout. DDGS fallback still behind.
         import time as _time
 
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 if attempt > 0:
                     _time.sleep(
@@ -282,7 +287,7 @@ class MarketResearcher:
                         "Authorization": f"Bearer {api_key}",
                         "Accept": "application/json",
                     },
-                    timeout=12,
+                    timeout=25,
                 )
                 data = resp.json()
 
@@ -330,10 +335,11 @@ class MarketResearcher:
                 return articles
 
             except Exception as e:
-                if attempt == 1:
-                    logger.error(
-                        f"MarketResearcher: news search failed for {coin}: {e}"
-                    )
+                # attempt==1 is now the last try (2 attempts total)
+                logger.error(
+                    f"MarketResearcher: news search failed for {coin} "
+                    f"(attempt {attempt + 1}/2): {e}"
+                )
                 continue
 
         # Jina failed after 3 retries — fall back to DDGS

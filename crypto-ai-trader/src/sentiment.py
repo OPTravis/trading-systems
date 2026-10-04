@@ -28,7 +28,7 @@ def tavily_search(query: str, count: int = 10) -> Optional[Dict]:
         response = requests.post(
             "https://api.tavily.com/search",
             json={"query": query, "api_key": api_key, "max_results": count},
-            timeout=10,
+            timeout=20,  # WO-1012: external search API, Jina-class latency
         )
         return response.json()
     except Exception as e:

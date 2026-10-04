@@ -178,7 +178,7 @@ class DimensionScorer:
                 url,
                 headers={"Authorization": f"Bearer {api_key}"},
                 params={"startday": _start.isoformat(), "endday": _end.isoformat()},
-                timeout=8,
+                timeout=20,  # WO-1012: external metrics API
             )
             resp.raise_for_status()
             data = resp.json()

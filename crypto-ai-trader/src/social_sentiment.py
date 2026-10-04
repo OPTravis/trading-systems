@@ -76,7 +76,7 @@ class SocialSentimentAnalyzer:
 
             url = f"https://api.coingecko.com/api/v3/coins/{coin_id}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=false"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:  # WO-1012
                 data = json.loads(resp.read())
 
             community = data.get("community_data", {})

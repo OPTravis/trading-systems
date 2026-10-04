@@ -44,3 +44,4 @@ ruff>=0.1.0
 
 # Reporting
 openpyxl>=3.1.0
+ddgs>=9  # WO-1012: DDGS news fallback (duckduckgo_search successor)
