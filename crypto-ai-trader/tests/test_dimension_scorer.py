@@ -282,10 +282,14 @@ class TestMVRVScoring:
         assert any("mvrv_below_avg" in s for s in result["signals"])
 
     def test_mvrv_neutral_zone(self):
-        """MVRV 1.5-3.0 should not add any MVRV signal."""
+        """MVRV 1.5-3.0 emits only the observation band (WO-1018), no scored band."""
         result = self._score_with_mvrv(2.0)
         assert result["data"]["mvrv"] == 2.0
-        assert not any("mvrv_" in s for s in result["signals"])
+        assert any("mvrv_fair_value_2.00" in s for s in result["signals"])
+        assert not any(
+            m in s for s in result["signals"] for m in (
+                "mvrv_bottom", "mvrv_undervalued", "mvrv_below_avg",
+                "mvrv_top", "mvrv_overvalued"))
 
     def test_mvrv_top_zone(self):
         """MVRV > 3.7 should add -0.4 and produce top signal."""

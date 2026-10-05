@@ -265,6 +265,12 @@ class DimensionScorer:
                         elif avg_chg < -1:
                             score -= 0.2
                             signals.append(f"tvl_fallback_outflow_{avg_chg:+.1f}pct")
+                        else:
+                            # WO-1018: neutral band — data exists but avg is in
+                            # [-1, +1]; emit a flat signal so Data-health never
+                            # reports "onchain []" for a data-bearing round.
+                            # Score math unchanged (neutral keeps 0 offset).
+                            signals.append(f"tvl_fallback_flat_{avg_chg:+.1f}pct")
                 except Exception as e:
                     logger.warning("dimension_scorer._score_onchain: " + str(e))
                     pass
@@ -293,7 +299,11 @@ class DimensionScorer:
             elif mvrv > 3.0:
                 score -= 0.2
                 signals.append(f"mvrv_overvalued_{mvrv:.2f}")
-            # else: 1.5-3.0 = neutral, no signal
+            else:
+                # WO-1018: 1.5-3.0 = fair value — emit an observation-only
+                # signal so "data present but zero signals" can't happen
+                # when TVL sources both fail while MVRV is available.
+                signals.append(f"mvrv_fair_value_{mvrv:.2f}")
 
         # --- Backup: BTC volume from Binance (always available) ---
         if not self.client:
@@ -308,6 +318,9 @@ class DimensionScorer:
                 price_change = float(stats.get("price_change_pct", 0))
                 data["btc_volume_24h"] = vol
                 data["btc_price_change"] = price_change
+                # WO-1018: observation-only line — guarantees a signal
+                # whenever the BTC stats block has data (score untouched)
+                signals.append(f"btc_vol_{vol/1e9:.1f}B")
 
                 # BTC volume as secondary signal (smaller weight than TVL)
                 if vol > 5_000_000_000 and price_change > 1.5:
@@ -563,6 +576,11 @@ class DimensionScorer:
             elif fng >= 60:
                 score = -0.1
                 signals.append(f"CFGI_greed_{fng}")
+            else:
+                # WO-1018: fng in (45, 60) = neutral market mood — previously
+                # zero signals while data existed (same blind spot class as
+                # the onchain fallback flat band). Observation-only.
+                signals.append(f"CFGI_neutral_{fng}")
 
         except Exception as e:
             logger.warning(f"Sentiment scoring failed: {e}")
