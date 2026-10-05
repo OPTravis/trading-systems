@@ -9,6 +9,8 @@ import logging
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, ".")
 
 import src.data_feed_onchain as dfo
@@ -19,6 +21,16 @@ from src.dimension_scorer import DimensionScorer
 
 
 CHAINS = list(DeFiLlamaOnChain.MAJOR_CHAINS)  # 7 chains
+
+
+@pytest.fixture(autouse=True)
+def _isolate_disk_cache(tmp_path, monkeypatch):
+    """WO-1017: DeFiLlamaOnChain persists last-known-good TVL to disk and
+    serves it on empty rounds; point CACHE_FILE at an empty tmp path so no
+    test in this file reads or writes the real production cache file."""
+    empty = str(tmp_path / "onchain_tvl_cache.json")
+    monkeypatch.setenv("ONCHAIN_TVL_CACHE_PATH", empty)
+    monkeypatch.setattr(dfo, "CACHE_FILE", empty)
 
 
 def _fake_as_completed_factory(n_ok):

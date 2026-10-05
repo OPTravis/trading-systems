@@ -149,6 +149,33 @@ class TestJunkFilter:
             {"title": "403 - Operations too frequent", "url": "https://x/1"}
         )
 
+    @pytest.mark.parametrize(
+        "title",
+        [
+            # WO-1017 evidence: category / official-site / blog-index shapes
+            "Cardano (ADA) News Headlines | Nasdaq",
+            "Cardano, Secure Decentralized Blockchain Platform",
+            "Blog | Ondo Finance",          # blog prefix
+            "NEAR Protocol Blog | Web3 Insights",  # blog infix
+            "The Sui Blog",                  # blog trailing (old rule too)
+            "Home | Nillion",
+            "Cardano: Latest News, Social Media Updates and Insights | CryptoRank.io",
+            "Ondo (ONDO) Price Forecasts, Predictions & News",
+        ],
+    )
+    def test_wo1017_residual_shapes_dropped(self, title):
+        assert _looks_like_junk({"title": title, "url": "https://x/1"})
+
+    def test_wo1017_blog_rule_keeps_non_blog_articles(self):
+        assert not _looks_like_junk(
+            {"title": "Ondo Finance expands tokenized treasuries to new chains",
+             "url": "https://x/1"}
+        )
+
+    def test_wo1017_nil_mapped_to_nillion(self):
+        # US college-sports NIL (Name/Image/Likeness) collision
+        assert symbol_to_coin_name("NILUSDT") == "Nillion"
+
     def test_wo1016_category_page_needs_coin_context(self):
         # "Litecoin News" alone is a bare outlet category page
         assert _looks_like_junk(

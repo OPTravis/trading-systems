@@ -1,6 +1,6 @@
 {
   "pipeline": "weekly_backtest",
-  "timestamp": "2026-09-27T09:18:19",
+  "timestamp": "2026-10-04T09:14:07",
   "mode": "trend_on_live",
   "total_return_pct": 0.0,
   "total_trades": 0,
@@ -15,7 +15,7 @@
   "has_degradation": false,
   "all_ok": true,
   "alpha_reference": {
-    "total_return_pct": 2.62,
+    "total_return_pct": 0.68,
     "note": "trend OFF, reference only, not used for alerts"
   }
 }

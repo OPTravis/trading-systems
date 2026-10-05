@@ -8,6 +8,14 @@ Design:
 - Retry with exponential backoff per chain (2 retries, 1s/2s delays)
 - In-memory cache with 1-hour TTL for graceful degradation
 - 10s per-request timeout (down from 15s)
+- WO-1017: disk-persisted per-chain cache with a 2h fallback TTL.
+  Callers (dimension_scorer, price_predictor) build a fresh instance per
+  scan round, so an instance-scoped memory cache can never carry a value
+  across rounds -- the 7 empty rounds on 10/5 (13:52-19:52) hit exactly
+  that hole. The last known-good values now live in a JSON file and are
+  served when an entire fetch round comes back empty and the values are
+  younger than FALLBACK_TTL; beyond it the dimension goes empty and the
+  WARN stays.
 """
 
 from __future__ import annotations
@@ -22,12 +30,24 @@ import requests
 logger = logging.getLogger(__name__)
 
 # Cache TTL in seconds
-CACHE_TTL = 3600  # 1 hour
+CACHE_TTL = 3600  # 1 hour (in-memory)
+
+# WO-1017: fallback window for the disk-persisted last-known-good values
+FALLBACK_TTL = 7200  # 2 hours; beyond this the dimension goes empty
 
 # Retry config
 MAX_RETRIES = 2
 RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
 REQUEST_TIMEOUT = 10  # seconds per request
+
+import json
+import os
+
+# WO-1017: cross-round persistence (callers create a fresh instance every
+# scan round; /root/trading-state already hosts the runtime state files)
+CACHE_FILE = os.environ.get(
+    "ONCHAIN_TVL_CACHE_PATH", "/root/trading-state/onchain_tvl_cache.json"
+)
 
 
 class DeFiLlamaOnChain:
@@ -49,8 +69,35 @@ class DeFiLlamaOnChain:
     ]
 
     def __init__(self) -> None:
-        self._cache: Dict[str, float] = {}
+        # WO-1017: per-chain last-known-good {chain: {"chg": float, "ts": ts}}
+        self._cache: Dict[str, Dict] = self._load_disk_cache()
         self._cache_ts: float = 0.0
+
+    # ---- WO-1017: disk persistence helpers (fail-open) ----
+
+    def _load_disk_cache(self) -> Dict[str, Dict]:
+        try:
+            with open(CACHE_FILE) as f:
+                data = json.load(f)
+            chains = data.get("chains", {})
+            if isinstance(chains, dict) and all(
+                isinstance(v, dict) and "chg" in v and "ts" in v
+                for v in chains.values()
+            ):
+                return chains
+            logger.warning("DeFiLlama cache file malformed, ignoring: %s", CACHE_FILE)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning("DeFiLlama cache read failed (%s), ignoring", e)
+        return {}
+
+    def _persist_disk_cache(self) -> None:
+        try:
+            with open(CACHE_FILE, "w") as f:
+                json.dump({"chains": self._cache, "written": time.time()}, f)
+        except Exception as e:
+            logger.warning("DeFiLlama cache write failed: %s", e)
 
     def _fetch_chain_tvl_change(self, chain: str) -> Optional[float]:
         """Fetch 1-day TVL change % for a single chain with retry."""
@@ -131,19 +178,38 @@ class DeFiLlamaOnChain:
             )
 
         if results:
-            self._cache = results
-            self._cache_ts = time.time()
+            # WO-1017: merge into the per-chain last-known-good store and
+            # persist, so a later empty round (possibly in a NEW process)
+            # can fall back. Partial rounds keep their WO-1010 semantics
+            # (no stale backfill here) but still refresh their own chains.
+            now = time.time()
+            for chain, chg in results.items():
+                self._cache[chain] = {"chg": chg, "ts": now}
+            self._cache_ts = now
+            self._persist_disk_cache()
             return results
 
-        # All fetches failed — try cache
-        if self._cache and (time.time() - self._cache_ts) < CACHE_TTL:
-            logger.info(
-                "Using cached DeFiLlama data (%d chains, age %.0fs)",
-                len(self._cache),
-                time.time() - self._cache_ts,
+        # All fetches failed — fall back to last-known-good values
+        # (memory first, disk-backed), per chain, within FALLBACK_TTL.
+        now = time.time()
+        stale = {
+            chain: entry["chg"]
+            for chain, entry in self._cache.items()
+            if now - entry.get("ts", 0) < FALLBACK_TTL
+        }
+        if stale:
+            logger.warning(
+                "DeFiLlama fetch round EMPTY for all %d chains — serving "
+                "last-known-good TVL for %d chain(s) within %ds TTL",
+                len(self.MAJOR_CHAINS), len(stale), FALLBACK_TTL,
             )
-            return self._cache
+            return stale
 
+        logger.warning(
+            "DeFiLlama fetch round EMPTY and no fresh fallback within "
+            "%ds TTL — on-chain dimension goes empty this round",
+            FALLBACK_TTL,
+        )
         return results
 
     def get_onchain_score(self) -> float:

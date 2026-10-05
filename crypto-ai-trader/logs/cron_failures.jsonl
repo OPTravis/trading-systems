@@ -1,2 +1,10 @@
 {"timestamp":"2026-09-24T14:11:29+08:00","job":"cron-scan","exit_code":1}
 {"timestamp": "2026-09-26T05:51:29.540057", "job": "report_validator", "exit_code": 1, "detail": "blocked notif notif_20260926055108122988: balance-claim-mismatch: body claims $0.4702, DB cash = 396.97351643999997"}
+{"timestamp": "2026-09-30T20:42:23.739287", "job": "report_validator", "exit_code": 1, "detail": "blocked notif notif_20260930204130825063: balance-claim-mismatch: body claims $0.0102, DB cash = 403.18756139799996"}
+{"timestamp": "2026-10-01T14:21:26.293186", "job": "report_validator", "exit_code": 1, "detail": "blocked notif notif_20261001142059017050: balance-claim-mismatch: body claims $5.504, DB cash = 398.66621358"}
+{"timestamp":"2026-10-02T09:11:09+08:00","job":"cron-scan","exit_code":1}
+{"timestamp":"2026-10-02T09:23:56+08:00","job":"cron-scan","exit_code":1}
+{"timestamp":"2026-10-02T09:31:30+08:00","job":"cron-scan","exit_code":1}
+{"timestamp":"2026-10-02T09:41:03+08:00","job":"cron-scan","exit_code":1}
+{"timestamp":"2026-10-02T09:51:03+08:00","job":"cron-scan","exit_code":1}
+{"timestamp": "2026-10-02T20:51:49.215023", "job": "report_validator", "exit_code": 1, "detail": "blocked notif notif_20261002205122551436: balance-claim-mismatch: body claims $0.5616, DB cash = 402.86802574"}

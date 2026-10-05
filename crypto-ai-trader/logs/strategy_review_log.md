@@ -159,3 +159,33 @@
 - Ops: proxy failover cn02 OK 11:10; DynamicGate GREED 1h respected (Leo 8/28 ruling; EXTREME_GREED 0.5h still dormant, unfired); daily-loss breaker 9/23 tier2 released 9/24; stepwise drawdown mild 3.5% x0.7 active.
 
 **Decision**: NO parameter change / NO code change / NO new strategy. Commit: none; pytest n/a (no diff). Leo notify: not required (no major change per rule 5; fix runs under 9/22 standing order "发现就修、立刻派单").
+
+### 2026-10-01 11:15 — Weekly strategy review #5 (NO param/code change)
+
+**Data**: no_signal_tracker(0d no-signal), trade_outcomes last 20 (15 closed: 7W/8L, avg net -0.36%), live cron-scan 11:14 (NO_OPPORTUNITIES, threshold 80/eff 82), weekly_learning+weekly_backtest (9/27), portfolio 3 holdings (ICP/PENGU/NEAR, gross $16.9, cash $398.4, equity ~$415, exposure 4.1%), BTC 200SMA computed live.
+
+**Step 2/3 rule evaluations**:
+1. Time-decay: consecutive_no_signal_days=0 (fills 9/30 ICP + 10/1 NEAR) -> floor cut 65->60 NOT triggered; floor stays 65.
+2. Grid: OFF (disabled by HMM HIGH_VOL), grid_state empty, zero grid loss -> nothing to tighten; FEAR+ADX<25+LOW/NORMAL spec unchanged.
+3. F&G 71->74 (GREED) regime-mapping re-check per rule 3c: GREED threshold 80 (eff 82), bollinger ON size=100% SL6% hold48h, dca OFF (greed), rsi OFF (greed), trend/grid/vwap OFF (HMM HIGH_VOL, data-driven), BTC trend gate CONFIRMED_BULL 1.0x, bull_regime MILD_BULL confirm 0/2 — all per design; mapping correct, no change.
+4. BTC $83,508 vs 200SMA $71,353 = +17.0% (>>5% proximity) -> no trend-filter-removal prep (rule 3d).
+
+**Step 2 strategy sanity**:
+- bollinger: sole enabled strategy AND largest cumulative loser (17 trades, avg -2.03%, sum -$10.2; within last-20 window 2W/5L, all exits at designed 5-7% SL — bounded). Under walk-forward hard constraint (alpha PF at 1.00 line) no parameter/architecture change permitted; re-review after HMM leaves HIGH_VOL and multi-strategy resumes.
+- switch: 29 trades, 51.7% WR, avg +1.79%, +$11.7 — healthy, unchanged.
+- HMM HIGH_VOL persists -> single-strategy mode is data-driven, by design; no override.
+
+**Findings / watch updates**:
+- [9/24 watch resolved-decision] walk-forward alpha re-judge (due 10/1): 9/27 bare alpha portfolio PF 1.00 (+0.05%, 1250 trades; SOL 1.01/ETH 1.28/AVAX 0.94/BNB 0.74/LINK 1.02). Both unlock conditions (a) outcomes cleaned (b) PF>1.05 still unmet -> param_optimizer search-space widening stays DEFERRED. param_optimization 9/27 rejected again (0 trades < 5) — gate working as designed.
+- [WATCH x3wk] BNB backtest negative PF 3rd straight week (0.84/0.74/0.74). Keep in pool for walk-forward baseline continuity; do not cherry-pick mid-decay. Re-judge if 4th negative week.
+- [DATA-INTEGRITY, carried] trade_outcomes 19 open rows vs 3 actual holdings — reconciliation improving (ledger shadow clean 20+ consecutive rounds, switch/reconciled rows closing normally) but stale-row backfill not fully landed. Structural fix in flight under WO-1003 exit-parity / WO-1005 audit funnel; re-dispatch only if still >10 stale rows at 10/8 review.
+- [Fix progress verified] WO-1006 landed 10/1 08:56 (clamp SL price to placeable band, kills TP-only rescue -2010 loop — covers ensure_tp_sl fee-shortfall fix). WO-1001..1005 batch-landed 9/30 (REST+TG control plane, config SSOT, prod-DB write guard, hyperopt TPE w/ walk-forward dual gate, DRYRUN isolation). Reconciler live-verified in 11:14 scan. Of the four in-flight fixes, 3 have landed evidence; dca fallback direction gate has no direct commit yet but dca is OFF (greed) — not blocking.
+- Weekly PnL since 9/24: 31 closed, net ≈ -$1.47 (~-0.36% of equity) — mild, no systemic degradation. DynamicGate GREED 1h cadence respected (Leo 8/28 ruling); 10:40 & 11:00 SKIPs were correct gate behavior.
+
+**Decision**: NO parameter change / NO code change / NO new strategy. Commit: none; pytest n/a (no diff). Leo notify: not required (no major change per rule 5).
+
+## CVaR shadow 期满拍板（2026-10-02 10:30，Leo 拍板）
+- **决定：阶段二不激活，shadow 延长（方案 A）**——7 天对拍：257 样本、88.3% 缩仓命中（scale 0.8）、medium 227/low 30 无 high、激活则仓位 -17.7%
+- **复评触发条件（任一命中即提请 Leo 复评）**：①cvar_95 破 -10 ②risk_level 出现 high ③策略池恢复（evolver 重新启用策略，当前 bollinger 被 PF<1 禁用中）
+- 复评节点：下次策略周检讨（约 10/8）自动带入本决定；周检讨模板须核对上述三个触发条件
+- 依据：样本全牛市段缺熊市验证；bollinger 禁用期无新仓 overlay 无用武之地；greed 期全程压仓拖累收益

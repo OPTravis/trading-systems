@@ -4114,5 +4114,101 @@
     "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
     "strategy": "bollinger",
     "notified": false
+  },
+  {
+    "id": "PENGUUSDT_20260930204130",
+    "timestamp": "2026-09-30T20:41:30.817015",
+    "type": "SWITCH",
+    "symbol": "PENGUUSDT",
+    "action": "SWITCH",
+    "price": 0.0102,
+    "quantity": 614.0,
+    "reason": "0GUSDT -> PENGUUSDT: score gap=18 > 10.0 (62\u219280)",
+    "strategy": "switch",
+    "notified": false
+  },
+  {
+    "id": "NEARUSDT_20261001023057",
+    "timestamp": "2026-10-01T02:30:57.594781",
+    "type": "BUY",
+    "symbol": "NEARUSDT",
+    "action": "OPEN",
+    "price": 5.446,
+    "quantity": 1.1988,
+    "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "NEARUSDT_20261001142059",
+    "timestamp": "2026-10-01T14:20:59.008923",
+    "type": "SWITCH",
+    "symbol": "NEARUSDT",
+    "action": "SWITCH",
+    "price": 5.504,
+    "quantity": 1.0,
+    "reason": "ICPUSDT -> NEARUSDT: score gap=26 > 10.0 (58\u219285)",
+    "strategy": "switch",
+    "notified": false
+  },
+  {
+    "id": "BTCUSDT_20261001232144",
+    "timestamp": "2026-10-01T23:21:44.478950",
+    "type": "BUY",
+    "symbol": "BTCUSDT",
+    "action": "OPEN",
+    "price": 84238.64,
+    "quantity": 7.992e-05,
+    "reason": "\ud83d\ude80 Multi-TF Bullish Alignment / \ud83d\udcaa Strong Trend Score: 85 / \ud83d\ude80 1h Strong Uptrend",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "ZROUSDT_20261002033959",
+    "timestamp": "2026-10-02T03:39:59.304325",
+    "type": "BUY",
+    "symbol": "ZROUSDT",
+    "action": "OPEN",
+    "price": 1.803,
+    "quantity": 3.32667,
+    "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "MEGAUSDT_20261002041821",
+    "timestamp": "2026-10-02T04:18:21.409565",
+    "type": "BUY",
+    "symbol": "MEGAUSDT",
+    "action": "OPEN",
+    "price": 0.051,
+    "quantity": 117.5823,
+    "reason": "\u2705 Multi-TF Entry Signal (long) / \ud83d\udcc8 Moderate Trend Score: 50 / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "AAVEUSDT_20261002063107",
+    "timestamp": "2026-10-02T06:31:07.622530",
+    "type": "BUY",
+    "symbol": "AAVEUSDT",
+    "action": "OPEN",
+    "price": 171.61,
+    "quantity": 0.034965,
+    "reason": "\ud83d\udcaa Strong Trend Score: 75 / \ud83d\ude80 1h Strong Uptrend / \u2705 MACD Bullish (1h+4h)",
+    "strategy": "bollinger",
+    "notified": false
+  },
+  {
+    "id": "WLDUSDT_20261002205122",
+    "timestamp": "2026-10-02T20:51:22.543045",
+    "type": "SWITCH",
+    "symbol": "WLDUSDT",
+    "action": "SWITCH",
+    "price": 0.5616,
+    "quantity": 10.9,
+    "reason": "ZROUSDT -> WLDUSDT: score gap=12 > 10.0 (66\u219278)",
+    "strategy": "switch",
+    "notified": false
   }
 ]

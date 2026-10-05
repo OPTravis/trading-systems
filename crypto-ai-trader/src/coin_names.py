@@ -123,6 +123,7 @@ BASE_TO_NAME: dict[str, str] = {
     "CHZ": "Chiliz",
     "MASK": "Mask Network",
     "ORCA": "Orca crypto",  # WO-1016: bare ticker returns orca-whale news
+    "NIL": "Nillion",  # WO-1017: bare ticker returns US college-sports NIL news
     "C98": "Coin98",
     "ALPACA": "Alpaca crypto",
     "BEL": "Bella Protocol",

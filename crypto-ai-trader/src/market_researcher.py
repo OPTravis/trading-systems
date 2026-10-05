@@ -76,6 +76,18 @@ _JUNK_TITLE_MARKERS = (
     "latest stock news",  # Yahoo Finance quote category pages
     "trade ideas",  # TradingView idea boards
     "price prediction 20",  # stealthex-style prediction landing pages
+    # WO-1017: Nasdaq category pages / project official sites
+    "news headlines",  # "Cardano (ADA) News Headlines | Nasdaq"
+    "| nasdaq",
+    "decentralized blockchain platform",  # "Cardano, Secure Decentralized..."
+    # WO-1017: blog index pages in ANY position — "Blog | Ondo Finance"
+    # (prefix), "NEAR Protocol Blog | Web3 Insights" (infix) — replaces the
+    # old endswith(" blog") rule which only caught trailing forms
+    "blog",
+    # WO-1017: residual shapes from the NIL/ADA/ONDO verification sweep
+    "home |",  # official-site front pages: "Home | Nillion"
+    "social media updates",  # cryptorank-style aggregation pages
+    "price forecast",  # fxempire-style forecast landing pages
 )
 _JUNK_HOSTS = ("youtube.com",)  # crypto YouTube is clickbait noise
 _JUNK_TITLE_MAX_LEN = 10  # bare site names: "The Block", "reuters.com"
@@ -101,8 +113,6 @@ def _looks_like_junk(article: Dict, coin_name: Optional[str] = None) -> bool:
         for nm in names:
             if title == nm or title in (f"{nm} news", f"{nm} news today"):
                 return True
-        if title.endswith(" blog"):
-            return True
     # category pages: "Latest {coin} News - (SYM) Future Outlook..."
     # or "Latest {coin} News | crypto.news" — the coin name separates
     # "latest" from "news", so plain substring markers cannot catch them.
