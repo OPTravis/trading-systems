@@ -59,12 +59,29 @@ _JUNK_TITLE_MARKERS = (
     "pricing",
     "news today |",
     "on x",  # x.com account pages: "... (@account) on X"
+    # WO-1016: rate-limit / error pages
+    "operations too frequent",
+    "too frequent",
+    "403 -",
+    "404 -",
+    "access denied",
+    # WO-1016: outlet category pages, "{Coin} News | CoinDesk" et al.
+    "| coindesk",
+    "| cointelegraph",
+    "| decrypt",
+    # WO-1016: official-site promo pages, "Litecoin - Buy, Hold, Pay & Learn"
+    "buy, hold",
+    # WO-1016: more category/landing shapes observed in the 8-coin sweep
+    "crypto news (",  # public.com: "Avalanche Crypto News (AVAX)"
+    "latest stock news",  # Yahoo Finance quote category pages
+    "trade ideas",  # TradingView idea boards
+    "price prediction 20",  # stealthex-style prediction landing pages
 )
 _JUNK_HOSTS = ("youtube.com",)  # crypto YouTube is clickbait noise
 _JUNK_TITLE_MAX_LEN = 10  # bare site names: "The Block", "reuters.com"
 
 
-def _looks_like_junk(article: Dict) -> bool:
+def _looks_like_junk(article: Dict, coin_name: Optional[str] = None) -> bool:
     title = (article.get("title") or "").strip().lower()
     url = (article.get("url") or "").lower()
     if not title or len(title) <= _JUNK_TITLE_MAX_LEN:
@@ -72,6 +89,20 @@ def _looks_like_junk(article: Dict) -> bool:
     # bare domain titles: "reuters.com"
     if " " not in title and title.endswith((".com", ".net", ".org", ".io")):
         return True
+    # WO-1016: bare outlet category pages whose title is just the coin plus
+    # a news suffix ("Litecoin News", "Sui News Today", or the coin alone).
+    # Match both the full mapped name and its head word, because category
+    # pages use the short name even when our query said "Sui blockchain".
+    if coin_name:
+        cn = coin_name.strip().lower()
+        words = [w for w in cn.split() if w not in ("the", "of")]
+        head = words[0] if words else cn
+        names = {cn, head}
+        for nm in names:
+            if title == nm or title in (f"{nm} news", f"{nm} news today"):
+                return True
+        if title.endswith(" blog"):
+            return True
     # category pages: "Latest {coin} News - (SYM) Future Outlook..."
     # or "Latest {coin} News | crypto.news" — the coin name separates
     # "latest" from "news", so plain substring markers cannot catch them.
@@ -372,7 +403,11 @@ class MarketResearcher:
                             "url": r.get("url", ""),
                         }
                     )
-                articles = [a for a in raw_articles if not _looks_like_junk(a)][:5]
+                articles = [
+                    a
+                    for a in raw_articles
+                    if not _looks_like_junk(a, coin_name)
+                ][:5]
 
                 # WO-1015: big-cap coins (BTC) filter down to ZERO real articles
                 # in Jina's top-10 — top up from DDGS's news vertical, which

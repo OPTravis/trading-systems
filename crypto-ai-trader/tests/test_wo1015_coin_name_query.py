@@ -43,6 +43,36 @@ class TestCoinNameMapping:
     def test_non_quote_suffix_untouched(self):
         assert strip_quote_asset("AXSETH") == "AXSETH"
 
+    def test_wo1016_collision_coins_disambiguated(self):
+        # WO-1016: observed collisions (Mubarak obituaries, Aero aviation
+        # news, Avalanche NHL hockey, Sui category pages, orca whales,
+        # WLD Australian local news)
+        assert symbol_to_coin_name("MUBARAKUSDT") == "Mubarak meme coin"
+        assert symbol_to_coin_name("AEROUSDT") == "Aerodrome Finance"
+        assert symbol_to_coin_name("AVAXUSDT") == "Avalanche crypto"
+        assert symbol_to_coin_name("SUIUSDT") == "Sui blockchain"
+        assert symbol_to_coin_name("ORCAUSDT") == "Orca crypto"
+        assert symbol_to_coin_name("WLDUSDT") == "Worldcoin"
+        # LTC/ETH keep clean names; their residue (403 page, CoinDesk
+        # category page, official promo page) is handled by the junk filter
+
+    def test_wo1016_preventive_disambiguation(self):
+        # names that collide with non-crypto news topics (games, animals,
+        # sports teams, pop culture, generic words)
+        assert symbol_to_coin_name("SUSDT") == "Sonic blockchain"
+        assert symbol_to_coin_name("GASUSDT") == "Neo GAS token"
+        assert symbol_to_coin_name("ROSEUSDT") == "Oasis Network ROSE"
+        assert symbol_to_coin_name("JUPUSDT") == "Jupiter exchange"
+        assert symbol_to_coin_name("EOSUSDT") == "EOS crypto"
+        assert symbol_to_coin_name("ALPACAUSDT") == "Alpaca crypto"
+        assert symbol_to_coin_name("PENDLEUSDT") == "Pendle finance"
+
+    def test_wo1016_fan_tokens_keep_club_names(self):
+        # club news IS the real sentiment driver for fan tokens — not a
+        # collision (unlike Avalanche/NHL), so these must stay untouched
+        assert symbol_to_coin_name("PSGUSDT") == "Paris Saint-Germain"
+        assert symbol_to_coin_name("CITYUSDT") == "Manchester City"
+
     def test_table_entries_are_clean(self):
         for base, name in BASE_TO_NAME.items():
             assert base == base.upper(), f"key not upper: {base}"
@@ -90,6 +120,75 @@ class TestJunkFilter:
         assert _looks_like_junk(
             {"title": "Bitcoin just did something it hasn't done in 45 weeks",
              "url": "https://www.youtube.com/watch?v=x"}
+        )
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "403 - Operations too frequent",
+            "Ethereum (ETH) News | CoinDesk",
+            "Sui | CoinDesk",
+            "Solana (SOL) News Today | CoinDesk",
+            "Litecoin - Buy, Hold, Pay & Learn",
+            "Litecoin News",
+            "Avalanche Crypto News (AVAX)",
+            "Aerodrome Finance USD (AERO29270-USD) Latest Stock News & Headlines - Yahoo Finance",
+            "Aerodrome Finance Trade Ideas — CRYPTO:AERODUSD — TradingView",
+            "Aerodrome Finance (AERO) Price Prediction 2026, 2027-2030",
+            "Litecoin USD (LTC-USD) Latest Stock News & Headlines - Yahoo Finance",
+        ],
+    )
+    def test_wo1016_error_and_category_pages_dropped(self, title):
+        # bare rules work without coin context...
+        if title in ("403 - Operations too frequent", "Litecoin News"):
+            pytest.skip("needs coin_name context — covered below")
+        assert _looks_like_junk({"title": title, "url": "https://x.example/1"})
+
+    def test_wo1016_error_page_dropped(self):
+        assert _looks_like_junk(
+            {"title": "403 - Operations too frequent", "url": "https://x/1"}
+        )
+
+    def test_wo1016_category_page_needs_coin_context(self):
+        # "Litecoin News" alone is a bare outlet category page
+        assert _looks_like_junk(
+            {"title": "Litecoin News", "url": "https://x/1"}, "Litecoin"
+        )
+        assert _looks_like_junk(
+            {"title": "Sui News Today", "url": "https://x/1"}, "Sui blockchain"
+        )
+        assert _looks_like_junk(
+            {"title": "Ethereum", "url": "https://x/1"}, "Ethereum"
+        )
+        assert _looks_like_junk(
+            {"title": "The Sui Blog", "url": "https://x/1"}, "Sui blockchain"
+        )
+        # without coin context the plain title is too generic to judge
+        assert not _looks_like_junk(
+            {"title": "Litecoin News", "url": "https://x/1"}
+        )
+
+    def test_wo1016_real_articles_with_coin_context_survive(self):
+        # the exact 5 protected samples from the workorder constraint
+        assert not _looks_like_junk(
+            {"title": "Axie Infinity token jumps 123% as game devs push major rewards change",
+             "url": "https://x/1"}, "Axie Infinity"
+        )
+        assert not _looks_like_junk(
+            {"title": "Project Harmonia Brings Institutional Tokenized Funds to Solana",
+             "url": "https://x/1"}, "Solana"
+        )
+        assert not _looks_like_junk(
+            {"title": "Why bitcoin may be at an inflection point",
+             "url": "https://x/1"}, "Bitcoin"
+        )
+        assert not _looks_like_junk(
+            {"title": "Analyst warns Bitcoin is flashing a 2023 warning sign",
+             "url": "https://x/1"}, "Bitcoin"
+        )
+        assert not _looks_like_junk(
+            {"title": "The Lunacian | Axie Infinity | Substack",
+             "url": "https://x/1"}, "Axie Infinity"
         )
 
 
