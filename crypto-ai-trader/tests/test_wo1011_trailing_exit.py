@@ -242,9 +242,14 @@ class TestNoOpportunityRoundRunsExitStep:
         # branch 1: starved/exception round likewise (first shadow-diff)
         starved = branch_body("_step_ledger_shadow_diff(None)")
         assert sum("_step_exit_positions(ctx)" in l for l in starved) == 1
-        # normal chain unchanged (single run per round, never both)
+        # normal chain (single run per round, never both); updated by
+        # WO-1020 (10/8): the invariant guard step now sits between
+        # config_guard and the exit step — reconcile → guard → exit
+        # (the guard fixes what the exit step then re-verifies on
+        # clean books).
         chain = ("_step_reconcile_portfolio(ctx)\n"
                  "        _step_config_guard(ctx)\n"
+                 "        _step_invariant_guard(ctx)\n"
                  "        _step_exit_positions(ctx)\n"
                  "        _step_defense_sweep(ctx)")
         assert src.count(chain) == 1

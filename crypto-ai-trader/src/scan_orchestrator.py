@@ -231,6 +231,36 @@ def _step_config_guard(ctx=None):
                        exc_info=True)
 
 
+def _step_invariant_guard(ctx=None):
+    """WO-1020 (10/8): third protection layer — independent re-computation
+    of the three hard invariants per open position per round (SL band
+    incl. resting-stop legs, max_hold, qty drift vs exchange). Modeled on
+    the ledger shadow diff: a cheap audit that never trusts the layers it
+    watches. Breach -> ERROR alert (outbox + live_alerts) and, when
+    exit:mode=auto, a protective close via execute_exit(bypass_cooldown
+    =True) — the human-command lane, so it outranks the exit step's
+    cooldown cadence yet reuses its whole cancel->sell->book chain (dust
+    pre-flight included). qty_drift is alert-only (reconciler owns the
+    books). Guard itself fail-open: never blocks the pipeline. Runs once
+    per round, in every branch that runs _step_exit_positions, BEFORE it
+    (guard fixes what the exit step would then re-verify on clean books).
+    Does not touch guardian / evolver / reconciler."""
+    try:
+        from src.invariant_guard import run_guard
+        from src.paper_trader import get_trading_client
+        from src.state_db import get_state_db
+
+        client = (ctx or {}).get("client") or get_trading_client()
+        summary = run_guard(client, get_state_db())
+        if summary.get("breaches"):
+            logger.warning("invariant_guard: %d checked, breaches=%s",
+                           summary.get("checked", 0),
+                           [(b["sym"], b["kind"]) for b in summary["breaches"]])
+    except Exception:
+        logger.warning("invariant guard step failed (non-fatal)",
+                       exc_info=True)
+
+
 def _step_exit_positions(ctx):
     """WO-0931 (9/30): consume strategy exit signals (P1).
 
@@ -289,6 +319,10 @@ def cmd_cron_scan():
             # so running it on starved rounds is safe and keeps the
             # consecutive-clean clock meaningful.
             _step_ledger_shadow_diff(None)
+            # WO-1020 (10/8): starved rounds owe the invariant guard too —
+            # it is the layer that would have caught the PENGU 54h sit
+            # (see WO-1011 note above) even if the exit step regress.
+            _step_invariant_guard(ctx)
             # WO-1011 (10/3 PENGU lesson): starved/exception rounds still
             # owe the EXIT step — position management must not starve with
             # research. PENGU hit hold_expiry+SL conditions every 10-min
@@ -312,6 +346,10 @@ def cmd_cron_scan():
         if ctx is None:
             _append_scan_summary(None)
             _step_ledger_shadow_diff(None)
+            # WO-1020 (10/8): no-opportunity rounds owe the invariant
+            # guard as well — runs before the exit step, same ordering
+            # as the main chain.
+            _step_invariant_guard(ctx)
             # WO-1011 (10/3 PENGU lesson): no-opportunity rounds still owe
             # the EXIT step — exit conditions on holdings must be consumed
             # at scan granularity even when research returns nothing (the
@@ -329,6 +367,7 @@ def cmd_cron_scan():
                 "kv_preflight: FAIL — skipping new entries this scan")
         _step_reconcile_portfolio(ctx)
         _step_config_guard(ctx)
+        _step_invariant_guard(ctx)
         _step_exit_positions(ctx)
         _step_defense_sweep(ctx)
         _step_trailing_check(ctx)
