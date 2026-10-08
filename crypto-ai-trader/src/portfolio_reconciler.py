@@ -272,6 +272,26 @@ def _order_booked(db, order_id) -> bool:
     return db.trades_order_booked(order_id)
 
 
+def _buy_base_commission(fills: Optional[List[Dict]], base: str) -> float:
+    """WO-1019: base-asset commission the exchange settled on BUY fills.
+
+    Binance takes the BUY fee in the base asset for symbols with no BNB
+    balance (live case PENGUUSDT 10/1: bought 614, fee 0.614 PENGU). The
+    ledger books BUYs gross, so every fully-booked lifecycle still ends
+    with a permanent commission-sized net residue. Malformed rows count
+    as zero — underestimating keeps the caller fail-open to the old
+    behaviour.
+    """
+    total = 0.0
+    for f in fills or []:
+        if f.get("isBuyer") and f.get("commissionAsset") == base:
+            try:
+                total += float(f.get("commission") or 0)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
 from src.live_alerts import emit as emit_alert
 
 
@@ -705,6 +725,22 @@ def reconcile_portfolio_drift(client, db, log: Optional[logging.Logger] = None) 
                         exc_info=True)
             continue
         if fills:
+            # WO-1019: BUY-side base-commission residual. The ledger books
+            # BUYs gross while the exchange settles the fee in the base
+            # asset, so a fully-booked lifecycle keeps a permanent
+            # commission-sized net residue (PENGU 10/3-10/4: "gap 0.614"
+            # re-flagged every round with nothing left to book). Deduct
+            # the fee the exchange actually took before calling the gap
+            # real; the booking cap stays at the raw gap (fail-open).
+            buy_comm = _buy_base_commission(fills, _base_of(sym))
+            if buy_comm > 0 and gap - buy_comm <= max(
+                    ex_qty * (1.0 - DRIFT_QTY_FRACTION), DRIFT_QTY_ABS):
+                log.info(
+                    "reconcile: Path C %s residual gap %.8g fully explained "
+                    "by BUY-side base commission %.8g — balanced, skipped",
+                    sym, gap, buy_comm,
+                )
+                continue
             log.info(
                 "reconcile: Path C lookback %s (ledger net %.8g, gap %.8g)",
                 sym, net, gap,
