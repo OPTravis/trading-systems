@@ -20,6 +20,9 @@ Design rules (work order 2026-09-21):
 - sell-side actions (T2/T3) are gated by kv CIRCUIT_TIERS_MODE:
     "report" (default) — evaluate + alert only, no market sells
     "act"              — execute deleverage / liquidation
+  WO-1022 (10/8): flipping to "act" REQUIRES the partial-deleverage
+  fix verified (tests/test_wo1022_circuit_partial_close.py) — partial
+  sells must stay reconciler-anchored (see _sell_notional).
   The new-entry gate (T1 STOP_NEW) is always enforced — blocking entries
   costs nothing irreversible, mirroring the dust_reaper rollout philosophy.
 - Equity marks use live tickers; if any held symbol's price is missing the
@@ -280,17 +283,47 @@ def _regime_extreme(db):
 # -- actions ------------------------------------------------------------------
 
 def _sell_notional(client, portfolio, mark, sell_notional):
-    """Market-sell ~sell_notional worth of one position (dust_reaper style)."""
+    """Market-sell ~sell_notional worth of one position (dust_reaper style).
+
+    WO-1022 (10/8) fix for audit gap C1: a PARTIAL sell used to call
+    portfolio.close_position, which popped the whole row and booked
+    pnl/trade qty for the FULL position while binance only sold a slice:
+    sync_from_binance then rebuilt the row (max_hold clock reset +
+    stop_loss floor lost), leftover SL/TP legs outlived the trimmed
+    qty, and the booked SELL qty never matched the actual fill.
+
+    Reconciler-anchored semantics now (WO-0928 single-writer pattern):
+      - FULL sell (sell_notional ~= mark notional, i.e. liquidation):
+        legacy portfolio.close_position path is CORRECT — the whole
+        position really is gone.
+      - PARTIAL sell (deleverage trimming): keep the portfolio row
+        untouched; portfolio_reconciler books the fill from binance
+        myTrades next cycle (order-id idempotent) and trims qty while
+        preserving stop_loss floor and the BUY-anchored max_hold clock;
+        protection_guardian re-arms legs for the remaining qty.
+      - Resting SELL legs are cancelled BEFORE the market sell (locked
+        free rejects the sell and stale legs would outlive the trim).
+        Cancel failure only warns: T2/T3 are risk-reducing emergency
+        paths — aborting would leave the exposure fully intact.
+    """
+    symbol = mark["symbol"]
+    full_close = sell_notional >= mark.get("notional", 0.0) * 0.999
+    # WO-1022: pre-sell cancel of resting legs (best-effort)
+    try:
+        client.cancel_all_orders(symbol)
+    except Exception:
+        logger.warning("circuit_tiers: pre-sell cancel failed for %s "
+                       "(continuing)", symbol, exc_info=True)
     qty = min(mark["qty"], sell_notional / mark["price"])
     if qty <= 0:
         return None
     try:
         order = client.place_order(
-            symbol=mark["symbol"], side="SELL", order_type="MARKET",
+            symbol=symbol, side="SELL", order_type="MARKET",
             quantity=qty)
     except Exception:
         logger.error("circuit_tiers: sell failed for %s",
-                     mark["symbol"], exc_info=True)
+                     symbol, exc_info=True)
         return None
     if not order or not order.get("orderId"):
         return None
@@ -301,17 +334,27 @@ def _sell_notional(client, portfolio, mark, sell_notional):
             sum(float(f.get("qty", 0)) * float(f.get("price", 0))
                 for f in fills) / max(fq, 1e-12))
     else:
+        fq = qty
         close_price = mark["price"]
-    try:
-        portfolio.close_position(
-            mark["symbol"], close_price=close_price,
-            exit_reason="circuit_tiers_sell",
-            client_order_id=str(order.get("clientOrderId")
-                                or order.get("orderId")))
-    except Exception:
-        logger.error("circuit_tiers: close_position failed for %s",
-                     mark["symbol"], exc_info=True)
-    return {"symbol": mark["symbol"], "qty": qty, "price": close_price}
+    if full_close:
+        try:
+            portfolio.close_position(
+                symbol, close_price=close_price,
+                exit_reason="circuit_tiers_sell",
+                client_order_id=str(order.get("clientOrderId")
+                                    or order.get("orderId")))
+        except Exception:
+            logger.error("circuit_tiers: close_position failed for %s",
+                         symbol, exc_info=True)
+    else:
+        # WO-1022: row intentionally kept — reconciler books the fill
+        # and trims qty next cycle; floor + max_hold anchor stay intact.
+        logger.info(
+            "circuit_tiers: partial sell %s qty %s @ %s — portfolio row "
+            "kept for reconciler trim (floor/max_hold preserved)",
+            symbol, fq, close_price)
+    return {"symbol": symbol, "qty": fq, "price": close_price,
+            "partial": not full_close}
 
 
 def _deleverage_to_target(client, portfolio, marks, target_notional):

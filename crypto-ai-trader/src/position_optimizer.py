@@ -99,7 +99,24 @@ class PositionOptimizer:
                     symbol,
                 )
                 return
-            sl_px = self._round_tick(fill_px * (1 - 0.07), tick)
+            # WO-1022 (S4): per-symbol sl_pct overrides the legacy -7%
+            # stop (same kv ladder as exit_check: exit:{sym}:sl_pct →
+            # exit:sl_pct → 0.07 legacy). Keeps switch legs on the same
+            # band the invariant guard evaluates, so a tightened
+            # per-symbol band no longer leaves switch OC Os parked
+            # outside it (guard OFF_BAND_TOL tolerates same-band stops).
+            sl_pct = 0.07
+            try:
+                from src.state_db import get_state_db
+                _db = get_state_db()
+                for _k in (f"exit:{symbol}:sl_pct", "exit:sl_pct"):
+                    _v = _db.kv_get(_k)
+                    if _v is not None:
+                        sl_pct = max(0.01, float(_v) / 100.0)
+                        break
+            except Exception:
+                pass  # fail-open to the legacy -7%
+            sl_px = self._round_tick(fill_px * (1 - sl_pct), tick)
             tp_px = self._round_tick(fill_px * (1 + 0.04), tick)
 
             # --- OCO-first: one locked quantity, both legs ---
@@ -724,13 +741,22 @@ class PositionOptimizer:
                     logger.warning(f"Cannot verify minNotional for {from_symbol}: {e}")
 
             # 2. Cancel open orders first (TP/SL lock the quantity)
+            # WO-1022 (S6): a failed cancel used to continue into a
+            # min(qty, free) partial sell — the uncancelled TP legs kept
+            # the balance locked, the sell shrank, and the residue ran
+            # naked until the next guardian sweep. Abort instead: the
+            # switch retries next cycle with the old position's
+            # protection fully intact.
             try:
                 cancel_result = self.bc.cancel_all_orders(from_symbol)
                 if cancel_result:
                     logger.info(f"Cancelled open orders for {from_symbol}")
                     time.sleep(0.5)  # Brief wait for orders to settle
             except Exception as e:
-                logger.warning(f"Cancel orders failed for {from_symbol}: {e}")
+                logger.error(
+                    f"Switch aborted for {from_symbol}: cancel orders "
+                    f"failed ({e}) — keeping old position protected")
+                return False
 
             # 2b. Re-fetch actual free balance after canceling orders
             try:
