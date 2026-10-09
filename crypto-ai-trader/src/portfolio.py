@@ -278,6 +278,13 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                 old_entry = old["entry_price"]
                 new_qty = old_qty + quantity
                 new_entry = (old_qty * old_entry + quantity * entry_price) / new_qty
+                # WO-1023: an explicit SL on a merge must never move the
+                # floor DOWN — trailing-raised floors survive fresh legs
+                # whose GARCH-band stop sits lower; take max(old, new).
+                _old_sl = old.get("stop_loss")
+                _merge_sl = stop_loss
+                if stop_loss is not None and _old_sl and _old_sl > 0:
+                    _merge_sl = max(stop_loss, _old_sl)
                 self.positions[symbol] = {
                     "symbol": symbol,
                     "quantity": new_qty,
@@ -285,8 +292,8 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
                     "current_price": old.get("current_price", entry_price),
                     "strategy": strategy,
                     "stop_loss": (
-                        stop_loss
-                        if stop_loss is not None
+                        _merge_sl
+                        if _merge_sl is not None
                         else old.get(
                             "stop_loss",
                             new_entry * (1 - self.config["stop_loss"]["default_pct"] / 100),

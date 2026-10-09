@@ -511,6 +511,7 @@ def _record_trade_portfolio(
     invest_pct, bandit_context, bandit_multiplier,
     is_exploration=False,
     bandit_sltp=None,
+    stop_loss=None,
 ):
     """Track executed trade in portfolio state and publish events.
 
@@ -542,6 +543,7 @@ def _record_trade_portfolio(
             quantity=executed_qty,
             entry_price=avg_price,
             strategy=strategy,
+            stop_loss=stop_loss,  # WO-1023: order-chain sl_price, not config default
             deduct_cash=_deduct_cash,
             _skip_validation=True,
         )
@@ -677,7 +679,9 @@ def _place_sl_tp_orders(
     5-minute polling-based trailing exit.
 
     Returns dict with keys: results (list[str]), sl_placed_qty (float),
-    tp_placed_qty (float), oco_placed (bool).
+    tp_placed_qty (float), oco_placed (bool), sl_price (float — the
+    single-source stop the order chain computed; WO-1023: the DB row
+    must persist THIS value, not a config-default recompute).
     """
     results: list[str] = []
     sl_placed_qty = 0.0
@@ -1196,6 +1200,7 @@ def _place_sl_tp_orders(
     return {
         "results": results,
         "sl_placed_qty": sl_placed_qty,
+        "sl_price": sl_price,
         "tp_placed_qty": tp_placed_qty,
         "oco_placed": oco_placed,
     }
@@ -1880,12 +1885,23 @@ def execute_auto_trade(
     )
 
     # Track position and publish events (extracted helper)
+    # WO-1023 (10/9): single-source SL — persist the SAME sl_price the
+    # order chain computed/placed so sl_reconcile sees dev=0. Root cause
+    # of the PYTH 12:22 alert: add_position used to fall back to the
+    # config default 5% (fills×0.95) whenever the caller omitted
+    # stop_loss, while the exchange legs carried the GARCH-band stop.
+    _sl_price = (sltp_result or {}).get("sl_price")
+    if _sl_price is None:
+        # defensive: order helper blew up before exposing sl_price —
+        # recompute with the identical formula rather than drifting
+        _sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
     _record_trade_portfolio(
         client, symbol, executed_qty, avg_price, strategy,
         usdt_bal, invest_amount, fee_rate,
         invest_pct, _bandit_context, _bandit_multiplier,
         is_exploration=_is_exploration,
         bandit_sltp=bandit_sltp,
+        stop_loss=_sl_price,
     )
 
     logger.info(

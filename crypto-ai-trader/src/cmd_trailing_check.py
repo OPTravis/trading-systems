@@ -51,6 +51,17 @@ def _reconcile_sl_prices(client, positions, db=None):
     Dry-run by default: SL_RECONCILE_DRYRUN unset or != '0' only RECORDS the
     correction. Set SL_RECONCILE_DRYRUN=0 to write the DB (flip when Leo
     approves live correction).
+
+    WO-1023 (10/9): the PRIMARY fix is upstream single-source — the
+    executor now persists the order chain's sl_price into the DB row at
+    entry (PYTH 12:22 was config-default 5% vs GARCH-band exchange leg,
+    dev 2.63%). This auto-correct stays OFF by default. Activation
+    conditions (all required, do NOT flip earlier):
+      1. ≥48h of live entries showing dev=0 across GARCH low/normal
+         tiers (upstream fix proven in production);
+      2. direction stays exchange→DB only (exchange is authoritative);
+      3. trailing-active windows excluded (a trailing raise in flight
+         must not be overwritten by a stale exchange leg snapshot).
     """
     results = []
     # WO-1001-4: SSOT resolver (kv > env > yaml > default).
