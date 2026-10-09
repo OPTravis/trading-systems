@@ -11,6 +11,9 @@ Verifies:
 Usage:
     cd ~/crypto-ai-trader
     .venv/bin/python tests/test_dual_sentiment_e2e.py
+
+    # pytest mode — cross_verification is skipped by default; opt in with:
+    RUN_E2E_API=1 python -m pytest tests/test_dual_sentiment_e2e.py -rs
 """
 
 import json
@@ -29,8 +32,8 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 load_dotenv(Path.home() / ".hermes" / ".env")  # Fallback for shared keys
 
 
-def test_deepseek_api():
-    """Test DeepSeek API returns valid structured scores."""
+def _call_deepseek_api():
+    """Call DeepSeek API, validate structure, return scores (None on failure)."""
     print("1. Testing DeepSeek API...")
 
     api_key = os.environ.get("DEEPSEEK_API_KEY")
@@ -105,8 +108,8 @@ def test_deepseek_api():
         return None
 
 
-def test_xiaomi_api():
-    """Test mimo-v2.5 API returns valid structured scores."""
+def _call_xiaomi_api():
+    """Call mimo-v2.5 API, validate structure, return scores (None on failure)."""
     print("2. Testing mimo-v2.5 API...")
 
     api_key = os.environ.get("XIAOMI_API_KEY")
@@ -205,7 +208,52 @@ def test_xiaomi_api():
         return None
 
 
-@pytest.mark.skip(reason="Requires deepseek_scores/xiaomi_scores fixtures not defined")
+def _e2e_enabled() -> bool:
+    """WO-1024: manual gate — the real-API cross-verification only runs when opted in."""
+    return os.environ.get("RUN_E2E_API") == "1"
+
+
+def _require_e2e() -> None:
+    if not _e2e_enabled():
+        pytest.skip(
+            "RUN_E2E_API != 1 — set RUN_E2E_API=1 to run cross-verification with real API data"
+        )
+
+
+@pytest.fixture
+def deepseek_scores():
+    """Real DeepSeek scores for cross-verification (WO-1024 gate: RUN_E2E_API=1)."""
+    _require_e2e()
+    scores = _call_deepseek_api()
+    if not scores:
+        pytest.fail("DeepSeek API returned no usable scores (RUN_E2E_API=1 mode)")
+    return scores
+
+
+@pytest.fixture
+def xiaomi_scores():
+    """Real mimo-v2.5 scores for cross-verification (WO-1024 gate: RUN_E2E_API=1)."""
+    _require_e2e()
+    scores = _call_xiaomi_api()
+    if not scores:
+        pytest.fail("mimo-v2.5 API returned no usable scores (RUN_E2E_API=1 mode)")
+    return scores
+
+
+def test_deepseek_api():
+    """Test DeepSeek API returns valid structured scores."""
+    return _call_deepseek_api()
+
+
+def test_xiaomi_api():
+    """Test mimo-v2.5 API returns valid structured scores."""
+    return _call_xiaomi_api()
+
+
+@pytest.mark.skipif(
+    "os.environ.get('RUN_E2E_API') != '1'",
+    reason="Set RUN_E2E_API=1 to run cross-verification with real API data",
+)
 def test_cross_verification(deepseek_scores, xiaomi_scores):
     """Test cross-verification with real API data."""
     print("3. Testing cross-verification...")
@@ -279,9 +327,9 @@ def main():
     print()
 
     # Run API tests
-    deepseek_scores = test_deepseek_api()
+    deepseek_scores = _call_deepseek_api()
     print()
-    xiaomi_scores = test_xiaomi_api()
+    xiaomi_scores = _call_xiaomi_api()
     print()
 
     # Run cross-verification test
