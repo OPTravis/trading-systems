@@ -534,32 +534,12 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         except Exception as e:
             logger.debug(f"Event bus publish failed: {e}")
 
-        # Update contextual bandit with trade outcome
-        try:
-            from src.contextual_bandit import get_contextual_bandit
-
-            bandit = get_contextual_bandit()
-            pnl_pct = (
-                ((price - pos["entry_price"]) / pos["entry_price"]) * 100
-                if pos["entry_price"] > 0
-                else 0
-            )
-            # Reconstruct context from stored data or use defaults
-            ctx = {
-                "hmm_regime": "sideways",
-                "fear_greed": 50,
-                "btc_trend": "NEUTRAL",
-                "portfolio_heat": "warm",
-            }
-            stored_ctx = pos.get("bandit_context")
-            if stored_ctx:
-                ctx = stored_ctx
-            # Use actual invest_pct from the trade (stored as fraction, e.g. 0.15)
-            raw_invest = pos.get("invest_pct", 0.8)
-            action = raw_invest / 100.0 if raw_invest > 1.0 else raw_invest
-            bandit.update_from_outcome(ctx, action_taken=action, pnl_pct=pnl_pct)
-        except Exception as e:
-            logger.debug(f"Bandit update failed: {e}")
+        # WO-1039: the direct bandit update block that used to live here was
+        # REMOVED — it double-updated the bandit on every close (reward
+        # doubling == doubled learning rate). The single source of truth is
+        # TradeOutcomeRecorder.record_outcome (called above), which updates
+        # the bandit with the REAL entry-time context (context_json) and
+        # also refreshes Phase 2A rolling stats.
 
         # WO-0924 P2 (Ledger shadow): observe the SELL fill. Fires only on
         # the success path (the no-position early return above skips this).

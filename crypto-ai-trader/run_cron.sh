@@ -234,6 +234,7 @@ echo "========== $(date) - $CMD ==========" >> "$LOGFILE"
 case "$CMD" in
     weekly-learning)  RUN_CMD=(python3 scripts/learning_pipeline.py "$@") ;;
     weekly-backtest)  RUN_CMD=(python3 scripts/weekly_backtest.py "$@") ;;
+    daily-learning)   RUN_CMD=(python3 scripts/daily_learning.py "$@") ;;
     *)                RUN_CMD=(python3 main.py "$CMD" "$@") ;;
 esac
 
