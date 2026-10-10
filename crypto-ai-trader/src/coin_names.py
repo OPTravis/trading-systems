@@ -58,6 +58,25 @@ BASE_TO_NAME: dict[str, str] = {
     "ZIL": "Zilliqa",
     "ONE": "Harmony ONE crypto",
     "ZEN": "Horizen",
+    # WO-1040: same-token entity collisions (equity/pharma/military/political
+    # names hijacking bare-ticker news searches — live-search evidence
+    # 2026-10-10: Organon/Oil&Gas for OGN, Royal Logistic Corps/Republican
+    # Liberty Caucus for RLC)
+    "OGN": "Origin Protocol",
+    "RLC": "iExec RLC",
+    # WO-1040 impact sweep: remaining unmapped tickers historically seen in
+    # the scan pool (only verified names added — unverified ones stay out
+    # and rely on the bare-ticker crypto-context filter instead)
+    "CAKE": "PancakeSwap",
+    "FET": "Artificial Superintelligence Alliance",
+    "RAY": "Raydium",
+    "TAO": "Bittensor",
+    "ZRO": "ZKsync",
+    "SAGA": "Saga blockchain",
+    "LSK": "Lisk",
+    "XAUT": "Tether Gold",
+    "0G": "0G Labs",
+    "BABY": "Babylon crypto",
     "THETA": "Theta Network",
     "XEM": "NEM",
     "WAVES": "Waves crypto",
@@ -189,3 +208,20 @@ def symbol_to_coin_name(symbol: str) -> str:
     """
     base = strip_quote_asset(symbol.strip())
     return BASE_TO_NAME.get(base, base)
+
+
+def news_query_for(symbol: str) -> str:
+    """Best-effort news SEARCH QUERY for a symbol — WO-1040.
+
+    Mapped tickers search on the human project name ("Origin Protocol
+    news"); unmapped tickers degrade to the bare base but MUST carry an
+    explicit crypto qualifier ("OGN crypto news") — bare-ticker queries
+    are token-matched against same-name equity/military/political
+    entities (WO-1040 live evidence). Result-side filtering still applies
+    (news_entity_filter) — this only reduces pollution at the source.
+    """
+    base = strip_quote_asset(symbol.strip())
+    name = BASE_TO_NAME.get(base)
+    if name and name != base:
+        return f"{name} news"
+    return f"{base} crypto news"

@@ -53,7 +53,7 @@ class SentimentAnalyzer:
         coin_name = symbol_to_coin_name(symbol)
 
         # Get news
-        news = self._get_news(coin_name)
+        news = self._get_news(coin_name, symbol=symbol)
 
         # Analyze sentiment
         sentiment_score = self._calculate_sentiment(news)
@@ -79,22 +79,33 @@ class SentimentAnalyzer:
                 logger.warning(f"Failed to analyze {symbol}: {e}")
         return results
 
-    def _get_news(self, coin_name: str) -> List[Dict]:
+    def _get_news(self, coin_name: str, symbol: str = "") -> List[Dict]:
         """Get latest news for a coin"""
         try:
             # Search for news using Tavily
             query = f"{coin_name} cryptocurrency news today"
             results_raw = tavily_search(query, count=10)
+            # WO-1040: entity disambiguation — same-token equity/political
+            # entities (Organon for OGN, Royal Logistic Corps for RLC, ...)
+            # must not reach the sentiment scorer. Mapped names require the
+            # project name in the article; bare tickers require explicit
+            # crypto context. Neutral (no news) beats fabricated signal.
+            from src.news_entity_filter import is_crypto_related
+            from src.coin_names import strip_quote_asset
+
+            base_ticker = strip_quote_asset(symbol) if symbol else coin_name
             results = []
             if results_raw and "results" in results_raw:
                 for r in results_raw["results"]:
-                    results.append(
-                        {
-                            "title": r.get("title", ""),
-                            "description": r.get("content", ""),
-                            "url": r.get("url", ""),
-                        }
-                    )
+                    a = {
+                        "title": r.get("title", ""),
+                        "description": r.get("content", ""),
+                        "url": r.get("url", ""),
+                    }
+                    if is_crypto_related(
+                        a, ticker=base_ticker, coin_name=coin_name
+                    ):
+                        results.append(a)
 
             # Add sentiment scores
             for r in results:

@@ -285,7 +285,9 @@ class TestJunkFilteringAndTopUp:
             _jina_row("Axie Infinity Price: AXS/USD Live Price Chart | CoinGecko"),
             _jina_row("Axie Infinity token jumps 123% as game devs push rewards change"),
             _jina_row("Human Verification"),
-            _jina_row("Why Is AXS Going Up in 2026? The Real Reasons"),
+            # WO-1040: realistic crypto wording (entity filter needs either
+            # the project name or explicit crypto evidence in title/body)
+            _jina_row("Why Is the AXS token Going Up in 2026? The Real Reasons"),
             _jina_row("Axie Infinity partners with a major game studio"),
         ]
         monkeypatch.setattr(mr._jina_session, "get", lambda url, **kw: _fake_jina_response(rows))
@@ -300,7 +302,7 @@ class TestJunkFilteringAndTopUp:
         titles = [a["title"] for a in articles]
         assert titles == [
             "Axie Infinity token jumps 123% as game devs push rewards change",
-            "Why Is AXS Going Up in 2026? The Real Reasons",
+            "Why Is the AXS token Going Up in 2026? The Real Reasons",
             "Axie Infinity partners with a major game studio",
         ]
 
@@ -326,7 +328,9 @@ class TestJunkFilteringAndTopUp:
 
         articles = mr.MarketResearcher()._research_news("AXSUSDT")
 
-        assert supplement_calls == [("Axie Infinity", 4)]
+        # WO-1040: supplement now takes the raw symbol (it derives its own
+        # crypto-qualified query via news_query_for)
+        assert supplement_calls == [("AXSUSDT", 4)]
         assert len(articles) == 5
         assert sum(1 for a in articles if a["title"].startswith("DDGS")) == 4
 
@@ -366,8 +370,10 @@ class TestDDGSFallbackUsesNewsVertical:
                 captured["query"] = query
                 captured["max_results"] = max_results
                 return [
-                    {"title": "t", "body": "b", "source": "CNBC",
-                     "url": "https://cnbc.com/x", "date": "2026-10-04"},
+                    {"title": "Axie Infinity t", "body": "b", "source": "Ex",
+                     # WO-1040: neutral host — cnbc.com sits on the equity
+                     # blocklist and would be entity-filtered
+                     "url": "https://news.example/x", "date": "2026-10-04"},
                 ]
 
         fake_mod = types.ModuleType("ddgs")
@@ -376,10 +382,11 @@ class TestDDGSFallbackUsesNewsVertical:
 
         articles = mr.MarketResearcher()._research_news_ddgs("AXSUSDT")
 
-        assert captured["query"] == "Axie Infinity"
+        # WO-1040: news_query_for appends the " news" qualifier
+        assert captured["query"] == "Axie Infinity news"
         assert articles == [
-            {"title": "t", "summary": "b", "sentiment": 0.0,
-             "source": "CNBC", "url": "https://cnbc.com/x"}
+            {"title": "Axie Infinity t", "summary": "b", "sentiment": 0.0,
+             "source": "Ex", "url": "https://news.example/x"}
         ]
 
 

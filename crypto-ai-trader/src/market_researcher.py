@@ -29,7 +29,8 @@ from dotenv import load_dotenv
 from urllib.parse import quote_plus
 from requests.adapters import HTTPAdapter
 
-from src.coin_names import symbol_to_coin_name
+from src.coin_names import symbol_to_coin_name, strip_quote_asset, news_query_for
+from src.news_entity_filter import is_crypto_related
 from src.llm_client import get_llm_client
 
 # WO-1015: Jina's general search floods the top-10 for big-cap coins with
@@ -378,6 +379,10 @@ class MarketResearcher:
         # "Axie Infinity crypto news today". Unknown tickers degrade to the
         # stripped base (still better than a full pair symbol).
         coin_name = symbol_to_coin_name(coin)
+        # WO-1040: entity disambiguation context (mapped name vs bare
+        # ticker decides how strict the result filter must be)
+        base_ticker = strip_quote_asset(coin)
+        is_mapped = coin_name != base_ticker
 
         for attempt in range(2):
             try:
@@ -385,8 +390,12 @@ class MarketResearcher:
                     _time.sleep(
                         min(2**attempt, 30)
                     )  # exponential: 2s, 4s, 8s, 16s (cap 30s)
+                # WO-1040: crypto-qualified query via news_query_for —
+                # bare "{TICKER} news" is token-matched against same-name
+                # equity/military/political entities (live evidence: OGN
+                # -> Organon/Oil&Gas, RLC -> Royal Logistic Corps)
                 resp = _jina_session.get(
-                    f"https://s.jina.ai/{quote_plus(coin_name + ' news')}",
+                    f"https://s.jina.ai/{quote_plus(news_query_for(coin))}",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Accept": "application/json",
@@ -417,6 +426,9 @@ class MarketResearcher:
                     a
                     for a in raw_articles
                     if not _looks_like_junk(a, coin_name)
+                    and is_crypto_related(
+                        a, ticker=base_ticker, coin_name=coin_name
+                    )
                 ][:5]
 
                 # WO-1015: big-cap coins (BTC) filter down to ZERO real articles
@@ -425,10 +437,16 @@ class MarketResearcher:
                 # unfiltered results still beat an empty news list.
                 if len(articles) < 3:
                     articles.extend(
-                        self._ddgs_news_supplement(coin_name, 5 - len(articles))
+                        self._ddgs_news_supplement(coin, 5 - len(articles))
                     )
                 if not articles:
-                    articles = raw_articles[:5]
+                    # WO-1040: fail-open only for MAPPED names (the result
+                    # domain is presumably right); bare-ticker domains that
+                    # were 100% entity-filtered stay empty — neutral beats
+                    # fabricated signal (that fail-open was the pollution
+                    # path for OGN/RLC).
+                    if is_mapped:
+                        articles = raw_articles[:5]
 
                 # Batch sentiment: one LLM call for all articles instead of per-article
                 if articles:
@@ -470,33 +488,37 @@ class MarketResearcher:
         )
         return self._research_news_ddgs(coin)
 
-    def _ddgs_news_supplement(self, coin_name: str, need: int) -> List[Dict]:
+    def _ddgs_news_supplement(self, coin: str, need: int) -> List[Dict]:
         """WO-1015: top up a thin Jina result set from DDGS's news vertical.
 
         The news vertical returns actual articles (source, date, body);
         general web search returns the same price/aggregator pages the
         Jina query fix is fighting, so it is not used here.
+        WO-1040: query via news_query_for + entity filter (same-token
+        equity/political entities must not top-up either).
         """
         if need <= 0:
             return []
         try:
             from ddgs import DDGS
 
-            raw = list(DDGS().news(coin_name, max_results=need))
+            raw = list(DDGS().news(news_query_for(coin), max_results=need))
         except Exception as e:
             logger.warning(f"MarketResearcher: DDGS news top-up failed: {e}")
             return []
+        coin_name = symbol_to_coin_name(coin)
+        base_ticker = strip_quote_asset(coin)
         articles = []
         for r in raw:
-            articles.append(
-                {
-                    "title": r.get("title", ""),
-                    "summary": (r.get("body", "") or "")[:300],
-                    "sentiment": 0.0,
-                    "source": r.get("source", ""),
-                    "url": r.get("url", ""),
-                }
-            )
+            a = {
+                "title": r.get("title", ""),
+                "summary": (r.get("body", "") or "")[:300],
+                "sentiment": 0.0,
+                "source": r.get("source", ""),
+                "url": r.get("url", ""),
+            }
+            if is_crypto_related(a, ticker=base_ticker, coin_name=coin_name):
+                articles.append(a)
         return articles
 
     def _research_news_ddgs(self, coin: str) -> List[Dict]:
@@ -509,22 +531,26 @@ class MarketResearcher:
             from ddgs import DDGS
 
             coin_name = symbol_to_coin_name(coin)
-            raw = list(DDGS().news(coin_name, max_results=5))
+            base_ticker = strip_quote_asset(coin)
+            # WO-1040: crypto-qualified query + entity filter
+            raw = list(DDGS().news(news_query_for(coin), max_results=5))
             if not raw:
                 return []
 
             articles = []
             for r in raw:
                 # news rows: title/body/source(url) url/date — no href field
-                articles.append(
-                    {
-                        "title": r.get("title", ""),
-                        "summary": (r.get("body", "") or "")[:300],
-                        "sentiment": 0.0,
-                        "source": r.get("source", ""),
-                        "url": r.get("url", ""),
-                    }
-                )
+                a = {
+                    "title": r.get("title", ""),
+                    "summary": (r.get("body", "") or "")[:300],
+                    "sentiment": 0.0,
+                    "source": r.get("source", ""),
+                    "url": r.get("url", ""),
+                }
+                if is_crypto_related(
+                    a, ticker=base_ticker, coin_name=coin_name
+                ):
+                    articles.append(a)
 
             # Batch sentiment analysis on DDGS results
             if articles:
