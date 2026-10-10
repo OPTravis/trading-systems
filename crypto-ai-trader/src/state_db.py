@@ -1091,6 +1091,19 @@ class StateDB:
             (ts,)).fetchone()
         return int(row[0]) if row else 0
 
+    def paper_pending_cancel(self, order_id: str) -> bool:
+        """Cancel an OPEN pending paper order. Idempotent: cancelling an
+        already-cancelled/filled/unknown order returns False (no error).
+
+        WO-1041 T2: PaperTrader lacked cancel_order entirely — the
+        executor's tiered-TP cleanup path called client.cancel_order and
+        hit AttributeError (swallowed, but cleanup never happened)."""
+        cur = self._get_conn().execute(
+            "UPDATE paper_pending_orders SET status = 'cancelled' "
+            "WHERE id = ? AND status = 'open'", (str(order_id),))
+        self._get_conn().commit()
+        return cur.rowcount > 0
+
     def paper_pending_mark_filled(self, order_id: str) -> bool:
         """Mark a pending order filled (idempotent; True if a row moved).
 

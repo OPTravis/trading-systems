@@ -13,6 +13,7 @@ real BinanceClient so the scanner/researcher/strategy pipeline sees live prices.
 """
 
 import json
+import math
 import logging
 import os
 import time
@@ -440,9 +441,20 @@ class PaperTrader:
             logger.error("PaperTrader: %s not in allowlist", symbol)
             return None
 
-        current_price = self.get_current_price(symbol)
-        if current_price <= 0:
-            logger.error("PaperTrader: cannot get price for %s", symbol)
+        # WO-1041 T2 hardening: market-data outages surface as exceptions
+        # from the feed (ccxt/network). The real-client contract returns
+        # None on failure — align paper so callers never see raw feed
+        # exceptions from an order placement.
+        try:
+            current_price = self.get_current_price(symbol)
+        except Exception:
+            logger.error("PaperTrader: price feed error for %s", symbol,
+                         exc_info=True)
+            return None
+        if current_price is None or not math.isfinite(current_price) \
+                or current_price <= 0:
+            logger.error("PaperTrader: cannot get price for %s (%r)",
+                         symbol, current_price)
             return None
 
         side_upper = side.upper()
@@ -451,6 +463,18 @@ class PaperTrader:
         # ── MARKET orders: instant fill at current price + slippage ──
         if type_upper == "MARKET" and quantity is not None:
             return self._fill_market(symbol, side_upper, quantity, current_price)
+
+        # WO-1041 T2 hardening: NaN slips past `is not None` and reaches
+        # SQLite as NULL → NOT NULL constraint blast at insert time.
+        # Reject non-finite prices before any routing.
+        for _p in (price, stop_price):
+            if _p is not None and not math.isfinite(_p):
+                logger.error(
+                    "PaperTrader: non-finite price %r for %s — rejected", _p, symbol)
+                return None
+        if price is not None and price <= 0 and type_upper != "STOP_LOSS":
+            logger.error("PaperTrader: non-positive price %r for %s", price, symbol)
+            return None
 
         # ── LIMIT orders: place as pending, fill later if price reaches ──
         if type_upper == "LIMIT" and price is not None and quantity is not None:
@@ -471,6 +495,25 @@ class PaperTrader:
 
         logger.error("PaperTrader: unsupported order type %s", order_type)
         return None
+
+    def cancel_order(self, symbol: str, order_id) -> Optional[Dict]:
+        """Cancel a pending simulated order (WO-1041 T2: previously
+        missing — Protocol declares it and the executor calls it).
+
+        Returns a Binance-shaped ack on first cancel; None when the
+        order is unknown or no longer open (idempotent no-op)."""
+        try:
+            ok = self._get_db().paper_pending_cancel(str(order_id))
+        except Exception:
+            logger.error("PaperTrader: cancel_order failed for %s",
+                         order_id, exc_info=True)
+            return None
+        if not ok:
+            return None
+        return {
+            "symbol": symbol, "orderId": order_id,
+            "status": "CANCELED", "origClientOrderId": f"paper_limit_{order_id}",
+        }
 
     def place_market_buy(self, symbol: str, quantity: float) -> Optional[Dict]:
         return self.place_order(symbol, "BUY", "MARKET", quantity=quantity)
@@ -843,13 +886,29 @@ class PaperTrader:
         )
 
         # Check if limit is already fillable
+        # WO-1041 T2 bug fix: orders carrying a stop_price (STOP_LOSS /
+        # STOP_LOSS_LIMIT) are TRIGGER orders — they activate only when
+        # price CROSSES the stop, then fill at the (worse) limit. The old
+        # code applied plain-LIMIT semantics (SELL fills when
+        # current >= limit_price); since an SL's limit sits BELOW market
+        # by construction, every protective stop filled INSTANTLY on
+        # placement — an entry's SL executed immediately as a ~-4.5%
+        # market sell, gutting paper/dryrun accounts.
         current_price = self.get_current_price(symbol)
         if current_price > 0:
-            if side == "BUY" and current_price <= price:
-                # Immediately fillable
-                return self._fill_limit_order(str(order_id), current_price)
-            elif side == "SELL" and current_price >= price:
-                return self._fill_limit_order(str(order_id), current_price)
+            if stop_price is not None:
+                triggered = (
+                    (side == "SELL" and current_price <= stop_price)
+                    or (side == "BUY" and current_price >= stop_price)
+                )
+                if triggered:
+                    return self._fill_limit_order(str(order_id), stop_price)
+            else:
+                if side == "BUY" and current_price <= price:
+                    # Immediately fillable
+                    return self._fill_limit_order(str(order_id), current_price)
+                elif side == "SELL" and current_price >= price:
+                    return self._fill_limit_order(str(order_id), current_price)
 
         # Return pending order info
         return {
@@ -1025,11 +1084,20 @@ class PaperTrader:
             if current <= 0:
                 continue
 
+            # WO-1041 T2 bug fix: stop-carrying orders trigger on the
+            # stop crossing, NOT plain limit semantics (see _place_limit).
+            stop_price = order.get("stop_price")
             should_fill = False
-            if side == "BUY" and current <= price:
-                should_fill = True
-            elif side == "SELL" and current >= price:
-                should_fill = True
+            if stop_price is not None:
+                if side == "SELL" and current <= stop_price:
+                    should_fill = True
+                elif side == "BUY" and current >= stop_price:
+                    should_fill = True
+            else:
+                if side == "BUY" and current <= price:
+                    should_fill = True
+                elif side == "SELL" and current >= price:
+                    should_fill = True
 
             if should_fill:
                 logger.info(

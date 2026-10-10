@@ -38,3 +38,7 @@ data/bgeometrics_cache.json
 tests/test_state.db
 tests/_tmp_state.db
 data/bull_cache/
+
+# WO-1041: coverage html regenerable from coverage.json (18MB, 146 files)
+# interactive copy synced to project drive for review instead
+crypto-ai-trader/docs/coverage/html/
