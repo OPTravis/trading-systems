@@ -1077,10 +1077,18 @@ class StateDB:
 
     def trades_count_buys_since(self, ts: float) -> int:
         """COUNT of BUY rows since ts (P1-② realtime daily-entry floor;
-        P4: entry_governor.check_entry SQL half)."""
+        P4: entry_governor.check_entry SQL half).
+
+        WO-1029 B: paper dual-write rows (client_order_id LIKE 'paper\_%')
+        are EXCLUDED — the governor fallback must count real buys only.
+        NULL rows stay counted (real BUY from portfolio.add_position books
+        client_order_id NULL). Over-block conservatism is preserved: the
+        filter only removes simulated rows, never real ones."""
         row = self._get_conn().execute(
             "SELECT COUNT(*) FROM trades WHERE side = 'BUY' "
-            "AND timestamp >= ?", (ts,)).fetchone()
+            "AND timestamp >= ? "
+            "AND (client_order_id IS NULL OR client_order_id NOT LIKE 'paper\\_%' ESCAPE '\\')",
+            (ts,)).fetchone()
         return int(row[0]) if row else 0
 
     def paper_pending_mark_filled(self, order_id: str) -> bool:

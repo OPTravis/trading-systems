@@ -14,10 +14,22 @@ Components tested:
 
 import os
 import sys
+import tempfile
 import traceback
 from datetime import datetime
 
 # ── Setup ──────────────────────────────────────────────────────────────
+# WO-1029 three-layer defense (renamed off the test_ prefix so pytest
+# never collects this module — its top level EXECUTES, it is a manual
+# integration checklist, not a test):
+#   layer 1: filename has no test_ prefix (done via git mv)
+#   layer 2: TESTING=1 puts the WO-1002 guard in test mode
+#   layer 3: STATE_DB_PATH points at a throwaway DB — even a manual
+#            direct run can never touch production state
+os.environ["TESTING"] = "1"
+os.environ["STATE_DB_PATH"] = os.path.join(
+    tempfile.mkdtemp(prefix="integration_check_"), "state.db"
+)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(PROJECT_ROOT)
 

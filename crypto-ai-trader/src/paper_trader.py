@@ -770,8 +770,14 @@ class PaperTrader:
                                if _entry is not None else 0.0)
             else:
                 _ledger_pnl = 0.0
+            # WO-1029 A1: tag the dual-write row so production trades can
+            # distinguish paper rows from real ones. trade_id is
+            # f"paper_{order_id}_{unix_ts}" (L572) — globally unique across
+            # order_counter resets (bare order_id would collide across
+            # generations) and carries the natural paper_ prefix (B filter).
             self._get_db().trade_add(
-                symbol, side, quantity, fill_price, _ledger_pnl)
+                symbol, side, quantity, fill_price, _ledger_pnl,
+                client_order_id=str(trade_id))
         except Exception:
             logger.error(
                 "Failed to record trade in trades table for %s %s",
