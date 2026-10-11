@@ -450,25 +450,83 @@ def run(client: Any, portfolio: Any,
                 free_qty, _ = _calibrate_protect_qty(
                     client, sym, free_qty, step,
                     context="guardian_free_slice_tp")
+                placed_mode = None
+                sl_px_new = 0.0
                 if free_qty >= min_qty and free_qty * price >= min_notional:
-                    res, _tp_placed = _place_sell_downgraded(
-                        lambda q: client.place_limit_sell(sym, q, tp_px),
-                        client, sym, free_qty, step,
-                        kind="guardian_free_slice_tp", price=tp_px,
-                        min_qty=min_qty, min_notional=min_notional,
-                        context="guardian")
+                    # WO-1043 Bug B (10/11 11:12 NEAR, 58min naked): this
+                    # branch used to place a plain TP and declare the sweep
+                    # healed even when the position had NO downside coverage
+                    # at all (sl_qty<=0, oco_qty<=0) — the SL side then
+                    # waited for the next sweep (up to 1h). Pair-aware
+                    # upgrade: when the downside is bare, place ONE OCO
+                    # (tp_px + derived SL) over the free slice so both
+                    # sides heal in the SAME sweep. Fallback = the old
+                    # plain TP on any OCO-side failure (never worse).
+                    if sl_qty <= 0 and oco_qty <= 0:
+                        sl_px_new = pos.get("stop_loss")
+                        try:
+                            sl_px_new = float(sl_px_new) if sl_px_new else 0.0
+                        except (TypeError, ValueError):
+                            sl_px_new = 0.0
+                        if not sl_px_new or sl_px_new <= 0:
+                            sl_px_new = _tick_round(
+                                (entry or price) * (1 - DEFAULT_SL_PCT), tick)
+                        else:
+                            sl_px_new = _tick_round(sl_px_new, tick)
+                        # WO-1006: legalize BEFORE placing — a stop the
+                        # market fell through would reject the whole OCO.
+                        sl_px_new = _legalize_sl_price(
+                            sl_px_new, price, tick, sym=sym,
+                            context="guardian_free_slice_oco")
+                        # ±13% band guard, same as tp_oco_rebuild: a stop
+                        # outside the band cannot be placed at all
+                        if sl_px_new >= price * 0.87:
+                            oco_res, _ = _place_sell_downgraded(
+                                lambda q: client.place_oco(
+                                    sym, q, tp_px, sl_px_new),
+                                client, sym, free_qty, step,
+                                kind="guardian_free_slice_oco",
+                                price=tp_px, min_qty=min_qty,
+                                min_notional=min_notional,
+                                context="guardian")
+                            if oco_res:
+                                res = oco_res
+                                placed_mode = "free_slice_oco"
+                        else:
+                            log.info(
+                                "protection_guardian: %s planned stop "
+                                "%.8g outside ±13%% band — free-slice "
+                                "OCO upgrade skipped, plain TP fallback",
+                                sym, sl_px_new)
+                    if placed_mode is None:
+                        res, _tp_placed = _place_sell_downgraded(
+                            lambda q: client.place_limit_sell(sym, q, tp_px),
+                            client, sym, free_qty, step,
+                            kind="guardian_free_slice_tp", price=tp_px,
+                            min_qty=min_qty, min_notional=min_notional,
+                            context="guardian")
+                        if res:
+                            placed_mode = "free_slice_tp"
                 else:
                     res = None
                 if res:
                     summary["healed"] += 1
-                    audit_transition("free_slice_tp", info)
-                    emit_alert("PROTECTION_HEALED", sym, {
-                        "mode": "free_slice_tp", "qty": free_qty,
-                        "tp_px": tp_px, "ts": time.time(),
-                    })
-                    log.info("protection_guardian: TP placed for %s "
-                             "%.8g @ %.8g (free slice)", sym, free_qty,
-                             tp_px)
+                    audit_transition(placed_mode or "free_slice_tp", info)
+                    heal_alert = {
+                        "mode": placed_mode or "free_slice_tp",
+                        "qty": free_qty, "tp_px": tp_px, "ts": time.time(),
+                    }
+                    if placed_mode == "free_slice_oco":
+                        heal_alert["sl_px"] = sl_px_new
+                        log.info("protection_guardian: full OCO placed "
+                                 "for %s %.8g @ tp %.8g / sl %.8g "
+                                 "(free slice, pair-aware)", sym, free_qty,
+                                 tp_px, sl_px_new)
+                    else:
+                        log.info("protection_guardian: TP placed for %s "
+                                 "%.8g @ %.8g (free slice)", sym, free_qty,
+                                 tp_px)
+                    emit_alert("PROTECTION_HEALED", sym, heal_alert)
                     _track(sym, entry, qty, [{
                         "order_id": res.get("orderId"),
                         "price": tp_px, "qty": free_qty, "tier": 1,

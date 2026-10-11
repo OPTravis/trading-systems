@@ -118,16 +118,22 @@ def _quiet(monkeypatch):
 
 class TestGuardian:
     def test_free_slice_tp_heals(self):
-        """No orders at all → plain TP on the free full slice."""
+        """No orders at all → WO-1043 pair-aware heal: the downside is
+        bare (no SL, no OCO), so the free slice gets ONE full OCO
+        (TP + derived SL) in the same sweep — not a lone plain TP that
+        leaves the position naked for up to an hour."""
         c = FakeClient(orders=[])
         pos = _pos("FETUSDT", 84.6, 0.1954, take_profit=0.2031)
         res = pg.run(c, FakePortfolio([pos]))
         assert res["healed"] == 1
-        assert len(c.tp_placed) == 1
-        sym, qty, px = c.tp_placed[0]
+        assert c.tp_placed == []          # plain-TP fallback NOT used
+        assert len(c.ocos) == 1
+        sym, qty, tp_px, sl_px = c.ocos[0]
         assert sym == "FETUSDT"
         assert qty == pytest.approx(84.6)
-        assert px == pytest.approx(0.2031)  # DB take_profit, tick round
+        assert tp_px == pytest.approx(0.2031)  # DB take_profit, tick round
+        # no stop_loss in DB → entry×(1-0.08) default, inside ±13% band
+        assert sl_px == pytest.approx(0.1797, abs=1e-4)
 
     def test_partial_free_slice(self):
         """SL already locks part → TP only on the unlocked remainder."""
@@ -208,13 +214,39 @@ class TestGuardian:
         assert c.tp_placed == [] and c.ocos == []
 
     def test_default_tp_when_db_missing(self):
-        """No take_profit in DB → entry×1.04 default."""
+        """No take_profit in DB → entry×1.04 default TP leg (WO-1043:
+        delivered inside the pair-aware OCO — TP price logic unchanged)."""
         c = FakeClient(orders=[])
         pos = _pos("FETUSDT", 84.6, 0.1954, take_profit=None)
         res = pg.run(c, FakePortfolio([pos]))
         assert res["healed"] == 1
-        _, qty, px = c.tp_placed[0]
+        assert len(c.ocos) == 1
+        _, qty, px, _sl = c.ocos[0]
         assert px == pytest.approx(0.2032, abs=1e-8)  # 0.1954×1.04 floor tick
+
+    def test_free_slice_oco_out_of_band_falls_back_to_plain_tp(self):
+        """WO-1043: DB stop far below the market (>13% band) → an OCO with
+        that stop would be rejected outright — the pair-aware upgrade must
+        skip to the plain-TP fallback instead of failing the heal."""
+        c = FakeClient(orders=[])
+        pos = _pos("FETUSDT", 84.6, 0.1954, take_profit=0.2031,
+                   stop_loss=0.05)          # way outside the ±13% band
+        res = pg.run(c, FakePortfolio([pos]))
+        assert res["healed"] == 1
+        assert c.ocos == []                 # no doomed OCO attempted
+        assert len(c.tp_placed) == 1        # old plain-TP behavior kept
+        assert c.tp_placed[0][1] == pytest.approx(84.6)
+
+    def test_free_slice_oco_rejected_falls_back_to_plain_tp(self):
+        """WO-1043: the OCO place itself fails → plain TP on the same slice
+        (upside covered now, SL next sweep) — never worse than before."""
+        c = FakeClient(orders=[], fail=("oco",))
+        pos = _pos("FETUSDT", 84.6, 0.1954, take_profit=0.2031)
+        res = pg.run(c, FakePortfolio([pos]))
+        assert res["healed"] == 1
+        assert c.ocos == []
+        assert len(c.tp_placed) == 1
+        assert c.tp_placed[0][2] == pytest.approx(0.2031)
 
     def test_below_minnotional_skipped(self):
         c = FakeClient(orders=[])

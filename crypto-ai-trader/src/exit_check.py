@@ -329,10 +329,27 @@ def _notify(db, notif_id: str, title: str, body: str) -> None:
 
 
 # ---- execute ----------------------------------------------------------------
+def _oco_group_id(o: Dict) -> Optional[int]:
+    """WO-1043: OCO group id (>0) or None for standalone orders."""
+    try:
+        gid = int(o.get("orderListId", -1) or -1)
+    except (TypeError, ValueError):
+        gid = -1
+    return gid if gid > 0 else None
+
+
 def _cancel_sell_legs(client, symbol: str) -> Dict:
     """Cancel every open SELL-side order (OCO legs included). Any leg that
     survives 3 attempts aborts the exit — the remaining OCO stays as the
-    floor protection (never leave a position naked)."""
+    floor protection (never leave a position naked).
+
+    WO-1043: Binance OCO linked-kill — cancelling one leg terminates the
+    whole group (sibling → CANCELED). A later cancel of the sibling returns
+    -2011, which here means "already dead by linked-kill", NOT a failure:
+    treating it as failure would abort a market exit over a group that is
+    already fully cancelled. OCO groups are therefore cancelled once (first
+    live leg) and siblings are skipped; -2011 on any leg counts as dead.
+    """
     try:
         orders = client.get_open_orders(symbol) or []
     except Exception:
@@ -344,7 +361,19 @@ def _cancel_sell_legs(client, symbol: str) -> Dict:
     if not legs:
         return {"ok": True, "aborted": None, "cancelled": 0}
 
+    # one cancel target per OCO group + all plain legs (WO-1043)
+    seen_groups = set()
+    targets = []
     for leg in legs:
+        gid = _oco_group_id(leg)
+        if gid:
+            if gid in seen_groups:
+                continue  # sibling dies with the group — never cancel twice
+            seen_groups.add(gid)
+        targets.append(leg)
+
+    cancelled = 0
+    for leg in targets:
         oid = leg.get("orderId") or leg.get("id")
         done = False
         for attempt in range(3):
@@ -352,16 +381,23 @@ def _cancel_sell_legs(client, symbol: str) -> Dict:
                 if client.cancel_order(symbol, oid):
                     done = True
                     break
-            except Exception:
+            except Exception as e:
+                if "-2011" in str(e) or "Unknown order" in str(e):
+                    # already gone (filled or OCO linked-kill) — dead is done
+                    logger.info("exit cancel %s %s already gone (-2011), treated as cancelled",
+                                symbol, oid)
+                    done = True
+                    break
                 logger.warning("exit cancel %s %s attempt %d failed",
                                symbol, oid, attempt + 1)
                 time.sleep(1)
         if not done:
             return {"ok": False,
-                    "aborted": f"cancel failed for order {oid} (OCO kept)",
-                    "cancelled": 0}
+                    "aborted": f"cancel failed for order {oid} (protection kept)",
+                    "cancelled": cancelled}
+        cancelled += 1
     time.sleep(1)  # let the exchange unlock the balances (trailing-check precedent)
-    return {"ok": True, "aborted": None, "cancelled": len(legs)}
+    return {"ok": True, "aborted": None, "cancelled": cancelled}
 
 
 def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,

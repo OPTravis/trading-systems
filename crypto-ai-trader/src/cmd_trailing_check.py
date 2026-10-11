@@ -35,6 +35,20 @@ def _is_stop_order(o):
     return 'STOP' in t.upper() or 'stop' in t.lower()
 
 
+def _oco_group_id(o):
+    """WO-1043: OCO group id of an order, or None for standalone orders.
+
+    Binance spot: orderListId > 0 marks an OCO member; -1 (or missing) is a
+    standalone order. Cancelling ANY leg of an OCO terminates the whole group
+    (the sibling goes CANCELED/EXPIRED) — a single-leg cancel does not exist.
+    """
+    try:
+        gid = int(o.get('orderListId', -1) or -1)
+    except (TypeError, ValueError):
+        gid = -1
+    return gid if gid > 0 else None
+
+
 SL_RECON_DEV_TOL = 0.005  # bug#35: >0.5% SL price deviation triggers correction
 
 
@@ -645,10 +659,50 @@ def cmd_trailing_check(skip_legacy_recon: bool = False):
                 # 3. Place new SL
                 # 4. If new SL fails, re-place old SL as safety net (avoid naked position)
 
-                # Step 1: Cancel ALL old SL legs (bug#17: leave none behind,
-                # otherwise each cycle strands extra legs at stale prices)
+                # === WO-1043: OCO-aware cancel-first SL move ===
+                # 10/11 11:12 NEAR incident: cancelling the OCO SL leg silently
+                # killed the TP leg (linked-kill); the TP-leg cancel then
+                # -2011'd; the abort branch assumed "old SL preserved" and
+                # skipped the safety net — position fully naked for 58min.
+                # Fixes:
+                #   1. ONE cancel per OCO group (sibling dies with it);
+                #      -2011 on a leg = already dead = cancelled.
+                #   2. Abort ONLY when a stop order is verifiably still live
+                #      after an exchange recheck — never assume "preserved".
+                #   3. Re-place restores the FULL shape: the killed TP side is
+                #      restored together with the new SL as ONE OCO (WO-0921:
+                #      plain TP + plain SL double-lock the same balance and
+                #      deadlock; a single OCO is the only correct shape).
+
+                # Classify SL legs into OCO groups vs plain stops
+                oco_sl_groups = {}   # orderListId -> [sl legs]
+                plain_sl_legs = []
+                for leg in sl_orders:
+                    gid = _oco_group_id(leg)
+                    if gid:
+                        oco_sl_groups.setdefault(gid, []).append(leg)
+                    else:
+                        plain_sl_legs.append(leg)
+                # Sibling TP legs inside those groups (die with the group,
+                # must be restored on re-place)
+                tp_legs_dead = [
+                    o for o in open_orders
+                    if not _is_stop_order(o) and _oco_group_id(o) in oco_sl_groups
+                ]
+                tp_qty_dead = sum(_order_qty(t) for t in tp_legs_dead)
+                old_tp_px = 0.0
+                if tp_qty_dead > 0:
+                    old_tp_px = sum(
+                        float(t.get('price', 0) or 0) * _order_qty(t) for t in tp_legs_dead
+                    ) / tp_qty_dead
+
+                # Step 1: cancel — ONE cancel per OCO group (linked-kill),
+                # then each plain leg. bug#17 (leave none behind) still holds.
+                cancel_targets = [
+                    g[0] for g in oco_sl_groups.values()
+                ] + plain_sl_legs
                 cancel_ok = True
-                for sl_leg in sl_orders:
+                for sl_leg in cancel_targets:
                     leg_cancelled = False
                     for cancel_attempt in range(3):
                         try:
@@ -657,6 +711,17 @@ def cmd_trailing_check(skip_legacy_recon: bool = False):
                                 leg_cancelled = True
                                 break
                         except Exception as e:
+                            err_str = str(e)
+                            if "-2011" in err_str or "Unknown order" in err_str:
+                                # unknown order: already filled, or already
+                                # terminated via a sibling cancel (OCO
+                                # linked-kill) — dead IS the success shape
+                                logger.info(
+                                    "TrailingStop: SL leg %s for %s already gone (-2011), treated as cancelled",
+                                    _order_id(sl_leg), asset,
+                                )
+                                leg_cancelled = True
+                                break
                             logger.warning(
                                 "TrailingStop: cancel old SL attempt %d failed for %s: %s",
                                 cancel_attempt + 1, asset, e
@@ -668,39 +733,88 @@ def cmd_trailing_check(skip_legacy_recon: bool = False):
                         break
 
                 if not cancel_ok:
-                    logger.error(
-                        "TrailingStop: failed to cancel old SL for %s. Aborting SL move, old SL preserved.",
-                        asset
-                    )
-                    notifier.send_text(
-                        f"⚠️ SL取消失敗 {asset}！無法移動SL，舊SL(${old_sl_price:.6f})保留。"
-                    )
-                    results.append({
-                        "asset": asset,
-                        "action": "sl_cancel_failed",
-                        "old_sl": old_sl_price,
-                        "target_sl": new_sl_rounded,
-                        "msg": "Failed to cancel old SL, old SL preserved",
-                    })
-                    continue
+                    # WO-1043: verify before claiming "old SL preserved" — if
+                    # an OCO sibling cancel already killed the group, a failed
+                    # cancel means the protection is DEAD, not preserved.
+                    live_stops = None
+                    try:
+                        recheck_orders = client.get_open_orders(symbol)
+                        live_stops = [o for o in recheck_orders if _is_stop_order(o)]
+                    except Exception as e:
+                        logger.warning(
+                            "TrailingStop: post-cancel recheck failed for %s: %s", asset, e
+                        )
+                    if live_stops:
+                        # a stop order verifiably survives → old protection
+                        # still (at least partially) live → aborting is safe
+                        logger.error(
+                            "TrailingStop: failed to cancel old SL for %s but a live stop remains. "
+                            "Aborting SL move, old SL preserved.",
+                            asset
+                        )
+                        notifier.send_text(
+                            f"⚠️ SL取消失敗 {asset}！覆查確認舊SL仍在，無法移動SL，舊SL(${old_sl_price:.6f})保留。"
+                        )
+                        results.append({
+                            "asset": asset,
+                            "action": "sl_cancel_failed",
+                            "old_sl": old_sl_price,
+                            "target_sl": new_sl_rounded,
+                            "msg": "Failed to cancel old SL, live stop verified on recheck, old SL preserved",
+                        })
+                        continue
+                    if live_stops is not None:
+                        # recheck succeeded and shows NO live stop: protection
+                        # is dead — fall through to recovery re-place; never
+                        # claim "preserved" on a naked position
+                        logger.error(
+                            "TrailingStop: cancel failed for %s but recheck shows no live stop — "
+                            "old protection is DEAD, running recovery re-place (WO-1043)",
+                            asset,
+                        )
+                        notifier.send_text(
+                            f"⚠️ SL取消失敗 {asset}，覆查顯示舊保護已全部失效——執行恢復性重掛（含TP腿），不放任裸倉。"
+                        )
+                    else:
+                        # recheck itself failed: state unknown — abort with an
+                        # honest message; protection_guardian sweep re-verifies
+                        notifier.send_text(
+                            f"⚠️ SL取消失敗 {asset}且無法覆查交易所狀態，中止SL移動。守護層稍後複核實際掛單。"
+                        )
+                        results.append({
+                            "asset": asset,
+                            "action": "sl_cancel_failed",
+                            "old_sl": old_sl_price,
+                            "target_sl": new_sl_rounded,
+                            "msg": "Failed to cancel old SL and recheck failed, exchange state unknown",
+                        })
+                        continue
 
                 # Step 2: Wait for balance release
                 time.sleep(0.5)
 
-                # Step 3: Place new SL
+                # Step 3: place new protection — restore the FULL shape.
+                # OCO legs were killed → one new OCO (old TP price + new
+                # tighter SL); plain stops only → plain SL as before.
+                restore_mode = "oco" if (tp_qty_dead > 0 and old_tp_px > 0) else "plain_sl"
                 new_sl_order = None
                 for sl_attempt in range(3):
                     try:
-                        new_sl_order = client.place_order(
-                            symbol, "SELL", "STOP_LOSS_LIMIT",
-                            sl_qty, price=new_sl_rounded, stop_price=new_sl_rounded
-                        )
+                        if restore_mode == "oco":
+                            new_sl_order = client.place_oco(
+                                symbol, sl_qty, old_tp_px, new_sl_rounded,
+                            )
+                        else:
+                            new_sl_order = client.place_order(
+                                symbol, "SELL", "STOP_LOSS_LIMIT",
+                                sl_qty, price=new_sl_rounded, stop_price=new_sl_rounded
+                            )
                         if new_sl_order:
                             break
                     except Exception as e:
                         logger.warning(
-                            "TrailingStop: new SL placement attempt %d failed for %s: %s",
-                            sl_attempt + 1, asset, e
+                            "TrailingStop: new protection placement attempt %d failed for %s (%s): %s",
+                            sl_attempt + 1, asset, restore_mode, e
                         )
                         if sl_attempt < 2:
                             time.sleep(1)
@@ -716,26 +830,54 @@ def cmd_trailing_check(skip_legacy_recon: bool = False):
                         "action": "sl_moved",
                         "old_sl": old_sl_price,
                         "new_sl": new_sl_rounded,
+                        "restore": restore_mode,
+                        "tp_restored": round(old_tp_px, 6) if restore_mode == "oco" else 0,
                         "highest": update["highest_price"],
                         "current_price": current_price,
                         "callback_pct": update.get("callback_pct", 0),
                     })
                 else:
-                    # Step 4: SAFETY NET — re-place old SL to avoid naked position
+                    # Step 4: SAFETY NET — restore the OLD full shape to avoid
+                    # a naked position. OCO-shaped → re-place the OCO (old TP +
+                    # old SL); if that fails, at minimum restore the SL leg
+                    # (guardian's next sweep rebuilds the TP side).
                     old_sl_rounded = round(old_sl_price, p_prec)
                     safety_ok = False
                     try:
-                        safety_order = client.place_order(
-                            symbol, "SELL", "STOP_LOSS_LIMIT",
-                            sl_qty, price=old_sl_rounded, stop_price=old_sl_rounded
-                        )
+                        if restore_mode == "oco":
+                            safety_order = client.place_oco(
+                                symbol, sl_qty, old_tp_px, old_sl_rounded,
+                            )
+                        else:
+                            safety_order = client.place_order(
+                                symbol, "SELL", "STOP_LOSS_LIMIT",
+                                sl_qty, price=old_sl_rounded, stop_price=old_sl_rounded
+                            )
                         if safety_order:
                             safety_ok = True
                     except Exception as safety_err:
                         logger.error(
-                            "TrailingStop: safety net SL re-placement failed for %s: %s",
-                            asset, safety_err
+                            "TrailingStop: safety net re-placement failed for %s (%s): %s",
+                            asset, restore_mode, safety_err
                         )
+                    if not safety_ok and restore_mode == "oco":
+                        try:
+                            safety_order = client.place_order(
+                                symbol, "SELL", "STOP_LOSS_LIMIT",
+                                sl_qty, price=old_sl_rounded, stop_price=old_sl_rounded
+                            )
+                            if safety_order:
+                                safety_ok = True
+                                logger.warning(
+                                    "TrailingStop: OCO safety net failed for %s — restored plain SL only; "
+                                    "guardian sweep will rebuild TP side",
+                                    asset,
+                                )
+                        except Exception as safety_err2:
+                            logger.error(
+                                "TrailingStop: plain-SL safety fallback failed for %s: %s",
+                                asset, safety_err2
+                            )
 
                     if safety_ok:
                         logger.warning(
@@ -882,8 +1024,20 @@ def cmd_trailing_check(skip_legacy_recon: bool = False):
                     asset, est_notional,
                 )
             else:
-                # All or most units locked in TP with no SL — cancel lowest TP
-                lowest_tp = min(tp_orders, key=lambda o: float(o.get('price', 0)))
+                # All or most units locked in TP with no SL — cancel lowest TP.
+                # WO-1043: only PLAIN TPs are eligible — cancelling an OCO TP
+                # leg kills the group's SL leg too (linked-kill), destroying
+                # the very protection this branch exists to create.
+                plain_tp_orders = [o for o in tp_orders if _oco_group_id(o) is None]
+                if not plain_tp_orders:
+                    logger.info(
+                        "Skipping TP cancel for %s: all TP legs are OCO members "
+                        "(their SL legs already protect the balance) — linked-kill "
+                        "would destroy SL protection (WO-1043)",
+                        asset,
+                    )
+                    continue
+                lowest_tp = min(plain_tp_orders, key=lambda o: float(o.get('price', 0)))
                 cancel_qty = _order_qty(lowest_tp)
                 logger.warning(
                     "No SL for %s (%.4f total, SL covers %.4f, TP locks %.4f). "
