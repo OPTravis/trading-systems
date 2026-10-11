@@ -227,14 +227,16 @@ class TestPaperNetPnl:
         # a real BUY first (builds the position + last_buy_price row)
         buy = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.05)
         assert buy is not None
-        res = pt._fill_market("BTCUSDT", "SELL", 1.0, 99.95)
+        # WO-1042: BUY fee settles in base — only the net qty is sellable
+        from src.paper_trader import PAPER_SLIPPAGE_PCT, PAPER_FEE_RATE
+        net = 1.0 * (1 - PAPER_FEE_RATE)
+        res = pt._fill_market("BTCUSDT", "SELL", net, 99.95)
         # net incl. slippage ±0.05%: fills at 100.05*(1+.0005) /
         # 99.95*(1-.0005); fee on the sell notional
-        from src.paper_trader import PAPER_SLIPPAGE_PCT, PAPER_FEE_RATE
         buy_fill = 100.05 * (1 + PAPER_SLIPPAGE_PCT / 100)
         sell_fill = 99.95 * (1 - PAPER_SLIPPAGE_PCT / 100)
-        fee = 1.0 * sell_fill * PAPER_FEE_RATE
-        expected = (sell_fill - buy_fill) * 1.0 - fee
+        fee = net * sell_fill * PAPER_FEE_RATE
+        expected = (sell_fill - buy_fill) * net - fee
         assert res["_paper"]["pnl"] == pytest.approx(expected)
 
 
@@ -280,20 +282,22 @@ class TestRulingA_DualWriteRowGross:
         pt._in_transaction = False
         buy = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
         assert buy is not None
-        res = pt._fill_market("BTCUSDT", "SELL", 1.0, 110.0)
+        # WO-1042: BUY fee settles in base — sell the net qty
+        net = 1.0 * (1 - PAPER_FEE_RATE)
+        res = pt._fill_market("BTCUSDT", "SELL", net, 110.0)
         assert res is not None
         sell_fill = 110.0 * (1 - PAPER_SLIPPAGE_PCT / 100)
         buy_fill = 100.0 * (1 + PAPER_SLIPPAGE_PCT / 100)
-        fee = 1.0 * sell_fill * PAPER_FEE_RATE
+        fee = net * sell_fill * PAPER_FEE_RATE
         # ledger row: GROSS (no fee)
         rows = db.trade_get_recent("BTCUSDT", limit=10)
         sell_rows = [r for r in rows if r["side"] == "SELL"]
         assert len(sell_rows) == 1
         assert sell_rows[0]["pnl"] == pytest.approx(
-            gross_pnl(buy_fill, sell_fill, 1.0))
+            gross_pnl(buy_fill, sell_fill, net))
         # sim internal: NET (fee included) — unchanged by the ruling
         assert res["_paper"]["pnl"] == pytest.approx(
-            gross_pnl(buy_fill, sell_fill, 1.0) - fee)
+            gross_pnl(buy_fill, sell_fill, net) - fee)
 
     def test_buy_row_still_zero(self, db):
         from src.paper_trader import PaperTrader

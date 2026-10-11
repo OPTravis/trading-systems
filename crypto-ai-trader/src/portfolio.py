@@ -158,6 +158,7 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         _skip_validation: bool = False,
         _from_sync: bool = False,
         on_conflict: str = "merge",
+        client_order_id: Optional[str] = None,
     ):
         """Add a position with validation and explicit same-symbol policy.
 
@@ -353,11 +354,16 @@ class PortfolioManager(PnlMixin, RiskMixin, StateMixin):
         # Record BUY trade to StateDB (skip during sync to avoid phantom records)
         if self._db is not None and not _from_sync:
             try:
+                # WO-1042: BUY rows now carry the exchange orderId like
+                # SELL rows do (close_position precedent) — the 10/11
+                # OGN switch left trades id 228 with a NULL id while the
+                # paired SELL id 227 got 4517780636.
                 self._db.trade_add(
                     symbol=symbol,
                     side="BUY",
                     qty=quantity,
                     price=entry_price,
+                    client_order_id=client_order_id,
                 )
                 logger.info(
                     f"Recorded trade: {symbol} BUY qty={quantity} price={entry_price}"

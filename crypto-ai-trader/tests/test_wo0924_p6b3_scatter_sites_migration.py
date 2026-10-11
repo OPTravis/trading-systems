@@ -473,12 +473,17 @@ class TestPaperTraderFillPipeline:
         pt = _make_trader(db)
         res = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
         assert res is not None and res["status"] == "FILLED"
-        # balance: 10000 - (100.05 notional + fee @ TAKER 0.00075)
-        # WO-1003-5: paper fee single-sourced to backtest TAKER_FEE_RATE
-        assert pt._get_sim_balance() == pytest.approx(
-            10000 - 100.05 - 100.05 * PAPER_FEE_RATE)
+        # WO-1042: BUY fee settles in the BASE asset (real-Binance
+        # alignment) — USDT pays the notional only; the position books
+        # the NET qty (1.0 × (1-fee)); WO-1003-5 fee single source kept
+        assert pt._get_sim_balance() == pytest.approx(10000 - 100.05)
         pos = pt._get_sim_positions()["BTC"]
-        assert pos["qty"] == pytest.approx(1.0)
+        assert pos["qty"] == pytest.approx(1.0 * (1 - PAPER_FEE_RATE))
+        # fill response: executedQty GROSS, commission in BTC
+        assert float(res["executedQty"]) == pytest.approx(1.0)
+        assert res["fills"][0]["commissionAsset"] == "BTC"
+        assert float(res["fills"][0]["commission"]) == pytest.approx(
+            1.0 * PAPER_FEE_RATE)
         assert pos["entry_price"] == pytest.approx(100.05)
         rows = db.paper_trades_recent("BTCUSDT")
         assert len(rows) == 1 and rows[0]["side"] == "BUY"
@@ -489,10 +494,12 @@ class TestPaperTraderFillPipeline:
         always threw, and silently kept pnl=0."""
         pt = _make_trader(db)
         assert pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
-        res = pt._fill_market("BTCUSDT", "SELL", 1.0, 100.0)
+        # WO-1042: only the net (fee-shorn) qty is sellable
+        net = 1.0 * (1 - PAPER_FEE_RATE)
+        res = pt._fill_market("BTCUSDT", "SELL", net, 100.0)
         assert res is not None
         # BUY fill 100.05, SELL fill 99.95; fee on sell @ TAKER 0.00075
-        expected = (99.95 - 100.05) * 1.0 - 99.95 * PAPER_FEE_RATE
+        expected = (99.95 - 100.05) * net - 99.95 * net * PAPER_FEE_RATE
         assert res["_paper"]["pnl"] == pytest.approx(expected)  # legacy: always 0.0
         assert pt._get_sim_pnl() == pytest.approx(expected)  # legacy: never updated
         # position closed
@@ -512,7 +519,7 @@ class TestPaperTraderFillPipeline:
 
     def test_insufficient_buy_rolls_back_atomically(self, db):
         pt = _make_trader(db)
-        pt._set_sim_balance(50.0)  # below 100.15 total cost
+        pt._set_sim_balance(50.0)  # below the 100.05 notional (WO-1042)
         res = pt._fill_market("BTCUSDT", "BUY", 1.0, 100.0)
         assert res is None
         assert pt._get_sim_balance() == pytest.approx(50.0)

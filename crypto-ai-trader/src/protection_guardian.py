@@ -290,6 +290,10 @@ from src.protection_shape import is_oco_leg as _is_oco_leg  # noqa: E402
 from src.protection_shape import is_plain_sl as _is_plain_sl  # noqa: E402
 from src.protection_shape import is_plain_tp as _is_plain_tp  # noqa: E402
 from src.protection_shape import order_qty as _order_qty  # noqa: E402
+from src.protect_qty import (  # noqa: E402  WO-1042 Bug-①
+    calibrate_sell_qty as _calibrate_protect_qty,
+    place_sell_with_downgrade as _place_sell_downgraded,
+)
 
 
 def run(client: Any, portfolio: Any,
@@ -391,12 +395,22 @@ def run(client: Any, portfolio: Any,
                 # hanging TP does not protect the downside
                 if oco_qty <= 0 and sl_qty <= 0:
                     em_stop = _tick_round(price * 0.87, tick)
-                    try:
-                        ret = client.place_stop_loss_limit(
-                            sym, _step_floor(qty, step),
-                            _tick_round(em_stop * 0.995, tick), em_stop)
-                    except Exception:
-                        ret = None
+                    # WO-1042 Bug-① (10/11 OGN): the DB qty can overstate
+                    # the landed base (BUY fee settles in base) — size
+                    # the emergency SL from the exchange free balance and
+                    # downgrade once on a -2010-shaped rejection instead
+                    # of leaving the position naked.
+                    _sl_qty, _ = _calibrate_protect_qty(
+                        client, sym, _step_floor(qty, step), step,
+                        context="guardian_emergency_sl_breach")
+                    ret, _sl_placed = _place_sell_downgraded(
+                        lambda q: client.place_stop_loss_limit(
+                            sym, q,
+                            _tick_round(em_stop * 0.995, tick), em_stop),
+                        client, sym, _sl_qty, step,
+                        kind="guardian_emergency_sl_breach", price=em_stop,
+                        min_qty=min_qty, min_notional=min_notional,
+                        context="guardian")
                     if ret:
                         summary["healed"] += 1
                         audit_transition("emergency_sl", info)
@@ -429,10 +443,21 @@ def run(client: Any, portfolio: Any,
 
             free_qty = _step_floor(qty - oco_qty - tp_qty - sl_qty, step)
             if free_qty >= min_qty and free_qty * price >= min_notional:
-                # free slice big enough → plain TP on it (no lock dance)
-                try:
-                    res = client.place_limit_sell(sym, free_qty, tp_px)
-                except Exception:
+                # free slice big enough → plain TP on it (no lock dance).
+                # WO-1042 Bug-①: the slice derives from the DB qty — cap
+                # it at the exchange free balance and downgrade once on
+                # a -2010-shaped rejection (residue overstated slice).
+                free_qty, _ = _calibrate_protect_qty(
+                    client, sym, free_qty, step,
+                    context="guardian_free_slice_tp")
+                if free_qty >= min_qty and free_qty * price >= min_notional:
+                    res, _tp_placed = _place_sell_downgraded(
+                        lambda q: client.place_limit_sell(sym, q, tp_px),
+                        client, sym, free_qty, step,
+                        kind="guardian_free_slice_tp", price=tp_px,
+                        min_qty=min_qty, min_notional=min_notional,
+                        context="guardian")
+                else:
                     res = None
                 if res:
                     summary["healed"] += 1
@@ -462,12 +487,21 @@ def run(client: Any, portfolio: Any,
                 # cancel already done, restore hit PERCENT_PRICE -1013).
                 # A wide emergency SL beats staying unprotected.
                 em_stop = _tick_round(price * 0.87, tick)
-                try:
-                    ret = client.place_stop_loss_limit(
-                        sym, _step_floor(qty, step),
-                        _tick_round(em_stop * 0.995, tick), em_stop)
-                except Exception:
-                    ret = None
+                # WO-1042 Bug-① (10/11 OGN 08:03 sweep): emergency SL sized
+                # from the DB nominal qty hit -2010 and the position sat
+                # naked — calibrate to the exchange free balance, with a
+                # one-shot downgrade retry if still rejected.
+                _sl_qty, _ = _calibrate_protect_qty(
+                    client, sym, _step_floor(qty, step), step,
+                    context="guardian_emergency_sl")
+                ret, _sl_placed = _place_sell_downgraded(
+                    lambda q: client.place_stop_loss_limit(
+                        sym, q,
+                        _tick_round(em_stop * 0.995, tick), em_stop),
+                    client, sym, _sl_qty, step,
+                    kind="guardian_emergency_sl", price=em_stop,
+                    min_qty=min_qty, min_notional=min_notional,
+                    context="guardian")
                 if ret:
                     summary["healed"] += 1
                     audit_transition("emergency_sl", info)
@@ -563,6 +597,11 @@ def run(client: Any, portfolio: Any,
                 rebuild_qty = _step_floor(
                     min(qty, sum(l["qty"] for l in cancelled_tp)
                         + max(qty - tp_qty - sl_qty, 0.0)), step)
+                # WO-1042 Bug-① L1: cap at what the account actually
+                # holds (the cancelled TP legs just freed their lock).
+                rebuild_qty, _ = _calibrate_protect_qty(
+                    client, sym, rebuild_qty, step,
+                    context="guardian_tp_oco_rebuild")
                 oco = None
                 oco_err = None
                 # WO-0923-viii: retry transient/rate-limit errors with
@@ -570,6 +609,13 @@ def run(client: Any, portfolio: Any,
                 # insufficient balance, filter rejects) fall through to
                 # the rescue ladder immediately — blind retries cannot
                 # fix a rejected price relationship.
+                # WO-1042 Bug-① L2 (added after the loop): a
+                # -2010-shaped rejection (requested > free) gets ONE
+                # free-balance downgrade before the demote ladder —
+                # keeping both legs beats demoting a TP to plain SL.
+                def _rebuild_place(_q):
+                    return client.place_oco(
+                        sym, _q, tp_px_live, sl_px_new)
                 for attempt in range(3):
                     try:
                         oco = client.place_oco(
@@ -587,6 +633,16 @@ def run(client: Any, portfolio: Any,
                             time.sleep(0.5 * (2 ** attempt))
                             continue
                         break
+                if not oco:
+                    # already_rejected: the loop above just got a
+                    # rejection for this qty — only a free-balance
+                    # DOWNGRADE may re-place, never the same qty blind
+                    oco, rebuild_qty = _place_sell_downgraded(
+                        _rebuild_place, client, sym, rebuild_qty, step,
+                        kind="guardian_tp_oco_rebuild", price=tp_px_live,
+                        min_notional=min_notional,
+                        context="tp_oco_rebuild", already_rejected=True)
+
                 if oco:
                     summary["healed"] += 1
                     audit_transition("tp_oco_rebuild", info)
@@ -801,11 +857,18 @@ def run(client: Any, portfolio: Any,
                 # the same way, leaving the position with NO SL.
                 old_stop = _legalize_sl_price(
                     old_stop, price, tick, sym=sym, context="oco_swap")
-                try:
-                    oco = client.place_oco(sym, oco_qty_step, tp_px,
-                                           old_stop)
-                except Exception:
-                    oco = None
+                # WO-1042 Bug-①: the swap just cancelled the locking SL
+                # legs — calibrate to the freed balance and downgrade
+                # once on a -2010-shaped rejection before the safety net
+                # re-places the plain SL.
+                oco_qty_step, _ = _calibrate_protect_qty(
+                    client, sym, oco_qty_step, step,
+                    context="guardian_oco_swap")
+                oco, _swapped_qty = _place_sell_downgraded(
+                    lambda q: client.place_oco(sym, q, tp_px, old_stop),
+                    client, sym, oco_qty_step, step,
+                    kind="guardian_oco_swap", price=tp_px,
+                    min_notional=min_notional, context="oco_swap")
                 if oco:
                     summary["healed"] += 1
                     audit_transition("oco_swap", info)

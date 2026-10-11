@@ -82,31 +82,43 @@ def test_t2_sell_more_than_held(pt):
 # ── C: balance == cost boundary ───────────────────────────────────────
 
 def test_t2_balance_exactly_covers_cost(pt):
-    """balance == notional + fee (to the cent) succeeds and lands at ~0."""
+    """balance == notional (to the cent) succeeds and lands at ~0.
+
+    WO-1042: paper BUY fee settles in the BASE asset (real-Binance
+    alignment), so USDT cost is notional only — the exact boundary is
+    balance == notional and the wallet lands at ~0 with the fee taken
+    out of the received coin.
+    """
     price = 100.0
-    # market BUY fills at price*(1+slip 0.05%); fee = notional*0.075%
-    # solve qty so total_cost == balance exactly
+    # market BUY fills at price*(1+slip 0.05%); fee comes out of BTC
     from src.paper_trader import PAPER_SLIPPAGE_PCT, PAPER_FEE_RATE
     fill = price * (1 + PAPER_SLIPPAGE_PCT / 100)
-    fee_rate = PAPER_FEE_RATE
-    # total = q*fill*(1+fee_rate) = 10000 → q = 10000/(fill*(1+fee_rate))
-    q = 10000.0 / (fill * (1 + fee_rate))
+    q = 10000.0 / fill                      # notional == balance exactly
     pt._set_sim_balance(10000.0)
     r = pt.place_market_buy("BTCUSDT", q)
     assert r is not None, "exact-balance order should fill"
     assert pt._get_sim_balance() == pytest.approx(0.0, abs=1e-6)
+    # fee landed in the base asset, not in USDT
+    net = float(r["executedQty"]) - float(r["fills"][0]["commission"])
+    assert net == pytest.approx(q * (1 - PAPER_FEE_RATE), abs=1e-9)
+    assert r["fills"][0]["commissionAsset"] == "BTC"
 
 
 def test_t2_balance_one_dust_short(pt):
     """balance a hair below cost is refused — no partial/dirty fill."""
-    from src.paper_trader import PAPER_SLIPPAGE_PCT, PAPER_FEE_RATE
+    from src.paper_trader import PAPER_SLIPPAGE_PCT
     fill = 100.0 * (1 + PAPER_SLIPPAGE_PCT / 100)
-    q = 100.0 / (fill * (1 + PAPER_FEE_RATE))  # needs exactly 100 USDT
+    q = 100.0 / fill  # notional == exactly 100 USDT (WO-1042: fee in base)
     pt._set_sim_balance(100.0 - 1e-6)
     before = _snap(pt)
     r = pt.place_market_buy("BTCUSDT", q)
     assert r is None
     assert _snap(pt) == before
+
+
+def _net_bought(r):
+    """Net base qty of a paper BUY fill (WO-1042: fee settles in base)."""
+    return float(r["executedQty"]) - float(r["fills"][0]["commission"])
 
 
 # ── D: rapid cancels ──────────────────────────────────────────────────
@@ -147,7 +159,8 @@ def test_t2_rapid_place_cancel_cycle(pt):
 def test_t2_feed_outage_then_recovery(pt, monkeypatch):
     """Price feed outage: orders fail cleanly, state intact; after
     recovery the same order fills normally."""
-    assert pt.place_market_buy("BTCUSDT", 0.5) is not None
+    r0 = pt.place_market_buy("BTCUSDT", 0.5)
+    assert r0 is not None
     before = _snap(pt)
 
     # outage: feed raises (network down)
@@ -161,7 +174,7 @@ def test_t2_feed_outage_then_recovery(pt, monkeypatch):
     # recovery
     monkeypatch.setattr(PaperTrader, "get_current_price",
                         lambda self, s: 105.0)
-    r = pt.place_market_sell("BTCUSDT", 0.5)
+    r = pt.place_market_sell("BTCUSDT", _net_bought(r0))
     assert r is not None
     assert pt._get_sim_balance() > before["balance"]
 
@@ -236,7 +249,8 @@ def test_t2_commit_failure_atomic_rollback(pt, monkeypatch):
 def test_t2_ledger_failure_does_not_block_fill(pt, monkeypatch):
     """A broken trades-ledger write must not undo the paper fill (the
     dual-write is best-effort by design — ruling A)."""
-    assert pt.place_market_buy("BTCUSDT", 0.5) is not None
+    rb = pt.place_market_buy("BTCUSDT", 0.5)
+    assert rb is not None
     bal_before = pt._get_sim_balance()
 
     real_db = pt._get_db()
@@ -250,6 +264,6 @@ def test_t2_ledger_failure_does_not_block_fill(pt, monkeypatch):
             return getattr(real_db, name)
 
     monkeypatch.setattr(pt, "_get_db", lambda: _BrokenTradeAdd())
-    r = pt.place_market_sell("BTCUSDT", 0.5)
+    r = pt.place_market_sell("BTCUSDT", _net_bought(rb))
     assert r is not None, "fill must survive ledger outage"
     assert pt._get_sim_balance() > bal_before

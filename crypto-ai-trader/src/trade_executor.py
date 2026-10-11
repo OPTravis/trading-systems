@@ -512,6 +512,7 @@ def _record_trade_portfolio(
     is_exploration=False,
     bandit_sltp=None,
     stop_loss=None,
+    client_order_id=None,
 ):
     """Track executed trade in portfolio state and publish events.
 
@@ -546,6 +547,7 @@ def _record_trade_portfolio(
             stop_loss=stop_loss,  # WO-1023: order-chain sl_price, not config default
             deduct_cash=_deduct_cash,
             _skip_validation=True,
+            client_order_id=client_order_id,  # WO-1042: BUY orderId writeback
         )
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
@@ -1895,6 +1897,13 @@ def execute_auto_trade(
         # defensive: order helper blew up before exposing sl_price —
         # recompute with the identical formula rather than drifting
         _sl_price = round(price * (1 - stop_loss_pct / 100), p_prec)
+    # WO-1042: thread the exchange orderId into the BUY ledger row (the
+    # TWAP aggregate carries none — stays NULL as before).
+    _buy_oid = None
+    try:
+        _buy_oid = str(buy_result.get("orderId")) if buy_result.get("orderId") else None
+    except Exception:
+        _buy_oid = None
     _record_trade_portfolio(
         client, symbol, executed_qty, avg_price, strategy,
         usdt_bal, invest_amount, fee_rate,
@@ -1902,6 +1911,7 @@ def execute_auto_trade(
         is_exploration=_is_exploration,
         bandit_sltp=bandit_sltp,
         stop_loss=_sl_price,
+        client_order_id=_buy_oid,
     )
 
     logger.info(

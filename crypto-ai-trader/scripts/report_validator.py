@@ -48,14 +48,25 @@ _RE_CLAIMED_POSITION = re.compile(
     r"(?im)^\s*[^\n]{0,24}?([A-Z]{2,10}USDT)[^\n]{0,12}?(持仓|开仓|持有|已开)")
 _RE_CLAIM_NO_POSITION = re.compile(r"(无持仓|0\s*持仓|空仓|持仓\s*0\s*[单仓位个只]|未持仓)")
 _RE_CLAIM_ORDERS = re.compile(r"挂单\s*([0-9]+)\s*[单条个笔]")
-_RE_CLAIM_BALANCE = re.compile(r"(?:余额|USDT)[^\n]{0,10}?\$\s*([0-9]+(?:\.[0-9]+)?)")
+_RE_CLAIM_BALANCE = re.compile(
+    r"(?:余额|(?<![A-Z0-9])USDT)[^\n]{0,10}?\$\s*([0-9]+(?:\.[0-9]+)?)")
 # bug#40 (2026-09-05): trade lines like "BUY NEARUSDT @ $2.133" put an
 # @-price right after a *USDT symbol — the plain USDT anchor above used to
 # swallow that price as a balance claim and block the report (NEAR / ASTER /
 # ZKP / GIGGLE / ENA, 5 false blocks on 9/5).  Trade-verb + @-price lines are
 # excluded from balance matching; English balance anchors are covered too.
+# WO-1042 Bug-② (10/11): the verb list alone stayed whack-a-mole — SWITCH
+# notifications ("SWITCH OGNUSDT @ $0.0340 x176.0") were never in it and
+# got blocked 5× (NEAR 10/1, WLD 10/2 & 9/26, PENGU 9/30, OGN 10/11), so
+# Leo silently missed every rotation notice.  Two independent layers:
+#   L1  verb list extended (SWITCH / DE-RISK / 换仓 — trade lines skip
+#       balance matching entirely);
+#   L2  the USDT anchor must be a STANDALONE token, not a symbol suffix
+#       ("OGN|USDT") — any future "@ $price" verb stops matching by
+#       construction.  Genuine claims ("USDT 余额: $400", "可用USDT:
+#       $400") still anchor.
 _RE_TRADE_PRICE_CONTEXT = re.compile(
-    r"(?i)\b(?:BUY|SELL|买入|卖出)\b[^@\n]*@\s*\$?\s*[0-9]")
+    r"(?i)\b(?:BUY|SELL|SWITCH|DE-RISK|买入|卖出|换仓|換倉)\b[^@\n]*@\s*\$?\s*[0-9]")
 _RE_CLAIM_BALANCE_EN = re.compile(
     r"(?i)\bbalance(?:s)?\b[^\n]{0,14}?(?:[:=]|\bis\b)\s*\$?\s*([0-9]+(?:\.[0-9]+)?)")
 

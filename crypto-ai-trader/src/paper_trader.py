@@ -663,8 +663,21 @@ class PaperTrader:
         self, order_id: int, trade_id: str, symbol: str, side: str,
         fill_price: float, quantity: float, notional: float,
         fee: float, slippage_pct: float, pnl: float,
+        fee_base: float = 0.0,
     ) -> Dict:
-        """Build the Binance-compatible order result dict."""
+        """Build the Binance-compatible order result dict.
+
+        WO-1042: BUY fills report the commission in the BASE asset (fee
+        settles there on Binance SPOT); SELL fills keep commission in
+        USDT (the quote side pays the SELL fee). executedQty/origQty stay
+        GROSS on both sides — same as the real exchange response — the
+        net credit is the caller's booking concern.
+        """
+        if side == "BUY" and fee_base > 0:
+            _comm, _comm_asset = str(fee_base), symbol.replace(
+                "USDT", "").replace("USDC", "")
+        else:
+            _comm, _comm_asset = str(fee), "USDT"
         return {
             "orderId": order_id,
             "clientOrderId": f"paper_{trade_id}",
@@ -680,8 +693,8 @@ class PaperTrader:
                 {
                     "price": str(fill_price),
                     "qty": str(quantity),
-                    "commission": str(fee),
-                    "commissionAsset": "USDT",
+                    "commission": _comm,
+                    "commissionAsset": _comm_asset,
                 }
             ],
             "_paper": {
@@ -732,19 +745,29 @@ class PaperTrader:
         try:
             # Check balance
             if side == "BUY":
-                total_cost = notional + fee
-                if total_cost > snap_balance:
+                # WO-1042 Bug-① paper alignment: Binance SPOT settles the
+                # BUY taker fee in the BASE asset — quote pays exactly the
+                # notional, the position lands NET of the fee (176 bought
+                # → 175.824 OGN, mirroring production). Legacy model
+                # charged the fee in USDT and credited the full qty,
+                # overstating what protective SELLs could place. The
+                # paper_trades.fee column keeps the quote-equivalent
+                # number (fee_base × price == notional × rate), so PnL
+                # math and readers are unchanged.
+                if notional > snap_balance:
                     logger.error(
-                        "PaperTrader: insufficient balance $%.2f (need $%.2f with fee)",
+                        "PaperTrader: insufficient balance $%.2f (need $%.2f)",
                         snap_balance,
-                        total_cost,
+                        notional,
                     )
                     self._rollback_transaction()
                     return None
-                # Deduct USDT
-                self._set_sim_balance(snap_balance - total_cost)
-                # Add position
-                self._add_position(symbol, quantity, fill_price)
+                fee_base = quantity * PAPER_FEE_RATE
+                net_qty = quantity - fee_base
+                # Deduct USDT (notional only — the fee is in base)
+                self._set_sim_balance(snap_balance - notional)
+                # Add position (net of the base-asset fee)
+                self._add_position(symbol, net_qty, fill_price)
             else:  # SELL
                 base = symbol.replace("USDT", "").replace("USDC", "")
                 pos = snap_positions.get(base, {})
@@ -833,6 +856,7 @@ class PaperTrader:
             order_id, trade_id, symbol, side,
             fill_price, quantity, notional,
             fee, slippage_pct, pnl,
+            fee_base=(quantity * PAPER_FEE_RATE) if side == "BUY" else 0.0,
         )
 
         logger.info(

@@ -18,7 +18,7 @@ No assertion may be waived silently; every mismatch is a failure.
 """
 import json
 import random
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 
 import pytest
 
@@ -67,7 +67,10 @@ def test_t3_mass_session_consistency(sim):
             # SELL: full or partial exit
             frac = rng.choice([Decimal("1.0"), Decimal("0.5"),
                                Decimal("0.3")])
-            qty = float((d_qty * frac).quantize(Decimal("0.0001")))
+            # ROUND_DOWN: never ask for more than the net (fee-shorn)
+            # shadow position (WO-1042: BUY fee settles in base)
+            qty = float((d_qty * frac).quantize(
+                Decimal("0.0001"), rounding=ROUND_DOWN))
             if qty * price < 10.5:
                 continue
             r = pt.place_market_sell("BTCUSDT", qty)
@@ -89,9 +92,11 @@ def test_t3_mass_session_consistency(sim):
                 continue
             fill = Decimal(str(price)) * slip_buy
             notional = Decimal(str(qty)) * fill
-            f = notional * fee
-            d_balance -= notional + f
-            d_qty += Decimal(str(qty))
+            f = notional * fee          # quote-equivalent of the base fee
+            # WO-1042: BUY fee settles in BASE — cash pays notional only,
+            # position receives qty*(1-fee)
+            d_balance -= notional
+            d_qty += Decimal(str(qty)) * (1 - fee)
             if d_last_buy is None or rng.random() < 0.3:
                 d_last_buy = fill   # simplified avg-in model for shadow pnl
             n_fills += 1
@@ -128,7 +133,9 @@ def test_t3_mass_session_consistency(sim):
     for leg in legs:
         notional = Decimal(str(leg["quantity"])) * Decimal(str(leg["fill_price"]))
         f = Decimal(str(leg["fee_usdt"]))
-        replay += (notional - f) if leg["side"] == "SELL" else -(notional + f)
+        # WO-1042: BUY fee settles in base → BUY cash leg is notional only;
+        # fee_usdt on BUY rows stays the quote-equivalent info value
+        replay += (notional - f) if leg["side"] == "SELL" else -notional
     replay_err = abs(replay - actual)
     assert replay_err < Decimal("1e-6") * n_fills * 150, \
         f"independent replay mismatch: {replay_err}"

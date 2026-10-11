@@ -15,6 +15,11 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from src.live_alerts import emit as emit_alert
+from src.protect_qty import (
+    calibrate_sell_qty as _calibrate_protect_qty,
+    net_buy_qty as _net_buy_qty,
+    place_sell_with_downgrade as _place_sell_downgraded,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +97,15 @@ class PositionOptimizer:
                 s = repr(step).split(".")
                 dec = len(s[1].rstrip("0")) if len(s) > 1 else 0
             pqty = round(int(qty / step) * step, dec) if step > 0 else round(qty, dec)
+            # WO-1042 Bug-① L1 (10/11 OGN): SPOT market BUY settles the
+            # taker fee in the BASE asset, so the qty that actually
+            # landed (175.824 of a nominal 176) is what can be sold.
+            # Size the protective legs from the exchange free balance
+            # (capped to step) before the first attempt — the nominal
+            # book qty was the -2010 root cause.
+            pqty, _cal = _calibrate_protect_qty(
+                self.bc, symbol, pqty, step,
+                fill_order=buy_order, context="switch_protection")
             fill_px = self._fill_avg_price(buy_order, entry_price)
             if fill_px <= 0 or pqty <= 0 or pqty * fill_px < min_notional:
                 logger.warning(
@@ -120,11 +134,15 @@ class PositionOptimizer:
             tp_px = self._round_tick(fill_px * (1 + 0.04), tick)
 
             # --- OCO-first: one locked quantity, both legs ---
-            try:
-                oco = self.bc.place_oco(symbol, pqty, tp_px, sl_px)
-            except Exception as e:
-                logger.warning("switch-protection: OCO place failed for %s: %s", symbol, e)
-                oco = None
+            # WO-1042 Bug-① L2: a -2010-shaped rejection (requested more
+            # than the free balance) downgrades once to floor(free, step)
+            # instead of dead-ending into the split fallback that would
+            # re-request the same unplaceable quantity.
+            oco, _oco_qty = _place_sell_downgraded(
+                lambda q: self.bc.place_oco(symbol, q, tp_px, sl_px),
+                self.bc, symbol, pqty, step,
+                kind="switch_oco", price=fill_px,
+                min_notional=min_notional, context="switch_protection")
             if oco:
                 logger.info(
                     "switch-protection: OCO live for %s %s @ tp %s / sl %s",
@@ -138,12 +156,12 @@ class PositionOptimizer:
                 # split SL slice would be rejected → full-qty SL is the
                 # lesser evil (capital first); TP left to guardian, which
                 # can swap the locked SL into an OCO later
-                try:
-                    sl_ret = self.bc.place_stop_loss_limit(
-                        symbol, pqty, round(sl_px * 0.995, 8), sl_px)
-                except Exception as e:
-                    sl_ret = None
-                    logger.warning("switch-protection: SL place failed for %s: %s", symbol, e)
+                sl_ret, _sl_qty = _place_sell_downgraded(
+                    lambda q: self.bc.place_stop_loss_limit(
+                        symbol, q, round(sl_px * 0.995, 8), sl_px),
+                    self.bc, symbol, pqty, step,
+                    kind="switch_full_sl", price=sl_px, min_qty=min_qty,
+                    min_notional=min_notional, context="switch_protection")
                 if not sl_ret:
                     emit_alert(
                         "PROTECTION_FAILED", symbol,
@@ -1109,13 +1127,21 @@ class PositionOptimizer:
                 # under-protected). Same rationale as bug#18 fix in
                 # trade_executor._track_executed_trade.
                 entry_fill_price = self._fill_avg_price(buy_order, to_price)
+                # WO-1042 Bug-① (10/11 OGN): book the NET received qty
+                # (BUY fee settles in base: 176 bought → 175.824 landed)
+                # so the ledger stops overstating what protective orders
+                # may sell; also close the BUY orderId writeback gap
+                # (trades id 228 carried NULL while the SELL got 227's).
+                book_qty = _net_buy_qty(to_symbol, buy_order, buy_qty)
                 self.portfolio.add_position(
                     symbol=to_symbol,
-                    quantity=buy_qty,
+                    quantity=book_qty,
                     entry_price=entry_fill_price,
                     strategy="switch",
                     deduct_cash=True,
                     _skip_validation=True,
+                    client_order_id=str(buy_order["orderId"])
+                    if buy_order.get("orderId") else None,
                 )
                 logger.info(
                     f"Portfolio updated: removed {from_symbol}, added {to_symbol}"
@@ -1137,12 +1163,12 @@ class PositionOptimizer:
             # balance and would reject a full-qty OCO with -2010), then
             # protect the whole merged quantity in one order.
             try:
-                prot_qty = buy_qty
+                prot_qty = _net_buy_qty(to_symbol, buy_order, buy_qty)
                 for _p in positions:
                     if _p.get("symbol") == to_symbol:
                         _old_qty = float(_p.get("quantity", 0) or 0)
                         if _old_qty > 0:
-                            prot_qty = buy_qty + _old_qty
+                            prot_qty = _net_buy_qty(to_symbol, buy_order, buy_qty) + _old_qty
                         break
                 if prot_qty > buy_qty:
                     logger.info(
