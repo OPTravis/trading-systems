@@ -18,6 +18,14 @@ risk:
   cash_reserve_pct: 10          # WO-1044-E: 50 → 10
   max_daily_loss_pct: 5         # WO-1044-E: 3 → 5 (recalibrated for 4×26% book)
   max_drawdown_pct: 10          # Lowered from 15 → 10
+                                 # WO-1046b: trips now enter a tiered
+                                 # auto-reset cooldown (48h earliest @
+                                 # dd<6%; 72h recheck @ dd<8%; 24h
+                                 # deferral rechecks with escalation;
+                                 # chain-crash re-trip within 72h of a
+                                 # reset doubles the cooldown). Params
+                                 # + kv override: risk_params.yaml
+                                 # drawdown_breaker.cooldown
   max_open_positions: 4         # WO-1044-E: 5 → 4 (3-4 concurrent positions)
   max_hold_hours: 48
 

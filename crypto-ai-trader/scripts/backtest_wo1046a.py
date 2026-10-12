@@ -87,7 +87,8 @@ def _close_pos(pos, px, day, reason, cash, audit, givebacks):
 
 def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
                    initial_capital=414.73, vol_adj=1.0,
-                   breaker_enabled=True):
+                   breaker_enabled=True, breaker_mode="manual",
+                   breaker_dd_override=None):
     sys.path.insert(0, os.path.abspath(src_root))
     for m in list(sys.modules):
         if m == "src" or m.startswith("src."):
@@ -97,6 +98,8 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
     with open(os.path.join(src_root, "config", "risk_limits.yaml")) as f:
         risk_cfg = yaml.safe_load(f)["risk"]
     breaker_dd_pct = float(risk_cfg.get("max_drawdown_pct", 10))
+    if breaker_dd_override is not None:
+        breaker_dd_pct = breaker_dd_override  # probe/sensitivity only
 
     from src.strategy_adaptor import StrategyAdaptor
     from src import hmm_regime as hmm_mod
@@ -151,6 +154,13 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
     breaker_trip_day = None
     breaker_trip_equity = None
     entries_before_trip = 0
+    # WO-1046b tiered-reset state (day granularity: 48h=2d, 72h=3d,
+    # 24h recheck=1d, chain window 72h=3d)
+    breaker_mult = 1
+    breaker_trip_idx = None
+    breaker_last_reset_idx = None
+    breaker_reset_count = 0
+    breaker_trip_events = []
 
     for i in range(d0, d1 + 1):
         day = dates[i]
@@ -284,17 +294,66 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
         else:
             exposure_days += 1
 
-        # C1②: DrawdownBreaker — 10% HWM drawdown blocks NEW entries for
-        # the rest of the window (live: manual reset required)
-        if breaker_enabled and not breaker_tripped and peak_eq > 0:
-            if (peak_eq - equity) / peak_eq * 100 >= breaker_dd_pct:
-                breaker_tripped = True
-                breaker_trip_day = day
-                breaker_trip_equity = equity
-                entries_before_trip = n_entries
-                audit.append({"day": day, "event": "DRAWDOWN_BREAKER_TRIPPED",
-                              "equity": round(equity, 2),
-                              "hwm": round(peak_eq, 2)})
+        # C1② / WO-1046b: DrawdownBreaker — 10% HWM dd blocks NEW entries.
+        # Modes:
+        #   "manual" — rest of window (pre-1046b BACKTEST semantics)
+        #   "tiered" — WO-1046b graded auto-reset: earliest 2d*mult @
+        #              dd<6%, 3d*mult recheck @ dd<8%, then daily
+        #              recheck; chain-crash re-trip within 3d of ANY
+        #              reset doubles the multiplier (cap 4)
+        #   "legacy" — the ACTUAL pre-1046b live code path: instant
+        #              re-arm once dd falls back under the hard stop
+        if breaker_enabled and peak_eq > 0:
+            dd_now = (peak_eq - equity) / peak_eq * 100
+            if not breaker_tripped:
+                if dd_now >= breaker_dd_pct:
+                    breaker_tripped = True
+                    breaker_trip_day = day
+                    breaker_trip_idx = i
+                    breaker_trip_equity = equity
+                    entries_before_trip = n_entries
+                    if (breaker_mode == "tiered"
+                            and breaker_last_reset_idx is not None
+                            and i - breaker_last_reset_idx < 3):
+                        breaker_mult = min(breaker_mult * 2, 4)
+                    else:
+                        breaker_mult = 1
+                    breaker_trip_events.append(
+                        {"day": day, "event": "TRIPPED",
+                         "mult": breaker_mult, "dd": round(dd_now, 2)})
+                    audit.append({"day": day,
+                                  "event": "DRAWDOWN_BREAKER_TRIPPED",
+                                  "equity": round(equity, 2),
+                                  "hwm": round(peak_eq, 2)})
+            else:
+                # tripped: evaluate the reset path for this mode
+                if breaker_mode == "legacy":
+                    if dd_now < breaker_dd_pct:
+                        breaker_tripped = False
+                        breaker_last_reset_idx = i
+                        breaker_reset_count += 1
+                        breaker_trip_events.append(
+                            {"day": day, "event": "LEGACY_REARM",
+                             "dd": round(dd_now, 2)})
+                elif breaker_mode == "tiered":
+                    elapsed_d = i - breaker_trip_idx
+                    if ((elapsed_d >= 2 * breaker_mult and dd_now < 6.0)
+                            or (elapsed_d >= 3 * breaker_mult
+                                and dd_now < 8.0)):
+                        tier = ("tier1_early" if dd_now < 6.0
+                                and elapsed_d >= 2 * breaker_mult
+                                else "tier2_recheck")
+                        breaker_tripped = False
+                        breaker_last_reset_idx = i
+                        breaker_reset_count += 1
+                        breaker_trip_events.append(
+                            {"day": day, "event": f"AUTO_RESET_{tier}",
+                             "dd": round(dd_now, 2), "mult": breaker_mult,
+                             "elapsed_d": elapsed_d})
+                        audit.append({"day": day,
+                                      "event": "DRAWDOWN_BREAKER_AUTO_RESET",
+                                      "tier": tier, "dd": round(dd_now, 2)})
+                # "manual": no reset path — stays tripped (window lockout)
 
         if not enabled or breaker_tripped:
             continue
@@ -400,14 +459,18 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
         "n_giveback_samples": len(givebacks),
         "breaker": {
             "enabled": breaker_enabled,
+            "mode": breaker_mode if breaker_enabled else None,
             "threshold_pct": breaker_dd_pct,
             "tripped": breaker_tripped,
             "trip_day": breaker_trip_day,
             "trip_equity": breaker_trip_equity,
             "post_trip_return_pct": round(
                 (final_equity / breaker_trip_equity - 1) * 100, 2)
-            if breaker_tripped and breaker_trip_equity else None,
+            if breaker_trip_equity else None,
             "entries_before_trip": entries_before_trip,
+            "reset_count": breaker_reset_count,
+            "final_multiplier": breaker_mult,
+            "events": breaker_trip_events,
         },
         "cost_model": "0.1% fee + 0.05% slip per side (WO-1045-6) — unchanged",
         "vol_adj": vol_adj,
@@ -439,7 +502,13 @@ C3_DECLARATION = """C3 unchanged declarations (WO-1046a vs WO-1044 after-baselin
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--variant", choices=["p1", "p1_no_breaker"], default="p1")
+    ap.add_argument("--variant",
+                    choices=["p1", "p1_no_breaker", "p1_tiered", "p1_live"],
+                    default="p1",
+                    help="p1=manual lockout (pre-1046b backtest semantics), "
+                         "p1_no_breaker=off, p1_tiered=WO-1046b graded "
+                         "auto-reset, p1_live=pre-1046b live code path "
+                         "(instant re-arm under 10%% dd)")
     ap.add_argument("--src-root", default=".")
     ap.add_argument("--start", default="2026-08-01")
     ap.add_argument("--end", default=None,
@@ -449,6 +518,9 @@ def main():
     ap.add_argument("--vol-adj", type=float, default=1.0)
     ap.add_argument("--segments", action="store_true",
                     help="C1-1: also run two half-window segments (Aug vs Sep)")
+    ap.add_argument("--breaker-dd", type=float, default=None,
+                    help="override breaker threshold pct (risk_limits "
+                         "default) — sensitivity/probe use only")
     args = ap.parse_args()
 
     end = args.end or (datetime.now(timezone.utc)).strftime("%Y-%m-%d")
@@ -470,10 +542,13 @@ def main():
             "k1d_" + sym, lambda s=sym: fetch_klines_1d(s, days_span))
         time.sleep(0.1)
 
-    breaker = args.variant == "p1"
+    breaker = args.variant != "p1_no_breaker"
+    mode = {"p1": "manual", "p1_tiered": "tiered",
+            "p1_live": "legacy", "p1_no_breaker": "manual"}[args.variant]
     res = run_variant_p1(args.src_root, args.start, end, universe, fng,
                          btc1d, btc1h, args.initial, vol_adj=args.vol_adj,
-                         breaker_enabled=breaker)
+                         breaker_enabled=breaker, breaker_mode=mode,
+                         breaker_dd_override=args.breaker_dd)
     res["variant"] = args.variant
     suffix = f"_va{args.vol_adj:g}" if args.vol_adj != 1.0 else ""
     out_path = os.path.join(CACHE_DIR, f"result_{args.variant}{suffix}.json")
@@ -495,7 +570,8 @@ def main():
             seg = run_variant_p1(args.src_root, s, e, universe, fng,
                                  btc1d, btc1h, args.initial,
                                  vol_adj=args.vol_adj,
-                                 breaker_enabled=breaker)
+                                 breaker_enabled=breaker,
+                                 breaker_mode=mode)
             seg_results[f"{s}..{e}"] = {k: v for k, v in seg.items()
                                         if k not in ("audit_tail", "src_root")}
             print(f"\n[{s}..{e}]")

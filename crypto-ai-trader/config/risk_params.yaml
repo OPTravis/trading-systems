@@ -63,6 +63,21 @@ daily_loss_breaker:
 # Once tripped, all new trades blocked until manual reset.
 drawdown_breaker:
   hard_stop_pct: 0.10                # 10% hard stop (fractional, not percentage)
+  # WO-1046b tiered auto-reset (Leo 2026-10-12 ruling) — replaces the
+  # pre-1046b "instant re-arm once dd < 10%" behaviour (which the old
+  # "manual reset" comment described but the code never enforced).
+  # A trip now starts a graded cooldown; overrides live in kv
+  # `drawdown_breaker_cooldown` (same keys, highest precedence).
+  # Rollback to legacy instant re-arm: kv {"enabled": false}.
+  cooldown:
+    enabled: true
+    early_reset_hours: 48.0          # (1) earliest auto-reset point
+    early_reset_dd_pct: 6.0          # (1) requires HWM dd narrowed < 6%
+    recheck_hours: 72.0              # (2) recheck point
+    recheck_dd_pct: 8.0              # (2)/(3) auto-reset once dd < 8%
+    recheck_interval_hours: 24.0     # (3) deferral recheck cadence + escalation
+    chain_window_hours: 72.0         # (4) re-trip window after ANY reset
+    chain_multiplier_cap: 4          # (4) chain-crash multiplier cap
 
 # === Stepwise Drawdown ===
 # Progressive risk reduction based on drawdown from high watermark.

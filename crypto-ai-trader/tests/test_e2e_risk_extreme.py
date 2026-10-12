@@ -109,13 +109,24 @@ class TestDrawdownBreaker:
 
     def test_new_high_watermark_resets(self, tmp_path):
         db = DrawdownBreaker(binance_client=None)
-        db.reset(1000.0)
-        db.check_drawdown(850.0)  # trip
-        # New peak
-        result = db.check_drawdown(1200.0)
-        assert result["action"] == "RESET"
-        assert result["tripped"] is False
-        assert result["drawdown_pct"] == 0.0
+        # WO-1046b: with the tiered cooldown enabled, a new HWM inside
+        # the 48h cooldown window stays tripped (see
+        # tests/test_wo1046b_breaker_reset.py::TestNewHwmDuringCooldown).
+        # This legacy anchor pins the HWM-update semantics with the
+        # cooldown disabled via kv.
+        from src.state_db import get_state_db
+        get_state_db().kv_set("drawdown_breaker_cooldown",
+                              {"enabled": False})
+        try:
+            db.reset(1000.0)
+            db.check_drawdown(850.0)  # trip
+            # New peak
+            result = db.check_drawdown(1200.0)
+            assert result["action"] == "RESET"
+            assert result["tripped"] is False
+            assert result["drawdown_pct"] == 0.0
+        finally:
+            get_state_db().kv_set("drawdown_breaker_cooldown", None)
 
 
 # ---------------------------------------------------------------------------
