@@ -74,6 +74,21 @@ class P1Position:
         self.peak_pnl_pct = 0.0
 
 
+def _band_pos_daily(bars):
+    """BB(20,2) band position on daily closes — mirrors live
+    exit_check._band_position math (last 20 closes incl. current)."""
+    if len(bars) < 20:
+        return None
+    closes = [float(b["close"]) for b in bars[-20:]]
+    mid = sum(closes) / len(closes)
+    var = sum((c - mid) ** 2 for c in closes) / len(closes)
+    sd = var ** 0.5
+    upper, lower = mid + 2 * sd, mid - 2 * sd
+    if upper <= lower:
+        return None
+    return (closes[-1] - lower) / (upper - lower)
+
+
 def _close_pos(pos, px, day, reason, cash, audit, givebacks):
     proceeds = pos.qty * px * (1 - FEE - SLIP)
     pos.realized += proceeds - pos.entry_amount * (pos.qty / pos.qty0)
@@ -88,7 +103,7 @@ def _close_pos(pos, px, day, reason, cash, audit, givebacks):
 def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
                    initial_capital=414.73, vol_adj=1.0,
                    breaker_enabled=True, breaker_mode="manual",
-                   breaker_dd_override=None):
+                   breaker_dd_override=None, zombie=False):
     sys.path.insert(0, os.path.abspath(src_root))
     for m in list(sys.modules):
         if m == "src" or m.startswith("src."):
@@ -103,6 +118,12 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
 
     from src.strategy_adaptor import StrategyAdaptor
     from src import hmm_regime as hmm_mod
+    # WO-1046c S5: zombie-exit knobs from the live EXIT_DEFAULTS so the
+    # sim and live never drift (day granularity: 24h -> 1 day).
+    from src.exit_check import EXIT_DEFAULTS as _ZEXIT
+    ZOMBIE_MIN_DAYS = max(1, int(_ZEXIT["zombie_hours"] // 24))
+    ZOMBIE_PNL_PCT = float(_ZEXIT["zombie_pnl_pct"])
+    ZOMBIE_BAND_POS_MAX = float(_ZEXIT["zombie_band_pos_max"])
 
     hmm_detector = hmm_mod.HMMRegimeDetector()
 
@@ -161,6 +182,9 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
     breaker_last_reset_idx = None
     breaker_reset_count = 0
     breaker_trip_events = []
+    zombie_exits = []
+    zombie_pnl_miss = 0    # held>=1d but |pnl| >= 0.5% (not stagnant)
+    zombie_band_block = 0  # stagnant but band_position >= 0.5 (momentum)
 
     for i in range(d0, d1 + 1):
         day = dates[i]
@@ -220,6 +244,30 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
                 cash = _close_pos(pos, pos.sl, day, "SL", cash, audit, givebacks)
                 positions.remove(pos)
                 continue
+
+            # WO-1046c S5 zombie exit (day granularity: held_days >= 1
+            # == 24h) — 双确认 time + no-progress (|pnl| < 0.5%, BB20
+            # daily band_position < 0.5; insufficient bars -> pnl-only,
+            # same as live unknown-band fallback). After the hard-SL
+            # check (the resting order owns intrabar lows), before
+            # trailing/TP1 — stagnant positions can't reach those anyway.
+            if zombie and (i - pos.entry_day_idx) >= ZOMBIE_MIN_DAYS:
+                pnl_now = (bar["close"] - pos.entry_px) / pos.entry_px * 100
+                if abs(pnl_now) < ZOMBIE_PNL_PCT:
+                    bp = _band_pos_daily(universe[pos.symbol][:p])
+                    if bp is None or bp < ZOMBIE_BAND_POS_MAX:
+                        cash = _close_pos(pos, bar["close"], day, "ZOMBIE",
+                                          cash, audit, givebacks)
+                        zombie_exits.append({
+                            "day": day, "sym": pos.symbol,
+                            "held_d": i - pos.entry_day_idx,
+                            "pnl_pct": round(pnl_now, 2),
+                            "banked": bool(pos.banked)})
+                        positions.remove(pos)
+                        continue
+                    zombie_band_block += 1
+                else:
+                    zombie_pnl_miss += 1
 
             # trailing: tight STEPS ladder -> phase2 wide band at 1.5R
             if pos.activated:
@@ -472,6 +520,16 @@ def run_variant_p1(src_root, start, end, universe, fng, btc1d, btc1h,
             "final_multiplier": breaker_mult,
             "events": breaker_trip_events,
         },
+        "zombie": {
+            "enabled": zombie,
+            "exits": len(zombie_exits),
+            "near_miss_pnl_not_flat": zombie_pnl_miss,
+            "near_miss_band_upper_half": zombie_band_block,
+            "avg_held_days": round(
+                sum(e["held_d"] for e in zombie_exits) / len(zombie_exits), 2)
+            if zombie_exits else None,
+            "events": zombie_exits,
+        },
         "cost_model": "0.1% fee + 0.05% slip per side (WO-1045-6) — unchanged",
         "vol_adj": vol_adj,
         "audit_tail": audit[-60:],
@@ -521,6 +579,9 @@ def main():
     ap.add_argument("--breaker-dd", type=float, default=None,
                     help="override breaker threshold pct (risk_limits "
                          "default) — sensitivity/probe use only")
+    ap.add_argument("--zombie", action="store_true",
+                    help="WO-1046c S5: enable zombie exit (24h no-progress "
+                         "capital release) in the sim")
     args = ap.parse_args()
 
     end = args.end or (datetime.now(timezone.utc)).strftime("%Y-%m-%d")
@@ -548,9 +609,12 @@ def main():
     res = run_variant_p1(args.src_root, args.start, end, universe, fng,
                          btc1d, btc1h, args.initial, vol_adj=args.vol_adj,
                          breaker_enabled=breaker, breaker_mode=mode,
-                         breaker_dd_override=args.breaker_dd)
+                         breaker_dd_override=args.breaker_dd,
+                         zombie=args.zombie)
     res["variant"] = args.variant
     suffix = f"_va{args.vol_adj:g}" if args.vol_adj != 1.0 else ""
+    if args.zombie:
+        suffix = "_zombie" + suffix
     out_path = os.path.join(CACHE_DIR, f"result_{args.variant}{suffix}.json")
     with open(out_path, "w") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)

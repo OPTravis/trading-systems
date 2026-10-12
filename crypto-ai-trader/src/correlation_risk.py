@@ -31,6 +31,13 @@ LOW_BETA_SYMBOLS = {"BTC", "ETH"}
 # WO-016-1: a switch counts as de-risk when target beta < source beta
 # times this ratio (strictly-lower with noise margin over 45d estimates)
 DE_RISK_BETA_RATIO = 0.85
+# WO-1046c S4: core majors exempt from the pairwise correlation gate —
+# the gate exists to stop same-beta alt stacking, not to block BTC/ETH
+# entries (9/21 P0: BTC entry blocked by alt correlations at 0.7+).
+# Three-layer config: defaults <- risk_params.yaml
+# correlation_risk.core_exempt_symbols <- kv corr_core_exempt_symbols
+# (hot-override; [] = rollback to pre-1046c behavior).
+CORE_EXEMPT_DEFAULTS = {"BTC", "ETH"}
 MIN_HISTORY_DAYS = 15  # Minimum days of price history required
 CACHE_TTL_SECONDS = 3600  # Recompute correlations every hour
 
@@ -222,6 +229,33 @@ class CorrelationRiskManager:
                 return True, f"beta {from_s}={b_from:.2f} -> {to_s}={b_to:.2f}"
         return False, ""
 
+    def _get_exempt_symbols(self) -> set:
+        """WO-1046c S4: core-exempt whitelist — defaults <-
+        risk_params.yaml correlation_risk.core_exempt_symbols <- kv
+        corr_core_exempt_symbols (highest priority)."""
+        syms = set(CORE_EXEMPT_DEFAULTS)
+        try:
+            from src.risk_config import get_section
+            y = (get_section("correlation_risk") or {}).get(
+                "core_exempt_symbols")
+            if isinstance(y, (list, tuple)):
+                syms = {str(s).upper().strip() for s in y if str(s).strip()}
+        except Exception:
+            pass
+        try:
+            from src.state_db import get_state_db
+            kv = get_state_db().kv_get("corr_core_exempt_symbols")
+            if isinstance(kv, str):
+                try:
+                    kv = json.loads(kv)
+                except Exception:
+                    kv = None
+            if isinstance(kv, (list, tuple)):
+                syms = {str(s).upper().strip() for s in kv if str(s).strip()}
+        except Exception:
+            pass
+        return syms
+
     def check_new_position(self, new_symbol: str, current_positions: List[str]) -> Dict:
         """Check if adding new_symbol would violate correlation limits.
 
@@ -246,6 +280,11 @@ class CorrelationRiskManager:
                 "avg_correlation": 0.0,
                 "max_correlation": 0.0,
             }
+
+        # WO-1046c S4: core-majors whitelist (BTC/ETH default) — structurally
+        # diversifying entries skip the pairwise stacking gate.
+        new_sym_u = (new_symbol or "").upper()
+        core_exempt = new_sym_u in self._get_exempt_symbols()
 
         # Same-symbol DCA: adding to an existing position is not a
         # diversification concern — correlation check only makes sense
@@ -281,7 +320,7 @@ class CorrelationRiskManager:
                 for p, c in correlations.items()
                 if abs(c) > thr
             ]
-            if blocked_by_pair:
+            if blocked_by_pair and not core_exempt:
                 return {
                     "allowed": False,
                     "reason": f"High correlation with other holdings: {', '.join(blocked_by_pair)}. Limit={thr}",
@@ -290,6 +329,11 @@ class CorrelationRiskManager:
                     "max_correlation": round(max_corr, 3),
                     "size_multiplier": 1.0,
                 }
+            if core_exempt and blocked_by_pair:
+                logger.info(
+                    f"CorrelationRisk: {new_symbol} core-exempt (whitelist) — "
+                    f"DCA add allowed despite {', '.join(blocked_by_pair)}"
+                )
             logger.info(
                 f"CorrelationRisk: {new_symbol} DCA add — "
                 f"corr with other holdings OK (max={max_corr:.2f})"
@@ -301,6 +345,7 @@ class CorrelationRiskManager:
                 "avg_correlation": round(max_corr, 3),
                 "max_correlation": round(max_corr, 3),
                 "size_multiplier": 0.8,  # slight reduction for safety
+                "core_exempt": bool(core_exempt and blocked_by_pair),
             }
 
         thr = self._pairwise_threshold()
@@ -347,6 +392,27 @@ class CorrelationRiskManager:
         avg_corr = (
             sum(portfolio_corrs) / len(portfolio_corrs) if portfolio_corrs else 0.0
         )
+
+        # WO-1046c S4: whitelist hit — waive the pairwise AND portfolio-avg
+        # gates (same stacking concern); correlation data is still computed
+        # and returned (info layer) and the waiver is flagged downstream
+        # (reason string carries 'core-exempt' into every decision journal).
+        if core_exempt:
+            logger.info(
+                f"CorrelationRisk: {new_sym_u} core-exempt (whitelist) — "
+                f"correlation gate waived (max={max_corr:.2f}, avg={avg_corr:.2f})"
+            )
+            return {
+                "allowed": True,
+                "reason": (f"{new_sym_u} core-exempt (whitelist) — correlation "
+                           f"gate waived (max corr {max_corr:.2f}, "
+                           f"avg {avg_corr:.2f})"),
+                "correlations": correlations,
+                "avg_correlation": round(avg_corr, 3),
+                "max_correlation": round(max_corr, 3),
+                "size_multiplier": 1.0,
+                "core_exempt": True,
+            }
 
         # Decision
         if blocked_by_pair:

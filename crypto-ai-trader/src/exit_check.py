@@ -38,12 +38,23 @@ EXIT_DEFAULTS = {
                                       # resting OCO -15% safety, wide enough
                                       # not to fight normal noise
     "hold_hours": 48.0,               # bollinger-family default max hold
+    # WO-1046c S5 zombie exit: no-progress positions release capital at
+    # 24h instead of idling to the 48h hold expiry. 双确认: held >=
+    # zombie_hours AND |pnl| < zombie_pnl_pct AND band_position <
+    # zombie_band_pos_max (unknown band -> pnl-only confirmation).
+    # zombie_hours=0 disables the whole branch (kv rollback:
+    # exit:zombie_hours=0).
+    "zombie_hours": 24.0,
+    "zombie_pnl_pct": 0.5,
+    "zombie_band_pos_max": 0.5,
 }
 MOMENTUM_BAND_POS_MAX = 0.35          # bollinger P1-fix reversal threshold
 # P2 (Leo 2026-09-30 11:18): momentum reversal promoted to auto — same
 # tier as the deterministic kinds, observation week waived.
 AUTO_KINDS = ("hold_expiry", "take_profit", "stop_loss",
-              "momentum_reversal")
+              "momentum_reversal",
+              # WO-1046c S5: no-progress capital release, same auto tier
+              "zombie_exit")
 
 
 def _mode(db) -> str:
@@ -65,6 +76,30 @@ def _param(db, key: str, symbol: str) -> float:
                 return float(v)
             except (TypeError, ValueError):
                 continue
+    return float(EXIT_DEFAULTS[key])
+
+
+def _zombie_param(db, key: str, symbol: str) -> float:
+    """WO-1046c S5: zombie-exit knob resolution — kv (per-symbol then
+    global, same exit:{sym}:{key} / exit:{key} namespace as _param) >
+    risk_params.yaml exit_zombie section > EXIT_DEFAULTS."""
+    for k in (f"exit:{symbol}:{key}", f"exit:{key}"):
+        try:
+            v = db.kv_get(k)
+        except Exception:
+            v = None
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    try:
+        from src.risk_config import get_section
+        y = get_section("exit_zombie") or {}
+        if key in y:
+            return float(y[key])
+    except Exception:
+        pass
     return float(EXIT_DEFAULTS[key])
 
 
@@ -220,7 +255,9 @@ def _tp1_exchange_filled_qty(client, db, symbol: str) -> Optional[float]:
 def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
                  band_position=None, band_pos_max=MOMENTUM_BAND_POS_MAX,
                  include_momentum=True, now=0.0,
-                 tp_partial_r=0.0, tp_partial_pct=50, tp1_banked=False):
+                 tp_partial_r=0.0, tp_partial_pct=50, tp1_banked=False,
+                 zombie_hours=0.0, zombie_pnl_pct=0.5,
+                 zombie_band_pos_max=0.5):
     """Single-position exit decision — THE one place exit semantics live.
 
     Pure: no db, no client, no clock. Live evaluate_exits() feeds it
@@ -229,11 +266,14 @@ def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
     hours — so live and backtest exits can never drift apart again
     (P1-4 two-codebases gap closed).
 
-    Priority order mirrors the live chain: hold > tp_partial > tp > sl >
+    Priority order mirrors the live chain: zombie (WO-1046c S5, fires
+    before hold when enabled) > hold > tp_partial > tp > sl >
     momentum (WO-1046a: tp_partial banks the first tranche at 1.5R; once
     banked, the take_profit FULL exit is waived so the remainder rides the
     trailing stop). tp_partial_r=0 disables the whole branch — the default
     keeps every legacy caller (backtest replay, tests) bit-identical.
+    zombie_hours=0 likewise disables the S5 branch by default; the live
+    shell and the backtest parity engine feed the kv/yaml default (24h).
     Returns a decision dict (same shape as live) or None.
     """
     qty = float(pos.get("quantity") or 0)
@@ -247,6 +287,22 @@ def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
         "price": price, "pnl_pct": round(pnl_pct, 2),
         "held_hours": round(held_hours, 1), "ts": now,
     }
+    # WO-1046c S5: zombie exit — held >= zombie_hours with no progress.
+    # 双确认: time (held >= zombie_hours) + no-progress (|pnl| <
+    # zombie_pnl_pct AND band_position < zombie_band_pos_max; unknown
+    # band -> pnl-only confirmation). Deliberately BEFORE hold_expiry so
+    # stagnant positions release capital at 24h; a flat position reaching
+    # 48h exits as zombie_exit, not hold_expiry (the label feeds stats).
+    # zombie_hours=0 disables (default for legacy direct callers).
+    if (zombie_hours > 0 and held_hours >= zombie_hours
+            and abs(pnl_pct) < zombie_pnl_pct
+            and (band_position is None
+                 or band_position < zombie_band_pos_max)):
+        return {**base, "kind": "zombie_exit", "auto": True, "sell_pct": 100,
+                "reason": (f"zombie exit {held_hours:.1f}h >= "
+                           f"{zombie_hours:g}h no progress "
+                           f"(|pnl| {abs(pnl_pct):.2f}% < "
+                           f"{zombie_pnl_pct:g}%)")}
     if held_hours >= hold_hours:
         return {**base, "kind": "hold_expiry", "auto": True, "sell_pct": 100,
                 "reason": f"hold expiry {held_hours:.1f}h >= {hold_hours:.0f}h"}
@@ -377,6 +433,9 @@ def evaluate_exits(
             band_position=_band_position(client, sym) if include_momentum else None,
             include_momentum=include_momentum, now=now,
             tp_partial_r=_tp_r, tp_partial_pct=_tp_sz, tp1_banked=_banked,
+            zombie_hours=_zombie_param(db, "zombie_hours", sym),
+            zombie_pnl_pct=_zombie_param(db, "zombie_pnl_pct", sym),
+            zombie_band_pos_max=_zombie_param(db, "zombie_band_pos_max", sym),
         )
         if dec is not None:
             decisions.append(dec)

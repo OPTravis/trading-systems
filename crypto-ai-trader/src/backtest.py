@@ -238,6 +238,12 @@ class BacktestEngine:
     EXIT_TP_PCT = EXIT_DEFAULTS["tp_pct"]
     EXIT_SL_PCT = EXIT_DEFAULTS["sl_pct"]
     EXIT_HOLD_HOURS = EXIT_DEFAULTS["hold_hours"]
+    # WO-1046c S5: zombie exit stays live-parity here (band_position is
+    # already fed from backtest bars — unlike tp_partial, which needs the
+    # live kv banked-anchor the replay cannot reconstruct).
+    EXIT_ZOMBIE_HOURS = EXIT_DEFAULTS["zombie_hours"]
+    EXIT_ZOMBIE_PNL_PCT = EXIT_DEFAULTS["zombie_pnl_pct"]
+    EXIT_ZOMBIE_BAND_POS_MAX = EXIT_DEFAULTS["zombie_band_pos_max"]
 
     # 最少需要的 K 線數量（用於指標計算 warm-up）
     WARMUP_BARS = 100
@@ -688,6 +694,9 @@ class BacktestEngine:
             band_position=_band_position_from_klines(klines, bar_idx),
             include_momentum=include_momentum,
             now=kline["open_time"] / 1000.0,
+            zombie_hours=self.EXIT_ZOMBIE_HOURS,
+            zombie_pnl_pct=self.EXIT_ZOMBIE_PNL_PCT,
+            zombie_band_pos_max=self.EXIT_ZOMBIE_BAND_POS_MAX,
         )
 
     def _apply_exit_check_exit(

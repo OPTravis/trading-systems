@@ -127,19 +127,27 @@ NOW = 1790800000.0  # fixed clock
 def test_hold_expiry_anchors_on_trades_not_refreshed_opened_at(db):
     # opened_at refreshed by a sync rebuild 1h ago, real BUY 49h ago —
     # the refreshed (later) opened_at must NOT push the hold clock forward
+    # WO-1046c S5: zombie exit (24h no-progress) now fires before
+    # hold_expiry in the live chain — disable it here so this anchor
+    # keeps proving the >=48h trades-table clock precisely. Zombie
+    # semantics live in test_wo1046c_zombie_exit.py.
     refreshed = datetime.datetime.fromtimestamp(
         NOW - 3600, tz=datetime.timezone.utc).isoformat()
-    db.trade_add("XUSDT", "BUY", 10, 100.0)
-    conn = db._get_conn()
-    conn.execute("UPDATE trades SET timestamp = ? WHERE symbol = ? "
-                 "AND side = 'BUY'", (NOW - 49 * 3600, "XUSDT"))
-    conn.commit()
-    assert _last_buy_ts(db, "XUSDT") == NOW - 49 * 3600
-    cli = ExitFakeClient(price=100.0)
-    dec = evaluate_exits(cli, db, holdings=[_pos(opened_at=refreshed)],
-                         now=NOW)
-    assert len(dec) == 1 and dec[0]["kind"] == "hold_expiry"
-    assert dec[0]["auto"] is True and dec[0]["sell_pct"] == 100
+    db.kv_set("exit:zombie_hours", 0)
+    try:
+        db.trade_add("XUSDT", "BUY", 10, 100.0)
+        conn = db._get_conn()
+        conn.execute("UPDATE trades SET timestamp = ? WHERE symbol = ? "
+                     "AND side = 'BUY'", (NOW - 49 * 3600, "XUSDT"))
+        conn.commit()
+        assert _last_buy_ts(db, "XUSDT") == NOW - 49 * 3600
+        cli = ExitFakeClient(price=100.0)
+        dec = evaluate_exits(cli, db, holdings=[_pos(opened_at=refreshed)],
+                             now=NOW)
+        assert len(dec) == 1 and dec[0]["kind"] == "hold_expiry"
+        assert dec[0]["auto"] is True and dec[0]["sell_pct"] == 100
+    finally:
+        db.kv_set("exit:zombie_hours", None)
 
 
 def test_take_profit_and_stop_loss_trigger_auto(db):
