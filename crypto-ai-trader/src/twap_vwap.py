@@ -258,10 +258,20 @@ def _execute_slices(
 
         actual_price = price
         if order and "price" in order:
-            actual_price = order["price"]
+            # WO-1044: PaperTrader (Binance SDK style) returns str prices —
+            # coerce to float, fall back to expected on malformed values.
+            try:
+                actual_price = float(order["price"])
+            except (TypeError, ValueError):
+                actual_price = price
 
         slippage = abs(actual_price - price) / price * 100
 
+        # WO-1044: explicit fill-state whitelist — real PaperTrader returns
+        # "FILLED"; anything else (incl. mocks without a status contract)
+        # falls back so the MARKET path keeps its original semantics.
+        slice_ok = bool(order) and order.get("status") in (
+            "FILLED", "PARTIALLY_FILLED", "DRY_RUN")
         results.append(
             {
                 "slice": idx,
@@ -271,6 +281,9 @@ def _execute_slices(
                 "slippage_pct": round(slippage, 6),
                 "status": order.get("status", "FILLED") if order else "FAILED",
                 "order_id": order.get("orderId") if order else None,
+                # WO-1044: consumer contract (trade_executor TWAP branch)
+                "success": slice_ok,
+                "filled_qty": qty if slice_ok else 0.0,
             }
         )
 

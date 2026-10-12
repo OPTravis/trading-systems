@@ -488,7 +488,9 @@ class TestStrategyAdaptor:
             assert result["strategies"][name]["size_multiplier"] == 1.0
 
     def test_greed_regime(self, adaptor):
-        """F&G=65 → Grid + Trend + Bollinger, DCA/RSI/VWAP disabled."""
+        """F&G=65 → Grid + Trend + Bollinger; DCA/RSI stay in at reduced
+        size (WO-1044-B: GREED keeps participation, ×0.8 + raised entry
+        bars) instead of full-disable."""
         result = adaptor.adapt(
             fear_greed=65, btc_trend="BULLISH", btc_price_change_24h=2.0
         )
@@ -498,8 +500,10 @@ class TestStrategyAdaptor:
         assert "trend" in enabled
         assert "bollinger" in enabled
         assert "vwap" not in enabled
-        assert "dca" not in enabled, "DCA should be disabled in GREED"
-        assert "rsi_reversion" not in enabled, "RSI should be disabled in GREED"
+        assert "dca" in enabled, "DCA keeps participation in GREED (WO-1044-B)"
+        assert "rsi_reversion" in enabled, "RSI keeps participation in GREED (WO-1044-B)"
+        assert result["strategies"]["dca"]["size_multiplier"] == 0.8
+        assert result["strategies"]["rsi_reversion"]["size_multiplier"] == 0.8
 
     def test_extreme_greed_regime(self, adaptor):
         """F&G=80 → Bollinger + Trend, rest disabled."""

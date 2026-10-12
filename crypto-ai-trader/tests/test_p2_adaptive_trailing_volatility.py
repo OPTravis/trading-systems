@@ -34,14 +34,14 @@ class TestAdaptiveTrailingVolatility:
         """volatility_adjustment=1.0 should produce exact same result as base width."""
         result = ats.calculate_trailing_sl(
             entry_price=100.0,
-            current_price=105.0,  # 5% profit → step_5_10, base_width=0.03
+            current_price=105.0,  # 5% profit → step_5_10, base_width=0.02 (WO-1044-C)
             highest_price=106.0,
             initial_sl=95.0,
             volatility_adjustment=1.0,
         )
         assert result["trailing_active"] is True
-        # Trail width = 0.03 * 1.0 = 0.03
-        expected_sl = 106.0 * (1 - 0.03)
+        # Trail width = 0.02 * 1.0 = 0.02 (WO-1044-C: 0.03 → 0.02)
+        expected_sl = 106.0 * (1 - 0.02)
         assert result["trailing_sl"] == pytest.approx(expected_sl, abs=0.01)
 
     def test_high_volatility_wider_trailing_stop(self, ats):
@@ -83,7 +83,7 @@ class TestAdaptiveTrailingVolatility:
         assert result_low_vol["trailing_sl"] > result_normal["trailing_sl"]
 
     def test_volatility_applied_to_step_1_6(self, ats):
-        """Test volatility adjustment on step_1_6 (profit 1-3%, base=6%)."""
+        """Test volatility adjustment on step_1_6 (profit 1-3%, base=2.5% — WO-1044-C)."""
         # Use high enough price so min_sl doesn't override
         result = ats.calculate_trailing_sl(
             entry_price=100.0,
@@ -94,8 +94,8 @@ class TestAdaptiveTrailingVolatility:
         )
         assert result["trailing_active"] is True
         assert result["step"] == "step_1_6"
-        # Trail width = 0.06 * 1.3 = 0.078
-        expected_sl = 110.0 * (1 - 0.06 * 1.3)
+        # Trail width = 0.025 * 1.3 = 0.0325 (WO-1044-C: 0.06 → 0.025)
+        expected_sl = 110.0 * (1 - 0.025 * 1.3)
         min_sl = 100.0 * (1 + 0.005)  # 0.5% profit lock
         # SL should be max(trail_sl, min_sl)
         expected_sl = max(expected_sl, min_sl)
@@ -112,8 +112,8 @@ class TestAdaptiveTrailingVolatility:
         )
         assert result["trailing_active"] is True
         assert result["step"] == "step_10_plus"
-        # Trail width = 0.02 * 1.5 = 0.03
-        expected_sl = 116.0 * (1 - 0.02 * 1.5)
+        # Trail width = 0.015 * 1.5 = 0.0225 (WO-1044-C: 0.02 → 0.015)
+        expected_sl = 116.0 * (1 - 0.015 * 1.5)
         assert result["trailing_sl"] == pytest.approx(expected_sl, abs=0.01)
 
     def test_volatility_with_min_sl_floor(self, ats):
@@ -137,8 +137,8 @@ class TestAdaptiveTrailingVolatility:
             initial_sl=95.0,
             volatility_adjustment=1.3,
         )
-        # Trail width = 0.03 * 1.3 = 0.039
-        expected_sl = 106.0 * (1 - 0.03 * 1.3)
+        # Trail width = 0.02 * 1.3 = 0.026 (WO-1044-C)
+        expected_sl = 106.0 * (1 - 0.02 * 1.3)
         assert result["trailing_sl"] == pytest.approx(expected_sl, abs=0.01)
 
     def test_volatility_adjustment_zero_or_negative(self, ats):
@@ -158,10 +158,11 @@ class TestAdaptiveTrailingVolatility:
         vol_adj = 1.3
         test_cases = [
             # (current_price, highest_price, expected_step, expected_base_width)
-            (102.0, 110.0, "step_1_6", 0.06),    # 2% profit, high peak for min_sl
-            (104.0, 110.0, "step_3_5", 0.05),    # 4% profit
-            (106.0, 115.0, "step_5_10", 0.03),   # 6% profit
-            (112.0, 120.0, "step_10_plus", 0.02), # 12% profit
+            # WO-1044-C: widths tightened 6/5/3/2% → 2.5/2/2/1.5%
+            (102.0, 110.0, "step_1_6", 0.025),   # 2% profit, high peak for min_sl
+            (104.0, 110.0, "step_3_5", 0.02),    # 4% profit
+            (106.0, 115.0, "step_5_10", 0.02),   # 6% profit
+            (112.0, 120.0, "step_10_plus", 0.015), # 12% profit
         ]
         entry = 100.0
         min_sl = entry * (1 + 0.005)  # 0.5% profit lock

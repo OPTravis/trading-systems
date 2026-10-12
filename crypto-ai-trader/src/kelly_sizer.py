@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 # Kelly safety factor
 KELLY_FRACTION = 0.5  # Half-Kelly: safer, smoother equity curve
 MAX_POSITION_PCT = (
-    0.12  # Hard cap: never bet more than 12% of balance (winners avg 6.3% Kelly)
+    0.30  # WO-1044-E: raised 0.12 → 0.30 for the concentration policy
+    # (3-4 positions × ~26% each). The executor-side caps in
+    # risk_limits.yaml (single 30% / exposure 95% / reserve 10%) remain
+    # the authoritative bounds; this is the Kelly-scale ceiling only.
 )
 MIN_POSITION_PCT = 0.01  # Minimum position floor (1% — Kelly is a scale, not a gate)
 

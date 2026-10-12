@@ -4,12 +4,21 @@
 # Tighter SLs cap downside but may increase stop-out frequency
 
 risk:
-  max_position_pct: 10          # Lowered from 15 → 10 (reduce exposure)
-  max_total_exposure_pct: 50    # Lowered from 70 → 50
-  cash_reserve_pct: 50          # Raised from 30 → 50
-  max_daily_loss_pct: 3         # Lowered from 5 → 3
+  # WO-1044-E (Leo 2026-10-12 授权, 获利最大化/仓位集中): 3-4 仓 × $100-130
+  # (≈26%/仓)。保护结构全保留，数值按新规模重算：
+  #   max_position_pct 10→30   单仓上限放开到集中仓目标带
+  #   max_total_exposure 50→95 总敞口 ≤95%（cash 保留 5% 底线）
+  #   cash_reserve 50→10       旧 50% 储备使 4 仓并发数学上不可能
+  #   max_daily_loss 3→5       4仓×26%×SL≈6% 最坏日，3% 会在正常运行中
+  #                            断路（2 次 SL 命中即触发）；5%≈3 次命中后熔断
+  #   max_open_positions 5→4   与 risk_params.yaml trade_executor 对齐
+  # 日亏熔断/回撤/持仓时长结构未动，仅触发线校准。
+  max_position_pct: 30          # WO-1044-E: 10 → 30 (concentration policy)
+  max_total_exposure_pct: 95    # WO-1044-E: 50 → 95
+  cash_reserve_pct: 10          # WO-1044-E: 50 → 10
+  max_daily_loss_pct: 5         # WO-1044-E: 3 → 5 (recalibrated for 4×26% book)
   max_drawdown_pct: 10          # Lowered from 15 → 10
-  max_open_positions: 5         # Restored 3 → 5 (CONFIRMED_BULL 2026-08-20, Leo: don't miss chances)
+  max_open_positions: 4         # WO-1044-E: 5 → 4 (3-4 concurrent positions)
   max_hold_hours: 48
 
 strategies:

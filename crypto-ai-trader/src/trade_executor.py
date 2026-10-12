@@ -1522,6 +1522,31 @@ def execute_auto_trade(
         invest_amount = float(order_value)
         invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
 
+    # ── WO-1044-E: concentration floor ──
+    # Leo 2026-10-12 capital-concentration policy: 3-4 concurrent
+    # positions of $100-130 (~26% of equity) instead of Kelly dust
+    # ($6-10 probes whose TP profit is eaten by fees). The floor lifts
+    # degenerate-history Kelly sizing to the policy minimum; every
+    # protective cap below (single 30% / exposure 95% / reserve 10%) and
+    # the risk multipliers afterwards still clamp freely. Exploration
+    # probes stay on the epsilon-greedy budget (5% total) — the floor
+    # applies to the regular path only.
+    if not _is_exploration:
+        try:
+            _equity = _total_portfolio or usdt_bal
+            _floor = min(130.0, max(100.0, _equity * 0.26))
+            if invest_amount < _floor:
+                logger.info(
+                    f"Concentration floor: ${invest_amount:.2f} → ${_floor:.2f} "
+                    f"(equity=${_equity:.2f}, WO-1044-E)"
+                )
+                invest_amount = _floor
+                invest_pct = invest_amount / usdt_bal if usdt_bal > 0 else 0
+        except Exception:
+            logger.warning(
+                "Concentration floor failed (fail-open)", exc_info=True
+            )
+
     # ── Regime-aware cash reserve cap ──
     # Ensure we never invest more than (100 - cash_reserve_pct)% of USDT balance.
     # cash_reserve_pct comes from strategy_adaptor (regime + BTC trend + volatility).
@@ -1766,7 +1791,13 @@ def execute_auto_trade(
     # Market buy - use TWAP for large orders, MARKET for small ones
     from src.twap_vwap import should_use_twap, execute_twap
 
-    if should_use_twap(invest_amount, threshold=100.0):
+    # WO-1044-E: concentration sizing lifts standard positions to
+    # $100-130 on a ~$400 account — that is NOT a market-impact order on
+    # spot majors, and 5×$26 limit slices would only add partial-fill
+    # risk + latency. Raise the TWAP trigger to $500 so concentrated
+    # positions execute via a single MARKET order; TWAP resumes its
+    # impact-mitigation role once compounding pushes sizes past $500.
+    if should_use_twap(invest_amount, threshold=500.0):
         logger.info(
             "TWAP: $%.2f >= $100 → splitting into %d slices over 2min",
             invest_amount, 5,
@@ -1780,7 +1811,7 @@ def execute_auto_trade(
             if filled_slices:
                 total_filled = sum(s.get("filled_qty", 0) for s in filled_slices)
                 avg_price = (
-                    sum(s.get("filled_qty", 0) * s.get("price", 0) for s in filled_slices)
+                    sum(s.get("filled_qty", 0) * s.get("actual_price", 0) for s in filled_slices)
                     / total_filled if total_filled > 0 else price
                 )
                 executed_qty = total_filled

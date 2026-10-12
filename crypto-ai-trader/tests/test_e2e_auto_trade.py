@@ -486,13 +486,17 @@ class TestExecuteAutoTrade:
         assert "Score too low" in result["error"]
 
     def test_s15_max_positions(self):
-        # 2026-08-20: max_active_positions=5 (CONFIRMED_BULL, risk_params.yaml)
+        # 2026-10-12 WO-1044-E: max_active_positions=4 (risk_params.yaml)
+        # 3-4 × $100-130 concentration policy replaces the 5-slot layout.
         result, _ = self._run(active_positions=5)
         assert result["success"] is False
         assert "Max positions" in result["error"]
-        # gate=5: 4 open slots must still be admitted (old cap-3 used to block)
+        # gate=4: 4 open slots blocked (WO-1044-E), 3 still admitted
         result4, _ = self._run(active_positions=4)
-        assert result4["success"] is True
+        assert result4["success"] is False
+        assert "Max positions" in result4["error"]
+        result3, _ = self._run(active_positions=3)
+        assert result3["success"] is True
 
     @pytest.mark.parametrize(
         "active,expected_scale",

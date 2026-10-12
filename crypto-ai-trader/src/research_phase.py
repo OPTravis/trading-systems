@@ -667,7 +667,11 @@ def _step_research_top_n(ctx):
             from src.strategy_registry import StrategyRegistry
 
             dca_params = adapted.get("dca_params", {})
-            registry = StrategyRegistry(dca_params=dca_params)
+            # WO-1044-B: regime-aware RSI bar (GREED raises overbought)
+            rsi_params = adapted.get("rsi_params") or {}
+            registry = StrategyRegistry(
+                dca_params=dca_params, rsi_params=rsi_params
+            )
 
             # Get klines for the top coin (needed by strategy classes)
             try:

@@ -14,11 +14,17 @@ class AdaptiveTrailingStop:
 
     MIN_PROFIT_LOCK_PCT = 0.005  # 0.5% minimum profit lock
 
+    # WO-1044-C (2026-10-12): tightened from 6/5/3/2% — forensics showed
+    # 39/92 trades giving back ≥1.5% peak profit: the old 6% trail in the
+    # 1-3% profit band (where most positions live) locked nothing at all.
+    # New ladder locks profit from +1% with a ~2% pullback band (ATR
+    # volatility_adjustment 0.7-1.5 still applies; MIN_PROFIT_LOCK 0.5%
+    # unchanged). Step names keep the legacy prefix for log continuity.
     STEPS = [
-        (0.01, 0.06, "step_1_6"),  # profit 1-3%: trail 6% below peak
-        (0.03, 0.05, "step_3_5"),  # profit 3-5%: trail 5% below peak
-        (0.05, 0.03, "step_5_10"),  # profit 5-10%: trail 3% below peak
-        (0.10, 0.02, "step_10_plus"),  # profit >10%: trail 2% below peak
+        (0.01, 0.025, "step_1_6"),  # profit 1-3%: trail 2.5% below peak
+        (0.03, 0.02, "step_3_5"),  # profit 3-5%: trail 2% below peak
+        (0.05, 0.02, "step_5_10"),  # profit 5-10%: trail 2% below peak
+        (0.10, 0.015, "step_10_plus"),  # profit >10%: trail 1.5% below peak
     ]
 
     def calculate_trailing_sl(
@@ -74,13 +80,13 @@ class AdaptiveTrailingStop:
         if profit_pct < 0.01:
             return "No trailing stop (profit < 1%)"
         elif profit_pct < 0.03:
-            return "Trailing at 6% below peak (profit 1-3%)"
+            return "Trailing at 2.5% below peak (profit 1-3%)"
         elif profit_pct < 0.05:
-            return "Trailing at 5% below peak (profit 3-5%)"
+            return "Trailing at 2% below peak (profit 3-5%)"
         elif profit_pct < 0.10:
-            return "Trailing at 3% below peak (profit 5-10%)"
+            return "Trailing at 2% below peak (profit 5-10%)"
         else:
-            return "Trailing at 2% below peak (profit > 10%)"
+            return "Trailing at 1.5% below peak (profit > 10%)"
 
     def save_state(self, symbol: str, state: Dict) -> None:
         db = get_state_db()

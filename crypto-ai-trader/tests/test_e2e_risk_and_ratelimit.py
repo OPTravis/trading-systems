@@ -386,10 +386,10 @@ class TestTrailingStop:
 
             r = ts.update("BTCUSDT", current_price=130.0, atr=10.0, entry_price=100.0)
             assert r["activated"] is True
-            # Adaptive trailing: profit=30% → step_10_plus (2% below peak)
+            # Adaptive trailing: profit=30% → step_10_plus (WO-1044-C: 1.5% below peak)
             # GARCH vol_regime=extreme (annualized vol=1.47) → vol_adj=1.5
-            # trail_width = 0.02 * 1.5 = 0.03, trailing_sl = 130 * (1 - 0.03) = 126.1
-            assert r["sl_price"] == pytest.approx(126.1, abs=0.1)
+            # trail_width = 0.015 * 1.5 = 0.0225, trailing_sl = 130 * (1 - 0.0225) = 127.075
+            assert r["sl_price"] == pytest.approx(127.075, abs=0.1)
             assert r["highest_price"] == 130.0
         finally:
             rm._DATA_DIR = orig

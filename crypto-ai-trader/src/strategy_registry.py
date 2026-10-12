@@ -47,13 +47,17 @@ MIN_STRATEGY_TRADES = 5
 class StrategyRegistry:
     """Central registry for all trading strategies."""
 
-    def __init__(self, db=None, dca_params: Optional[Dict] = None):
+    def __init__(self, db=None, dca_params: Optional[Dict] = None,
+                 rsi_params: Optional[Dict] = None):
         if db is None:
             from src.state_db import get_state_db
 
             db = get_state_db()
         self._db = db
         self._dca_params = dca_params or {}
+        # WO-1044-B: regime-aware RSI bar from strategy_adaptor
+        # (GREED raises rsi_overbought 65 → 75 so winners ride).
+        self._rsi_params = rsi_params or {}
         self._strategies = {}
         self._init_strategies()
 
@@ -73,7 +77,11 @@ class StrategyRegistry:
             "rsi": RSIStrategy(
                 {
                     "rsi_oversold": opt_params.get("rsi_oversold", 30),
-                    "rsi_overbought": opt_params.get("rsi_overbought", 65),
+                    # WO-1044-B: regime override (risk policy) wins over
+                    # optimizer tuning when present.
+                    "rsi_overbought": self._rsi_params.get(
+                        "rsi_overbought"
+                    ) or opt_params.get("rsi_overbought", 65),
                     "stop_loss_pct": opt_params.get("stop_loss_pct", 5.0),
                     "take_profit_pct": opt_params.get("take_profit_pct", 8.0),
                 }

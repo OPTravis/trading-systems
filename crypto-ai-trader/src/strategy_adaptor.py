@@ -121,7 +121,9 @@ class StrategyAdaptor:
         },
         "GREED": {
             "interval_hours": 8,
-            "dip_threshold_pct": -2.0,
+            # WO-1044-B: deepened from -2.0 — greed dips are shallower;
+            # only buy real pullbacks, don't chase every -2% wick.
+            "dip_threshold_pct": -4.0,
             "max_dca_rounds": 10,
             "order_size_pct": 8,
         },
@@ -140,6 +142,33 @@ class StrategyAdaptor:
         self._cache_ts: float = 0.0
         self._btc_klines_cache = None
         self._btc_klines_ts: float = 0.0
+        # WO-1044-D: calibrated GREED threshold cache (kv threshold_calibration)
+        self._calib_cache = None
+        self._calib_cache_ts: float = 0.0
+
+    def _calibrated_greed_threshold(self, default: int) -> int:
+        """WO-1044-D: GREED score threshold from historical signal P75.
+
+        Reads kv `threshold_calibration` (written by
+        scripts/calibrate_threshold.py, re-runnable). Falls back to the
+        map default when absent/invalid. Cached 5 minutes like adapt().
+        """
+        try:
+            now = time.time()
+            val = self._calib_cache
+            if val is None or now - self._calib_cache_ts > 300:
+                from src.state_db import get_state_db
+
+                val = get_state_db().kv_get("threshold_calibration")
+                self._calib_cache = val
+                self._calib_cache_ts = now
+            if isinstance(val, dict):
+                p75 = val.get("p75")
+                if isinstance(p75, (int, float)) and 40 <= p75 <= 95:
+                    return int(round(p75))
+        except Exception:
+            pass
+        return default
 
     @classmethod
     def _determine_regime(cls, fear_greed: int) -> str:
@@ -287,7 +316,8 @@ class StrategyAdaptor:
             },
             "NEUTRAL": dict(base),  # shallow copy to prevent mutation drift (C2 fix)
             "GREED": {
-                "score_threshold": 75,
+                # WO-1044-D: calibrated from近90天信号分布 P75 (kv), fallback 75
+                "score_threshold": self._calibrated_greed_threshold(75),
                 "max_position_pct": caps["max_position_pct"],
                 "max_total_exposure_pct": caps["max_total_exposure_pct"],
                 "cash_reserve_pct": caps["cash_reserve_pct"],
@@ -441,13 +471,31 @@ class StrategyAdaptor:
 
             elif regime in ("GREED", "EXTREME_GREED"):
                 if name == "dca":
-                    enabled = False
-                    reason = "disabled in greed (no dips to buy)"
-                    changes.append(f"{name}: disabled — greed regime")
+                    if regime == "GREED":
+                        # WO-1044-B: greed keeps DCA alive with a deeper
+                        # dip bar (dip_threshold_pct -2.0 → -4.0 via
+                        # DCA_REGIME_PARAMS) instead of a hard kill.
+                        enabled = True
+                        size_mult = 0.8
+                        reason = "greed: DCA kept, dip bar deepened to -4% (WO-1044-B)"
+                        changes.append(f"{name}: enabled ×0.8 — greed dip bar raised (WO-1044-B)")
+                    else:
+                        enabled = False
+                        reason = "disabled in extreme greed (no dips to buy)"
+                        changes.append(f"{name}: disabled — extreme greed regime")
                 elif name == "rsi_reversion":
-                    enabled = False
-                    reason = "disabled in greed (overbought stays overbought)"
-                    changes.append(f"{name}: disabled — greed regime")
+                    if regime == "GREED":
+                        # WO-1044-B: greed keeps RSI reversion alive with a
+                        # raised overbought bar (rsi_overbought 65 → 75 via
+                        # rsi_params) so winners ride instead of full kill.
+                        enabled = True
+                        size_mult = 0.8
+                        reason = "greed: RSI kept, overbought bar raised to 75 (WO-1044-B)"
+                        changes.append(f"{name}: enabled ×0.8 — greed rsi bar raised (WO-1044-B)")
+                    else:
+                        enabled = False
+                        reason = "disabled in extreme greed (overbought stays overbought)"
+                        changes.append(f"{name}: disabled — extreme greed regime")
                 elif name == "grid":
                     if regime == "GREED":
                         enabled = True
@@ -642,6 +690,7 @@ class StrategyAdaptor:
         fear_greed: int,
         btc_trend: str,
         changes: list,
+        bull_tier: Optional[str] = None,
     ) -> None:
         """Apply HMM, CVaR, and Bandit risk overlays to result.
 
@@ -649,18 +698,57 @@ class StrategyAdaptor:
         """
         # Apply HMM adjustments if available and confident
         if hmm_regime and hmm_adjustments:
-            # Adjust score threshold
-            result["global"]["score_threshold"] += hmm_adjustments.get(
-                "score_threshold_adj", 0
+            # WO-1044-A: HMM × bull_regime arbitration.
+            # When the HMM wants to kill trend/grid but the BTC SMA-gate
+            # says CONFIRMED_BULL, the two regime detectors disagree.
+            # Old behaviour (unconditional kill + threshold add-on) held
+            # through a 4.6-day divergence and produced the six-week
+            # zero-entry deadlock. New behaviour: during the conflict the
+            # affected strategies stay ON at half size and the HMM
+            # threshold add-on is waived; consistent verdicts (bull tier
+            # not CONFIRMED_BULL) keep the original conservative kill.
+            _conflict = bull_tier == "CONFIRMED_BULL" and any(
+                s in hmm_adjustments.get("avoid_strategies", [])
+                for s in ("trend", "grid")
             )
-            if hmm_adjustments.get("score_threshold_adj", 0) != 0:
+            _raw_adj = hmm_adjustments.get("score_threshold_adj", 0)
+            _threshold_adj = 0 if (_conflict and _raw_adj > 0) else _raw_adj
+            if _conflict and _raw_adj > 0:
                 changes.append(
-                    f"HMM {hmm_regime}: threshold {hmm_adjustments['score_threshold_adj']:+d}"
+                    f"HMM {hmm_regime}: threshold {_raw_adj:+d} waived — "
+                    f"conflict with bull tier {bull_tier} (WO-1044-A)"
+                )
+
+            # Adjust score threshold
+            result["global"]["score_threshold"] += _threshold_adj
+            if _threshold_adj != 0:
+                changes.append(
+                    f"HMM {hmm_regime}: threshold {_threshold_adj:+d}"
                 )
 
             # Adjust strategy enablement based on HMM preferred/avoid
             for name, cfg in result["strategies"].items():
                 if name in hmm_adjustments.get("avoid_strategies", []):
+                    if (
+                        _conflict
+                        and name in ("trend", "grid")
+                        and cfg.get("enabled")
+                    ):
+                        # Strategy is alive (e.g. not already killed by
+                        # P0-A1/evolver) — arbitrate to half size instead
+                        # of killing it during the regime divergence.
+                        cfg["size_multiplier"] = round(
+                            cfg["size_multiplier"] * 0.5, 2
+                        )
+                        cfg["reason"] = (
+                            f"arbitrated ×0.5: HMM {hmm_regime} avoid vs "
+                            f"bull {bull_tier} (WO-1044-A)"
+                        )
+                        changes.append(
+                            f"{name}: kept ON ×0.5 — HMM {hmm_regime} vs "
+                            f"{bull_tier} arbitration (WO-1044-A)"
+                        )
+                        continue
                     cfg["enabled"] = False
                     cfg["reason"] = f"disabled by HMM {hmm_regime}"
                     changes.append(f"{name}: disabled — HMM {hmm_regime}")
@@ -890,6 +978,11 @@ class StrategyAdaptor:
             "dca_params": self.DCA_REGIME_PARAMS.get(
                 regime, self.DCA_REGIME_PARAMS["NEUTRAL"]
             ),
+            # WO-1044-B: regime-aware RSI bar (research_phase →
+            # StrategyRegistry → RSIStrategy). None = registry default.
+            "rsi_params": (
+                {"rsi_overbought": 75} if regime == "GREED" else None
+            ),
             "global": {
                 "score_threshold": settings["score_threshold"],
                 "max_position_pct": settings["max_position_pct"],
@@ -903,7 +996,7 @@ class StrategyAdaptor:
         # Apply risk overlays (HMM, CVaR, Bandit, floor)
         self._apply_risk_overlays(
             result, hmm_regime, hmm_adjustments, cvar_scale, cvar_risk_level,
-            fear_greed, btc_trend, changes,
+            fear_greed, btc_trend, changes, bull_tier=bull_tier,
         )
 
         self._cache = result

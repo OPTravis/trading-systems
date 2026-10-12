@@ -51,6 +51,11 @@ def _frozen(fn, *args, **kwargs):
         st.enter_context(patch(
             "src.contextual_bandit.ContextualBandit.recommend_size",
             return_value=0.8))
+        # WO-1044-D: state_db unavailable -> kv calibration falls back to
+        # default (keeps the snapshot environment-independent).
+        st.enter_context(patch(
+            "src.state_db.get_state_db",
+            side_effect=OSError("frozen for A/B parity")))
         return fn(*args, **kwargs)
 
 
