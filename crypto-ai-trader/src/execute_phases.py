@@ -157,6 +157,7 @@ def _step_execute_trades(ctx):
                     else "SILENCE"
                 ),
                 bandit_sltp=ctx.get("adapted", {}).get("bandit_sltp"),
+                core_layer=ctx.get("core_layer", False),  # WO-1046g S3
             )
             if result["success"]:
                 # Record trade in journal

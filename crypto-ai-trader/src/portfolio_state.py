@@ -175,6 +175,8 @@ class StateMixin:
                         "take_profit": db_tp if db_tp is not None else default_tp,
                         "trailing_stop_pct": 1.5,
                         "highest_price": entry_price,
+                        # WO-1046g S3: core/satellite layer marker
+                        "layer": data.get("layer"),
                     }
                 logger.info(f"Loaded {len(self.positions)} positions from StateDB")
             # bug#8: record when this snapshot was taken + forget stale
@@ -435,6 +437,11 @@ class StateMixin:
                             "take_profit": db_tp if db_tp else default_tp,
                             "trailing_stop_pct": 1.5,
                             "highest_price": entry_price,
+                            # WO-1046g S3: preserve the layer marker on
+                            # exchange-sync rebuild (DB column keeps it via
+                            # portfolio_set COALESCE; the in-memory dict
+                            # must not lose it either)
+                            "layer": existing_db.get("layer"),
                         }
                     else:
                         # New position: use add_position with _from_sync to skip phantom BUY trade

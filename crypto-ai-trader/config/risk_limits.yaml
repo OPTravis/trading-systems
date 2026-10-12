@@ -85,3 +85,26 @@ default:
     - { pct: 8.0, size_pct: 30 }
     - { pct: 15.0, size_pct: 20 }
   max_hold_hours: 48
+
+# ── WO-1046g S3: core/satellite layering (2026-10-13) ──────────────────────
+# BTC core channel: when the regime is CONFIRMED_BULL and BTC itself clears
+# the scan threshold, BTC is preferentially entered with a strategic quota
+# (core_quota = equity × core_allocation_pct). Precedence per layer:
+#   defaults < this section < kv `core_layer_config` (whole-JSON override).
+# One-key rollback: kv_set("core_layer_config", {"enabled": false}).
+# core_allocation_pct is ALWAYS clamped to [min, max] (spec guardrail).
+# Delivery note (WO-1046g): ships DISABLED pending Travis acceptance —
+# CONFIRMED_BULL is live right now, so flipping this before acceptance
+# would commit real capital to the core channel sight-unseen. Flip to
+# true (or kv_set core_layer_config {"enabled": true}) on acceptance.
+core_layer:
+  enabled: false
+  core_symbol: BTCUSDT
+  core_allocation_pct: 0.45       # spec midpoint; hard-clamped to [0.40, 0.50]
+  core_allocation_pct_min: 0.40    # spec guardrail lower bound
+  core_allocation_pct_max: 0.50    # spec guardrail upper bound
+  core_max_pct: 50                 # single-position cap for core (% equity)
+  core_sl_pct: 3.5                 # BTC-tight SL (ATR naturally small)
+  core_max_hold_hours: 168         # 7d strategic hold (satellite default: 48h)
+  core_position_scale: 1.5         # kelly-fallback path scale for core sizing
+  core_zombie_exit: false          # strategic core position skips zombie exit

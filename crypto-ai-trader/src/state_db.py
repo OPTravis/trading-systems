@@ -687,6 +687,17 @@ class StateDB:
         except Exception as e:
             logger.warning("state_db._init_db: invest_pct migration: " + str(e))
 
+        # WO-1046g S3: layer column (core/satellite) — same conditional
+        # migration pattern as invest_pct above. NULL = satellite
+        # (backward compatible with every pre-WO-1046g row).
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(portfolio)").fetchall()}
+            if "layer" not in cols:
+                conn.execute("ALTER TABLE portfolio ADD COLUMN layer TEXT")
+                conn.commit()
+        except Exception as e:
+            logger.warning("state_db._init_db: layer migration: " + str(e))
+
         # Travis A (2026-09-24): dust_exempt_count for ledger_shadow_rounds
         # (existing production table predates the dust-exemption column)
         try:
@@ -816,8 +827,8 @@ class StateDB:
         symbol = symbol.replace("/", "")
         now = time.time()
         self._get_conn().execute(
-            """INSERT INTO portfolio (symbol, quantity, entry_price, strategy, opened_at, updated_at, stop_loss, take_profit, invest_pct)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO portfolio (symbol, quantity, entry_price, strategy, opened_at, updated_at, stop_loss, take_profit, invest_pct, layer)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(symbol) DO UPDATE SET
                quantity=excluded.quantity,
                entry_price=excluded.entry_price,
@@ -826,7 +837,8 @@ class StateDB:
                updated_at=excluded.updated_at,
                stop_loss=COALESCE(excluded.stop_loss, portfolio.stop_loss),
                take_profit=COALESCE(excluded.take_profit, portfolio.take_profit),
-               invest_pct=COALESCE(excluded.invest_pct, portfolio.invest_pct)""",
+               invest_pct=COALESCE(excluded.invest_pct, portfolio.invest_pct),
+               layer=COALESCE(excluded.layer, portfolio.layer)""",
             (
                 symbol,
                 data.get("quantity", 0),
@@ -837,6 +849,7 @@ class StateDB:
                 data.get("stop_loss"),
                 data.get("take_profit"),
                 data.get("invest_pct", 0),
+                data.get("layer"),
             ),
         )
         self._get_conn().commit()

@@ -24,6 +24,7 @@ run_exit_step (orchestrator entry).
 """
 
 import logging
+import sqlite3
 import time
 from typing import Dict, List, Optional
 
@@ -369,13 +370,15 @@ def evaluate_exits(
         try:
             rows = db._get_conn().execute(
                 "SELECT symbol, quantity, entry_price, strategy, opened_at, "
-                "stop_loss FROM portfolio WHERE quantity > 0").fetchall()
+                "stop_loss, layer FROM portfolio WHERE quantity > 0").fetchall()
             holdings = [
                 {"symbol": r[0], "quantity": r[1], "entry_price": r[2],
                  "strategy": r[3], "opened_at": r[4],
                  # WO-1011: carry the trailing target so evaluate_one can
                  # enforce the StateDB floor (None/0 = no trailing state)
-                 "stop_loss": r[5] if r[5] and float(r[5]) > 0 else None}
+                 "stop_loss": r[5] if r[5] and float(r[5]) > 0 else None,
+                 # WO-1046g S3: layer marker for core/satellite semantics
+                 "layer": r[6]}
                 for r in rows]
         except Exception:
             holdings = []
@@ -424,16 +427,31 @@ def evaluate_exits(
             pass
         # WO-1003-7: shell collects inputs; the pure core decides — the
         # exact same evaluate_one() the backtest replay calls.
+        # WO-1046g S3: core positions skip the zombie exit (strategic
+        # hold) and use core_max_hold_hours (7d) instead of the 48h
+        # satellite default. SL/TP/trailing all read the entry-time
+        # recorded values (core SL 3.5% was written at entry).
+        _is_core = pos.get("layer") == "core"
+        _core_cfg = {}
+        if _is_core:
+            try:
+                from src.core_layer import get_core_cfg
+
+                _core_cfg = get_core_cfg()
+            except Exception:
+                _core_cfg = {}
         held_h = _held_hours(db, pos, now)
         dec = evaluate_one(
             pos, price, held_h,
             tp_pct=_param(db, "tp_pct", sym),
             sl_pct=_param(db, "sl_pct", sym),
-            hold_hours=_param(db, "hold_hours", sym),
+            hold_hours=(float(_core_cfg["core_max_hold_hours"]) if _is_core
+                        else _param(db, "hold_hours", sym)),
             band_position=_band_position(client, sym) if include_momentum else None,
             include_momentum=include_momentum, now=now,
             tp_partial_r=_tp_r, tp_partial_pct=_tp_sz, tp1_banked=_banked,
-            zombie_hours=_zombie_param(db, "zombie_hours", sym),
+            zombie_hours=(0.0 if (_is_core and not _core_cfg.get("core_zombie_exit"))
+                          else _zombie_param(db, "zombie_hours", sym)),
             zombie_pnl_pct=_zombie_param(db, "zombie_pnl_pct", sym),
             zombie_band_pos_max=_zombie_param(db, "zombie_band_pos_max", sym),
         )
@@ -467,14 +485,25 @@ def scan_exit_triggers(db, holdings: List[str], prices: Dict[str, float],
             type(db).__name__)
         return None
     try:
-        rows = conn.execute(
-            "SELECT symbol, quantity, entry_price, opened_at, stop_loss "
-            "FROM portfolio WHERE quantity > 0").fetchall()
+        try:
+            rows = conn.execute(
+                "SELECT symbol, quantity, entry_price, opened_at, stop_loss, layer "
+                "FROM portfolio WHERE quantity > 0").fetchall()
+        except sqlite3.OperationalError:
+            # WO-1046g: legacy schema without the layer column (raw RO
+            # connections / pre-migration snapshots, WO-0931 contract) —
+            # layer=None is satellite semantics, the same missing-layer
+            # invariant portfolio_state/evaluate_exits already honor.
+            rows = [(r[0], r[1], r[2], r[3], r[4], None)
+                    for r in conn.execute(
+                        "SELECT symbol, quantity, entry_price, opened_at, "
+                        "stop_loss FROM portfolio WHERE quantity > 0"
+                    ).fetchall()]
     except Exception:
         logger.warning("scan_exit_triggers: portfolio read failed",
                        exc_info=True)
         return None
-    for sym, qty, entry, opened_at, stop_loss in rows:
+    for sym, qty, entry, opened_at, stop_loss, layer in rows:
         if sym not in holdings or not sym.endswith("USDT"):
             continue
         price = prices.get(sym)
@@ -484,7 +513,17 @@ def scan_exit_triggers(db, holdings: List[str], prices: Dict[str, float],
         pos = {"symbol": sym, "quantity": qty, "entry_price": entry,
                "opened_at": opened_at}
         held_h = _held_hours(db, pos, now)
-        if held_h >= _param(db, "hold_hours", sym):
+        # WO-1046g S3: core strategic hold (7d) — mirror evaluate_exits so
+        # the fast path cannot fire a 48h hold_expiry on a core position.
+        _hold_cap = _param(db, "hold_hours", sym)
+        if layer == "core":
+            try:
+                from src.core_layer import get_core_cfg
+
+                _hold_cap = float(get_core_cfg()["core_max_hold_hours"])
+            except Exception:
+                pass
+        if held_h >= _hold_cap:
             return f"{sym} hold_expiry {held_h:.1f}h"
         if pnl_pct >= _param(db, "tp_pct", sym):
             return f"{sym} take_profit {pnl_pct:+.2f}%"

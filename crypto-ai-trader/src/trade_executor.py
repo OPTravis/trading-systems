@@ -255,6 +255,7 @@ def _compute_kelly_sizing(
     active_positions: int,
     max_positions: int,
     surge_alert_level: str = "SILENCE",
+    core_layer: bool = False,
 ) -> Optional[dict]:
     """Compute position size using Kelly-first, tier-fallback strategy.
 
@@ -303,6 +304,17 @@ def _compute_kelly_sizing(
             max_positions=max_positions,
         )
         invest_pct = kelly_result["position_pct"]
+        if core_layer:
+            # WO-1046g: fallback-path core scale (the order_value override
+            # is the primary core sizing path; this only matters when a
+            # caller runs core without order_value).
+            try:
+                from src.core_layer import get_core_cfg
+
+                invest_pct *= float(get_core_cfg()["core_position_scale"])
+                kelly_result["position_pct"] = invest_pct
+            except Exception:
+                pass
         invest_amount = usdt_bal * invest_pct
         invest_amount *= fee_reserve
 
@@ -513,6 +525,7 @@ def _record_trade_portfolio(
     bandit_sltp=None,
     stop_loss=None,
     client_order_id=None,
+    layer=None,
 ):
     """Track executed trade in portfolio state and publish events.
 
@@ -552,6 +565,10 @@ def _record_trade_portfolio(
         if symbol in portfolio.positions:
             portfolio.positions[symbol]["invest_pct"] = invest_pct
             portfolio.positions[symbol]["is_exploration"] = is_exploration
+            if layer:
+                # WO-1046g S3: core/satellite layer marker (persisted to
+                # the portfolio.layer column via portfolio_set below)
+                portfolio.positions[symbol]["layer"] = layer
             if bandit_context:
                 portfolio.positions[symbol]["bandit_context"] = bandit_context
                 portfolio.positions[symbol]["bandit_multiplier"] = bandit_multiplier
@@ -1254,6 +1271,7 @@ def execute_auto_trade(
     order_value=None,
     surge_alert_level="SILENCE",
     bandit_sltp=None,
+    core_layer=False,
 ):
     """Execute trade automatically with Kelly-optimal position sizing.
 
@@ -1474,11 +1492,35 @@ def execute_auto_trade(
     # so exploration probes (is_exploration=True) can pass — but block ordering
     # of any non-exploration position. Enforcement happens after sizing.
 
+    # ── WO-1046g S3: core quota — order_value from equity × allocation ──
+    # The core allocation rides the existing order_value override path
+    # (same mechanism as DeepValueBTC / Fear Accumulation). The quota is
+    # hard-clamped to the 0.40-0.50 spec guardrail inside get_core_cfg().
+    # Any failure here degrades to satellite sizing (safe direction).
+    if core_layer:
+        try:
+            from src.core_layer import core_quota_pct
+
+            _core_equity = _total_portfolio or usdt_bal
+            order_value = _core_equity * core_quota_pct()
+            logger.info(
+                "[trade_id=%s] WO-1046g core quota: equity=%.2f × pct=%.2f "
+                "→ order_value=$%.2f",
+                _trade_id, _core_equity, core_quota_pct(), order_value,
+            )
+        except Exception:
+            logger.warning(
+                "core quota computation failed (satellite sizing)",
+                exc_info=True,
+            )
+            core_layer = False
+
     # ── Position sizing: Kelly-first, tier-fallback ──
     sizing = _compute_kelly_sizing(
         client, symbol, usdt_bal, score, stop_loss_pct, tp_levels,
         active_positions, max_positions,
         surge_alert_level=surge_alert_level,
+        core_layer=core_layer,
     )
     if sizing is None:
         return _fail("Position sizing returned None")
@@ -1576,6 +1618,21 @@ def execute_auto_trade(
 
     # ── Single position size cap ──
     # No single trade can exceed max_position_pct of available USDT.
+    # WO-1046g S3: core positions use the dedicated core_max_pct cap
+    # (equity-based, default 50%) instead of the satellite cap — the
+    # spec quota (40-50%) would always trip the 30% satellite cap.
+    # The cash-reserve and total-exposure caps above still apply to
+    # core unchanged (systemic cushions are layer-agnostic).
+    if core_layer:
+        try:
+            from src.core_layer import get_core_cfg
+
+            max_position_pct = float(get_core_cfg()["core_max_pct"])
+        except Exception:
+            logger.warning(
+                "core_max_pct lookup failed; satellite cap applied",
+                exc_info=True,
+            )
     max_single = usdt_bal * max_position_pct / 100.0
     if invest_amount > max_single:
         logger.info(
@@ -1958,6 +2015,7 @@ def execute_auto_trade(
         bandit_sltp=bandit_sltp,
         stop_loss=_sl_price,
         client_order_id=_buy_oid,
+        layer="core" if core_layer else None,  # WO-1046g S3
     )
 
     logger.info(

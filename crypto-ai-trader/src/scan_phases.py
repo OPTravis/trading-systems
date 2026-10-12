@@ -1005,6 +1005,8 @@ def _step_scan_opportunities():
         "btc_trend": btc_trend,
         "btc_change_24h": btc_change_24h,
         "btc_score": btc_score,
+        # WO-1046g S3: CONFIRMED_BULL tier for the core-channel preflight
+        "bull_tier": bull_tier,
         "acct": acct,
         "surge_result": surge_result,
         "dim_result": dim_result,

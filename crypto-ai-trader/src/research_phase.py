@@ -299,7 +299,8 @@ def _run_deep_research(researcher, client, top_n, fng):
     return research_results
 
 
-def _select_best_candidate(research_results, client, dynamic_threshold):
+def _select_best_candidate(research_results, client, dynamic_threshold,
+                           core_prefer_symbol=None):
     """Pick best candidate by adjusted score, preferring NON-HELD symbols.
 
     Rationale (2026-08-21): a held best would be blocked by the
@@ -312,6 +313,24 @@ def _select_best_candidate(research_results, client, dynamic_threshold):
     Returns (best_sym, best_adj_score, fallback_used).
     """
     from src.trade_executor import _symbol_already_held
+
+    # WO-1046g S3: core preference — BTC (CONFIRMED_BULL + over-line,
+    # preflight-verified upstream) wins over the natural best when it
+    # also clears the threshold POST-research. Held/fallback semantics
+    # and every downstream gate are unchanged (preference, not override).
+    if core_prefer_symbol and core_prefer_symbol in research_results:
+        try:
+            _c_opp, _c_res = research_results[core_prefer_symbol]
+            _c_adj = max(
+                0, min(100, _c_opp["score"] + _c_res["score_adjustment"])
+            )
+            if (
+                _c_adj >= dynamic_threshold
+                and not _symbol_already_held(client, core_prefer_symbol)
+            ):
+                return core_prefer_symbol, _c_adj, False
+        except Exception:
+            pass  # fall through to the natural path
 
     best_sym = None
     best_adj_score = -1.0
@@ -541,6 +560,38 @@ def _step_research_top_n(ctx):
         clear_pending()
         return None
 
+    # ── WO-1046g S3: core channel — BTC preference under CONFIRMED_BULL ──
+    # BTC is already scanned/scored by the 12-factor system; when the
+    # regime is CONFIRMED_BULL and BTC itself clears the threshold, put
+    # BTC at the head of the research set (cost stays at 3 candidates)
+    # and let _select_best_candidate prefer it. Any preflight failure
+    # degrades to the pure satellite path (bit-identical legacy
+    # behavior) — core is a preference, never a risk-gate override.
+    _core_active = False
+    _core_symbol = None
+    try:
+        from src.core_layer import core_preflight, get_core_cfg
+        _core_ok, _core_reason = core_preflight(
+            ctx, client, opportunities, dynamic_threshold
+        )
+        if _core_ok:
+            _core_symbol = get_core_cfg()["core_symbol"]
+            _btc_entry = next(
+                (o for o in opportunities if o.get("symbol") == _core_symbol),
+                None,
+            )
+            if _btc_entry is not None:
+                top_n = [_btc_entry] + [
+                    o for o in top_n if o.get("symbol") != _core_symbol
+                ][:2]
+                _core_active = True
+                print(f"CORE_CHANNEL: {_core_reason} — BTC injected into research set")
+                logger.info("WO-1046g core channel active: %s", _core_reason)
+    except Exception:
+        logger.warning(
+            "WO-1046g core preflight failed (satellite path)", exc_info=True
+        )
+
     research_results = _run_deep_research(researcher, client, top_n, fng)
 
     # Select best candidate by adjusted score, preferring NON-HELD symbols.
@@ -551,8 +602,10 @@ def _step_research_top_n(ctx):
     # are still evaluated above for DCA/加倉 signal visibility (the DCA
     # engine runs a separate path; switches via position_optimizer).
     best_sym, best_adj_score, fallback_used = _select_best_candidate(
-        research_results, client, dynamic_threshold
+        research_results, client, dynamic_threshold,
+        core_prefer_symbol=(_core_symbol if _core_active else None),
     )
+    _core_selected = _core_active and best_sym == _core_symbol
 
     if not best_sym or best_adj_score < dynamic_threshold:
         reason = (
@@ -575,6 +628,8 @@ def _step_research_top_n(ctx):
     adjusted_score = best_adj_score
 
     print(f"SELECTED: {symbol} (adjusted_score={int(adjusted_score)})")
+    if _core_selected:
+        print(f"CORE_SELECTED: {symbol} — core channel preference active (WO-1046g)")
 
     # Re-check threshold with adjusted score
     if adjusted_score < dynamic_threshold:
@@ -616,6 +671,64 @@ def _step_research_top_n(ctx):
         },
         research,
     )
+
+    # ── WO-1046g S3: core BTC bear-vetoed — fall back to the natural
+    # best satellite candidate (BTC excluded from the re-selection) and
+    # re-run the same bear analysis on it. Core is a preference, NOT an
+    # override of risk gates; veto semantics stay fully effective.
+    if bear_result.veto and _core_selected:
+        print(
+            f"BEAR_VETO: {symbol} (core) — falling back to natural best satellite"
+        )
+        _nb_sym, _nb_adj, _nb_fb = _select_best_candidate(
+            {k: v for k, v in research_results.items() if k != _core_symbol},
+            client, dynamic_threshold,
+        )
+        if _nb_sym and _nb_adj >= dynamic_threshold:
+            best_sym, best_adj_score = _nb_sym, _nb_adj
+            fallback_used = fallback_used or _nb_fb
+            top, research = research_results[best_sym]
+            symbol = best_sym
+            price = top["price"]
+            score = int(top["score"])
+            signals = top.get("signals", [])
+            research_adj = research["score_adjustment"]
+            research_confidence = research["confidence"]
+            research_summary = research["sentiment_summary"]
+            adjusted_score = best_adj_score
+            _core_selected = False
+            print(
+                f"CORE_VETO_FALLBACK: satellite {symbol} selected "
+                f"(adj={int(adjusted_score)})"
+            )
+            # Re-run the identical bear analysis on the fallback candidate
+            is_fear_mode = top.get("fear_mode", False)
+            if is_fear_mode:
+                from src.bear_analyst import BearResult
+
+                bear_result = BearResult(
+                    bear_score=0,
+                    veto=False,
+                    reasons=["Fear accumulation mode — bear analysis bypassed"],
+                    confidence="LOW",
+                )
+            else:
+                bear_result = bear.analyze(
+                    symbol,
+                    {
+                        "score": adjusted_score,
+                        "technical_score": top.get("technical_score", 0),
+                        "rsi": top.get("analysis", {}).get("1h", {}).get("rsi", 50),
+                        "funding_rate": top.get("funding_rate", 0),
+                        "market_sentiment": fng,
+                        "on_chain_score": top.get("onchain_score", 50),
+                        "volume_surge": top.get("volume_surge", False),
+                        "trend_strength": top.get("trend_strength", 50),
+                    },
+                    research,
+                )
+            # fall through: the standard veto / penalty blocks below now
+            # apply to the fallback candidate as-is.
 
     if bear_result.veto:
         print(
@@ -828,6 +941,22 @@ def _step_research_top_n(ctx):
         if _sl is not None:
             stop_loss_pct = _sl
 
+    # ── WO-1046g S3: core layer param overrides (BTC strategic) ──
+    # Narrow BTC SL (ATR naturally small) + 7d strategic hold. TP levels
+    # stay strategy-grade (4/8/15 laddered); trailing stays phase2 ATR
+    # adaptive (already BTC-friendly). Deliberately AFTER the bollinger
+    # ATR anchor so the core SL is deterministic.
+    if _core_selected:
+        from src.core_layer import get_core_cfg
+
+        _cc = get_core_cfg()
+        stop_loss_pct = float(_cc["core_sl_pct"])
+        max_hold = float(_cc["core_max_hold_hours"])
+        print(
+            f"CORE_LAYER: {symbol} sl={stop_loss_pct:g}% hold={max_hold:g}h "
+            f"(BTC core strategic)"
+        )
+
     # ── Layered position sizing in fear regime ──
     # Per investment advisor: in FEAR/EXTREME_FEAR, scale position by signal quality.
     # Higher score = more conviction = larger position; lower score = probe only.
@@ -879,6 +1008,9 @@ def _step_research_top_n(ctx):
             "reason": reason,
             "top": top,
             "size_multiplier": size_multiplier,  # P0-3 fix: pass strategy-level multiplier to executor
+            # WO-1046g S3: core/satellite marker — the executor sizes core
+            # positions with the dedicated quota and cap
+            "core_layer": _core_selected,
         }
     )
     return ctx
