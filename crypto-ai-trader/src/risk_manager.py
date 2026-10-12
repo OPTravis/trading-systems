@@ -968,6 +968,25 @@ class PerPairCooldown:
         self._save()
 
 
+def flat_ramp_active() -> Optional[Dict[str, float]]:
+    """WO-1046f: active flat-reset ramp (first ramp_hours after a flat
+    FIRE), else None. Reads kv `drawdown_breaker_flat_ramp` (set by
+    DrawdownBreaker FIRE, cleared by manual reset); expiry is lazy —
+    stale flags are ignored, not rewritten."""
+    try:
+        from src.state_db import get_state_db
+        ramp = get_state_db().kv_get("drawdown_breaker_flat_ramp")
+        if isinstance(ramp, dict) and time.time() < float(
+                ramp.get("until_ts", 0)):
+            return {
+                "pct": float(ramp.get("pct", 0.5)),
+                "ramp_hours": float(ramp.get("ramp_hours", 24.0)),
+            }
+    except Exception:
+        pass
+    return None
+
+
 class RiskManager:
     """Unified risk management entry point.
 
@@ -1175,6 +1194,7 @@ class RiskManager:
                 # Use USDT-equivalent total (only USDT balance + current positions' value)
                 usdt_bal = 0.0
                 position_value = 0.0
+                positions_open = 0
 
                 # Batch fetch all ticker prices in one API call (C3 fix)
                 all_tickers = {}
@@ -1203,8 +1223,15 @@ class RiskManager:
                         price_val = all_tickers.get(f"{asset}USDT", 0)
                         if price_val > 0:
                             position_value += total_qty * price_val
+                            # WO-1046f: positions worth >= $1 count as
+                            # open (dust below the dust-reaper threshold
+                            # does not block flat detection for the C+
+                            # flat auto-reset branch).
+                            if total_qty * price_val >= 1.0:
+                                positions_open += 1
                 total_equity = usdt_bal + position_value
-                dd_check = self.drawdown_breaker.check_drawdown(total_equity)
+                dd_check = self.drawdown_breaker.check_drawdown(
+                    total_equity, positions_open=positions_open)
                 if dd_check["tripped"]:
                     allowed = False
                     reasons.append(f"DRAWDOWN BREAKER: {dd_check['reason']}")
@@ -1238,6 +1265,22 @@ class RiskManager:
                     )
             except Exception as e:
                 logger.error(f"RiskManager: stepwise drawdown check error: {e}")
+
+        # 6b. WO-1046f: flat auto-reset ramp — for ramp_hours after a
+        # flat FIRE, entries size at ramp_pct (default 50%) of standard
+        # (research C+: 24h half-size probe before full re-entry).
+        if self.drawdown_breaker:
+            try:
+                ramp = flat_ramp_active()
+                if ramp:
+                    adjustments["size_multiplier"] = round(
+                        adjustments["size_multiplier"] * ramp["pct"], 2)
+                    reasons.append(
+                        f"FLAT RESET RAMP: size x{ramp['pct']} — first "
+                        f"{ramp['ramp_hours']:.0f}h after flat auto-reset"
+                    )
+            except Exception as e:
+                logger.error(f"RiskManager: flat ramp check error: {e}")
 
         result = {
             "allowed": allowed,

@@ -78,6 +78,28 @@ drawdown_breaker:
     recheck_interval_hours: 24.0     # (3) deferral recheck cadence + escalation
     chain_window_hours: 72.0         # (4) re-trip window after ANY reset
     chain_multiplier_cap: 4          # (4) chain-crash multiplier cap
+  # WO-1046f: C+ gated flat auto-reset (Travis 2026-10-12 joint ruling,
+  # accepting the WO-1046d research). Only evaluated while the breaker is
+  # TRIPPED and the portfolio is FLAT (no open positions >= $1) — the
+  # tiered dd-narrowing path is structurally unreachable in that state
+  # (equity frozen at trip level). Gates evaluated once per UTC day at
+  # the previous day's daily-close bar; all four must PASS (fail-closed
+  # on any data failure). ARM -> 15min human veto window -> FIRE:
+  # trip cleared, HWM re-anchored, chain mult preserved, 24h 50% ramp.
+  # Re-trip within retrip_disable_hours of a flat FIRE -> manual-only
+  # for the rest of the cycle. Rollback: kv drawdown_breaker_flat_reset
+  # {"enabled": false}.
+  flat_reset:
+    enabled: true
+    g1_hours: 48.0                  # G1: min hours since trip
+    g2_ret24_min_pct: -2.0          # G2: BTC 24h return floor (%)
+    g2_low_buffer: 1.02             # G2: close >= 24h low x buffer
+    g3_vol_ratio_max: 0.80          # G3: 6h vol <= [trip,trip+48h] peak x ratio
+    g4_need: 2                      # G4: momentum confirmations needed (2/3)
+    ramp_pct: 0.5                   # first re-entries at 50% standard size
+    ramp_hours: 24.0                # ramp window after FIRE
+    retrip_disable_hours: 72.0     # re-trip in window -> manual-only this cycle
+    veto_minutes: 15                # ARM -> FIRE human veto window
 
 # === Stepwise Drawdown ===
 # Progressive risk reduction based on drawdown from high watermark.
