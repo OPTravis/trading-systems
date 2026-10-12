@@ -377,6 +377,13 @@ class TestTrailingStop:
             ts = TrailingStop()
 
             ts._state = {}  # Clear any persisted state to ensure clean test
+            # WO-1046a: profit 15%/30% crosses the phase2 threshold (7.5%),
+            # which would switch to the wide-band trailing. This scenario
+            # anchors the WO-1044-C tight ladder (step_10_plus), so disable
+            # phase2 via kv; the phase2 path has its own coverage in
+            # tests/test_wo1046a_tp_partial.py.
+            from src.state_db import get_state_db
+            get_state_db().kv_set("trailing_phase2_config", {"enabled": False})
             ts.update(
                 "BTCUSDT", current_price=100.0, atr=10.0, entry_price=100.0
             )  # entry
@@ -391,6 +398,7 @@ class TestTrailingStop:
             # trail_width = 0.015 * 1.5 = 0.0225, trailing_sl = 130 * (1 - 0.0225) = 127.075
             assert r["sl_price"] == pytest.approx(127.075, abs=0.1)
             assert r["highest_price"] == 130.0
+            get_state_db().kv_set("trailing_phase2_config", None)  # cleanup
         finally:
             rm._DATA_DIR = orig
 

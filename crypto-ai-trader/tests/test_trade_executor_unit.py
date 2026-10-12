@@ -736,8 +736,9 @@ class TestTieredAndStrategyCFallback:
 
         client.place_order.side_effect = place
         out = self._run(client, notifier)
-        # 2 TPs (LIMIT) + 2 rejected SLL + 1 STOP_LOSS fallback — and nothing else
-        assert [t for t, _ in calls] == ["LIMIT", "LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS"]
+        # WO-1046a S2: single TP1 (LIMIT 50%) + 2 rejected SLL + 1
+        # STOP_LOSS fallback — and nothing else (TP2 tier retired)
+        assert [t for t, _ in calls] == ["LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS_LIMIT", "STOP_LOSS"]
         assert "price" not in calls[-1][1]  # market-on-trigger: no limit price
         assert any("SL(remaining) [market-trigger fallback]" in r for r in out["results"])
         assert out["sl_placed_qty"] > 0

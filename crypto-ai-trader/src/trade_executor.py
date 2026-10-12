@@ -699,29 +699,48 @@ def _place_sl_tp_orders(
     # Determine primary TP price (highest probability first TP level)
     primary_tp_pct = tp_levels[0]["pct"] if tp_levels else 10.0
 
-    # P0: Enforce TP1 minimum distance = max(3×ATR_pct, 3%)
+    # P0: Enforce TP1 minimum distance = max(3×ATR_pct, 3%, 1.5R)
     # Prevents TP1 from being too close to entry (e.g. +1.6% for high-vol alts)
+    # WO-1046a S2: add the 1.5R floor so the resting TP1 limit sits at the
+    # SAME level where the decision core banks tp_partial — the limit leg
+    # wins the race when price touches it, the market path is the backstop.
+    # R is anchored to the entry stop distance (stop_loss_pct), matching
+    # evaluate_one's tp_partial trigger semantics.
     try:
-        _klines = client.get_klines(symbol, interval='1h', limit=20)
-        if _klines and len(_klines) >= 15:
-            _atr = Indicators.atr(_klines, period=14)
-            if _atr > 0 and price > 0:
-                _atr_pct = (_atr / price) * 100
-                _min_tp1 = max(_atr_pct * 3, 3.0)
-                if primary_tp_pct < _min_tp1:
-                    logger.info(
-                        "TP1 minimum distance: %.1f%% → %.1f%% (3×ATR=%.1f%%, min=3%%)",
-                        primary_tp_pct, _min_tp1, _atr_pct * 3,
-                    )
-                    primary_tp_pct = round(_min_tp1, 2)
-                    tp_levels[0]["pct"] = primary_tp_pct
-                    # Scale TP2 relative to new TP1
-                    if len(tp_levels) > 1:
-                        tp_levels[1]["pct"] = round(primary_tp_pct * 1.5, 2)
-                    if len(tp_levels) > 2:
-                        tp_levels[2]["pct"] = round(primary_tp_pct * 2.0, 2)
+        _r_mult = 1.5
+        try:
+            from src.state_db import get_state_db as _sdb
+
+            _tpcfg = _sdb().kv_get("tp_partial_config") or {}
+            if isinstance(_tpcfg, dict):
+                _r_mult = float(_tpcfg.get("r_multiple", 1.5))
+        except Exception:
+            pass
+        _r_floor = _r_mult * stop_loss_pct
+        # the R floor needs no market data — always in play
+        _min_tp1 = max(3.0, _r_floor)
+        _atr_leg = 0.0
+        try:
+            _klines = client.get_klines(symbol, interval='1h', limit=20)
+            if _klines and len(_klines) >= 15:
+                _atr = Indicators.atr(_klines, period=14)
+                if _atr > 0 and price > 0:
+                    _atr_leg = (_atr / price) * 100 * 3
+        except Exception as e:
+            logger.debug("ATR fetch for TP1 min distance failed: %s", e)
+        if _atr_leg > 0:
+            _min_tp1 = max(_min_tp1, _atr_leg)
+        if primary_tp_pct < _min_tp1:
+            logger.info(
+                "TP1 minimum distance: %.1f%% → %.1f%% "
+                "(3×ATR=%.1f%%, min=3%%, %.1fR=%.1f%%)",
+                primary_tp_pct, _min_tp1, _atr_leg,
+                _r_mult, _r_floor,
+            )
+            primary_tp_pct = round(_min_tp1, 2)
+            tp_levels[0]["pct"] = primary_tp_pct
     except Exception as e:
-        logger.debug("ATR fetch for TP1 min distance failed: %s", e)
+        logger.debug("TP1 min distance enforcement failed: %s", e)
 
     primary_tp_price = round(price * (1 + primary_tp_pct / 100), p_prec)
 
@@ -768,23 +787,19 @@ def _place_sl_tp_orders(
         _tiered_tp_placed = 0.0
         _tiered_sl_order_id = None  # Track SL order ID for preservation
         try:
-            tp1_qty = _round_qty(executed_qty * 0.33)
-            tp2_qty = _round_qty(executed_qty * 0.33)
-            # Remaining ~34% reserved for SL (trailing portion after TPs fill)
+            # WO-1046a S2: single TP1 tranche at 50% (was TP1 33% + TP2
+            # 33%). The other 50% is banked by the decision core's
+            # tp_partial at 1.5R (or by this TP1 limit filling), and the
+            # remainder rides trailing / phase2. The two-tier ladder is
+            # retired: TP2's +3R price was never the binding exit in
+            # forensics, while the 33% first tranche banked too little.
+            tp1_qty = _round_qty(executed_qty * 0.50)
+            # Remaining 50% reserved for SL (trailing portion after TP1 fills)
             tiers = [
                 (
                     1,
                     tp1_qty,
                     tp_levels[0]["pct"] if len(tp_levels) > 0 else primary_tp_pct,
-                ),
-                (
-                    2,
-                    tp2_qty,
-                    (
-                        tp_levels[1]["pct"]
-                        if len(tp_levels) > 1
-                        else round(primary_tp_pct * 1.5, 2)
-                    ),
                 ),
             ]
             _all_tiers_valid = True

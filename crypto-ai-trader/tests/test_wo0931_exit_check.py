@@ -143,15 +143,26 @@ def test_hold_expiry_anchors_on_trades_not_refreshed_opened_at(db):
 
 
 def test_take_profit_and_stop_loss_trigger_auto(db):
+    # WO-1046a S2: at +9% the tp_partial branch (>= 1.5R = 7.5%) fires
+    # FIRST and banks 50%; the legacy full take_profit path is exercised
+    # via the kv rollback switch below.
     cli = ExitFakeClient(price=109.0)  # +9% >= 8 default
     dec = evaluate_exits(cli, db, holdings=[_pos()], now=NOW)
+    assert [d["kind"] for d in dec] == ["tp_partial"]
+    assert dec[0]["auto"] is True and dec[0]["sell_pct"] == 50
+
+    # rollback switch: kv tp_partial_config {"enabled": false} restores
+    # the pre-WO-1046a full take_profit semantics bit-for-bit
+    db.kv_set("tp_partial_config", {"enabled": False})
+    dec = evaluate_exits(cli, db, holdings=[_pos()], now=NOW)
     assert [d["kind"] for d in dec] == ["take_profit"]
-    assert dec[0]["auto"] is True
+    assert dec[0]["auto"] is True and dec[0]["sell_pct"] == 100
+    db.kv_set("tp_partial_config", None)
 
     cli2 = ExitFakeClient(price=93.0)  # -7% <= -6 default
     dec2 = evaluate_exits(cli2, db, holdings=[_pos()], now=NOW)
     assert [d["kind"] for d in dec2] == ["stop_loss"]
-
+    assert dec2[0]["auto"] is True
 
 def test_momentum_reversal_evaluates_as_auto_since_p2(db):
     # closes drift around 100, last close 99 → band position < 0.15.

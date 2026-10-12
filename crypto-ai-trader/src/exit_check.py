@@ -146,10 +146,81 @@ def _band_position(client, symbol: str) -> Optional[float]:
         return None
 
 
+# ---- WO-1046a S2 helpers -----------------------------------------------------
+
+def _tp_lock_pct(db) -> float:
+    """Profit-lock floor for the banked remainder (kv tp_partial_config.
+    lock_pct, default 0.25% ≈ breakeven 0.5% × first-tranche 50%)."""
+    try:
+        v = db.kv_get("tp_partial_config")
+        if isinstance(v, dict):
+            return float(v.get("lock_pct", 0.25))
+    except Exception:
+        pass
+    return 0.25
+
+
+def _phase2_wide_sl(client, db, symbol: str, price: float) -> Optional[float]:
+    """WO-1046a S1: the wide ATR band level for a banked remainder —
+    highest*(1 - clamp(2.5*ATR, 2%, 12%)) using a fresh 1h-ATR14 read.
+    Returns None on any failure (caller falls back to the lock floor);
+    kv trailing_phase2_config {"enabled": false} disables the band here too."""
+    try:
+        _cfg = db.kv_get("trailing_phase2_config") or {}
+        if isinstance(_cfg, dict) and not _cfg.get("enabled", True):
+            return None
+        _mult = float(_cfg.get("atr_mult", 2.5)) if isinstance(_cfg, dict) else 2.5
+    except Exception:
+        _mult = 2.5
+    try:
+        klines = client.get_klines(symbol, interval="1h", limit=20)
+        if not klines or len(klines) < 15:
+            return None
+        from src.indicators import Indicators
+
+        atr = Indicators.atr(klines, period=14)
+        if not atr or atr <= 0 or price <= 0:
+            return None
+        atr_pct = atr / price * 100
+        width = min(max(_mult * atr_pct, 2.0), 12.0)
+        return price * (1 - width / 100)
+    except Exception:
+        return None
+
+
+def _tp1_exchange_filled_qty(client, db, symbol: str) -> Optional[float]:
+    """Exchange truth for the resting TP1 limit (WO-1046a race guard).
+
+    The exit step runs BEFORE the trailing-check step that detects TP
+    fills, so a TP1 that filled between rounds is invisible to the kv
+    banked state. Returns the filled qty (0 = still open / gone unfilled),
+    or None when the lookup itself fails (caller fails open to the
+    market-sell path).
+    """
+    try:
+        state = db.kv_get(f"tp_sl_tracker:{symbol}")
+        if not isinstance(state, dict):
+            return None
+        tp_orders = state.get("tp_orders") or []
+        tp1 = next((o for o in tp_orders if int(o.get("tier", 0)) == 1), None)
+        if not tp1 or not tp1.get("order_id"):
+            return None
+        o = client.get_order(symbol, int(tp1["order_id"]))
+        if not isinstance(o, dict):
+            return None
+        status = str(o.get("status") or "").upper()
+        if status in ("FILLED", "PARTIALLY_FILLED"):
+            return float(o.get("executedQty") or 0) or float(tp1.get("qty") or 0)
+        return 0.0
+    except Exception:
+        return None
+
+
 # ---- decision core (pure, shared with backtest — WO-1003-7) ------------------
 def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
                  band_position=None, band_pos_max=MOMENTUM_BAND_POS_MAX,
-                 include_momentum=True, now=0.0):
+                 include_momentum=True, now=0.0,
+                 tp_partial_r=0.0, tp_partial_pct=50, tp1_banked=False):
     """Single-position exit decision — THE one place exit semantics live.
 
     Pure: no db, no client, no clock. Live evaluate_exits() feeds it
@@ -158,7 +229,11 @@ def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
     hours — so live and backtest exits can never drift apart again
     (P1-4 two-codebases gap closed).
 
-    Priority order mirrors the live chain: hold > tp > sl > momentum.
+    Priority order mirrors the live chain: hold > tp_partial > tp > sl >
+    momentum (WO-1046a: tp_partial banks the first tranche at 1.5R; once
+    banked, the take_profit FULL exit is waived so the remainder rides the
+    trailing stop). tp_partial_r=0 disables the whole branch — the default
+    keeps every legacy caller (backtest replay, tests) bit-identical.
     Returns a decision dict (same shape as live) or None.
     """
     qty = float(pos.get("quantity") or 0)
@@ -175,9 +250,23 @@ def evaluate_one(pos, price, held_hours, *, tp_pct, sl_pct, hold_hours,
     if held_hours >= hold_hours:
         return {**base, "kind": "hold_expiry", "auto": True, "sell_pct": 100,
                 "reason": f"hold expiry {held_hours:.1f}h >= {hold_hours:.0f}h"}
+    # WO-1046a S2: first-tranche bank at r_multiple × R (R = initial
+    # sl_pct — deliberately NOT the trailed stop_loss, so the trigger
+    # stays anchored to the risk actually taken at entry).
+    if (not tp1_banked and tp_partial_r > 0 and sl_pct
+            and pnl_pct >= tp_partial_r * abs(sl_pct)):
+        return {**base, "kind": "tp_partial", "auto": True,
+                "sell_pct": int(tp_partial_pct),
+                "reason": (f"tp partial {pnl_pct:.2f}% >= "
+                           f"{tp_partial_r:g}R (R={abs(sl_pct):.1f}%)")}
     if pnl_pct >= tp_pct:
-        return {**base, "kind": "take_profit", "auto": True, "sell_pct": 100,
-                "reason": f"take profit {pnl_pct:.2f}% >= {tp_pct:.1f}%"}
+        if tp1_banked:
+            # WO-1046a: first tranche already banked — skip the FULL tp
+            # exit; the remainder is managed by trailing/hold/momentum.
+            pass
+        else:
+            return {**base, "kind": "take_profit", "auto": True, "sell_pct": 100,
+                    "reason": f"take profit {pnl_pct:.2f}% >= {tp_pct:.1f}%"}
     # WO-1011 (10/3 PENGU lesson): the StateDB trailing target (raised by
     # _step_trailing_check) is the tightest floor the strategy promised —
     # enforce it BEFORE the looser fixed -sl_pct line. PENGU 10/3: target
@@ -234,6 +323,27 @@ def evaluate_exits(
                 for r in rows]
         except Exception:
             holdings = []
+    # WO-1046a S2: tp_partial config (kv hot-tunable; enabled default ON —
+    # kv {"enabled": false} rolls the whole feature back to legacy exits).
+    _tp_cfg = {}
+    try:
+        _v = db.kv_get("tp_partial_config")
+        if isinstance(_v, dict):
+            _tp_cfg = _v
+    except Exception:
+        pass
+    _tp_r = 0.0
+    _tp_sz = 50
+    if _tp_cfg.get("enabled", True):
+        try:
+            _tp_r = float(_tp_cfg.get("r_multiple", 1.5))
+        except (TypeError, ValueError):
+            _tp_r = 1.5
+        try:
+            _tp_sz = int(_tp_cfg.get("size_pct", 50))
+        except (TypeError, ValueError):
+            _tp_sz = 50
+
     for pos in holdings or []:
         sym = pos.get("symbol")
         qty = float(pos.get("quantity") or 0)
@@ -247,6 +357,15 @@ def evaluate_exits(
                 price = 0.0
         if price <= 0:
             continue
+        # WO-1046a S2: first-tranche banked state — written by BOTH the
+        # market-partial path (execute_exit) and the resting-limit TP1
+        # fill detector (cmd_trailing_check._check_tp_fills).
+        _banked = False
+        try:
+            _b = db.kv_get(f"tp1_banked:{sym}")
+            _banked = bool(_b)
+        except Exception:
+            pass
         # WO-1003-7: shell collects inputs; the pure core decides — the
         # exact same evaluate_one() the backtest replay calls.
         held_h = _held_hours(db, pos, now)
@@ -257,6 +376,7 @@ def evaluate_exits(
             hold_hours=_param(db, "hold_hours", sym),
             band_position=_band_position(client, sym) if include_momentum else None,
             include_momentum=include_momentum, now=now,
+            tp_partial_r=_tp_r, tp_partial_pct=_tp_sz, tp1_banked=_banked,
         )
         if dec is not None:
             decisions.append(dec)
@@ -462,6 +582,30 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,
         logger.warning("exit dust pre-flight errored for %s (legacy "
                        "order: cancel first)", sym, exc_info=True)
 
+    # WO-1046a S2 0.5) exchange-truth dedup: the exit step runs BEFORE
+    # the trailing-check step that banks resting TP1 fills, so a TP1 LIMIT
+    # that filled between rounds is invisible to the kv state. If it did
+    # fill, sync the banked state and skip the market sell — the tranche
+    # is already banked on-exchange and the remainder rides trailing.
+    if kind == "tp_partial":
+        _filled = _tp1_exchange_filled_qty(client, db, sym)
+        if _filled is not None and _filled > 0:
+            try:
+                db.kv_set(f"tp1_banked:{sym}", {
+                    "ts": now, "kind": "limit_tp1", "qty": _filled,
+                    "price": float(decision.get("price") or 0)})
+            except Exception:
+                pass
+            out.update(status="ok", qty=0.0, detail=(
+                f"tp_partial skipped — resting TP1 already filled "
+                f"{_filled:.6g} on exchange; banked state synced"))
+            _notify(db, f"exit:{sym}:tp_partial:synced:{int(now)}",
+                    f"✅ TP partial — {sym}",
+                    f"Resting TP1 limit already filled on exchange "
+                    f"({_filled:.6g}) — banked state synced, no market "
+                    f"sell. Remainder rides the trailing stop.")
+            return out
+
     # 1) cancel resting SELL legs (abort keeps the OCO floor)
     cancel = _cancel_sell_legs(client, sym)
     if not cancel["ok"]:
@@ -525,7 +669,20 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,
         if rem_qty * decision["price"] >= max(min_notional, 0):
             try:
                 entry = float(decision.get("entry_price") or 0)
-                cand = entry * 0.995 if entry > 0 else 0.0
+                if kind == "tp_partial":
+                    # WO-1046a: profit-lock floor for the banked remainder
+                    # (momentum keeps its breakeven semantics — C2 anchor),
+                    # THEN the S1 phase2 wide band rides on top when wider:
+                    # SL = max(entry+lock, highest*(1-max(2.5*ATR,2%) clamp)).
+                    # Low-ATR trends get room to run; high-ATR names fall
+                    # back to the lock floor (no gambling a 7% band).
+                    cand = (entry * (1 + _tp_lock_pct(db) / 100)
+                            if entry > 0 else 0.0)
+                    _p2 = _phase2_wide_sl(client, db, sym, decision["price"])
+                    if _p2 and _p2 > cand:
+                        cand = _p2
+                else:
+                    cand = entry * 0.995 if entry > 0 else 0.0
                 if cand <= 0 or cand >= decision["price"] * 0.98:
                     cand = round(decision["price"] * 0.95, 6)
                 if client.place_stop_loss_market(sym, rem_qty, round(cand, 6)):
@@ -554,6 +711,23 @@ def execute_exit(client, db, decision: Dict, *, now: Optional[float] = None,
     except Exception:
         pass
     out.update(status="ok", qty=qty)
+    # WO-1046a S2: persist the banked state (market-partial path; the
+    # limit path is banked by cmd_trailing_check._check_tp_fills).
+    if kind == "tp_partial":
+        try:
+            db.kv_set(f"tp1_banked:{sym}", {
+                "ts": now, "kind": "market_partial", "qty": qty,
+                "price": float(decision.get("price") or 0)})
+        except Exception:
+            logger.warning("tp1_banked kv write failed for %s (non-fatal)", sym)
+    # Full close clears the per-position banked state so the NEXT position
+    # in the same symbol starts clean (stale banked would mute tp_partial
+    # and waive the full-tp exit forever).
+    if sell_pct >= 100:
+        try:
+            db.kv_remove(f"tp1_banked:{sym}")
+        except Exception:
+            pass
     _notify(db, f"exit:{sym}:{kind}:{int(now)}",
             f"✅ Auto exit — {sym} ({kind})",
             f"{decision['reason']} — market sold {qty:.6f} @ ~{decision['price']}"

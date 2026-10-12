@@ -361,7 +361,6 @@ class TrailingStop:
                 if new_sl > state["sl_price"]:
                     state["sl_price"] = new_sl
             else:
-                ((price - entry) / entry) * 100 if entry > 0 else 0
                 vol_adj = 1.0
                 try:
                     from src.garch_vol import get_vol_regime
@@ -378,6 +377,26 @@ class TrailingStop:
                     logger.warning(
                         "GARCH vol unavailable for trailing stop, using vol_adj=1.0"
                     )
+                # WO-1046a S1 phase 2: once profit >= phase2_r_pct (default
+                # 7.5% ~= 1.5R for the stock 5% SL) the trailing band
+                # switches from the tight STEPS ladder to a WIDE ATR band
+                # (2.5*ATR, clamp 2-12%) — banked-half positions need room
+                # to run. The switch happens ONCE (activation is sticky and
+                # one-way); on the switch round the SL may move DOWN (tight
+                # -> wide), afterwards it only ratchets up like always.
+                # kv trailing_phase2_config {"enabled": false} rolls back.
+                _p2_enabled = True
+                _p2_r = 7.5
+                try:
+                    from src.state_db import get_state_db as _pdb
+
+                    _p2cfg = _pdb().kv_get("trailing_phase2_config") or {}
+                    if isinstance(_p2cfg, dict):
+                        _p2_enabled = bool(_p2cfg.get("enabled", True))
+                        _p2_r = float(_p2cfg.get("r_pct", 7.5))
+                except Exception:
+                    pass  # fail-open: phase2 on with default trigger
+                _p2_atr_pct = (atr / price * 100) if price > 0 else None
                 try:
                     adaptive = calculate_trailing_sl(
                         entry_price=entry,
@@ -385,11 +404,34 @@ class TrailingStop:
                         highest_price=highest,
                         initial_sl=state.get("sl_price", entry * 0.95),
                         volatility_adjustment=vol_adj,
+                        phase2_profit_pct=_p2_r if _p2_enabled else None,
+                        phase2_atr_pct=_p2_atr_pct,
+                        phase2_force=bool(state.get("phase2_activated")),
                     )
-                    new_sl = adaptive["trailing_sl"]
-                    if new_sl > state["sl_price"]:
-                        state["sl_price"] = new_sl
-                        state["adaptive_step"] = adaptive["step"]
+                    if adaptive.get("phase2"):
+                        if not state.get("phase2_activated"):
+                            _prev_sl = state.get("sl_price", 0.0)
+                            state["phase2_activated"] = True
+                            state["phase2_switched"] = True  # one-shot flag
+                            state["sl_price"] = adaptive["trailing_sl"]
+                            state["adaptive_step"] = adaptive["step"]
+                            logger.info(
+                                "TrailingStop: PHASE2 switch %s — wide ATR band "
+                                "%.1f%% (SL %.6f -> %.6f, one-time downgrade)",
+                                symbol,
+                                adaptive.get("phase2_width_pct", 0),
+                                _prev_sl,
+                                adaptive["trailing_sl"],
+                            )
+                        elif adaptive["trailing_sl"] > state["sl_price"]:
+                            state["sl_price"] = adaptive["trailing_sl"]
+                            state["adaptive_step"] = adaptive["step"]
+                        new_sl = adaptive["trailing_sl"]
+                    else:
+                        new_sl = adaptive["trailing_sl"]
+                        if new_sl > state["sl_price"]:
+                            state["sl_price"] = new_sl
+                            state["adaptive_step"] = adaptive["step"]
                 except Exception:
                     logger.warning("Adaptive trailing failed, using ATR fallback")
                     new_sl = highest - self.TRAILING_ATR_MULT * atr
@@ -423,6 +465,7 @@ class TrailingStop:
             callback_pct = (
                 ((highest - state["sl_price"]) / highest) * 100 if highest > 0 else 0
             )
+            _p2_switched = bool(state.pop("phase2_switched", False))
             self._save()
             return {
                 "activated": True,
@@ -430,6 +473,8 @@ class TrailingStop:
                 "sl_price": round(state["sl_price"], 6),
                 "highest_price": round(highest, 6),
                 "callback_pct": round(callback_pct, 2),
+                "phase2_activated": bool(state.get("phase2_activated")),
+                "phase2_switched": _p2_switched,
             }
 
         # Not yet activated – check activation threshold

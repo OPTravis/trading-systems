@@ -34,9 +34,51 @@ class AdaptiveTrailingStop:
         highest_price: float,
         initial_sl: float,
         volatility_adjustment: float = 1.0,
+        phase2_profit_pct: Optional[float] = None,
+        phase2_atr_pct: Optional[float] = None,
+        phase2_force: bool = False,
+        phase2_atr_mult: float = 2.5,
+        phase2_min_width_pct: float = 2.0,
+        phase2_max_width_pct: float = 12.0,
     ) -> Dict:
+        """WO-1046a S1: phase2_profit_pct/phase2_atr_pct given and profit
+        >= phase2_profit_pct (percent) switches to the WIDE ATR band
+        (max(atr_mult*ATR, min_width), clamped to max_width) instead of the
+        tight STEPS ladder — once banked 50% at 1.5R the remainder needs
+        room to run. phase2_force=True keeps the band after profit decays
+        below the trigger (activation is sticky, one-way). Default args
+        reproduce legacy behaviour bit-identically."""
         profit_pct = (current_price - entry_price) / entry_price
         min_sl = entry_price * (1 + self.MIN_PROFIT_LOCK_PCT)
+
+        if profit_pct < 0.01 and not phase2_force:
+            return {
+                "trailing_sl": initial_sl,
+                "trailing_active": False,
+                "step": "no_trail",
+                "locked_profit_pct": profit_pct,
+                "phase2": False,
+            }
+
+        if (
+            phase2_profit_pct is not None
+            and phase2_atr_pct is not None
+            and phase2_atr_pct > 0
+            and (phase2_force or profit_pct * 100 >= phase2_profit_pct)
+        ):
+            width = phase2_atr_mult * phase2_atr_pct
+            width = max(width, phase2_min_width_pct)
+            width = min(width, phase2_max_width_pct)
+            p2_sl = highest_price * (1 - width / 100)
+            p2_sl = max(p2_sl, min_sl)
+            return {
+                "trailing_sl": p2_sl,
+                "trailing_active": True,
+                "step": "phase2_atr",
+                "locked_profit_pct": profit_pct,
+                "phase2": True,
+                "phase2_width_pct": round(width, 3),
+            }
 
         if profit_pct < 0.01:
             return {
@@ -44,6 +86,7 @@ class AdaptiveTrailingStop:
                 "trailing_active": False,
                 "step": "no_trail",
                 "locked_profit_pct": profit_pct,
+                "phase2": False,
             }
 
         trail_width = None
@@ -59,6 +102,7 @@ class AdaptiveTrailingStop:
                 "trailing_active": False,
                 "step": "no_trail",
                 "locked_profit_pct": profit_pct,
+                "phase2": False,
             }
 
         trailing_sl = highest_price * (1 - trail_width)
@@ -69,6 +113,7 @@ class AdaptiveTrailingStop:
             "trailing_active": True,
             "step": step_name,
             "locked_profit_pct": profit_pct,
+            "phase2": False,
         }
 
     @staticmethod
@@ -107,10 +152,23 @@ def calculate_trailing_sl(
     highest_price: float,
     initial_sl: float,
     volatility_adjustment: float = 1.0,
+    phase2_profit_pct: Optional[float] = None,
+    phase2_atr_pct: Optional[float] = None,
+    phase2_force: bool = False,
+    phase2_atr_mult: float = 2.5,
+    phase2_min_width_pct: float = 2.0,
+    phase2_max_width_pct: float = 12.0,
 ) -> Dict:
     """Convenience wrapper for AdaptiveTrailingStop.calculate_trailing_sl()."""
     return _adaptive_instance.calculate_trailing_sl(
-        entry_price, current_price, highest_price, initial_sl, volatility_adjustment
+        entry_price, current_price, highest_price, initial_sl,
+        volatility_adjustment,
+        phase2_profit_pct=phase2_profit_pct,
+        phase2_atr_pct=phase2_atr_pct,
+        phase2_force=phase2_force,
+        phase2_atr_mult=phase2_atr_mult,
+        phase2_min_width_pct=phase2_min_width_pct,
+        phase2_max_width_pct=phase2_max_width_pct,
     )
 
 

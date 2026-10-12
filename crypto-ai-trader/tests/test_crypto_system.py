@@ -211,7 +211,16 @@ class TestTrailingStop:
         assert result["entry_price"] == 100.0
 
     def test_sl_only_moves_up(self, ts):
-        """SL should only move UP, never down."""
+        """SL should only move UP, never down.
+
+        WO-1046a: phase2 wide-band trailing (profit >= 7.5%) intentionally
+        relaxes the SL once on switch — that one-shot downward move is
+        covered by tests/test_wo1046a_tp_partial.py group D. This legacy
+        anchor pins the tight-ladder invariant with phase2 explicitly
+        disabled via kv (default is enabled).
+        """
+        from src.state_db import get_state_db
+        get_state_db().kv_set("trailing_phase2_config", {"enabled": False})
         # Activate at 106.0
         ts.update("BTC", current_price=106.0, atr=2.0, entry_price=100.0)
         # TrailingStop normalizes symbol to BTCUSDT internally
@@ -225,6 +234,7 @@ class TestTrailingStop:
         # Price drops slightly but stays above SL → SL should NOT move down
         ts.update("BTC", current_price=107.0, atr=2.0, entry_price=100.0)
         assert ts._state["BTCUSDT"]["sl_price"] == sl_after_rise  # unchanged
+        get_state_db().kv_set("trailing_phase2_config", None)  # cleanup
 
     def test_no_duplicate_trigger_and_tracking(self, ts):
         """Regression: same asset cannot be both tracking AND triggered in one run.

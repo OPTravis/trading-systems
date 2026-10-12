@@ -144,8 +144,14 @@ def _check_tp_fills(client, notifier, positions):
 
     For each position with tp_sl_tracker state:
     - Check if tracked TP orders are still open
-    - When TP1 fills: cancel old SL, place new SL at entry+0.5% (breakeven)
-    - When TP2 fills: cancel old SL, place new SL at TP1 price
+    - When TP1 fills: bank the tranche (kv tp1_banked:{sym}, WO-1046a S2
+      — the decision core reads this to waive the full take_profit exit),
+      then cancel old SL and place new SL at the profit-lock floor
+      (entry + lock_pct, default 0.25% — entry+0.5% historically).
+      WO-1046a: TP2 tier is retired (tiered is now a single 50% TP1), the
+      TP2 branch below stays as legacy-state compatibility.
+    - When TP2 fills (legacy states only): cancel old SL, place new SL at
+      TP1 price
 
     Returns list of action results.
     """
@@ -239,6 +245,49 @@ def _check_tp_fills(client, notifier, positions):
         # ── SL management after TP fills ──
         highest_filled_tier = max(tp_orders[i]["tier"] for i in newly_filled)
         all_filled_tiers = [tp_orders[i]["tier"] for i in range(len(tp_orders)) if i < len(tp_filled) and tp_filled[i]]
+        newly_filled_tiers = [tp_orders[i]["tier"] for i in newly_filled]
+
+        # WO-1046a S2: TP1 filled = first tranche banked. Write the
+        # tp1_banked:{sym} state so the decision core (evaluate_one) waives
+        # the full take_profit exit for the remainder — the same flag the
+        # market-partial path (execute_exit) writes after its 50% sell.
+        # Deliberately BEFORE the price fetch: banking is a state sync
+        # and must not be skipped when the ticker call fails.
+        if 1 in newly_filled_tiers or (
+            1 in all_filled_tiers and sl_moved < 1
+        ):
+            try:
+                from src.state_db import get_state_db as _bdb
+
+                _bdb().kv_set(
+                    f"tp1_banked:{symbol}",
+                    {
+                        "ts": time.time(),
+                        "kind": "limit_tp1",
+                        "qty": next(
+                            (
+                                float(tp_orders[i].get("qty", 0))
+                                for i in newly_filled
+                            ),
+                            0.0,
+                        ),
+                        "price": next(
+                            (
+                                float(tp_orders[i].get("price", 0))
+                                for i in newly_filled
+                            ),
+                            0.0,
+                        ),
+                    },
+                )
+                logger.info(
+                    "tp_sl_tracker: TP1 banked for %s (tp1_banked kv written)",
+                    symbol,
+                )
+            except Exception:
+                logger.warning(
+                    "tp_sl_tracker: tp1_banked kv write failed for %s", symbol
+                )
 
         p_prec = client.get_price_precision(symbol)
 
@@ -257,11 +306,24 @@ def _check_tp_fills(client, notifier, positions):
         new_sl_price = 0
         move_reason = ""
 
-        # After TP1 fills: SL → breakeven (entry + 0.5%)
+        # After TP1 fills: SL → profit-lock floor (entry + lock_pct).
+        # WO-1046a: entry+0.5% → entry+lock_pct (default 0.25%, kv
+        # tp_partial_config.lock_pct) — same floor the market-partial
+        # path re-lists, so both banking paths leave the remainder at
+        # the identical protection level.
         if 1 in all_filled_tiers and sl_moved < 1:
-            new_sl_price = round(entry_price * 1.005, p_prec)  # entry + 0.5%
+            _lock_pct = 0.25
+            try:
+                from src.state_db import get_state_db as _ldb
+
+                _lcfg = _ldb().kv_get("tp_partial_config") or {}
+                if isinstance(_lcfg, dict):
+                    _lock_pct = float(_lcfg.get("lock_pct", 0.25))
+            except Exception:
+                pass
+            new_sl_price = round(entry_price * (1 + _lock_pct / 100), p_prec)
             should_move_sl = True
-            move_reason = "TP1_filled_breakeven"
+            move_reason = "TP1_filled_lock_profit"
 
         # After TP2 fills: SL → TP1 price
         if 2 in all_filled_tiers and sl_moved < 2:
