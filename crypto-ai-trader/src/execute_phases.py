@@ -238,6 +238,9 @@ def _step_execute_trades(ctx):
                             if ctx["bear_result"] and hasattr(ctx["bear_result"], "veto")
                             else False
                         ),
+                        hmm_regime=(
+                            ctx["adapted"].get("hmm_regime") or ""
+                        ),
                     )
                     # Store entry_rowid on position for precise outcome matching
                     if entry_rowid and ctx["symbol"] in ctx["portfolio"].positions:

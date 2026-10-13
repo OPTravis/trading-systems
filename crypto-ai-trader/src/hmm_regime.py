@@ -549,11 +549,45 @@ class HMMRegimeDetector:
 
         Retraining triggers:
         (a) N new closed trades since last training, OR
-        (b) max_interval_days have elapsed since last training
+        (b) max_interval_days have elapsed since last training, OR
+        (c) WO-1046h: HMM×bull_regime divergence persisted >=
+            divergence_retrain_days (default 10) consecutive days —
+            the model has been contradicting the BTC SMA gate for long
+            enough that retraining is the only remaining explanation.
+            Log-only first: while kv hmm_scoring_config
+            .divergence_retrain_enabled is False (default), this reports
+            ``would_reason`` WITHOUT setting should_retrain=True.
 
         Returns:
-            {"should_retrain": bool, "reason": str, "trades_since": int, "days_since": float}
+            {"should_retrain": bool, "reason": str, "trades_since": int, "days_since": float,
+             "would_reason": str|None}
         """
+        # (c) WO-1046h divergence trigger — checked first so a never-trained
+        # model still surfaces the divergence state in the return payload.
+        would_reason = None
+        try:
+            from src.hmm_scoring import divergence_days, get_config
+            _cfg = get_config(self._db)
+            _div = divergence_days(self._db)
+            _days = _div["divergence_days"]
+            _need = int(_cfg.get("divergence_retrain_days", 10))
+            if _days >= _need:
+                _msg = (f"divergence {_days}d >= {_need}d "
+                        f"(since {_div['first_date'] or '?'}) — "
+                        f"HMM BEAR vs bull CONFIRMED_BULL")
+                if _cfg.get("divergence_retrain_enabled"):
+                    return {
+                        "should_retrain": True,
+                        "reason": _msg,
+                        "trades_since": 0,
+                        "days_since": 0,
+                        "would_reason": None,
+                    }
+                would_reason = _msg  # log-only observation
+        except Exception:
+            logger.debug("hmm_scoring divergence check skipped",
+                         exc_info=True)
+
         # Get last training metadata
         state = self._db.kv_get("hmm_model_state")
         last_trained_at = 0.0
@@ -573,7 +607,7 @@ class HMMRegimeDetector:
         days_since = (time.time() - last_trained_at) / 86400 if last_trained_at > 0 else 999
 
         if last_trained_at == 0:
-            return {"should_retrain": True, "reason": "never_trained", "trades_since": 0, "days_since": 999}
+            return {"should_retrain": True, "reason": "never_trained", "trades_since": 0, "days_since": 999, "would_reason": would_reason}
 
         if trades_since >= min_new_trades:
             return {
@@ -581,6 +615,7 @@ class HMMRegimeDetector:
                 "reason": f"{trades_since} new trades (>= {min_new_trades})",
                 "trades_since": trades_since,
                 "days_since": round(days_since, 1),
+                "would_reason": would_reason,
             }
 
         if days_since >= max_interval_days:
@@ -589,6 +624,7 @@ class HMMRegimeDetector:
                 "reason": f"{days_since:.1f} days elapsed (>= {max_interval_days})",
                 "trades_since": trades_since,
                 "days_since": round(days_since, 1),
+                "would_reason": would_reason,
             }
 
         return {
@@ -596,6 +632,7 @@ class HMMRegimeDetector:
             "reason": f"trades={trades_since}/{min_new_trades}, days={days_since:.1f}/{max_interval_days}",
             "trades_since": trades_since,
             "days_since": round(days_since, 1),
+            "would_reason": would_reason,
         }
 
     def auto_retrain(self, klines_1h: Optional[List] = None) -> bool:

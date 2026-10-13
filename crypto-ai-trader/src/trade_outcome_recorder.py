@@ -70,6 +70,9 @@ class TradeOutcomeRecorder:
         research_adj: float = 0,
         bear_score: float = 0,
         bear_veto: bool = False,
+        # WO-1046h: HMM verdict at entry time — feeds the rolling
+        # hit-rate scorer (src/hmm_scoring.py). Backward compatible.
+        hmm_regime: str = "",
     ) -> int:
         """Record trade entry with full factor decomposition.
 
@@ -111,6 +114,7 @@ class TradeOutcomeRecorder:
                 "research_adj": research_adj,
                 "bear_score": bear_score,
                 "bear_veto": bear_veto,
+                "hmm_regime": hmm_regime,
             }
         )
 

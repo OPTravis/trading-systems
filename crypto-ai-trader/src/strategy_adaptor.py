@@ -691,6 +691,7 @@ class StrategyAdaptor:
         btc_trend: str,
         changes: list,
         bull_tier: Optional[str] = None,
+        hmm_score: Optional[Dict] = None,
     ) -> None:
         """Apply HMM, CVaR, and Bandit risk overlays to result.
 
@@ -719,6 +720,42 @@ class StrategyAdaptor:
                     f"conflict with bull tier {bull_tier} (WO-1044-A)"
                 )
 
+            # WO-1046h: rolling hit-rate downweight. When the HMM verdicts
+            # have been direction-consistent with realized PnL less than
+            # hit_rate_threshold of the time (30d window), its advice
+            # shrinks toward neutral by downweight_factor. Log-only while
+            # kv hmm_scoring_config.enabled is False (default).
+            if hmm_score and hmm_score.get("downweight_active"):
+                try:
+                    from src.hmm_scoring import apply_downweight, get_config
+                    from src.state_db import get_state_db
+
+                    _dw = apply_downweight(
+                        get_state_db(), hmm_adjustments,
+                        hmm_score.get("hit_rate"))
+                    _adj2 = _dw["adjustments"]
+                    _audit = _dw["audit"]
+                    if _audit.get("applied"):
+                        _dw_thr = _adj2.get("score_threshold_adj", 0)
+                        _threshold_adj = 0 if (_conflict and _dw_thr > 0) else _dw_thr
+                        hmm_adjustments = _adj2  # avoid/scale semantics below
+                        changes.append(
+                            f"HMM downweight ×{_audit['factor']:.2f}: "
+                            f"hit_rate={hmm_score['hit_rate']:.2f} < "
+                            f"{hmm_score['hit_rate_threshold']:.2f} "
+                            f"({_audit.get('applied') and 'active'})"
+                        )
+                except Exception:
+                    logger.debug("HMM downweight apply failed (skip)",
+                                 exc_info=True)
+            elif hmm_score and hmm_score.get("downweight_would"):
+                changes.append(
+                    f"HMM downweight WOULD apply (log-only): "
+                    f"hit_rate={hmm_score['hit_rate']:.2f} < "
+                    f"{hmm_score['hit_rate_threshold']:.2f}, "
+                    f"{hmm_score['sample_size']} samples"
+                )
+
             # Adjust score threshold
             result["global"]["score_threshold"] += _threshold_adj
             if _threshold_adj != 0:
@@ -729,6 +766,25 @@ class StrategyAdaptor:
             # Adjust strategy enablement based on HMM preferred/avoid
             for name, cfg in result["strategies"].items():
                 if name in hmm_adjustments.get("avoid_strategies", []):
+                    if (
+                        hmm_adjustments.get("avoid_downgraded_to_half_size")
+                        and cfg.get("enabled")
+                    ):
+                        # WO-1046h downweight: a low-hit-rate HMM has not
+                        # earned the kill vote — keep the strategy alive at
+                        # half size (WO-1044-A arbitration precedent).
+                        cfg["size_multiplier"] = round(
+                            cfg["size_multiplier"] * 0.5, 2
+                        )
+                        cfg["reason"] = (
+                            f"avoid downgraded to ×0.5: HMM {hmm_regime} "
+                            f"low hit-rate (WO-1046h)"
+                        )
+                        changes.append(
+                            f"{name}: avoid downgraded to ×0.5 — HMM "
+                            f"downweight (WO-1046h)"
+                        )
+                        continue
                     if (
                         _conflict
                         and name in ("trend", "grid")
@@ -874,6 +930,10 @@ class StrategyAdaptor:
         # HMM regime overlay (Phase 6)
         hmm_regime = None
         hmm_adjustments = {}
+        # WO-1046h: rolling hit-rate score for the downweight overlay.
+        # Computed on the same cache cadence as adapt(); failures degrade
+        # to score=None (no downweight — behaviour-keep red line).
+        hmm_score = None
         try:
             from src.hmm_regime import HMMRegimeDetector
 
@@ -884,6 +944,14 @@ class StrategyAdaptor:
                 hmm_adjustments = detector.get_strategy_adjustments(hmm_regime)
         except Exception:
             logger.error("HMM regime detection failed, skipping overlay", exc_info=True)
+        try:
+            from src.hmm_scoring import compute_hmm_score
+            from src.state_db import get_state_db
+
+            hmm_score = compute_hmm_score(get_state_db())
+        except Exception:
+            logger.debug("HMM rolling score unavailable (no downweight)",
+                         exc_info=True)
 
 
         # CVaR risk overlay (Phase 8)
@@ -997,6 +1065,7 @@ class StrategyAdaptor:
         self._apply_risk_overlays(
             result, hmm_regime, hmm_adjustments, cvar_scale, cvar_risk_level,
             fear_greed, btc_trend, changes, bull_tier=bull_tier,
+            hmm_score=hmm_score,
         )
 
         self._cache = result

@@ -653,6 +653,23 @@ def _step_scan_opportunities():
     except Exception as _e:
         logger.warning(f"bull_tier lookup failed: {_e}")
 
+    # WO-1046h: refresh the daily (bull_tier × HMM) verdict ledger and the
+    # rolling score snapshot (kv hmm_rolling_score — weekly-review and
+    # core/satellite enable-signal source). Failures never block the scan.
+    try:
+        from src.hmm_scoring import record_daily_verdict
+        from src.state_db import get_state_db
+        _hmm_now = None
+        try:
+            from src.hmm_regime import HMMRegimeDetector as _HDet
+            _cached_hmm = _HDet().get_cached_prediction()
+            _hmm_now = (_cached_hmm or {}).get("regime")
+        except Exception:
+            _hmm_now = None
+        record_daily_verdict(get_state_db(), bull_tier, _hmm_now)
+    except Exception as _e:
+        logger.warning(f"hmm verdict ledger update skipped: {_e}")
+
     adapted = adaptor.adapt(
         fear_greed=fng,
         btc_trend=btc_trend,
