@@ -324,7 +324,8 @@ def _apply_shadow(db, ev: Dict, round_id: Optional[str]) -> None:
                 )
         else:  # SELL
             row = conn.execute(
-                "SELECT net_qty FROM ledger_shadow_positions "
+                "SELECT net_qty, cost_basis, avg_entry_price "
+                "FROM ledger_shadow_positions "
                 "WHERE symbol = ?",
                 (ev["symbol"],),
             ).fetchone()
@@ -333,7 +334,8 @@ def _apply_shadow(db, ev: Dict, round_id: Optional[str]) -> None:
                 # pre-bootstrap legacy). Record the event; the diff layer
                 # reports the book divergence instead of guessing here.
                 return
-            new_qty = float(row["net_qty"]) - ev["qty"]
+            old_qty = float(row["net_qty"])
+            new_qty = old_qty - ev["qty"]
             proceeds = ev["qty"] * ev["price"]
             if new_qty <= EPS_QTY:
                 conn.execute(
@@ -341,12 +343,33 @@ def _apply_shadow(db, ev: Dict, round_id: Optional[str]) -> None:
                     (ev["symbol"],),
                 )
             else:
+                # WO-1051: shrink cost_basis by the sold proportion so a
+                # partial close (incl. the dust remnant it leaves) cannot
+                # park stale cost on the row. Pre-fix, a SELL cut net_qty
+                # but kept the full cost_basis, so a later re-BUY merged
+                # into an inflated avg (TIAUSDT 10/13: shadow avg 1.2404
+                # vs true 0.6214, 2x). Per-unit avg is mathematically
+                # unchanged by a proportional cut; it is recomputed from
+                # cost/qty anyway to keep the row self-consistent.
+                old_cost = float(row["cost_basis"] or 0.0)
+                sold_ratio = (
+                    ev["qty"] / old_qty if old_qty > EPS_QTY else 1.0
+                )
+                sold_ratio = min(max(sold_ratio, 0.0), 1.0)
+                new_cost = old_cost * (1.0 - sold_ratio)
+                new_avg = (
+                    new_cost / new_qty
+                    if new_qty > EPS_QTY
+                    else float(row["avg_entry_price"] or 0.0)
+                )
                 conn.execute(
                     """UPDATE ledger_shadow_positions
-                       SET net_qty = ?, cash_delta = cash_delta + ?,
+                       SET net_qty = ?, avg_entry_price = ?,
+                           cost_basis = ?, cash_delta = cash_delta + ?,
                            updated_at = ?
                        WHERE symbol = ?""",
-                    (new_qty, proceeds, ev["ts"], ev["symbol"]),
+                    (new_qty, new_avg, new_cost, proceeds,
+                     ev["ts"], ev["symbol"]),
                 )
 
 
