@@ -444,3 +444,114 @@ class TestIntegrationDeliveredOverdueScenario:
                                         "rule5_inbound")}}) == ""
         instr = build_forward_instruction(r)
         assert "at_agent" in instr and "7642016183574905126" in instr
+
+
+# ────────────────────────────────────────────────────────────────────
+# WO-1057 ①: deliverable_path 声明路径优先 + deliverables/ + worklogs/ 三级检索
+# 误报背景：WO-1052/1054 均为 worklogs/ 分析报告交付，旧硬编码只查
+# deliverables/WO-xxx/ 而误报「交付物路径缺失」。
+# ────────────────────────────────────────────────────────────────────
+
+class TestDeliverablesCheckWo1057:
+    def test_declared_path_hit_no_alert(self, tmp_path):
+        """声明路径命中（文件存在）→ 不告警，source=declared。"""
+        write_wo(tmp_path, "WO-P1", "delivered",
+                 extra={"delivered_at": iso(NOW - timedelta(minutes=10)),
+                        "deliverable_path": str(tmp_path / "declared.md")})
+        (tmp_path / "declared.md").write_text("report", encoding="utf-8")
+        r = scan_work_orders(tmp_path, NOW,
+                             deliverables_dir=tmp_path / "deliverables")
+        assert r["alerts"]["rule4_deliverables"] == []
+        d = check_deliverables(tmp_path / "deliverables", "WO-P1",
+                               deliverable_path=str(tmp_path / "declared.md"),
+                               project_root=tmp_path)
+        assert d["source"] == "declared" and d["exists"] and d["files"] == 1
+
+    def test_declared_relative_path_resolves(self, tmp_path):
+        """相对声明路径按 project_root 解析（Travis 派单可用相对路径）。"""
+        (tmp_path / "rel.md").write_text("x", encoding="utf-8")
+        d = check_deliverables(tmp_path / "deliverables", "WO-P2",
+                               deliverable_path="rel.md",
+                               project_root=tmp_path)
+        assert d["source"] == "declared" and d["files"] == 1
+
+    def test_worklogs_fallback_hit_no_alert(self, tmp_path):
+        """验收口径：worklogs/ 交付的 delivered 单不再误报。
+
+        无声明路径、无 deliverables/WO-xxx/，但 worklogs/ 内文件名含
+        WO 号 → 三级检索命中，不告 rule4。
+        """
+        wo_dir = tmp_path / "work_orders_pull"
+        wo_dir.mkdir()
+        write_wo(wo_dir, "WO-W1", "delivered",
+                 extra={"delivered_at": iso(NOW - timedelta(minutes=10))})
+        logs = tmp_path / "worklogs"
+        logs.mkdir()
+        (logs / "20261014_WO-W1_影响面分析.md").write_text("报告",
+                                                           encoding="utf-8")
+        r = scan_work_orders(wo_dir, NOW,
+                             deliverables_dir=wo_dir / "deliverables")
+        assert r["alerts"]["rule4_deliverables"] == []
+
+    def test_all_three_miss_still_alerts(self, tmp_path):
+        """三级全落空 → 仍告警（防回退过宽，回归护栏）。"""
+        write_wo(tmp_path, "WO-M1", "delivered",
+                 extra={"delivered_at": iso(NOW - timedelta(minutes=10))})
+        r = scan_work_orders(tmp_path, NOW,
+                             deliverables_dir=tmp_path / "deliverables")
+        assert len(r["alerts"]["rule4_deliverables"]) == 1
+        assert "三级检索" in r["alerts"]["rule4_deliverables"][0]["hint"]
+
+    def test_declared_miss_falls_through_to_deliverables(self, tmp_path):
+        """声明路径失效但 deliverables/ 命中 → 回退生效，仍可定位。"""
+        write_wo(tmp_path, "WO-P3", "delivered",
+                 extra={"delivered_at": iso(NOW - timedelta(minutes=10)),
+                        "deliverable_path": str(tmp_path / "gone.md")})
+        d = tmp_path / "deliverables" / "WO-P3"
+        d.mkdir(parents=True)
+        (d / "script.py").write_text("print()", encoding="utf-8")
+        r = scan_work_orders(tmp_path, NOW,
+                             deliverables_dir=tmp_path / "deliverables")
+        assert r["alerts"]["rule4_deliverables"] == []
+
+    def test_declared_list_paths_any_hit(self, tmp_path):
+        """list 形式的 deliverable_path：任一命中即可定位。"""
+        d = check_deliverables(tmp_path / "deliverables", "WO-P4",
+                               deliverable_path=[str(tmp_path / "a.md"),
+                                                 str(tmp_path / "b.md")],
+                               project_root=tmp_path)
+        assert d["source"] == "none" and not d["exists"]
+        (tmp_path / "b.md").write_text("x", encoding="utf-8")
+        d = check_deliverables(tmp_path / "deliverables", "WO-P4",
+                               deliverable_path=[str(tmp_path / "a.md"),
+                                                 str(tmp_path / "b.md")],
+                               project_root=tmp_path)
+        assert d["source"] == "declared" and d["files"] == 1
+
+    def test_rule4_disabled_keeps_old_contract(self, tmp_path):
+        """deliverables_dir=None → rule4 关闭（旧调用契约不变）。"""
+        wo_dir = tmp_path / "work_orders_pull"
+        wo_dir.mkdir()
+        write_wo(wo_dir, "WO-N1", "delivered",
+                 extra={"delivered_at": iso(NOW - timedelta(minutes=10))})
+        logs = tmp_path / "worklogs"
+        logs.mkdir()
+        (logs / "WO-N1.md").write_text("x", encoding="utf-8")
+        r = scan_work_orders(wo_dir, NOW)  # deliverables_dir=None
+        assert r["alerts"]["rule4_deliverables"] == []
+
+    def test_worklogs_hit_reports_source(self, tmp_path):
+        """命中路径的 source 标注可观测（worklogs 命中返回首个匹配路径）。"""
+        wo_dir = tmp_path / "work_orders_pull"
+        wo_dir.mkdir()
+        logs = tmp_path / "worklogs"
+        logs.mkdir()
+        (logs / "20261014_BT_P3P4_x.md").write_text("x", encoding="utf-8")
+        d = check_deliverables(wo_dir / "deliverables", "WO-BT1",
+                               worklogs_dir=logs)
+        assert d["source"] == "none"  # 文件名不含 WO 号 → 不命中
+        (logs / "20261014_WO-BT1_回测.md").write_text("y", encoding="utf-8")
+        d = check_deliverables(wo_dir / "deliverables", "WO-BT1",
+                               worklogs_dir=logs)
+        assert d["source"] == "worklogs"
+        assert "WO-BT1" in d["path"] and d["files"] == 1

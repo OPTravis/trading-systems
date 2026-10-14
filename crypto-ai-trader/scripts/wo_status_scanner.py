@@ -10,7 +10,11 @@
   rule2_execution_stuck : acked / in_progress 滞留 > 2h → 执行卡住
   rule3_accept_overdue  : delivered > 30min 仍无 accepted → 验收超时（高优；
                           ≥2h 置 escalated=True，执行壳须 at Leo 升级）
-  rule4_deliverables    : delivered 工单 deliverables/{wo_id}/ 缺失或空 → 交付物路径缺失
+  rule4_deliverables    : delivered 工单交付物三级检索全落空 → 交付物路径缺失
+                          （WO-1057 ①：工单 JSON deliverable_path 声明路径优先
+                          → deliverables/{wo_id}/ 目录 → worklogs/ 内文件名含
+                          该 WO 号；约定：worklogs/=分析报告，deliverables/=
+                          脚本与数据产物）
   rule5_inbound         : TI-（to/assignee=Travis）pending → 入站待处理（独立去重）
 
 时间推断链（修复 WO-1047 工单缺陷②「delivered 时间显示 ?」）：
@@ -186,17 +190,79 @@ def is_inbound(filename: str, wo: dict) -> bool:
     return to_field == "travis" or assignee_field == "travis"
 
 
-# ── deliverables 检索（工单需求③）─────────────────────────────────
-def check_deliverables(deliverables_dir: Path | None, wo_id: str) -> dict | None:
-    """检查 deliverables/{wo_id}/ 存在性与文件数；目录参数为 None 时返回 None。"""
+# ── deliverables 检索（工单需求③；WO-1057 ① 三级检索）─────────────
+def check_deliverables(deliverables_dir: Path | None, wo_id: str,
+                       *, deliverable_path=None,
+                       worklogs_dir: Path | None = None,
+                       project_root: Path | None = None) -> dict | None:
+    """检查 delivered 工单的交付物可定位性（WO-1057 ① 三级检索）。
+
+    优先级（任一命中即算可定位，全部落空才告警 rule4）：
+      1. deliverable_path：工单 JSON 声明路径（str 或 list[str]；绝对路径
+         原样、相对路径按 project_root 解析）——文件存在或目录非空即命中；
+      2. deliverables/{wo_id}/ 目录存在且含文件；
+      3. worklogs/ 内文件名含该 WO 号（分析报告类交付的自然约定）。
+
+    deliverables_dir 为 None 时返回 None（rule4 关闭，兼容旧调用契约：
+    该参数仍是 rule4 的总开关）。
+
+    返回 {"path", "exists", "files", "source"}，source ∈
+    declared / deliverables / worklogs / none（多路命中取优先级最高者）。
+    """
     if deliverables_dir is None:
         return None
+
+    declared_list = []
+    if isinstance(deliverable_path, str):
+        declared_list = [deliverable_path]
+    elif isinstance(deliverable_path, (list, tuple)):
+        declared_list = [p for p in deliverable_path
+                         if isinstance(p, str) and p.strip()]
+
+    def _dir_files(d: Path):
+        try:
+            return [p for p in d.rglob("*") if p.is_file()]
+        except OSError:
+            return []
+
+    # 1) 声明路径（声明即契约，优先级最高）
+    for raw in declared_list:
+        p = Path(raw.strip())
+        if not p.is_absolute() and project_root is not None:
+            p = project_root / p
+        try:
+            if p.is_file():
+                return {"path": str(p), "exists": True, "files": 1,
+                        "source": "declared"}
+            if p.is_dir():
+                files = _dir_files(p)
+                if files:
+                    return {"path": str(p), "exists": True,
+                            "files": len(files), "source": "declared"}
+        except OSError:
+            continue
+
+    # 2) deliverables/{wo_id}/
     d = deliverables_dir / wo_id
-    try:
-        files = [p for p in d.rglob("*") if p.is_file()]
-    except OSError:
-        return {"path": str(d), "exists": False, "files": 0}
-    return {"path": str(d), "exists": d.exists(), "files": len(files)}
+    files = _dir_files(d)
+    if files:
+        return {"path": str(d), "exists": True, "files": len(files),
+                "source": "deliverables"}
+
+    # 3) worklogs/ 文件名含 WO 号
+    if worklogs_dir is not None:
+        try:
+            matches = [p for p in worklogs_dir.glob(f"*{wo_id}*")
+                       if p.is_file()]
+        except OSError:
+            matches = []
+        if matches:
+            return {"path": str(matches[0]), "exists": True,
+                    "files": len(matches), "source": "worklogs"}
+
+    fallback = (str(d) if deliverables_dir is not None
+                else (str(declared_list[0]) if declared_list else ""))
+    return {"path": fallback, "exists": False, "files": 0, "source": "none"}
 
 
 # ── 去重状态 ───────────────────────────────────────────────────────
@@ -270,6 +336,7 @@ def scan_work_orders(
     now: datetime,
     *,
     deliverables_dir: Path | None = None,
+    worklogs_dir: Path | None = None,
     alert_state: dict | None = None,
     inbound_state: dict | None = None,
     heartbeat_path: Path | None = None,
@@ -280,7 +347,10 @@ def scan_work_orders(
     参数：
       wo_dir          : work_orders_pull/ 目录
       now             : 注入的当前时刻（tz-aware；测试可控）
-      deliverables_dir: work_orders_pull/deliverables（None=不检查 rule4）
+      deliverables_dir: work_orders_pull/deliverables（None=关闭 rule4；
+                          传入即启用三级检索）
+      worklogs_dir     : worklogs/ 报告目录（None=自动取
+                          wo_dir.parent/worklogs——WO-1057 ① 回退路径）
       alert_state     : 上一轮去重状态（None={}；调用方持久化返回值）
       inbound_state   : 原 inbound 去重 dict（None={}；调用方持久化）
       heartbeat_path  : heartbeat jsonl 路径（None=不落心跳）
@@ -298,6 +368,11 @@ def scan_work_orders(
     """
     if now.tzinfo is None:
         now = now.replace(tzinfo=TZ_SHANGHAI)
+
+    # WO-1057 ①: worklogs 报告目录（分析报告类交付的回退检索路径）。
+    # 仅在 rule4 开启（deliverables_dir 传入）时推导，保持旧调用契约。
+    if deliverables_dir is not None and worklogs_dir is None:
+        worklogs_dir = wo_dir.parent / "worklogs"
 
     alerts: dict[str, list] = {k: [] for k in RULE_KEYS}
     state = dict(alert_state or {})
@@ -386,7 +461,11 @@ def scan_work_orders(
         if status == "delivered":
             delivered_dt = infer_delivered_at(wo, fp)
             mins = minutes_since(delivered_dt, now)
-            deliv = check_deliverables(deliverables_dir, wo_id)
+            deliv = check_deliverables(
+                deliverables_dir, wo_id,
+                deliverable_path=wo.get("deliverable_path"),
+                worklogs_dir=worklogs_dir,
+                project_root=wo_dir.parent)
 
             if mins > ACCEPT_OVERDUE_MIN:
                 escalated = bool(
@@ -418,7 +497,9 @@ def scan_work_orders(
                     alerts["rule4_deliverables"].append({
                         "wo_id": wo_id, "to": to,
                         "deliverables": deliv,
-                        "hint": "工单已交付但 deliverables/ 下无对应产物目录，"
+                        "hint": "工单已交付但三级检索均未命中"
+                                "（deliverable_path 声明路径 / deliverables/ "
+                                "目录 / worklogs/ 文件名），"
                                 "验收方无法定位交付物",
                     })
                     state[f"{wo_id}:deliv"] = {

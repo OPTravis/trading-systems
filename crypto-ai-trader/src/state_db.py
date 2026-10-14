@@ -592,6 +592,24 @@ class StateDB:
             CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol);
             CREATE INDEX IF NOT EXISTS idx_paper_trades_time ON paper_trades(timestamp);
 
+            -- WO-1057 ②: P3 anti-chase paper signals (record-only; the
+            -- rule NEVER gates trading — see entry_governor.note_neutral_paper)
+            CREATE TABLE IF NOT EXISTS paper_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                symbol TEXT NOT NULL,
+                rule TEXT NOT NULL DEFAULT 'chase_block_neutral',
+                alt_24h_pct REAL,
+                btc_24h_pct REAL,
+                diff_pp REAL,
+                chase_block INTEGER NOT NULL DEFAULT 0,
+                anchor_open_ms INTEGER,
+                source TEXT,
+                created_at REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_paper_signals_ts ON paper_signals(ts);
+            CREATE INDEX IF NOT EXISTS idx_paper_signals_symbol ON paper_signals(symbol);
+
             CREATE TABLE IF NOT EXISTS paper_portfolio (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
@@ -1467,6 +1485,30 @@ class StateDB:
         self._get_conn().execute(
             "INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
             (key, json.dumps(value), now),
+        )
+        self._get_conn().commit()
+
+    def insert_paper_signal(self, ts, symbol, *, rule="chase_block_neutral",
+                            alt_24h_pct=None, btc_24h_pct=None,
+                            diff_pp=None, chase_block=0,
+                            anchor_open_ms=None, source=None):
+        """WO-1057 ②: append a paper (record-only) signal row.
+
+        Paper telemetry for the P3 anti-chase rule — write-only, never
+        gates trading. Callers wrap in their own fail-open guards.
+        """
+        now = time.time()
+        self._get_conn().execute(
+            "INSERT INTO paper_signals (ts, symbol, rule, alt_24h_pct, "
+            "btc_24h_pct, diff_pp, chase_block, anchor_open_ms, source, "
+            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (float(ts), str(symbol), rule,
+             None if alt_24h_pct is None else float(alt_24h_pct),
+             None if btc_24h_pct is None else float(btc_24h_pct),
+             None if diff_pp is None else float(diff_pp),
+             1 if chase_block else 0,
+             None if anchor_open_ms is None else int(anchor_open_ms),
+             source, now),
         )
         self._get_conn().commit()
 

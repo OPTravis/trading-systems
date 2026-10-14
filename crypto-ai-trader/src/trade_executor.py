@@ -93,6 +93,56 @@ except (ValueError, OSError):
     logger.info("SIGTERM handler not registered (not in main thread) — skipping")
 
 
+def _neutral_paper_metrics(client, symbol, now=None):
+    """WO-1057 ② (P3 paper): alt vs BTC 24h change, last-CLOSED-1h-bar anchor.
+
+    Same anchor discipline as the WO-1054 backtest §2.2: both series are
+    measured on their last CLOSED 1h bar with a common open_time anchor;
+    diff = alt 24h change − BTC 24h change (percentage points). The
+    forming bar is excluded via close_time. Returns
+    (alt_24h_pct, btc_24h_pct, anchor_open_ms) or None on any
+    fetch/alignment failure — paper telemetry must never break trading.
+    """
+    now = now if now is not None else time.time()
+    now_ms = int(now * 1000)
+    try:
+        alt_ks = client.get_klines(symbol, "1h", limit=30)
+        btc_ks = client.get_klines("BTCUSDT", "1h", limit=30)
+    except Exception:
+        return None
+
+    def _closed(ks):
+        out = []
+        for k in ks or []:
+            try:
+                if int(k["close_time"]) < now_ms:
+                    out.append(k)
+            except (KeyError, TypeError, ValueError):
+                continue
+        return out
+
+    a, b = _closed(alt_ks), _closed(btc_ks)
+    if not a or not b:
+        return None
+    anchor = min(int(a[-1]["open_time"]), int(b[-1]["open_time"]))
+
+    def _close_at(ks, open_ms):
+        for k in ks:
+            if int(k["open_time"]) == open_ms:
+                return float(k["close"])
+        return None
+
+    a0 = _close_at(a, anchor)
+    b0 = _close_at(b, anchor)
+    a1 = _close_at(a, anchor - 24 * 3600 * 1000)
+    b1 = _close_at(b, anchor - 24 * 3600 * 1000)
+    if None in (a0, b0, a1, b1) or a1 <= 0 or b1 <= 0:
+        return None
+    alt_24h = (a0 / a1 - 1.0) * 100.0
+    btc_24h = (b0 / b1 - 1.0) * 100.0
+    return alt_24h, btc_24h, anchor
+
+
 def _check_price_deviation(
     client, symbol: str, price: float, sigma: float = 3.0
 ) -> bool:
@@ -2030,6 +2080,21 @@ def execute_auto_trade(
         try:
             from src.entry_governor import note_entry as _gov_note
             _gov_note(symbol, market_regime=market_regime)
+        except Exception:
+            pass
+
+        # WO-1057 ② (P3 paper): stamp the anti-chase metric for every
+        # NEUTRAL fresh entry — record-only, same TESTING skip +
+        # fail-open contract as note_entry above.
+        try:
+            from src.entry_governor import (
+                note_neutral_paper as _gov_paper)
+            _m = _neutral_paper_metrics(client, symbol)
+            if _m is not None:
+                _gov_paper(symbol, _m[0], _m[1],
+                           anchor_open_ms=_m[2],
+                           market_regime=market_regime,
+                           source="trade_executor")
         except Exception:
             pass
 

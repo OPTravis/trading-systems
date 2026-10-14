@@ -245,6 +245,56 @@ def note_entry(symbol, now=None, market_regime=None):
                        "for %s", symbol, exc_info=True)
 
 
+# ── WO-1057 ② (P3 anti-chase paper rule; Travis 拍板 2026-10-14) ──
+# Backtest (worklogs/20261014_BT_P3P4_*.md §2.2): the "alt lagged BTC"
+# hypothesis died (filter rate 11%), the real failure shape is the
+# REVERSE — chasing an alt that already ran +8pp or more vs BTC over
+# the last 24h. Too thin a sample to hard-gate (18 NEUTRAL entries vs
+# the ≥50 bar), so for now: RECORD ONLY. Every NEUTRAL fresh entry gets
+# its chase metric stamped on the exact live anchor (last CLOSED 1h bar
+# for both alt and BTC), so the §2.2 matrix can be recomputed on real
+# anchors once clean NEUTRAL sample ≥50. Never blocks, never raises.
+PAPER_CHASE_BLOCK_PP = 8.0
+
+
+def note_neutral_paper(symbol, alt_24h_pct, btc_24h_pct,
+                        anchor_open_ms=None, market_regime=None,
+                        now=None, source=None):
+    """WO-1057 ②: stamp the anti-chase metric for a NEUTRAL fresh entry.
+
+    Records EVERY NEUTRAL fresh entry's diff (the chase_block flag marks
+    the diff ≥ +8pp subset) into paper_signals; logs PAPER_CANDIDATE for
+    the flagged subset. Paper only — fail-open, never gates trading.
+    """
+    now = now if now is not None else time.time()
+    try:
+        db = _db()
+        if _market_regime(db, market_regime) != "NEUTRAL":
+            return
+        diff = float(alt_24h_pct) - float(btc_24h_pct)
+        chase = diff >= PAPER_CHASE_BLOCK_PP
+        db.insert_paper_signal(
+            now, symbol,
+            alt_24h_pct=float(alt_24h_pct),
+            btc_24h_pct=float(btc_24h_pct),
+            diff_pp=diff,
+            chase_block=1 if chase else 0,
+            anchor_open_ms=anchor_open_ms,
+            source=source)
+        if chase:
+            logger.info("entry_governor: PAPER_CANDIDATE: chase-block %s "
+                        "diff=%+.1fpp (alt %+.2f%% vs BTC %+.2f%%) — "
+                        "paper only, entry proceeds", symbol, diff,
+                        float(alt_24h_pct), float(btc_24h_pct))
+        else:
+            logger.info("entry_governor: neutral paper metric %s "
+                        "diff=%+.1fpp (below +%.0fpp block line) — "
+                        "recorded", symbol, diff, PAPER_CHASE_BLOCK_PP)
+    except Exception:
+        logger.warning("entry_governor: note_neutral_paper failed for %s",
+                       symbol, exc_info=True)
+
+
 def note_loss_exit(symbol, pnl, now=None):
     """Stamp the cooldown clock — call when a losing exit is booked."""
     if pnl is None or float(pnl) >= 0:
