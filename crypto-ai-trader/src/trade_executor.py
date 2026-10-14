@@ -1272,6 +1272,7 @@ def execute_auto_trade(
     surge_alert_level="SILENCE",
     bandit_sltp=None,
     core_layer=False,
+    market_regime=None,  # WO-1053: F&G bucket this decision sits under
 ):
     """Execute trade automatically with Kelly-optimal position sizing.
 
@@ -1305,7 +1306,8 @@ def execute_auto_trade(
         try:
             from src.entry_governor import check_entry as _gov_check
             _gov = _gov_check(symbol,
-                              size_mult=strategy_size_multiplier)
+                              size_mult=strategy_size_multiplier,
+                              market_regime=market_regime)
             if not _gov.get("ok"):
                 logger.warning(
                     f"[trade_id={_trade_id}] execute_auto_trade BLOCKED — "
@@ -2027,7 +2029,7 @@ def execute_auto_trade(
     if not os.environ.get("TESTING"):
         try:
             from src.entry_governor import note_entry as _gov_note
-            _gov_note(symbol)
+            _gov_note(symbol, market_regime=market_regime)
         except Exception:
             pass
 

@@ -33,6 +33,15 @@ COOLDOWN_HOURS = 24.0
 DAILY_ENTRY_CAP = 3
 FALLBACK_FLAG_TTL = 30 * 60.0  # one cron round + pending-confirm window
 
+# WO-1053: NEUTRAL-regime fresh-entry rate cap. Rolling 24h window (not
+# calendar-day — the 10/13-14 wave evidence is a 3.3-entries/day pace
+# crossing midnight), stacked with the calendar-day cap above; the
+# stricter one binds. BULL-side buckets stay on the global 3/day only.
+NEUTRAL_ENTRY_CAP = 2
+NEUTRAL_WINDOW_S = 24 * 3600.0
+_MARKET_REGIME_KEY = "gov:market_regime"      # scan-chain snapshot dict
+_NEUTRAL_ENTRIES_KEY = "gov:neutral_entries"  # [epoch_ts, ...] tagged fills
+
 
 def _db():
     from src.state_db import get_state_db
@@ -59,7 +68,68 @@ def _today(now=None):
     return time.strftime("%Y%m%d", time.localtime(now or time.time()))
 
 
-def check_entry(symbol, *, size_mult=1.0, now=None):
+def _market_regime(db, regime_hint=None):
+    """WO-1053: the market regime an entry decision is being made under.
+
+    Primary source: the executor-threaded value — exactly the F&G bucket
+    this round's threshold was adapted under (StrategyAdaptor.
+    _determine_regime: <=60 NEUTRAL / <80 GREED / ...), i.e. the regime
+    notion the 10/13-14 stop-loss wave evidence used (all five failed
+    entries recorded context regime NEUTRAL at F&G 57). Fallback: the
+    scan chain's persisted snapshot (kv gov:market_regime, refreshed
+    every round).
+
+    Deliberately NOT bull_regime: during the wave bull_regime sat in
+    MILD_BULL (10/13 14:53) / CONFIRMED_BULL (10/14 00:12) and has not
+    visited NEUTRAL since 9/21 — a bull_regime==NEUTRAL gate would have
+    blocked none of the five failed entries.
+
+    Returns upper-case label, or None when unknown (gate skips — the
+    governor's fail-open contract).
+    """
+    if regime_hint:
+        r = str(regime_hint).strip().upper()
+        return r or None
+    try:
+        snap = db.kv_get(_MARKET_REGIME_KEY) or {}
+        r = str(snap.get("regime") or "").strip().upper()
+        return r or None
+    except Exception:
+        return None
+
+
+def _neutral_window_count(db, now):
+    """NEUTRAL-tagged fresh entries inside the rolling 24h window.
+
+    kv-tagged list first, then the cold-start backstop rebuilt from
+    trade_outcomes' recorded entry regimes (the kv list starts empty
+    whenever the governor is redeployed; real same-window entries keep
+    the cap honest — same over-block contract as the daily cap's
+    trades floor)."""
+    cutoff = now - NEUTRAL_WINDOW_S
+    kv_count = 0
+    try:
+        raw = db.kv_get(_NEUTRAL_ENTRIES_KEY) or []
+        ts_list = []
+        for x in raw:
+            try:
+                ts_list.append(float(x))
+            except (TypeError, ValueError):
+                continue
+        kv_count = len([t for t in ts_list if t > cutoff])
+    except Exception:
+        kv_count = 0
+    backstop = 0
+    try:
+        for row in db.outcomes_regime_since(cutoff):
+            if row["regime"] == "NEUTRAL":
+                backstop += 1
+    except Exception:
+        backstop = 0
+    return max(kv_count, backstop)
+
+
+def check_entry(symbol, *, size_mult=1.0, now=None, market_regime=None):
     """Pre-entry gate. Returns dict(ok, reason, gate)."""
     now = now if now is not None else time.time()
     try:
@@ -101,6 +171,21 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
                     "(entry_count:%s=%d)"
                     % (DAILY_ENTRY_CAP, _today(now), count)),
             }
+        # WO-1053: NEUTRAL-regime fresh-entry rate cap (rolling 24h x
+        # 2 entries). Stacks with the calendar-day cap above — whichever
+        # is stricter binds. Other buckets (GREED/EXTREME_GREED, FEAR
+        # side) are unaffected: the wave evidence is specific to the
+        # NEUTRAL F&G bucket (5 failed entries at F&G 57, 83% failure).
+        if _market_regime(db, market_regime) == "NEUTRAL":
+            n = _neutral_window_count(db, now)
+            if n >= NEUTRAL_ENTRY_CAP:
+                return {
+                    "ok": False, "gate": "neutral_entry_cap",
+                    "reason": (
+                        "ENTRY_BLOCKED: neutral fresh-entry cap %d "
+                        "reached (%d NEUTRAL entries in last 24h)"
+                        % (NEUTRAL_ENTRY_CAP, n)),
+                }
         flag = _kv_get_migrated("gov:fallback:" + symbol,
                                 "entry_fallback:" + symbol) or {}
         if (flag.get("ts") and now - float(flag["ts"]) <= FALLBACK_FLAG_TTL
@@ -120,8 +205,14 @@ def check_entry(symbol, *, size_mult=1.0, now=None):
     return {"ok": True, "reason": None, "gate": None}
 
 
-def note_entry(symbol, now=None):
-    """Bump the daily counter — call exactly once per FILLED fresh BUY."""
+def note_entry(symbol, now=None, market_regime=None):
+    """Bump the daily counter — call exactly once per FILLED fresh BUY.
+
+    WO-1053: when the fill happened under the NEUTRAL market regime,
+    also tag its timestamp into the rolling NEUTRAL window so the
+    check_entry gate above counts it (BULL/FEAR-side fills never enter
+    the window — regime switching mid-window is handled by the tag,
+    not by the current snapshot)."""
     now = now if now is not None else time.time()
     try:
         db = _db()
@@ -131,6 +222,27 @@ def note_entry(symbol, now=None):
     except Exception:
         logger.warning("entry_governor: note_entry failed for %s",
                        symbol, exc_info=True)
+    try:
+        db = _db()
+        if _market_regime(db, market_regime) != "NEUTRAL":
+            return
+        raw = db.kv_get(_NEUTRAL_ENTRIES_KEY) or []
+        ts_list = []
+        for x in raw:
+            try:
+                ts_list.append(float(x))
+            except (TypeError, ValueError):
+                continue
+        ts_list = [t for t in ts_list if t > now - NEUTRAL_WINDOW_S]
+        ts_list.append(float(now))
+        del ts_list[:-64]  # hard bound; window prune keeps it tiny
+        db.kv_set(_NEUTRAL_ENTRIES_KEY, ts_list)
+        logger.info("entry_governor: %s fresh entry tagged NEUTRAL "
+                    "(%d in rolling 24h window, cap %d)", symbol,
+                    len(ts_list), NEUTRAL_ENTRY_CAP)
+    except Exception:
+        logger.warning("entry_governor: note_entry NEUTRAL tag failed "
+                       "for %s", symbol, exc_info=True)
 
 
 def note_loss_exit(symbol, pnl, now=None):

@@ -1104,6 +1104,28 @@ class StateDB:
             (ts,)).fetchone()
         return int(row[0]) if row else 0
 
+    def outcomes_regime_since(self, ts: float) -> List[Dict]:
+        """WO-1053: entries since ts with their recorded market regime
+        (trade_outcome_recorder books context_json.regime — the F&G
+        bucket the entry decision was made under). NEUTRAL-window
+        cold-start backstop for entry_governor; regime upper-cased,
+        unparseable rows skipped (never counted — backstop may only
+        over-block by kv side, never manufacture blocks from noise)."""
+        rows = self._get_conn().execute(
+            "SELECT entry_time, context_json FROM trade_outcomes "
+            "WHERE entry_time >= ?", (ts,)).fetchall()
+        out: List[Dict] = []
+        for r in rows:
+            try:
+                ctx = json.loads(r["context_json"] or "{}")
+                out.append({
+                    "entry_time": float(r["entry_time"]),
+                    "regime": str(ctx.get("regime") or "").strip().upper(),
+                })
+            except Exception:
+                continue
+        return out
+
     def paper_pending_cancel(self, order_id: str) -> bool:
         """Cancel an OPEN pending paper order. Idempotent: cancelling an
         already-cancelled/filled/unknown order returns False (no error).

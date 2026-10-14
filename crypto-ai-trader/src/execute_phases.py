@@ -158,6 +158,7 @@ def _step_execute_trades(ctx):
                 ),
                 bandit_sltp=ctx.get("adapted", {}).get("bandit_sltp"),
                 core_layer=ctx.get("core_layer", False),  # WO-1046g S3
+                market_regime=ctx.get("adapted", {}).get("regime"),  # WO-1053
             )
             if result["success"]:
                 # Record trade in journal

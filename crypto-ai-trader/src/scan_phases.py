@@ -680,6 +680,20 @@ def _step_scan_opportunities():
         bull_tier=bull_tier,
     )
     regime = adapted["regime"]
+    # WO-1053: persist the market-regime snapshot for the entry
+    # governor's NEUTRAL fresh-entry cap (kv gov:market_regime). Same
+    # F&G bucket this round's threshold was adapted under — the regime
+    # notion the 10/13-14 stop-loss wave evidence used.
+    if not os.environ.get("TESTING"):
+        try:
+            import time as _time
+            from src.state_db import get_state_db as _gsd
+            _gsd().kv_set("gov:market_regime",
+                          {"regime": regime, "fng": fng,
+                           "ts": _time.time()})
+        except Exception:
+            logger.warning("market-regime snapshot persist failed "
+                           "(non-fatal)", exc_info=True)
     global_cfg = adapted["global"]
     dynamic_threshold = global_cfg["score_threshold"]
 
