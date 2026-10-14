@@ -180,7 +180,9 @@ class TradeOutcomeRecorder:
         Args:
             symbol: Trading pair (e.g., "ENAUSDT")
             exit_price: Actual exit price
-            exit_reason: "tp1", "tp2", "tp3", "sl", "trailing", "max_hold", "manual"
+            exit_reason: "tp1", "tp2", "tp3", "tp", "sl", "trailing",
+                "max_hold", "manual", "reconciled", "switch"
+                (WO-1055 ③: reconciler OCO fills book 'tp'/'sl' by pnl)
             entry_id: Optional row ID from record_entry() for precise matching
 
         Returns: outcome dict with computed metrics, or None if no open entry found.

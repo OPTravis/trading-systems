@@ -196,7 +196,14 @@ class TestGuardian:
             "price": "844.97", "stopPrice": "844.97",
             "origQty": "0.05", "listId": None,
         }
-        c = FakeClient(orders=[tp_stop])
+        # WO-1055 ②: realistic BNB filters — the old shared stepSize
+        # 0.1 floored the 0.05 rebuild qty to 0 and the test only
+        # passed because the fake client accepted the un-placeable
+        # 0-qty order; real Binance rejects it (LOT_SIZE).
+        c = FakeClient(
+            orders=[tp_stop],
+            filters={"stepSize": "0.001", "tickSize": "0.01",
+                    "minQty": "0.001", "minNotional": "10"})
         pos = _pos("BNBUSDT", 0.05, 812.47, take_profit=844.97)
         res = pg.run(c, FakePortfolio([pos]))
         assert res["healed"] == 1 and res["failed"] == 0

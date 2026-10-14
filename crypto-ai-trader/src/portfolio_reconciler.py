@@ -42,6 +42,27 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _oco_leg_reason(pnl: float) -> str:
+    """WO-1055 ③: classify a reconciled OCO fill by realized pnl.
+
+    History booked every reconciled fill as exit_reason="reconciled",
+    and protections.stoploss_guard counted that label toward 3-loss
+    streaks — so profitable OCO TP fills were indistinguishable from
+    SL legs (DB 10/14: 19/19 'reconciled' rows profitable, min
+    +0.036). Now the winning leg books "tp" (breaks the streak), the
+    losing leg keeps "sl"; an exact-zero pnl (fee-eaten breakeven)
+    stays "reconciled" — neither win nor loss.
+    """
+    if pnl > 0:
+        return "tp"
+    if pnl < 0:
+        return "sl"
+    return "reconciled"
+
+
+
+
 KV_PREV_POSITIONS = "reconcile_prev_positions"
 RECONCILE_REPORT_KEY = "reconciler:report"
 
@@ -518,7 +539,7 @@ def _book_sell_legs(db, symbol: str, sells: List[Dict], gap_qty: float,
                 from src.trade_outcome_recorder import TradeOutcomeRecorder
                 TradeOutcomeRecorder().record_outcome(
                     symbol, exit_price=avg_px,
-                    exit_reason="reconciled" if pnl >= 0 else "sl")
+                    exit_reason=_oco_leg_reason(pnl))
             except Exception:
                 pass
             booked.append(
@@ -539,7 +560,7 @@ def _book_sell_legs(db, symbol: str, sells: List[Dict], gap_qty: float,
                         "price": float(round(avg_px, 8)),
                         "pnl": float(round(pnl, 6)),
                         "order_id": str(oid),
-                        "exit_reason": "reconciled" if pnl >= 0 else "sl",
+                        "exit_reason": _oco_leg_reason(pnl),
                         "source": "reconciler.oco_fill",
                     },
                     observe_only=True,
@@ -917,7 +938,7 @@ def _recon_one_order(db, client, symbol: str, oid: int, legs: List[Dict],
                 "qty": float(round(qty, 8)), "price": float(round(avg_px, 8)),
                 "pnl": float(round(pnl, 6)), "ts": fill_ts,
                 "order_id": str(oid),
-                "exit_reason": "reconciled" if pnl >= 0 else "sl",
+                "exit_reason": _oco_leg_reason(pnl),
                 "source": "oco_recon.shadow_backfill",
             },
             observe_only=True,

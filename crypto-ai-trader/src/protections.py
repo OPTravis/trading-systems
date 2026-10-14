@@ -40,9 +40,13 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "lookback_hours": 168,       # 7d
         "max_consecutive_sl": 3,     # last N closes all loss-exits -> lock
         "lock_hours": 48,
-        # sl=live SL order, reconciled=OCO SL leg filled on exchange,
-        # switch=portfolio forced rotation close at a loss.
-        "sl_reasons": ["sl", "reconciled", "switch"],
+        # sl=live SL order, switch=portfolio forced rotation close
+        # at a loss. WO-1055 ③: 'reconciled' removed — reconciler OCO
+        # fills now book 'tp'/'sl' by realized pnl (exact-zero
+        # breakeven stays 'reconciled'); DB 10/14 showed all 19
+        # historical 'reconciled' rows profitable, so counting them
+        # toward loss streaks was always wrong.
+        "sl_reasons": ["sl", "switch"],
     },
     "max_drawdown": {
         "enabled": True,

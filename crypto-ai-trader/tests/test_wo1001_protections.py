@@ -40,10 +40,14 @@ def db():
 # ── 1) StoplossGuard ────────────────────────────────────────────────
 
 def test_stoploss_guard_locks_after_consecutive_loss_exits():
+    # WO-1055 ③ (10/14): 'reconciled' removed from sl_reasons —
+    # reconciler OCO fills now book 'tp'/'sl' by realized pnl (all 19
+    # historical 'reconciled' rows were profitable), so a real third
+    # loss exit books "sl" here.
     evs = [
         _ev(NOW - 5000, "SELL", "sl", -1.0),
         _ev(NOW - 4000, "SELL", "sl", -1.0),
-        _ev(NOW - 3000, "SELL", "reconciled", -0.5),
+        _ev(NOW - 3000, "SELL", "sl", -0.5),
     ]
     locks = evaluate_locks(evs, "LTCUSDT", NOW, _cfg())
     reasons = [l.reason for l in locks]

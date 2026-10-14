@@ -403,6 +403,18 @@ def run(client: Any, portfolio: Any,
                     _sl_qty, _ = _calibrate_protect_qty(
                         client, sym, _step_floor(qty, step), step,
                         context="guardian_emergency_sl_breach")
+                    if _sl_qty <= 0:
+                        # WO-1055 ② (02:12 INJ race): L1 can floor the qty to 0
+                        # when the sweep reads a stale snapshot against a
+                        # just-filled OCO — placing 0 is a guaranteed reject
+                        # counted as failed. Dust is not a protection failure:
+                        # skip and let the next sweep re-read the fresh state.
+                        summary["skipped"] += 1
+                        logger.info(
+                            "guardian: %s emergency_sl_breach calibrated to "
+                            "%.8g (dust) — skip place, next sweep "
+                            "re-evaluates", sym, _sl_qty)
+                        continue
                     ret, _sl_placed = _place_sell_downgraded(
                         lambda q: client.place_stop_loss_limit(
                             sym, q,
@@ -552,6 +564,18 @@ def run(client: Any, portfolio: Any,
                 _sl_qty, _ = _calibrate_protect_qty(
                     client, sym, _step_floor(qty, step), step,
                     context="guardian_emergency_sl")
+                if _sl_qty <= 0:
+                    # WO-1055 ② (02:12 INJ race): L1 can floor the qty to 0
+                    # when the sweep reads a stale snapshot against a
+                    # just-filled OCO — placing 0 is a guaranteed reject
+                    # counted as failed. Dust is not a protection failure:
+                    # skip and let the next sweep re-read the fresh state.
+                    summary["skipped"] += 1
+                    logger.info(
+                        "guardian: %s emergency_sl calibrated to "
+                        "%.8g (dust) — skip place, next sweep "
+                        "re-evaluates", sym, _sl_qty)
+                    continue
                 ret, _sl_placed = _place_sell_downgraded(
                     lambda q: client.place_stop_loss_limit(
                         sym, q,
@@ -660,6 +684,18 @@ def run(client: Any, portfolio: Any,
                 rebuild_qty, _ = _calibrate_protect_qty(
                     client, sym, rebuild_qty, step,
                     context="guardian_tp_oco_rebuild")
+                if rebuild_qty <= 0:
+                    # WO-1055 ② (02:12 INJ race): L1 can floor the qty to 0
+                    # when the sweep reads a stale snapshot against a
+                    # just-filled OCO — placing 0 is a guaranteed reject
+                    # counted as failed. Dust is not a protection failure:
+                    # skip and let the next sweep re-read the fresh state.
+                    summary["skipped"] += 1
+                    logger.info(
+                        "guardian: %s tp_oco_rebuild calibrated to "
+                        "%.8g (dust) — skip place, next sweep "
+                        "re-evaluates", sym, rebuild_qty)
+                    continue
                 oco = None
                 oco_err = None
                 # WO-0923-viii: retry transient/rate-limit errors with
@@ -922,6 +958,18 @@ def run(client: Any, portfolio: Any,
                 oco_qty_step, _ = _calibrate_protect_qty(
                     client, sym, oco_qty_step, step,
                     context="guardian_oco_swap")
+                if oco_qty_step <= 0:
+                    # WO-1055 ② (02:12 INJ race): L1 can floor the qty to 0
+                    # when the sweep reads a stale snapshot against a
+                    # just-filled OCO — placing 0 is a guaranteed reject
+                    # counted as failed. Dust is not a protection failure:
+                    # skip and let the next sweep re-read the fresh state.
+                    summary["skipped"] += 1
+                    logger.info(
+                        "guardian: %s oco_swap calibrated to "
+                        "%.8g (dust) — skip place, next sweep "
+                        "re-evaluates", sym, oco_qty_step)
+                    continue
                 oco, _swapped_qty = _place_sell_downgraded(
                     lambda q: client.place_oco(sym, q, tp_px, old_stop),
                     client, sym, oco_qty_step, step,
